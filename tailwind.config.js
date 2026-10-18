@@ -1,6 +1,6 @@
 /** Build-time Tailwind config (previously inlined for the CDN runtime). Run `npm run vendor`. */
 module.exports = {
-  content: ['./static/index.html'],
+  content: ['./static/index.html', './static/app.js'],
   darkMode: 'class',
   theme: {
     extend: {

@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app import __version__, events
-from app.paths import APP_DIR as BASE_DIR, SESSION_TOKEN_FILE, UPLOADS_DIR
+from app.paths import APP_DIR as BASE_DIR, DATA_DIR, MODELS_DIR, SESSION_TOKEN_FILE, UPLOADS_DIR
 from app.database import (
     add_dictionary_term,
     create_meeting,
@@ -74,6 +74,12 @@ SUPPORTED_EXTENSIONS = {
 # other request without that cookie is rejected. Requests with a foreign Host header
 # (DNS rebinding) are rejected as well.
 SESSION_COOKIE = "vs_session"
+
+
+def _cookie_name(request: Request) -> str:
+    # Browsers share cookies between ports of one host, so two instances (or another local app)
+    # on 127.0.0.1 would overwrite each other's session cookie without the port in its name.
+    return f"{SESSION_COOKIE}_{request.url.port or 80}"
 SESSION_TOKEN = os.environ.get("VERBASCRIBE_TOKEN") or secrets.token_urlsafe(32)
 SESSION_TOKEN_FILE.write_text(SESSION_TOKEN, encoding="utf-8")
 
@@ -134,16 +140,19 @@ async def local_session_guard(request: Request, call_next):
         query_token = request.query_params.get("token")
         if _token_valid(query_token):
             resp = RedirectResponse("/", status_code=303)
-            resp.set_cookie(SESSION_COOKIE, SESSION_TOKEN, httponly=True, samesite="strict", path="/")
+            resp.set_cookie(_cookie_name(request), SESSION_TOKEN, httponly=True, samesite="strict", path="/")
             return resp
-        if not _token_valid(request.cookies.get(SESSION_COOKIE)):
+        if not _token_valid(request.cookies.get(_cookie_name(request))):
             return HTMLResponse(_LOCKED_PAGE, status_code=401)
         return await call_next(request)
 
     if path.startswith(_PUBLIC_PREFIXES):
-        return await call_next(request)
+        resp = await call_next(request)
+        # Revalidate (ETag) so an updated app.js/styles.css is never served from a stale cache
+        resp.headers.setdefault("Cache-Control", "no-cache")
+        return resp
 
-    if not _token_valid(request.cookies.get(SESSION_COOKIE)):
+    if not _token_valid(request.cookies.get(_cookie_name(request))):
         return Response('{"detail":"Unauthorized"}', status_code=401, media_type="application/json")
     return await call_next(request)
 
@@ -181,6 +190,7 @@ def api_system_info() -> Dict[str, Any]:
         "ollama": get_ollama_status(),
         "models": get_models_status(),
         "ffmpeg": ffmpeg_status(),
+        "paths": {"data": str(DATA_DIR), "models": str(MODELS_DIR)},
     }
 
 
@@ -312,23 +322,16 @@ async def api_events(request: Request) -> StreamingResponse:
 
     async def stream():
         try:
-            yield 'retry: 3000
-data: {"type": "hello"}
-
-'
+            yield 'retry: 3000\ndata: {"type": "hello"}\n\n'
             while True:
                 batch = await sub.next_batch(_SSE_HEARTBEAT_SEC)
                 if await request.is_disconnected():
                     break
                 if not batch:
-                    yield ": ping
-
-"
+                    yield ": ping\n\n"
                     continue
                 for ev in batch:
-                    yield f"data: {json.dumps(ev, ensure_ascii=False)}
-
-"
+                    yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
         finally:
             events.unsubscribe(sub)
 

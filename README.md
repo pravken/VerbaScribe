@@ -30,7 +30,7 @@ Recordings and transcripts are processed and stored locally (NVIDIA GPU via CUDA
 ### Requirements
 
 - Windows 10/11 (64-bit)
-- [FFmpeg](https://ffmpeg.org) in `PATH`, e.g. `winget install Gyan.FFmpeg`
+- [FFmpeg](https://ffmpeg.org): either in `PATH` (e.g. `winget install Gyan.FFmpeg`) or downloaded from **Settings → Download FFmpeg** (a pinned build, checked by SHA-256)
 - An NVIDIA GPU with CUDA is recommended; a CPU works but is noticeably slower
 - Disk space for models: about 0.5–3 GB per Whisper model, plus Ollama models if you use summaries
 
@@ -46,7 +46,7 @@ cd VerbaScribe
 start.bat
 ```
 
-On first launch `setup.bat` creates a Python virtual environment (`.venv`) and installs dependencies. The app then opens a setup screen where you choose which Whisper model to download. To build the launcher yourself, run `python build_exe.py`; it uses the C# compiler bundled with the .NET Framework.
+On first launch `setup.bat` creates a Python virtual environment (`.venv`) and installs the exact package versions from `requirements.txt` (a lock file with SHA-256 hashes, generated from `requirements.in`). The app then opens a setup screen where you choose which Whisper model to download. To build the launcher yourself, run `python build_exe.py`; it uses the C# compiler bundled with the .NET Framework.
 
 <a name="network-access"></a>
 ### Network access
@@ -60,7 +60,13 @@ VerbaScribe has no telemetry. It connects to the internet only for these actions
 | You download an Ollama model | Ollama's model registry, via your local Ollama |
 | You confirm installing Ollama | winget (package `Ollama.Ollama`) |
 
+| You click **Download FFmpeg** in Settings | github.com (release `9.0.2` of `GyanD/codexffmpeg`) |
+
 The user interface, fonts and scripts are served locally. The built-in server listens only on `127.0.0.1`. Every launch creates a random session token, so other websites open in your browser cannot read or control the app.
+
+### Where your data is stored
+
+Recordings, extracted audio, the database and exports are kept in `%LOCALAPPDATA%\VerbaScribe` (shown in Settings). Set the `VERBASCRIBE_DATA_DIR` environment variable to use another folder. Speech models stay in the program's `models` folder (`VERBASCRIBE_MODELS_DIR` overrides it). Earlier versions kept data in the program's `data` folder; it is moved automatically on the first start (copied, verified, then removed, with a `MOVED.txt` note left behind). Files you added by disk path are never moved.
 
 ### Licenses
 
@@ -73,6 +79,7 @@ VerbaScribe's own code is released under the [MIT License](LICENSE). Models and 
 | SpeechBrain ECAPA-TDNN (`spkrec-ecapa-voxceleb`) | Apache 2.0 |
 | Qwen 2.5 1.5B / 7B / 14B, Mistral 7B | Apache 2.0 |
 | Ollama, FastAPI, pywebview | MIT / BSD-3 |
+| FFmpeg (optional download, Gyan.dev essentials build) | GPL v3 |
 | Inter, JetBrains Mono fonts | SIL Open Font License |
 
 Not every Qwen 2.5 size is Apache 2.0 (the 3B and 72B models use a different license). If you download other models through Ollama, check their terms.
@@ -83,12 +90,14 @@ Not every Qwen 2.5 size is Apache 2.0 (the 3B and 72B models use a different lic
 .venv\Scripts\python.exe -m unittest discover -s tests -t .
 ```
 
-Front-end libraries (Tailwind CSS, marked, DOMPurify, fonts) are pinned in `package.json`, and their built copies are committed to `static/vendor/`. You only need Node.js if you change CSS classes in `static/index.html`. In that case, rebuild with:
+Front-end libraries (Tailwind CSS, marked, DOMPurify, fonts) are pinned in `package.json`, and their built copies are committed to `static/vendor/`. The UI is `static/index.html` (markup), `static/app.js` (logic), `static/i18n.js` (Russian and English strings) and `static/styles.css`. You only need Node.js if you change Tailwind classes in `index.html` or `app.js`. In that case, rebuild with:
 
 ```bash
 npm install
 npm run vendor
 ```
+
+To update Python dependencies, edit `requirements.in` and regenerate the lock (command at the top of `requirements.in`).
 
 ---
 
@@ -115,7 +124,7 @@ npm run vendor
 ### Требования
 
 - Windows 10/11 (64-bit)
-- [FFmpeg](https://ffmpeg.org) в `PATH`, например `winget install Gyan.FFmpeg`
+- [FFmpeg](https://ffmpeg.org): в `PATH` (например, `winget install Gyan.FFmpeg`) или скачанный из **Настройки → Скачать FFmpeg** (закреплённая сборка с проверкой SHA-256)
 - Желательна видеокарта NVIDIA с CUDA; на процессоре работает, но заметно медленнее
 - Место под модели: примерно 0,5–3 ГБ на модель Whisper и ещё место под модели Ollama, если нужны саммари
 
@@ -131,7 +140,7 @@ cd VerbaScribe
 start.bat
 ```
 
-При первом запуске `setup.bat` создаёт виртуальное окружение Python (`.venv`) и ставит зависимости. Затем открывается экран настройки, где вы выбираете модель Whisper для скачивания. Чтобы собрать лаунчер самостоятельно, выполните `python build_exe.py`; он использует компилятор C# из комплекта .NET Framework.
+При первом запуске `setup.bat` создаёт виртуальное окружение Python (`.venv`) и ставит точные версии пакетов из `requirements.txt` (lock-файл с хешами SHA-256, собирается из `requirements.in`). Затем открывается экран настройки, где вы выбираете модель Whisper для скачивания. Чтобы собрать лаунчер самостоятельно, выполните `python build_exe.py`; он использует компилятор C# из комплекта .NET Framework.
 
 <a name="сеть"></a>
 ### Сетевые подключения
@@ -145,7 +154,13 @@ start.bat
 | Вы скачиваете модель Ollama | Реестр моделей Ollama, через вашу локальную Ollama |
 | Вы подтверждаете установку Ollama | winget (пакет `Ollama.Ollama`) |
 
+| Вы нажимаете **Скачать FFmpeg** в настройках | github.com (релиз `9.0.2` репозитория `GyanD/codexffmpeg`) |
+
 Интерфейс, шрифты и скрипты загружаются локально. Встроенный сервер слушает только `127.0.0.1`. При каждом запуске создаётся случайный токен сессии, поэтому другие сайты, открытые в браузере, не могут читать данные приложения или управлять им.
+
+### Где хранятся данные
+
+Записи, извлечённый звук, база и экспорт лежат в `%LOCALAPPDATA%\VerbaScribe` (путь виден в настройках). Другую папку можно задать переменной окружения `VERBASCRIBE_DATA_DIR`. Модели распознавания остаются в папке программы `models` (переопределяется `VERBASCRIBE_MODELS_DIR`). Раньше данные хранились в папке программы `data`; при первом запуске она переносится автоматически (копирование, проверка, затем удаление; на старом месте остаётся `MOVED.txt`). Файлы, добавленные по пути на диске, не переносятся.
 
 ### Лицензии
 
@@ -155,4 +170,4 @@ start.bat
 
 Тесты: `.venv\Scripts\python.exe -m unittest discover -s tests -t .`
 
-Фронтенд-библиотеки (Tailwind CSS, marked, DOMPurify, шрифты) закреплены по версиям в `package.json`, а их собранные копии лежат в `static/vendor/`. Node.js нужен, только если вы меняете CSS-классы в `static/index.html`. После этого пересоберите библиотеки командами `npm install` и `npm run vendor`.
+Фронтенд-библиотеки (Tailwind CSS, marked, DOMPurify, шрифты) закреплены по версиям в `package.json`, а их собранные копии лежат в `static/vendor/`. Интерфейс: `static/index.html` (разметка), `static/app.js` (логика), `static/i18n.js` (строки на русском и английском), `static/styles.css`. Node.js нужен, только если вы меняете классы Tailwind в `index.html` или `app.js`. После этого пересоберите библиотеки командами `npm install` и `npm run vendor`.
