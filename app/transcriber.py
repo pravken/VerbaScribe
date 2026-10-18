@@ -2,13 +2,13 @@ import threading
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from app.hardware import clear_vram, get_hardware_info, register_cuda_dlls
 
 register_cuda_dlls()
 
-from faster_whisper import WhisperModel
+from faster_whisper import BatchedInferencePipeline, WhisperModel
 
 from app.audio_utils import extract_audio_16k_mono, format_timestamp, get_media_duration
 from app.database import (
@@ -93,6 +93,9 @@ def _run_job(meeting_id: int) -> None:
         with _jobs_lock:
             _active_jobs.discard(meeting_id)
             _cancel_requested.discard(meeting_id)
+            queue_empty = not _active_jobs
+        if queue_empty:
+            release_whisper_model()
 
 
 def _load_whisper_with_fallback(model_name: str, device: str, compute_type: str) -> WhisperModel:
@@ -133,6 +136,160 @@ def _load_whisper_with_fallback(model_name: str, device: str, compute_type: str)
             continue
 
     raise RuntimeError(f"Не удалось инициализировать модель Whisper ({model_name}): {last_err}")
+
+
+# --- Whisper model reuse between queued jobs ---
+# Loading large-v3 takes several seconds and a lot of disk I/O. When more recordings are waiting
+# in the queue and the GPU has room, the model stays loaded for the next job instead of being
+# reloaded every time. It is released when the queue becomes empty, before an LLM summary on
+# GPUs without enough free memory, and after any error.
+_KEEP_MIN_FREE_VRAM_GB = 3.0  # leave room for the speaker model while Whisper stays loaded
+_SUMMARY_MIN_FREE_VRAM_GB = 8.0  # below this, free Whisper before Ollama loads its model
+_whisper_cache: Dict[str, Any] = {"key": None, "model": None}
+
+
+def _free_vram_gb() -> float:
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            free, _total = torch.cuda.mem_get_info(0)
+            return free / (1024**3)
+    except Exception:
+        pass
+    return 0.0
+
+
+def _get_whisper_model(model_name: str, device: str, compute_type: str) -> Tuple[WhisperModel, bool]:
+    """Returns (model, reused)."""
+    key = (model_name, device, compute_type)
+    if _whisper_cache["model"] is not None and _whisper_cache["key"] == key:
+        return _whisper_cache["model"], True
+    release_whisper_model()
+    model = _load_whisper_with_fallback(model_name, device, compute_type)
+    _whisper_cache.update(key=key, model=model)
+    return model, False
+
+
+def release_whisper_model() -> None:
+    if _whisper_cache["model"] is not None:
+        _whisper_cache.update(key=None, model=None)
+        clear_vram()
+
+
+def _other_jobs_waiting(meeting_id: int) -> bool:
+    with _jobs_lock:
+        return bool(_active_jobs - {meeting_id})
+
+
+def _should_keep_whisper(meeting_id: int, device: str, settings: Dict[str, str]) -> bool:
+    if settings.get("keep_model_loaded", "true").lower() != "true":
+        return False
+    if not _other_jobs_waiting(meeting_id):
+        return False
+    return device != "cuda" or _free_vram_gb() >= _KEEP_MIN_FREE_VRAM_GB
+
+
+def _batch_size_for(device: str, hw: Dict[str, Any]) -> int:
+    if device != "cuda":
+        return 0  # batching gains little on CPU and raises RAM use: decode sequentially
+    vram = float(hw.get("vram_total_gb") or 0.0)
+    if vram >= 10:
+        return 16
+    if vram >= 5.5:
+        return 8
+    return 4
+
+
+def _start_transcription(
+    whisper_model: WhisperModel,
+    wav_path: Path,
+    *,
+    batch_size: int,
+    duration: float,
+    language: Optional[str],
+    hotwords: str,
+    vad_enabled: bool,
+):
+    vad_parameters = dict(min_silence_duration_ms=450, speech_pad_ms=250)
+    if batch_size > 0:
+        # BatchedInferencePipeline decodes several ~30 s windows at once (much faster on GPU).
+        # Without VAD it needs the windows spelled out.
+        clips = None
+        if not vad_enabled:
+            clips = []
+            t = 0.0
+            while t < duration - 0.2:
+                clips.append({"start": t, "end": min(duration, t + 30.0)})
+                t += 30.0
+        return BatchedInferencePipeline(model=whisper_model).transcribe(
+            str(wav_path),
+            language=language,
+            hotwords=hotwords or None,
+            word_timestamps=True,
+            vad_filter=vad_enabled,
+            vad_parameters=vad_parameters if vad_enabled else None,
+            clip_timestamps=clips,
+            batch_size=batch_size,
+        )
+    return whisper_model.transcribe(
+        str(wav_path),
+        language=language,
+        hotwords=hotwords or None,
+        word_timestamps=True,
+        vad_filter=vad_enabled,
+        vad_parameters=vad_parameters,
+        condition_on_previous_text=False,
+    )
+
+
+def _collect_segments(meeting_id: int, segments_iter, total_dur: float) -> List[Dict[str, Any]]:
+    raw_segments: List[Dict[str, Any]] = []
+    for seg in segments_iter:
+        _check_cancel(meeting_id)
+        text = (seg.text or "").strip()
+        if is_hallucination(text) or is_low_quality_segment(
+            getattr(seg, "no_speech_prob", None),
+            getattr(seg, "avg_logprob", None),
+            getattr(seg, "compression_ratio", None),
+        ):
+            continue
+
+        words_list = []
+        if seg.words:
+            for w in seg.words:
+                words_list.append(
+                    {
+                        "start": round(float(w.start), 2),
+                        "end": round(float(w.end), 2),
+                        "word": w.word,
+                        "prob": round(float(getattr(w, "probability", 1.0)), 2),
+                    }
+                )
+
+        raw_segments.append(
+            {
+                "start": round(float(seg.start), 2),
+                "end": round(float(seg.end), 2),
+                "text": text,
+                "words": words_list,
+            }
+        )
+
+        # Update progress between 16% and 65%
+        ratio = min(1.0, float(seg.end) / total_dur)
+        pct = 16 + int(49 * ratio)
+        update_meeting_progress(
+            meeting_id,
+            progress=pct,
+            stage_text=(
+                f"Транскрибация: {format_timestamp(seg.end)} из {format_timestamp(total_dur)} "
+                f"({int(ratio * 100)}%)"
+            ),
+        )
+    # Batched decoding yields windows in order, but keep the timeline strictly sorted
+    raw_segments.sort(key=lambda s: (s["start"], s["end"]))
+    return raw_segments
 
 
 def _process_meeting_job(meeting_id: int) -> None:
@@ -194,77 +351,50 @@ def _process_meeting_job(meeting_id: int) -> None:
         vad_enabled = settings.get("vad_filter", "true").lower() == "true"
 
         _check_cancel(meeting_id)
-        whisper_model = _load_whisper_with_fallback(model_name, device, compute_type)
+        whisper_model, reused = _get_whisper_model(model_name, device, compute_type)
 
         # `hotwords` is applied to every 30s window; `initial_prompt` would only affect the first
         # window because condition_on_previous_text is disabled.
         hotwords = get_dictionary_hotwords()
+        batch_size = (
+            _batch_size_for(device, hw)
+            if settings.get("batched_inference", "true").lower() == "true"
+            else 0
+        )
         update_meeting_progress(
             meeting_id,
             status="transcribing",
             progress=15,
-            stage_text=f"Распознавание речи — {pretty_whisper}",
+            stage_text=f"Распознавание речи — {pretty_whisper}"
+            + (f", пакетами по {batch_size}" if batch_size else "")
+            + (" (модель уже загружена)" if reused else ""),
         )
+        total_dur = max(1.0, float(duration or 1.0))
+        decode = dict(duration=total_dur, language=language, hotwords=hotwords, vad_enabled=vad_enabled)
 
-        segments_iter, info = whisper_model.transcribe(
-            str(wav_path),
-            language=language,
-            hotwords=hotwords or None,
-            word_timestamps=True,
-            vad_filter=vad_enabled,
-            vad_parameters=dict(min_silence_duration_ms=450, speech_pad_ms=250),
-            condition_on_previous_text=False,
-        )
+        try:
+            segments_iter, info = _start_transcription(whisper_model, wav_path, batch_size=batch_size, **decode)
+            raw_segments = _collect_segments(meeting_id, segments_iter, total_dur)
+        except JobCancelled:
+            raise
+        except Exception as batch_err:
+            if not batch_size:
+                raise
+            # e.g. out of GPU memory with a large batch: redo the file the classic way
+            print(f"[transcriber] Batched decoding failed ({batch_err}); retrying sequentially", flush=True)
+            clear_vram()
+            update_meeting_progress(
+                meeting_id, progress=16, stage_text=f"Распознавание речи — {pretty_whisper} (обычный режим)"
+            )
+            segments_iter, info = _start_transcription(whisper_model, wav_path, batch_size=0, **decode)
+            raw_segments = _collect_segments(meeting_id, segments_iter, total_dur)
 
         detected_lang = getattr(info, "language", None) or (language or "ru")
-        total_dur = max(1.0, float(duration or getattr(info, "duration", 1.0) or 1.0))
 
-        raw_segments: List[Dict[str, Any]] = []
-        for seg in segments_iter:
-            _check_cancel(meeting_id)
-            text = (seg.text or "").strip()
-            if is_hallucination(text) or is_low_quality_segment(
-                getattr(seg, "no_speech_prob", None),
-                getattr(seg, "avg_logprob", None),
-                getattr(seg, "compression_ratio", None),
-            ):
-                continue
-
-            words_list = []
-            if seg.words:
-                for w in seg.words:
-                    words_list.append(
-                        {
-                            "start": round(float(w.start), 2),
-                            "end": round(float(w.end), 2),
-                            "word": w.word,
-                            "prob": round(float(getattr(w, "probability", 1.0)), 2),
-                        }
-                    )
-
-            raw_segments.append(
-                {
-                    "start": round(float(seg.start), 2),
-                    "end": round(float(seg.end), 2),
-                    "text": text,
-                    "words": words_list,
-                }
-            )
-
-            # Update progress between 16% and 65%
-            ratio = min(1.0, float(seg.end) / total_dur)
-            pct = 16 + int(49 * ratio)
-            update_meeting_progress(
-                meeting_id,
-                progress=pct,
-                stage_text=(
-                    f"Транскрибация: {format_timestamp(seg.end)} из {format_timestamp(total_dur)} "
-                    f"({int(ratio * 100)}%)"
-                ),
-            )
-
-        # Explicitly unload Whisper from VRAM before Diarization & LLM
+        # Free Whisper before diarization unless the next queued job can reuse it
         whisper_model = None
+        if not _should_keep_whisper(meeting_id, device, settings):
+            release_whisper_model()
         clear_vram()
         _check_cancel(meeting_id)
 
@@ -315,6 +445,8 @@ def _process_meeting_job(meeting_id: int) -> None:
         if auto_summary and merged_segments:
             ollama_st = get_ollama_status()
             if ollama_st["running"] and ollama_st["models"]:
+                if device == "cuda" and _free_vram_gb() < _SUMMARY_MIN_FREE_VRAM_GB:
+                    release_whisper_model()
                 update_meeting_progress(
                     meeting_id,
                     status="summarizing",
@@ -345,7 +477,7 @@ def _process_meeting_job(meeting_id: int) -> None:
 
     except JobCancelled:
         whisper_model = None
-        clear_vram()
+        release_whisper_model()
         update_meeting_progress(
             meeting_id,
             status="cancelled",
@@ -354,7 +486,7 @@ def _process_meeting_job(meeting_id: int) -> None:
         )
     except Exception as e:
         whisper_model = None
-        clear_vram()
+        release_whisper_model()
         tb = traceback.format_exc()
         update_meeting_progress(
             meeting_id,

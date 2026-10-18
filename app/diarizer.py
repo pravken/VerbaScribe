@@ -137,27 +137,25 @@ def _split_segments_by_word_pauses(
     return refined
 
 
-def _extract_embedding_for_slice(
-    encoder,
+def _prepare_slice(
     audio_data: np.ndarray,
     sr: int,
     start_sec: float,
     end_sec: float,
 ) -> Optional[np.ndarray]:
     """
-    Slices 16kHz waveform [start_sec, end_sec] and computes L2-normalized 192-dim ECAPA embedding.
-    Pads very short segments slightly with surrounding context.
+    Cuts the 16 kHz waveform for one segment, padded with context when short (< 2.2 s) for a
+    more stable voiceprint and capped to 10 s around the centre. Returns None for slices that are
+    too short or silent to embed.
     """
     total_samples = len(audio_data)
     dur = end_sec - start_sec
     if dur < 0.35:
         return None
 
-    # Expand window if segment is short (< 2.2s) for a more stable voiceprint
     pad = max(0.0, (2.2 - dur) / 2.0)
     s_idx = max(0, int((start_sec - pad) * sr))
     e_idx = min(total_samples, int((end_sec + pad) * sr))
-    # Cap window to 10s around center for speed
     if (e_idx - s_idx) > 10 * sr:
         mid = (s_idx + e_idx) // 2
         s_idx = mid - 5 * sr
@@ -171,16 +169,51 @@ def _extract_embedding_for_slice(
     rms = float(np.sqrt(np.mean(chunk**2)))
     if rms < 1e-4:
         return None
+    return chunk
 
-    wav_tensor = torch.from_numpy(chunk).float().unsqueeze(0)
-    with torch.no_grad():
-        emb = encoder.encode_batch(wav_tensor)
-        vec = emb.squeeze().cpu().numpy().astype(np.float32)
 
-    norm = np.linalg.norm(vec)
-    if norm > 1e-8:
-        vec = vec / norm
-    return vec
+# Up to this many samples (items x longest item) go through the encoder at once:
+# 32 slices of 10 s = 5.1 M samples, a few hundred MB of activations.
+_EMBED_BATCH_SAMPLES = 32 * 10 * 16000
+_EMBED_BATCH_MAX_ITEMS = 64
+
+
+def _embed_slices(
+    encoder,
+    chunks: List[np.ndarray],
+    progress: Optional[Callable[[int, int], None]] = None,
+) -> List[np.ndarray]:
+    """
+    Computes L2-normalised 192-dim ECAPA embeddings for many slices in padded batches.
+    Slices are sorted by length so a batch holds similar lengths (little padding); the relative
+    lengths are passed to the encoder so padding does not affect normalisation or pooling.
+    """
+    order = sorted(range(len(chunks)), key=lambda i: len(chunks[i]))
+    out: List[Optional[np.ndarray]] = [None] * len(chunks)
+    pos = 0
+    while pos < len(order):
+        batch = [order[pos]]
+        while pos + len(batch) < len(order) and len(batch) < _EMBED_BATCH_MAX_ITEMS:
+            nxt = order[pos + len(batch)]
+            if len(chunks[nxt]) * (len(batch) + 1) > _EMBED_BATCH_SAMPLES:
+                break
+            batch.append(nxt)
+        max_len = max(len(chunks[i]) for i in batch)
+        wavs = np.zeros((len(batch), max_len), dtype=np.float32)
+        for row, i in enumerate(batch):
+            wavs[row, : len(chunks[i])] = chunks[i]
+        wav_lens = torch.tensor([len(chunks[i]) / max_len for i in batch], dtype=torch.float32)
+        with torch.no_grad():
+            embs = encoder.encode_batch(torch.from_numpy(wavs), wav_lens)
+        vecs = embs.reshape(len(batch), -1).cpu().numpy().astype(np.float32)
+        norms = np.linalg.norm(vecs, axis=1, keepdims=True)
+        vecs = vecs / np.where(norms > 1e-8, norms, 1.0)
+        for row, i in enumerate(batch):
+            out[i] = vecs[row]
+        pos += len(batch)
+        if progress:
+            progress(pos, len(order))
+    return out  # type: ignore[return-value]
 
 
 def _determine_clusters(
@@ -360,23 +393,21 @@ def diarize_and_merge_segments(
 
     encoder = _get_ecapa_encoder(device=device)
 
-    embeddings_list: List[np.ndarray] = []
     valid_indices: List[int] = []
     durations_list: List[float] = []
-
-    total_segs = len(fine_segments)
+    chunks: List[np.ndarray] = []
     for idx, seg in enumerate(fine_segments):
-        if progress_callback and idx % max(1, total_segs // 6) == 0:
-            pct = 74 + int(10 * (idx / max(1, total_segs)))
-            progress_callback(pct, f"Анализ тембра голосов ({idx + 1}/{total_segs})...")
-
-        emb = _extract_embedding_for_slice(
-            encoder, audio_data, sr, float(seg["start"]), float(seg["end"])
-        )
-        if emb is not None:
-            embeddings_list.append(emb)
+        chunk = _prepare_slice(audio_data, sr, float(seg["start"]), float(seg["end"]))
+        if chunk is not None:
+            chunks.append(chunk)
             valid_indices.append(idx)
             durations_list.append(float(seg["end"]) - float(seg["start"]))
+
+    def _embed_progress(done: int, total: int) -> None:
+        if progress_callback:
+            progress_callback(74 + int(10 * done / max(1, total)), f"Анализ тембра голосов ({done}/{total})...")
+
+    embeddings_list = _embed_slices(encoder, chunks, _embed_progress) if chunks else []
 
     # Free diarizer VRAM immediately after embedding extraction
     unload_diarizer()

@@ -1,23 +1,23 @@
 import json
+import re
 import sqlite3
 import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from app import events
 from app.hardware import get_hardware_info
+from app.paths import (  # noqa: F401  (re-exported for older imports)
+    APP_DIR as BASE_DIR,
+    AUDIO_DIR,
+    DATA_DIR,
+    DB_PATH,
+    EXPORTS_DIR,
+    MODELS_DIR,
+    UPLOADS_DIR,
+)
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "data"
-UPLOADS_DIR = DATA_DIR / "uploads"
-AUDIO_DIR = DATA_DIR / "audio"
-MODELS_DIR = BASE_DIR / "models"
-EXPORTS_DIR = DATA_DIR / "exports"
-
-for d in (DATA_DIR, UPLOADS_DIR, AUDIO_DIR, MODELS_DIR, EXPORTS_DIR):
-    d.mkdir(parents=True, exist_ok=True)
-
-DB_PATH = DATA_DIR / "meetings.db"
 _db_lock = threading.Lock()
 
 
@@ -102,13 +102,66 @@ def init_db() -> None:
             "clean_fillers": "true",
             "record_source_mode": "mic",
             "record_mic_device": "",
+            "batched_inference": "true",  # faster-whisper BatchedInferencePipeline on GPU
+            "keep_model_loaded": "true",  # reuse Whisper between queued recordings if VRAM allows
         }
 
         for k, v in default_settings.items():
             cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, str(v)))
 
+        # Full-text index of transcript segments for the global search (SQLite FTS5).
+        # Only `text` is indexed; the other columns are stored to build results without JSON parsing.
+        cur.execute(
+            """
+            CREATE VIRTUAL TABLE IF NOT EXISTS segments_fts USING fts5(
+                text,
+                meeting_id UNINDEXED,
+                segment_id UNINDEXED,
+                start UNINDEXED,
+                speaker UNINDEXED,
+                tokenize = 'unicode61 remove_diacritics 2'
+            )
+            """
+        )
+        if cur.execute("PRAGMA user_version").fetchone()[0] < _FTS_SCHEMA_VERSION:
+            # First start with the index (or a newer index format): build it from stored transcripts
+            cur.execute("DELETE FROM segments_fts")
+            for row in cur.execute("SELECT id, segments_json FROM meetings").fetchall():
+                _reindex_segments(conn, row["id"], _loads_list(row["segments_json"]))
+            cur.execute(f"PRAGMA user_version = {_FTS_SCHEMA_VERSION}")
+
         conn.commit()
         conn.close()
+
+
+_FTS_SCHEMA_VERSION = 1
+
+
+def _loads_list(raw: Optional[str]) -> List[Dict[str, Any]]:
+    try:
+        value = json.loads(raw or "[]")
+        return value if isinstance(value, list) else []
+    except Exception:
+        return []
+
+
+def _reindex_segments(conn: sqlite3.Connection, meeting_id: int, segments: List[Dict[str, Any]]) -> None:
+    """Replaces the search index rows of one recording. Call inside the caller's transaction."""
+    conn.execute("DELETE FROM segments_fts WHERE meeting_id = ?", (meeting_id,))
+    conn.executemany(
+        "INSERT INTO segments_fts (text, meeting_id, segment_id, start, speaker) VALUES (?, ?, ?, ?, ?)",
+        [
+            (
+                seg.get("text") or "",
+                meeting_id,
+                int(seg.get("id", 0) or 0),
+                float(seg.get("start", 0.0) or 0.0),
+                seg.get("speaker") or "SPEAKER_00",
+            )
+            for seg in segments
+            if (seg.get("text") or "").strip()
+        ],
+    )
 
 
 # Settings helpers
@@ -216,7 +269,8 @@ def create_meeting(
         conn.commit()
         row = conn.execute("SELECT * FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
         conn.close()
-        return _deserialize_meeting(dict(row))
+    events.publish({"type": "list"})
+    return _deserialize_meeting(dict(row))
 
 
 def update_meeting_progress(
@@ -262,6 +316,18 @@ def update_meeting_progress(
         conn.commit()
         conn.close()
 
+    event: Dict[str, Any] = {"type": "progress", "id": meeting_id}
+    for key, value in (
+        ("status", status),
+        ("progress", None if progress is None else int(max(0, min(100, progress)))),
+        ("stage_text", stage_text),
+        ("error_message", error_message),
+        ("duration", duration),
+    ):
+        if value is not None:
+            event[key] = value
+    events.publish(event)
+
 
 def save_meeting_results(
     meeting_id: int,
@@ -292,6 +358,8 @@ def save_meeting_results(
     with _db_lock:
         conn = get_connection()
         conn.execute(f"UPDATE meetings SET {', '.join(fields)} WHERE id = ?", tuple(values))
+        if segments is not None:
+            _reindex_segments(conn, meeting_id, segments)
         conn.commit()
         conn.close()
 
@@ -321,6 +389,7 @@ def restore_segments_backup(meeting_id: int) -> bool:
             "UPDATE meetings SET segments_json = segments_backup_json, segments_backup_json = '' WHERE id = ?",
             (meeting_id,),
         )
+        _reindex_segments(conn, meeting_id, _loads_list(row["segments_backup_json"]))
         conn.commit()
         conn.close()
     return True
@@ -339,6 +408,7 @@ def update_meeting_fields(meeting_id: int, **fields: Any) -> None:
         )
         conn.commit()
         conn.close()
+    events.publish({"type": "list"})
 
 
 def get_meeting(meeting_id: int) -> Optional[Dict[str, Any]]:
@@ -393,8 +463,10 @@ def delete_meeting(meeting_id: int) -> bool:
     with _db_lock:
         conn = get_connection()
         conn.execute("DELETE FROM meetings WHERE id = ?", (meeting_id,))
+        conn.execute("DELETE FROM segments_fts WHERE meeting_id = ?", (meeting_id,))
         conn.commit()
         conn.close()
+    events.publish({"type": "list"})
     return True
 
 
@@ -417,55 +489,78 @@ def _deserialize_meeting(d: Dict[str, Any]) -> Dict[str, Any]:
     return d
 
 
+def _fts_match_expression(query: str) -> str:
+    """
+    Turns free user input into a safe FTS5 query: every word becomes a quoted prefix term and all
+    terms must match ("встреч бюдж" finds "встреча по бюджету"). Operators typed by the user are
+    treated as plain text.
+    """
+    tokens = re.findall(r"\w+", query.casefold())
+    return " ".join(f'"{t}"*' for t in tokens[:12])
+
+
 def search_all_meetings(query: str, max_hits_per_meeting: int = 4) -> List[Dict[str, Any]]:
     """
-    Performs a global full-text search across all meetings (titles, transcript segments, and AI summaries).
-    Returns matching meetings with exact segment timestamps and highlighted text snippets.
+    Global search across all recordings: titles (substring, case-insensitive) and transcript
+    segments (FTS5 word-prefix search). Returns matching recordings with segment timestamps.
     """
-    q = (query or "").strip().lower()
+    q = (query or "").strip()
     if not q:
         return []
+    match = _fts_match_expression(q)
+    q_fold = q.casefold()
 
     with _db_lock:
         conn = get_connection()
-        rows = conn.execute("SELECT * FROM meetings ORDER BY id DESC").fetchall()
+        meetings = conn.execute(
+            "SELECT id, title, duration, status, speakers_json FROM meetings ORDER BY id DESC"
+        ).fetchall()
+        hit_rows = []
+        if match:
+            hit_rows = conn.execute(
+                """
+                SELECT meeting_id, segment_id, start, speaker, text FROM (
+                    SELECT meeting_id, segment_id, start, speaker, text,
+                           ROW_NUMBER() OVER (PARTITION BY meeting_id ORDER BY start) AS rn
+                    FROM segments_fts WHERE segments_fts MATCH ?
+                ) WHERE rn <= ?
+                ORDER BY meeting_id DESC, start
+                """,
+                (match, max_hits_per_meeting),
+            ).fetchall()
         conn.close()
 
+    hits_by_meeting: Dict[int, List[sqlite3.Row]] = {}
+    for r in hit_rows:
+        hits_by_meeting.setdefault(int(r["meeting_id"]), []).append(r)
+
     results: List[Dict[str, Any]] = []
-    for row in rows:
-        m = _deserialize_meeting(dict(row))
-        title_match = q in (m.get("title") or "").lower()
-        speakers = m.get("speakers") or {}
-        segments = m.get("segments") or []
-
-        matching_hits: List[Dict[str, Any]] = []
-        for seg in segments:
-            txt = seg.get("text") or ""
-            if q in txt.lower():
-                spk_id = seg.get("speaker") or "SPEAKER_00"
-                spk_name = (speakers.get(spk_id) or {}).get("name") or spk_id
-                matching_hits.append(
+    for m in meetings:
+        mid = int(m["id"])
+        rows = hits_by_meeting.get(mid, [])
+        if not rows and q_fold not in (m["title"] or "").casefold():
+            continue
+        try:
+            speakers = json.loads(m["speakers_json"] or "{}")
+        except Exception:
+            speakers = {}
+        results.append(
+            {
+                "meeting_id": mid,
+                "title": m["title"],
+                "duration": m["duration"] or 0.0,
+                "status": m["status"] or "completed",
+                "hits": [
                     {
-                        "segment_id": seg.get("id", 0),
-                        "start": float(seg.get("start", 0.0)),
-                        "speaker": spk_name,
-                        "text": txt,
+                        "segment_id": int(r["segment_id"]),
+                        "start": float(r["start"]),
+                        "speaker": (speakers.get(r["speaker"]) or {}).get("name") or r["speaker"],
+                        "text": r["text"],
                     }
-                )
-                if len(matching_hits) >= max_hits_per_meeting:
-                    break
-
-        if title_match or matching_hits:
-            results.append(
-                {
-                    "meeting_id": m["id"],
-                    "title": m["title"],
-                    "duration": m.get("duration", 0.0),
-                    "status": m.get("status", "completed"),
-                    "hits": matching_hits,
-                }
-            )
-
+                    for r in rows
+                ],
+            }
+        )
     return results
 
 

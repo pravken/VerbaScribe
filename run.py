@@ -9,7 +9,6 @@ import webbrowser
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
-DATA_DIR = BASE_DIR / "data"
 ICO_PATH = BASE_DIR / "assets" / "icon.ico"
 WINDOW_TITLE = "VerbaScribe — AI Speech & Media Studio"
 
@@ -91,7 +90,8 @@ def wait_for_server(host: str, port: int, timeout: float = 12.0) -> bool:
 
 def read_session_token(timeout: float = 5.0) -> str:
     """Reads the per-launch session token written by the running server (app.main)."""
-    token_file = DATA_DIR / ".session_token"
+    from app.paths import SESSION_TOKEN_FILE as token_file
+
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
@@ -111,7 +111,7 @@ def app_url(host: str, port: int) -> str:
 
 def start_server_in_thread(host: str, port: int) -> threading.Thread:
     register_cuda_dlls()
-    config = uvicorn.Config("app.main:app", host=host, port=port, log_level="warning")
+    config = uvicorn.Config("app.main:app", host=host, port=port, log_level="warning", timeout_graceful_shutdown=3)
     server = uvicorn.Server(config)
     t = threading.Thread(target=server.run, daemon=True, name="uvicorn_server")
     t.start()
@@ -141,7 +141,7 @@ def main() -> None:
                 and print(f"VerbaScribe: {app_url(args.host, args.port)}", flush=True),
                 daemon=True,
             ).start()
-            uvicorn.run("app.main:app", host=args.host, port=args.port, log_level="info")
+            uvicorn.run("app.main:app", host=args.host, port=args.port, log_level="info", timeout_graceful_shutdown=3)
         return
 
     if not args.browser:
@@ -181,7 +181,7 @@ def main() -> None:
 
     threading.Thread(target=_open_browser, daemon=True).start()
     register_cuda_dlls()
-    uvicorn.run("app.main:app", host=args.host, port=args.port, log_level="info")
+    uvicorn.run("app.main:app", host=args.host, port=args.port, log_level="info", timeout_graceful_shutdown=3)
 
 
 if __name__ == "__main__":

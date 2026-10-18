@@ -1,4 +1,5 @@
 import hmac
+import json
 import mimetypes
 import os
 import re
@@ -12,15 +13,13 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app import __version__
+from app import __version__, events
+from app.paths import APP_DIR as BASE_DIR, SESSION_TOKEN_FILE, UPLOADS_DIR
 from app.database import (
-    BASE_DIR,
-    DATA_DIR,
-    UPLOADS_DIR,
     add_dictionary_term,
     create_meeting,
     delete_dictionary_term,
@@ -36,6 +35,7 @@ from app.database import (
     update_settings,
 )
 from app.exporter import export_docx, export_json, export_markdown, export_srt, export_txt
+from app.ffmpeg_manager import ffmpeg_status, start_ffmpeg_download
 from app.hardware import get_hardware_info
 from app.ollama_client import generate_meeting_summary, get_ollama_status, start_model_pull
 from app.text_utils import realign_words
@@ -75,7 +75,6 @@ SUPPORTED_EXTENSIONS = {
 # (DNS rebinding) are rejected as well.
 SESSION_COOKIE = "vs_session"
 SESSION_TOKEN = os.environ.get("VERBASCRIBE_TOKEN") or secrets.token_urlsafe(32)
-SESSION_TOKEN_FILE = DATA_DIR / ".session_token"
 SESSION_TOKEN_FILE.write_text(SESSION_TOKEN, encoding="utf-8")
 
 _ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]"} | {
@@ -181,7 +180,19 @@ def api_system_info() -> Dict[str, Any]:
         "settings": get_all_settings(),
         "ollama": get_ollama_status(),
         "models": get_models_status(),
+        "ffmpeg": ffmpeg_status(),
     }
+
+
+@app.get("/api/ffmpeg/status")
+def api_ffmpeg_status() -> Dict[str, Any]:
+    return ffmpeg_status()
+
+
+@app.post("/api/ffmpeg/install")
+def api_ffmpeg_install() -> Dict[str, Any]:
+    """Downloads the pinned FFmpeg build into the user data folder (only on explicit request)."""
+    return start_ffmpeg_download()
 
 
 @app.get("/api/models/status")
@@ -284,6 +295,48 @@ def api_toggle_dictionary(term_id: int, payload: DictionaryTogglePayload) -> Dic
 def api_delete_dictionary(term_id: int) -> Dict[str, Any]:
     delete_dictionary_term(term_id)
     return {"ok": True}
+
+
+# --- Live progress (Server-Sent Events) ---
+_SSE_HEARTBEAT_SEC = 15.0
+
+
+@app.get("/api/events")
+async def api_events(request: Request) -> StreamingResponse:
+    """
+    Pushes processing progress and library changes to the UI instead of it polling every 2 s.
+    Events: {"type": "progress", "id", status?, progress?, stage_text?, error_message?, duration?}
+    and {"type": "list"} (a recording was added, renamed or deleted).
+    """
+    sub = events.subscribe()
+
+    async def stream():
+        try:
+            yield 'retry: 3000
+data: {"type": "hello"}
+
+'
+            while True:
+                batch = await sub.next_batch(_SSE_HEARTBEAT_SEC)
+                if await request.is_disconnected():
+                    break
+                if not batch:
+                    yield ": ping
+
+"
+                    continue
+                for ev in batch:
+                    yield f"data: {json.dumps(ev, ensure_ascii=False)}
+
+"
+        finally:
+            events.unsubscribe(sub)
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )
 
 
 # --- Meetings & Batch Processing ---

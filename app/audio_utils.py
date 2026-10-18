@@ -1,6 +1,8 @@
 import subprocess
 from pathlib import Path
 
+from app.ffmpeg_manager import find_tool, tool_cmd
+
 # Speech enhancement filter chain for FFmpeg:
 # 1. highpass=f=80       -> removes mic rumble, AC hum, table vibrations (< 80 Hz)
 # 2. lowpass=f=7600      -> removes high-frequency electronic hiss above speech band
@@ -25,10 +27,15 @@ def extract_audio_16k_mono(
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     creation_flags = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
+    if not find_tool("ffmpeg"):
+        raise RuntimeError(
+            "FFmpeg не найден. Установите его в Настройках (кнопка «Скачать FFmpeg») "
+            "или добавьте ffmpeg в PATH."
+        )
 
     if enhance_audio:
         enhanced_cmd = [
-            "ffmpeg",
+            tool_cmd("ffmpeg"),
             "-y",
             "-i",
             str(in_path),
@@ -57,7 +64,7 @@ def extract_audio_16k_mono(
 
     # Fallback: raw 16kHz mono extraction without filter chain
     cmd = [
-        "ffmpeg",
+        tool_cmd("ffmpeg"),
         "-y",
         "-i",
         str(in_path),
@@ -92,7 +99,7 @@ def get_media_duration(media_path: str | Path) -> float:
     Returns duration of media file in seconds using ffprobe or soundfile fallback.
     """
     cmd = [
-        "ffprobe",
+        tool_cmd("ffprobe"),
         "-v",
         "error",
         "-show_entries",
