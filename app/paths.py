@@ -22,7 +22,7 @@ import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 APP_DIR = Path(__file__).resolve().parent.parent
 LEGACY_DATA_DIR = APP_DIR / "data"
@@ -89,6 +89,22 @@ def _rewrite_db_paths(db_path: Path, old_root: Path, new_root: Path) -> int:
         conn.close()
 
 
+# Set when both the old <app>/data and the current data folder contain recordings
+LEGACY_CONFLICT: Optional[Dict[str, Any]] = None
+
+
+def _count_recordings(db_path: Path) -> int:
+    """Number of recordings in a VerbaScribe database; 0 if it is empty, unreadable or not ours."""
+    try:
+        conn = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True)
+        try:
+            return int(conn.execute("SELECT COUNT(*) FROM meetings").fetchone()[0])
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return 0
+
+
 def migrate_legacy_data_dir(legacy: Optional[Path] = None, target: Optional[Path] = None) -> bool:
     """
     Moves `<app>/data` to DATA_DIR once. Safe against interruption: everything is copied into a
@@ -99,12 +115,31 @@ def migrate_legacy_data_dir(legacy: Optional[Path] = None, target: Optional[Path
     legacy = (legacy or LEGACY_DATA_DIR).resolve()
     target = (target or DATA_DIR).resolve()
 
+    global LEGACY_CONFLICT
     if legacy == target or not (legacy / "meetings.db").is_file():
         return False
     if (target / "meetings.db").exists():
-        # Both exist (e.g. data was copied back by hand). Never merge or overwrite silently.
-        _log(f"Legacy data folder {legacy} still exists, but {target} already has a database; not migrating.")
-        return False
+        legacy_count = _count_recordings(legacy / "meetings.db")
+        target_count = _count_recordings(target / "meetings.db")
+        if target_count == 0 and legacy_count > 0:
+            # The new folder was created first (e.g. the app was started once from another copy)
+            # and holds only an empty library: keep it as a backup and move the real data in.
+            stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            for suffix in ("", "-wal", "-shm"):
+                db_file = target / f"meetings.db{suffix}"
+                if db_file.exists():
+                    db_file.rename(target / f"meetings.empty-{stamp}.db{suffix}")
+            _log(f"{target} had an empty database; kept it as meetings.empty-{stamp}.db")
+        else:
+            # Both have recordings (e.g. data was copied back by hand). Never merge or overwrite
+            # silently; the UI shows a warning with both folders.
+            if legacy_count > 0:
+                LEGACY_CONFLICT = {"legacy": str(legacy), "current": str(target), "legacy_recordings": legacy_count}
+            _log(
+                f"Legacy data folder {legacy} ({legacy_count} recordings) still exists, but {target} "
+                f"already has a database ({target_count} recordings); not migrating."
+            )
+            return False
 
     staging = target.with_name(target.name + ".migrating")
     if staging.exists():

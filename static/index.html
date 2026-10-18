@@ -785,6 +785,12 @@
       <!-- Scrollable Inner Content -->
       <div class="p-6 space-y-5 overflow-y-auto flex-1">
 
+        <!-- Old data folder that was not moved because both folders contain recordings -->
+        <div id="legacy-conflict-banner" class="hidden rounded-xl bg-apple-amber/15 border border-apple-amber/50 px-3.5 py-2.5 text-xs text-white space-y-1">
+          <div class="font-semibold text-apple-amber" data-i18n="legacyConflictTitle">Найдена старая папка с записями</div>
+          <div id="legacy-conflict-text" class="text-[11px] text-apple-label/90 select-text break-all"></div>
+        </div>
+
         <!-- FFmpeg availability (download only on explicit click) -->
         <div id="ffmpeg-row" class="hidden rounded-xl bg-black/20 border apple-border px-3.5 py-2.5 flex items-center justify-between gap-3">
           <div class="min-w-0">

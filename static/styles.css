@@ -87,6 +87,13 @@ body {
   gap: 5px;
   transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
 }
+/* This file loads after Tailwind, so the `display` rules here would otherwise beat its `.hidden` */
+.apple-segmented.hidden,
+.apple-segment-btn.hidden,
+.ui-btn.hidden,
+.macos-menu-item.hidden {
+  display: none;
+}
 .ui-btn:active {
   transform: scale(0.97);
 }

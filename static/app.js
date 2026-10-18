@@ -335,6 +335,14 @@ async function loadSystemInfo() {
       dirEl.textContent = `${t('dataFolder')}: ${data.paths.data}`;
       dirEl.title = `${t('dataFolder')}: ${data.paths.data}
 ${t('modelsFolder')}: ${data.paths.models}`;
+      const conflict = data.paths.legacy_conflict;
+      document.getElementById('legacy-conflict-banner').classList.toggle('hidden', !conflict);
+      if (conflict) {
+        document.getElementById('legacy-conflict-text').textContent = t('legacyConflictText')
+          .replace('{legacy}', conflict.legacy)
+          .replace('{count}', conflict.legacy_recordings)
+          .replace('{current}', conflict.current);
+      }
     }
 
     document.getElementById('settings-hw-name').textContent = hw.cuda_available
@@ -1585,10 +1593,28 @@ function updatePlaybackHighlight(cur, followPlayback) {
   return segEl;
 }
 
+// Highlights the whole query where it occurs as typed; otherwise each word of it (the global
+// search matches words in any order, "борщ капуст" -> "борщ с капустой"). Works on escaped HTML
+// and never touches entities such as &amp;.
 function highlightSearch(safeText, query) {
-  if (!query) return safeText;
-  const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-  return safeText.replace(regex, '<mark class="bg-apple-blue/40 text-white rounded px-0.5">$1</mark>');
+  const q = (query || '').trim();
+  if (!q) return safeText;
+  const esc = (x) => escapeHtml(x).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const plain = safeText.replace(/&(#\d+|[a-z]+);/gi, (m) => ({ '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'" }[m] || m));
+  let terms;
+  if (plain.toLowerCase().includes(q.toLowerCase())) {
+    terms = [q];
+  } else {
+    const words = q.match(/[\p{L}\p{N}]+/gu) || [];
+    terms = words.length > 1 ? words.filter(w => w.length > 1) : words;
+  }
+  if (!terms.length) return safeText;
+  terms.sort((a, b) => b.length - a.length);
+  const regex = new RegExp(`(${terms.map(esc).join('|')})`, 'giu');
+  return safeText
+    .split(/(&(?:#\d+|[a-z]+);)/gi)
+    .map((part, i) => (i % 2 ? part : part.replace(regex, '<mark class="bg-apple-blue/40 text-white rounded px-0.5">$1</mark>')))
+    .join('');
 }
 
 async function mergeSegmentWithPrevious(segId) {

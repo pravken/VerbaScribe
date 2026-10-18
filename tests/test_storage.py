@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from app import database, events
+from app import paths
 from app.paths import migrate_legacy_data_dir
 
 
@@ -30,6 +31,7 @@ class MigrationTest(unittest.TestCase):
         self.target = self.root / "LocalAppData" / "VerbaScribe"
 
     def tearDown(self):
+        paths.LEGACY_CONFLICT = None
         shutil.rmtree(self.root, ignore_errors=True)
 
     def test_moves_files_and_rewrites_paths(self):
@@ -46,12 +48,37 @@ class MigrationTest(unittest.TestCase):
         # Second start: nothing left to migrate
         self.assertFalse(migrate_legacy_data_dir(self.legacy, self.target))
 
+    def _target_db(self, rows):
+        self.target.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(self.target / "meetings.db")
+        conn.execute("CREATE TABLE meetings (id INTEGER PRIMARY KEY, media_path TEXT, audio_path TEXT)")
+        for i in range(rows):
+            conn.execute("INSERT INTO meetings VALUES (?, 'x.wav', '')", (100 + i,))
+        conn.commit()
+        conn.close()
+
     def test_never_overwrites_existing_database(self):
-        self.target.mkdir(parents=True)
-        (self.target / "meetings.db").write_bytes(b"existing")
+        self._target_db(rows=1)
+        before = (self.target / "meetings.db").read_bytes()
         self.assertFalse(migrate_legacy_data_dir(self.legacy, self.target))
         self.assertTrue((self.legacy / "meetings.db").is_file())
-        self.assertEqual((self.target / "meetings.db").read_bytes(), b"existing")
+        self.assertEqual((self.target / "meetings.db").read_bytes(), before)
+        # ...but the conflict is reported so the UI can warn about the old folder
+        self.assertEqual(paths.LEGACY_CONFLICT["legacy"], str(self.legacy.resolve()))
+        self.assertEqual(paths.LEGACY_CONFLICT["legacy_recordings"], 2)
+
+    def test_empty_target_database_is_backed_up_and_replaced(self):
+        # e.g. the app was started once from another checkout and created an empty library
+        self._target_db(rows=0)
+        (self.target / "meetings.db-wal").write_bytes(b"")
+        self.assertTrue(migrate_legacy_data_dir(self.legacy, self.target))
+        conn = sqlite3.connect(self.target / "meetings.db")
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM meetings").fetchone()[0], 2)
+        conn.close()
+        backups = sorted(p.name for p in self.target.glob("meetings.empty-*"))
+        self.assertEqual(len(backups), 2, backups)  # .db and .db-wal
+        self.assertTrue((self.target / "uploads" / "a_call.mp4").is_file())
+        self.assertIsNone(paths.LEGACY_CONFLICT)
 
 
 class SearchIndexTest(unittest.TestCase):
@@ -92,6 +119,14 @@ class SearchIndexTest(unittest.TestCase):
         self.assertNotIn(mid, [r["meeting_id"] for r in database.search_all_meetings("тест")])
         database.delete_meeting(mid)
         self.assertEqual(database.search_all_meetings("уникальнаяфраза"), [])
+
+    def test_mid_word_fragment_falls_back_to_substring_search(self):
+        mid = self._meeting("Обед", ["Сварили борщ с капустой", "Без совпадений"])
+        res = {r["meeting_id"]: r for r in database.search_all_meetings("рщ с")}
+        self.assertEqual([h["segment_id"] for h in res[mid]["hits"]], [1])
+        # words in any order still use the index
+        res = {r["meeting_id"]: r for r in database.search_all_meetings("капуст борщ")}
+        self.assertEqual([h["segment_id"] for h in res[mid]["hits"]], [1])
 
     def test_hits_are_capped_per_meeting(self):
         mid = self._meeting("cap", [f"повтор {i}" for i in range(10)])

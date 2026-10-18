@@ -30,5 +30,16 @@ class SessionAndSearchApiTest(unittest.TestCase):
             self.assertEqual(c.get("/static/app.js").headers.get("cache-control"), "no-cache")
 
 
+class ConnectionResetFilterTest(unittest.TestCase):
+    def test_only_proactor_connection_lost_resets_are_ignored(self):
+        class Handle:
+            def __repr__(self):
+                return "<Handle _ProactorBasePipeTransport._call_connection_lost(None)>"
+
+        self.assertTrue(main._is_proactor_connection_reset({"exception": ConnectionResetError(10054), "handle": Handle()}))
+        self.assertFalse(main._is_proactor_connection_reset({"exception": ConnectionResetError(10054), "message": "other"}))
+        self.assertFalse(main._is_proactor_connection_reset({"exception": ValueError(), "handle": Handle()}))
+
+
 if __name__ == "__main__":
     unittest.main()

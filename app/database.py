@@ -489,6 +489,20 @@ def _deserialize_meeting(d: Dict[str, Any]) -> Dict[str, Any]:
     return d
 
 
+def _substring_hits(conn: sqlite3.Connection, q_fold: str, max_hits_per_meeting: int) -> List[sqlite3.Row]:
+    """Slow path: plain substring search over the stored segment texts (no JSON parsing)."""
+    hits: List[sqlite3.Row] = []
+    per_meeting: Dict[int, int] = {}
+    for r in conn.execute(
+        "SELECT meeting_id, segment_id, start, speaker, text FROM segments_fts ORDER BY meeting_id DESC, start"
+    ):
+        mid = int(r["meeting_id"])
+        if per_meeting.get(mid, 0) < max_hits_per_meeting and q_fold in (r["text"] or "").casefold():
+            hits.append(r)
+            per_meeting[mid] = per_meeting.get(mid, 0) + 1
+    return hits
+
+
 def _fts_match_expression(query: str) -> str:
     """
     Turns free user input into a safe FTS5 query: every word becomes a quoted prefix term and all
@@ -528,6 +542,10 @@ def search_all_meetings(query: str, max_hits_per_meeting: int = 4) -> List[Dict[
                 """,
                 (match, max_hits_per_meeting),
             ).fetchall()
+        if not hit_rows:
+            # The index matches whole words and word beginnings only. For fragments from the middle
+            # of a word ("рщ с") fall back to a case-insensitive substring scan of the indexed text.
+            hit_rows = _substring_hits(conn, q_fold, max_hits_per_meeting)
         conn.close()
 
     hits_by_meeting: Dict[int, List[sqlite3.Row]] = {}

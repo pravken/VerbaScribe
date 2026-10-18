@@ -1,3 +1,4 @@
+import asyncio
 import hmac
 import json
 import mimetypes
@@ -17,7 +18,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app import __version__, events
+from app import __version__, events, paths
 from app.paths import APP_DIR as BASE_DIR, DATA_DIR, MODELS_DIR, SESSION_TOKEN_FILE, UPLOADS_DIR
 from app.database import (
     add_dictionary_term,
@@ -109,8 +110,37 @@ def _token_valid(value: Optional[str]) -> bool:
     return bool(value) and hmac.compare_digest(value, SESSION_TOKEN)
 
 
+def _is_proactor_connection_reset(context: Dict[str, Any]) -> bool:
+    return isinstance(context.get("exception"), ConnectionResetError) and "_call_connection_lost" in repr(
+        context.get("handle") or context.get("message") or ""
+    )
+
+
+def _quiet_windows_connection_resets() -> None:
+    """
+    On Windows, when the browser drops a keep-alive or SSE connection, asyncio's Proactor loop logs
+    "Exception in callback _ProactorBasePipeTransport._call_connection_lost ... [WinError 10054]".
+    The socket is already gone and nothing is lost, so only that exact case is silenced.
+    """
+    if sys.platform != "win32":
+        return
+    loop = asyncio.get_running_loop()
+    previous = loop.get_exception_handler()
+
+    def handler(loop: asyncio.AbstractEventLoop, context: Dict[str, Any]) -> None:
+        if _is_proactor_connection_reset(context):
+            return
+        if previous:
+            previous(loop, context)
+        else:
+            loop.default_exception_handler(context)
+
+    loop.set_exception_handler(handler)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    _quiet_windows_connection_resets()
     init_db()
     # Resume recordings that were interrupted mid-processing
     active_states = {"queued", "extracting_audio", "transcribing", "diarizing", "summarizing"}
@@ -190,7 +220,7 @@ def api_system_info() -> Dict[str, Any]:
         "ollama": get_ollama_status(),
         "models": get_models_status(),
         "ffmpeg": ffmpeg_status(),
-        "paths": {"data": str(DATA_DIR), "models": str(MODELS_DIR)},
+        "paths": {"data": str(DATA_DIR), "models": str(MODELS_DIR), "legacy_conflict": paths.LEGACY_CONFLICT},
     }
 
 
