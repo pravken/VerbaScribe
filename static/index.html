@@ -1,0 +1,2658 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VerbaScribe</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['-apple-system', 'BlinkMacSystemFont', 'Inter', 'Segoe UI', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            apple: {
+              bg: '#141416',
+              sidebar: '#1C1C1E',
+              card: '#242426',
+              elevated: '#2C2C2E',
+              border: 'rgba(255, 255, 255, 0.08)',
+              blue: '#0A84FF',
+              blueHover: '#0070E0',
+              red: '#FF453A',
+              green: '#30D158',
+              amber: '#FF9F0A',
+              label: '#F5F5F7',
+              secondary: '#98989D',
+              tertiary: '#636366'
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+      background-color: #141416;
+      color: #F5F5F7;
+      -webkit-font-smoothing: antialiased;
+    }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.14); border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.28); }
+
+    .apple-blur {
+      backdrop-filter: blur(24px) saturate(180%);
+      -webkit-backdrop-filter: blur(24px) saturate(180%);
+    }
+    .apple-border {
+      border-color: rgba(255, 255, 255, 0.08);
+    }
+    .apple-segmented {
+      background: rgba(118, 118, 128, 0.24);
+      padding: 2px;
+      border-radius: 8px;
+    }
+    .apple-segment-active {
+      background: #636366;
+      color: #FFFFFF;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+    }
+
+    /* Context Menu (macOS NSMenu style) */
+    .macos-menu {
+      background: rgba(40, 40, 43, 0.92);
+      backdrop-filter: blur(28px) saturate(190%);
+      border: 0.5px solid rgba(255, 255, 255, 0.18);
+      box-shadow: 0 14px 36px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.3);
+      border-radius: 10px;
+      padding: 4px;
+    }
+    .macos-menu-item {
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: 12.5px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      text-align: left;
+      color: #F5F5F7;
+      transition: none;
+    }
+    .macos-menu-item:hover {
+      background-color: #0A84FF;
+      color: #FFFFFF;
+    }
+    .macos-menu-item-danger {
+      color: #FF453A;
+    }
+    .macos-menu-item-danger:hover {
+      background-color: #FF453A;
+      color: #FFFFFF;
+    }
+
+    /* Transcript Highlighting */
+    .segment-row {
+      transition: background-color 0.15s ease;
+      border-radius: 10px;
+    }
+    .segment-active {
+      background-color: rgba(10, 132, 255, 0.10);
+    }
+    .word-active {
+      color: #FFFFFF;
+      background-color: rgba(10, 132, 255, 0.38);
+      border-radius: 4px;
+      padding: 0 2px;
+    }
+    .word-token:hover {
+      background-color: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+    }
+
+    /* Range Slider (Apple Player Scrubber) */
+    input[type="range"].apple-scrubber {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.16);
+      border-radius: 999px;
+      outline: none;
+      cursor: pointer;
+    }
+    input[type="range"].apple-scrubber::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #FFFFFF;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+      transition: transform 0.1s ease;
+    }
+    input[type="range"].apple-scrubber::-webkit-slider-thumb:hover {
+      transform: scale(1.2);
+    }
+
+    /* Markdown Summary Styling */
+    .markdown-body h1, .markdown-body h2, .markdown-body h3 {
+      font-weight: 600;
+      margin-top: 1.25rem;
+      margin-bottom: 0.45rem;
+      color: #F5F5F7;
+      letter-spacing: -0.01em;
+    }
+    .markdown-body h2 { font-size: 0.98rem; padding-bottom: 0.35rem; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .markdown-body h3 { font-size: 0.9rem; }
+    .markdown-body p { margin-bottom: 0.7rem; line-height: 1.65; color: #D1D1D6; }
+    .markdown-body ul, .markdown-body ol { margin-left: 1.25rem; margin-bottom: 0.85rem; color: #D1D1D6; }
+    .markdown-body ul { list-style-type: disc; }
+    .markdown-body ol { list-style-type: decimal; }
+    .markdown-body li { margin-bottom: 0.3rem; line-height: 1.6; }
+    .markdown-body strong { color: #FFFFFF; font-weight: 600; }
+    .markdown-body code { background: #242426; padding: 0.12rem 0.35rem; border-radius: 5px; font-size: 0.84em; color: #64D2FF; font-family: 'JetBrains Mono', monospace; }
+  </style>
+</head>
+<body class="h-screen overflow-hidden flex select-none"
+      ondragover="event.preventDefault()"
+      ondrop="handleGlobalDrop(event)">
+
+  <!-- =========================================================================
+       LEFT SIDEBAR (macOS Voice Memos / Notes Sidebar)
+       ========================================================================= -->
+  <aside class="w-68 bg-apple-sidebar border-r apple-border flex flex-col shrink-0" style="width: 276px;">
+
+    <!-- Sidebar Top Bar: App Title + Record & Import Buttons -->
+    <div class="h-13 px-3.5 flex items-center justify-between border-b apple-border shrink-0" style="height: 52px;">
+      <div class="flex items-center gap-2 min-w-0">
+        <div class="w-6 h-6 rounded-md bg-apple-blue flex items-center justify-center shadow-sm shrink-0">
+          <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"/>
+          </svg>
+        </div>
+        <span class="font-semibold text-[13px] tracking-tight text-apple-label truncate">VerbaScribe</span>
+      </div>
+
+      <div class="flex items-center gap-1.5 shrink-0">
+        <button onclick="openRecordModal()"
+          class="px-2 py-1 rounded-md bg-apple-red/15 hover:bg-apple-red/25 text-apple-red border border-apple-red/30 text-[11px] font-medium transition flex items-center gap-1"
+          title="Записать голос с микрофона">
+          <span class="w-2 h-2 rounded-full bg-apple-red animate-pulse"></span>
+          <span data-i18n="recordBtn">Запись</span>
+        </button>
+
+        <button onclick="openModal('import')"
+          class="px-2.5 py-1 rounded-md bg-apple-blue hover:bg-apple-blueHover text-white text-[11px] font-medium transition flex items-center gap-1 shadow-sm"
+          id="btn-new-recording">
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
+          </svg>
+          <span data-i18n="add">Файлы</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Global Full-Text Search Across All Meetings -->
+    <div class="px-3 pt-2.5 pb-1">
+      <div class="relative">
+        <svg class="w-3.5 h-3.5 text-apple-tertiary absolute left-2.5 top-2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/>
+        </svg>
+        <input id="global-search-input" type="text"
+          oninput="handleGlobalSidebarSearch(this.value)"
+          data-i18n-placeholder="globalSearchPlaceholder"
+          placeholder="Поиск по всем записям…"
+          class="w-full bg-white/5 focus:bg-apple-card border border-transparent focus:border-apple-blue/60 rounded-lg pl-8 pr-6 py-1 text-xs text-white placeholder-apple-tertiary focus:outline-none transition" />
+      </div>
+    </div>
+
+    <!-- Sidebar Section Header -->
+    <div class="px-4 pt-2 pb-1 flex items-center justify-between">
+      <span class="text-[11px] font-semibold text-apple-secondary uppercase tracking-wider" data-i18n="recordings">Записи</span>
+      <span class="text-[10px] text-apple-tertiary" data-i18n="rightClickHint">ПКМ — меню файла</span>
+    </div>
+
+    <!-- Recordings List (Supports Left-Click to select, Right-Click for Context Menu) -->
+    <div id="meetings-list" class="flex-1 overflow-y-auto px-2.5 py-1 space-y-0.5">
+      <!-- Populated dynamically -->
+    </div>
+
+    <!-- Sidebar Footer: Dictionary, Settings & RU/EN Switcher -->
+    <div class="p-2.5 border-t apple-border space-y-1.5 bg-apple-sidebar/90">
+      <div class="flex items-center gap-1">
+        <button onclick="openModal('dictionary')"
+          class="flex-1 px-2.5 py-1.5 rounded-lg text-xs text-apple-secondary hover:text-white hover:bg-white/5 transition flex items-center justify-between">
+          <span class="flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5 opacity-75" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/>
+            </svg>
+            <span data-i18n="dictionary">Словарь</span>
+          </span>
+          <span id="dict-count-badge" class="text-[11px] font-mono text-apple-tertiary">0</span>
+        </button>
+
+        <button onclick="openModal('settings')"
+          class="flex-1 px-2.5 py-1.5 rounded-lg text-xs text-apple-secondary hover:text-white hover:bg-white/5 transition flex items-center justify-between">
+          <span class="flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5 opacity-75" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            <span data-i18n="settings">Настройки</span>
+          </span>
+        </button>
+      </div>
+
+      <!-- Bottom Status & RU/EN Segmented Switch -->
+      <div class="px-2 py-1 flex items-center justify-between text-[11px] text-apple-tertiary">
+        <div class="flex items-center gap-1.5 truncate cursor-pointer" onclick="openModal('settings')">
+          <span id="hw-dot" class="w-1.5 h-1.5 rounded-full bg-apple-green shrink-0"></span>
+          <span id="hw-text" class="truncate">RTX 3090</span>
+        </div>
+
+        <div class="apple-segmented flex items-center text-[10px] font-medium">
+          <button onclick="setUILanguage('ru')" id="lang-btn-ru" class="px-2 py-0.5 rounded-[6px] apple-segment-active">RU</button>
+          <button onclick="setUILanguage('en')" id="lang-btn-en" class="px-2 py-0.5 rounded-[6px] text-apple-secondary">EN</button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- =========================================================================
+       MAIN UNIFIED WORKSPACE (macOS Split-View Primary Canvas)
+       ========================================================================= -->
+  <main class="flex-1 flex flex-col overflow-hidden bg-apple-bg select-text relative">
+
+    <!-- EMPTY STATE: Shown when no recording is selected (MacWhisper Drop Target) -->
+    <div id="workspace-empty" class="flex-1 flex flex-col items-center justify-center p-10">
+      <div onclick="openModal('import')"
+        class="w-full max-w-lg border border-dashed border-white/15 hover:border-apple-blue/60 bg-apple-sidebar/50 hover:bg-apple-sidebar rounded-2xl p-12 text-center cursor-pointer transition group">
+        <div class="w-12 h-12 rounded-2xl bg-apple-blue/15 text-apple-blue flex items-center justify-center mx-auto mb-4 group-hover:scale-105 transition">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+          </svg>
+        </div>
+        <h2 class="text-[15px] font-semibold text-white mb-1" data-i18n="emptyTitle">Перетащите аудио или видео встречи сюда</h2>
+        <p class="text-xs text-apple-secondary mb-5" data-i18n="emptySubtitle">Поддерживаются MP4, MKV, MOV, WEBM, MP3, WAV, M4A · Локальная обработка на вашем ПК</p>
+        <span class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-apple-blue text-white text-xs font-medium shadow">
+          <span data-i18n="chooseFiles">Выбрать файлы…</span>
+        </span>
+      </div>
+    </div>
+
+    <!-- ACTIVE RECORDING WORKSPACE -->
+    <div id="workspace-content" class="hidden flex-1 flex flex-col overflow-hidden">
+
+      <!-- Unified macOS Top Toolbar -->
+      <header class="h-13 border-b apple-border bg-apple-sidebar/75 apple-blur px-5 flex items-center justify-between shrink-0 gap-4 z-20" style="height: 52px;">
+
+        <!-- Left: Editable Recording Title + Meta -->
+        <div class="flex items-center gap-2.5 min-w-0 flex-1">
+          <input id="meeting-title-input" type="text"
+            onblur="saveMeetingTitle()"
+            onkeydown="if(event.key==='Enter') this.blur()"
+            class="bg-transparent hover:bg-white/5 focus:bg-apple-card focus:outline-none focus:ring-1 focus:ring-apple-blue px-2 py-1 -ml-2 rounded-md text-[14px] font-semibold text-white truncate max-w-xs transition" />
+          <span id="meeting-meta-badge" class="text-[11px] text-apple-secondary font-mono shrink-0"></span>
+        </div>
+
+        <!-- Center: Apple Segmented Control (Transcript | AI Summary | Speakers) -->
+        <div class="apple-segmented flex items-center text-xs font-medium shrink-0">
+          <button onclick="switchWorkspaceTab('transcript')" id="wtab-transcript"
+            class="px-3.5 py-1 rounded-[6px] apple-segment-active transition" data-i18n="tabTranscript">
+            Транскрипт
+          </button>
+          <button onclick="switchWorkspaceTab('summary')" id="wtab-summary"
+            class="px-3.5 py-1 rounded-[6px] text-apple-secondary hover:text-white transition" data-i18n="tabSummary">
+            AI-Саммари
+          </button>
+          <button onclick="switchWorkspaceTab('speakers')" id="wtab-speakers"
+            class="px-3.5 py-1 rounded-[6px] text-apple-secondary hover:text-white transition" data-i18n="tabSpeakers">
+            Участники
+          </button>
+        </div>
+
+        <!-- Right: Clean Speech, Video Toggle, Auto-Follow Toggle, Search Field + Share/Export Menu -->
+        <div class="flex items-center justify-end gap-1.5 flex-1">
+          <!-- Clean Filler Words Button -->
+          <button onclick="cleanActiveTranscriptFillers()" id="clean-fillers-btn"
+            class="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-apple-secondary hover:text-white text-xs font-medium transition flex items-center gap-1"
+            title="Удалить слова-паразиты («э-э», «ммм», «ну типа», повторы)">
+            <span>🧹</span>
+            <span data-i18n="cleanSpeechBtn">Чистая речь</span>
+          </button>
+
+          <!-- Video Drawer Toggle Button -->
+          <button onclick="toggleVideoDrawer()" id="video-drawer-btn"
+            class="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-apple-secondary hover:text-white text-xs font-medium transition flex items-center gap-1.5"
+            title="Показать / скрыть видео">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+              <path stroke-linecap="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"/>
+            </svg>
+            <span data-i18n="videoBtn">Видео</span>
+          </button>
+
+          <!-- Auto-Scroll (Follow Speech) Toggle Button -->
+          <button onclick="toggleAutoScroll()" id="autoscroll-btn"
+            class="px-2.5 py-1.5 rounded-lg bg-apple-blue/20 text-apple-blue border border-apple-blue/30 text-xs font-medium transition flex items-center gap-1.5"
+            title="Автопрокрутка текста за речью">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12"/>
+            </svg>
+            <span data-i18n="followSpeech">Следить</span>
+          </button>
+
+          <!-- NSSearchField -->
+          <div class="relative w-40">
+            <svg class="w-3.5 h-3.5 text-apple-tertiary absolute left-2.5 top-2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/>
+            </svg>
+            <input id="transcript-search" type="text" oninput="renderTranscript()"
+              data-i18n-placeholder="searchPlaceholder"
+              placeholder="Поиск…"
+              class="w-full bg-white/5 focus:bg-apple-card border border-transparent focus:border-apple-blue/60 rounded-lg pl-8 pr-2.5 py-1 text-xs text-white placeholder-apple-tertiary focus:outline-none transition" />
+          </div>
+
+          <!-- Apple Share / Export Button -->
+          <div class="relative">
+            <button onclick="toggleExportMenu(event)"
+              class="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-apple-label text-xs font-medium transition flex items-center gap-1.5"
+              title="Экспорт">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 8.25H7.5a2.25 2.25 0 00-2.25 2.25v9a2.25 2.25 0 002.25 2.25h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25H15m0-3l-3-3m0 0l-3 3m3-3v11.25"/>
+              </svg>
+              <span data-i18n="export">Экспорт</span>
+            </button>
+
+            <div id="export-menu" class="hidden absolute right-0 mt-1.5 w-48 macos-menu z-40">
+              <div class="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-apple-secondary" data-i18n="exportFormat">Сохранить как</div>
+              <button onclick="exportCurrentMeeting('docx')" class="macos-menu-item"><span>Word (.docx)</span><span class="text-[11px] opacity-60">DOCX</span></button>
+              <button onclick="exportCurrentMeeting('md')" class="macos-menu-item"><span>Markdown (.md)</span><span class="text-[11px] opacity-60">MD</span></button>
+              <button onclick="exportCurrentMeeting('txt')" class="macos-menu-item"><span>Text (.txt)</span><span class="text-[11px] opacity-60">TXT</span></button>
+              <button onclick="exportCurrentMeeting('srt')" class="macos-menu-item"><span>Subtitles (.srt)</span><span class="text-[11px] opacity-60">SRT</span></button>
+              <button onclick="exportCurrentMeeting('json')" class="macos-menu-item"><span>JSON (.json)</span><span class="text-[11px] opacity-60">JSON</span></button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Processing Status Banner (Shown while Whisper/Diarization is running) -->
+      <div id="workspace-processing-banner" class="hidden bg-apple-card border-b apple-border px-6 py-2.5 shrink-0">
+        <div class="max-w-3xl mx-auto">
+          <div class="flex items-center justify-between text-xs mb-1.5">
+            <span id="workspace-stage-text" class="text-apple-label font-medium">Обработка…</span>
+            <span id="workspace-progress-pct" class="font-mono text-apple-blue">0%</span>
+          </div>
+          <div class="w-full h-1 bg-white/10 rounded-full overflow-hidden">
+            <div id="workspace-progress-bar" class="h-full bg-apple-blue transition-all duration-300" style="width: 0%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Collapsible Video Drawer (Hidden by default unless toggled from Top Toolbar) -->
+      <div id="video-drawer" class="hidden border-b apple-border bg-black/90 py-3 px-6 shrink-0">
+        <div class="max-w-2xl mx-auto">
+          <video id="media-player" crossorigin="anonymous" class="w-full max-h-60 rounded-xl bg-black mx-auto"></video>
+        </div>
+      </div>
+
+      <!-- TAB 1: TRANSCRIPT DOCUMENT -->
+      <div id="wview-transcript" class="flex-1 flex flex-col overflow-hidden">
+        <!-- Quick Speaker Pills Bar (Filter, Listen Sample, or Rename right from the top!) -->
+        <div id="speaker-pills-bar" class="border-b apple-border bg-apple-bg/90 px-6 py-2 shrink-0 hidden">
+          <div class="max-w-3xl mx-auto flex items-center gap-1.5 flex-wrap" id="speaker-pills-container">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+
+        <!-- Scrollable Transcript Document -->
+        <div id="transcript-container" class="flex-1 overflow-y-auto px-6 py-6">
+          <div id="transcript-inner" class="max-w-3xl mx-auto space-y-1.5">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: AI SUMMARY (Apple Notes / Intelligence Style) -->
+      <div id="wview-summary" class="hidden flex-1 overflow-y-auto px-6 py-6">
+        <div class="max-w-3xl mx-auto space-y-5">
+          <div class="flex items-center justify-between border-b apple-border pb-3">
+            <div class="apple-segmented flex items-center text-xs font-medium">
+              <button onclick="selectSummaryTab('protocol')" id="sumtab-protocol"
+                class="px-3 py-1 rounded-[6px] apple-segment-active transition" data-i18n="sumProtocol">
+                Протокол
+              </button>
+              <button onclick="selectSummaryTab('tasks')" id="sumtab-tasks"
+                class="px-3 py-1 rounded-[6px] text-apple-secondary hover:text-white transition" data-i18n="sumTasks">
+                Задачи
+              </button>
+              <button onclick="selectSummaryTab('tldr')" id="sumtab-tldr"
+                class="px-3 py-1 rounded-[6px] text-apple-secondary hover:text-white transition" data-i18n="sumTldr">
+                Кратко
+              </button>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <select id="summary-llm-select" onchange="selectActiveOllamaModel(this.value)"
+                class="bg-apple-sidebar border apple-border rounded-lg px-2.5 py-1 text-xs text-apple-label focus:outline-none"
+                title="Модель LLM для саммари">
+                <option value="qwen2.5:7b">Qwen 2.5 (7B) · Apache 2.0</option>
+                <option value="qwen2.5:14b">Qwen 2.5 (14B) · Apache 2.0</option>
+                <option value="mistral:7b">Mistral v0.3 (7B) · Apache 2.0</option>
+                <option value="qwen2.5:1.5b">Qwen 2.5 (1.5B) · Apache 2.0</option>
+              </select>
+              <button onclick="openModal('settings')"
+                class="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-apple-secondary hover:text-white text-xs transition"
+                title="Скачать и настроить модели LLM">
+                ⬇ LLM
+              </button>
+              <button onclick="copySummaryText()"
+                class="px-3 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-apple-label text-xs transition" data-i18n="copy">
+                Копировать
+              </button>
+              <button onclick="generateSummaryForActiveTab()" id="generate-summary-btn"
+                class="px-3.5 py-1 rounded-lg bg-apple-blue hover:bg-apple-blueHover text-white font-medium text-xs transition shadow-sm" data-i18n="generate">
+                Сформировать
+              </button>
+            </div>
+          </div>
+
+          <!-- Ask AI Input -->
+          <div class="flex gap-2">
+            <input id="custom-summary-prompt" type="text"
+              onkeydown="if(event.key==='Enter') runCustomQuestion()"
+              data-i18n-placeholder="askPlaceholder"
+              placeholder="Спросить ИИ по тексту встречи (например: О каких сроках договорились?)…"
+              class="flex-1 bg-apple-sidebar border apple-border focus:border-apple-blue rounded-lg px-3.5 py-2 text-xs text-white placeholder-apple-tertiary focus:outline-none" />
+            <button onclick="runCustomQuestion()"
+              class="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs font-medium transition shrink-0" data-i18n="askBtn">
+              Спросить
+            </button>
+          </div>
+
+          <div id="summary-content" class="markdown-body text-[13.5px] bg-apple-sidebar/60 border apple-border rounded-2xl p-6">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: SPEAKERS INSPECTOR -->
+      <div id="wview-speakers" class="hidden flex-1 overflow-y-auto px-6 py-6">
+        <div class="max-w-2xl mx-auto space-y-4">
+          <div>
+            <h3 class="text-sm font-semibold text-white" data-i18n="speakersTitle">Участники встречи</h3>
+            <p class="text-xs text-apple-secondary mt-0.5" data-i18n="speakersDesc">Прослушайте образец голоса и введите имя участника — оно обновится во всём документе.</p>
+          </div>
+          <div id="speakers-list" class="divide-y divide-white/5 border apple-border rounded-xl bg-apple-sidebar overflow-hidden">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+      </div>
+
+      <!-- =====================================================================
+           BOTTOM DOCKED APPLE VOICE MEMOS / PODCASTS PLAYER BAR
+           ===================================================================== -->
+      <footer class="h-16 border-t apple-border bg-apple-sidebar/90 apple-blur px-6 flex items-center justify-between gap-6 shrink-0 z-20">
+        <!-- Transport Controls: -15s, Play/Pause, +15s -->
+        <div class="flex items-center gap-3 shrink-0">
+          <button onclick="skipPlayer(-15)" class="p-1.5 rounded-lg text-apple-secondary hover:text-white transition" title="-15 сек">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3"/>
+            </svg>
+          </button>
+
+          <button onclick="togglePlayPause()" id="play-pause-btn"
+            class="w-9 h-9 rounded-full bg-white text-black hover:scale-105 transition flex items-center justify-center shadow">
+            <svg id="icon-play" class="w-4 h-4 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M8 5v14l11-7z"/>
+            </svg>
+            <svg id="icon-pause" class="w-4 h-4 hidden" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+            </svg>
+          </button>
+
+          <button onclick="skipPlayer(15)" class="p-1.5 rounded-lg text-apple-secondary hover:text-white transition" title="+15 сек">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 15l6-6m0 0l-6-6m6 6H9a6 6 0 000 12h3"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Scrubber Timeline -->
+        <div class="flex-1 flex items-center gap-3 max-w-2xl">
+          <span id="player-current-time" class="text-[11px] font-mono text-apple-secondary w-11 text-right">00:00</span>
+          <input id="player-scrubber" type="range" min="0" max="100" step="0.1" value="0"
+            oninput="scrubPlayer(this.value)"
+            class="apple-scrubber flex-1" />
+          <span id="player-total-time" class="text-[11px] font-mono text-apple-secondary w-11">00:00</span>
+        </div>
+
+        <!-- Studio Voice Live Enhancer & Playback Speed -->
+        <div class="flex items-center gap-2 shrink-0">
+          <button onclick="toggleStudioVoiceEnhancer()" id="studio-voice-btn"
+            class="px-2.5 py-1 rounded-md bg-white/5 hover:bg-white/10 text-[11px] font-medium text-apple-secondary hover:text-white transition flex items-center gap-1"
+            title="Студийное очищение голоса и выравнивание громкости в плеере">
+            <span>✨</span>
+            <span data-i18n="studioVoiceBtn">Чистый голос</span>
+          </button>
+
+          <button onclick="cyclePlaybackSpeed()" id="speed-cycle-btn"
+            class="px-2.5 py-1 rounded-md bg-white/5 hover:bg-white/10 text-[11px] font-mono text-apple-label transition"
+            title="Скорость воспроизведения (1x – 2x)">
+            1.0×
+          </button>
+        </div>
+      </footer>
+
+    </div>
+  </main>
+
+  <!-- =========================================================================
+       RIGHT-CLICK CONTEXT MENU (ПКМ по любой записи в списке слева)
+       ========================================================================= -->
+  <div id="recording-context-menu" class="hidden fixed w-56 macos-menu z-50" onclick="event.stopPropagation()">
+    <div id="ctx-title-header" class="px-2.5 py-1 text-[11px] font-semibold text-apple-secondary truncate border-b border-white/10 mb-1"></div>
+
+    <button onclick="ctxRenameRecording()" class="macos-menu-item">
+      <span data-i18n="ctxRename">Переименовать…</span>
+    </button>
+    <button onclick="ctxOpenReconfigureModal()" class="macos-menu-item">
+      <span data-i18n="ctxReconfigure">Параметры и перезапуск…</span>
+    </button>
+    <button onclick="ctxRevealInExplorer()" class="macos-menu-item">
+      <span data-i18n="ctxReveal">Показать файл в Проводнике</span>
+    </button>
+
+    <div class="my-1 border-t border-white/10"></div>
+    <div class="px-2.5 py-0.5 text-[10px] text-apple-secondary uppercase tracking-wider" data-i18n="export">Экспорт</div>
+    <div class="grid grid-cols-3 gap-1 px-1.5 py-1">
+      <button onclick="ctxExport('docx')" class="px-2 py-1 rounded bg-white/5 hover:bg-apple-blue text-[11px] text-center">DOCX</button>
+      <button onclick="ctxExport('md')" class="px-2 py-1 rounded bg-white/5 hover:bg-apple-blue text-[11px] text-center">MD</button>
+      <button onclick="ctxExport('srt')" class="px-2 py-1 rounded bg-white/5 hover:bg-apple-blue text-[11px] text-center">SRT</button>
+    </div>
+
+    <div class="my-1 border-t border-white/10"></div>
+    <button onclick="ctxDeleteRecording()" class="macos-menu-item macos-menu-item-danger">
+      <span data-i18n="ctxDelete">Удалить запись</span>
+    </button>
+  </div>
+
+  <!-- =========================================================================
+       MACOS SHEET MODAL 1: IMPORT / ADD RECORDINGS
+       ========================================================================= -->
+  <div id="modal-import" class="hidden fixed inset-0 bg-black/60 apple-blur z-50 flex items-center justify-center p-4" onclick="closeModalOnBackdrop(event, 'import')">
+    <div class="w-full max-w-lg bg-apple-card border apple-border rounded-2xl shadow-2xl p-6 space-y-5">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-semibold text-white" data-i18n="importModalTitle">Добавить записи встреч</h3>
+        <button onclick="closeModal('import')" class="text-xs text-apple-secondary hover:text-white" data-i18n="close">Закрыть</button>
+      </div>
+
+      <!-- Dropzone -->
+      <div onclick="document.getElementById('file-input').click()"
+        ondragover="event.preventDefault()"
+        ondrop="handleFileDrop(event)"
+        class="border border-dashed border-white/20 hover:border-apple-blue rounded-xl p-8 text-center cursor-pointer bg-apple-sidebar/60 transition">
+        <input id="file-input" type="file" multiple accept="video/*,audio/*,.mkv,.webm,.mov,.mp4,.mp3,.wav,.m4a,.ogg,.flac" class="hidden" onchange="handleFileSelect(this.files)" />
+        <p class="text-xs font-medium text-white mb-1" data-i18n="dropFilesHere">Нажмите для выбора файлов или перетащите их сюда</p>
+        <p class="text-[11px] text-apple-secondary">MP4, MKV, MOV, WEBM, MP3, WAV, M4A</p>
+        <div id="upload-status-text" class="mt-3 text-xs text-apple-blue hidden"></div>
+      </div>
+
+      <!-- Recognition Options -->
+      <div class="grid grid-cols-3 gap-3">
+        <div>
+          <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="modelLabel">Модель ИИ</label>
+          <select id="upload-model" class="w-full bg-apple-sidebar border apple-border rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none">
+            <option value="large-v3-turbo">large-v3-turbo ★</option>
+            <option value="large-v3">large-v3</option>
+            <option value="medium">medium</option>
+            <option value="small">small</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="speechLangLabel">Язык речи</label>
+          <select id="upload-language" class="w-full bg-apple-sidebar border apple-border rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none">
+            <option value="auto">Auto (RU / EN)</option>
+            <option value="ru">Русский (RU)</option>
+            <option value="en">English (EN)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="speakersCountLabel">Участники</label>
+          <select id="upload-speakers" class="w-full bg-apple-sidebar border apple-border rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none">
+            <option value="0">Auto</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Direct Path Input -->
+      <div class="pt-3 border-t apple-border space-y-1.5">
+        <label class="block text-[11px] text-apple-secondary" data-i18n="localPathLabel">Или путь к файлу / папке на диске (без копирования):</label>
+        <div class="flex gap-2">
+          <input id="local-path-input" type="text"
+            placeholder="D:\Recordings\meeting.mp4"
+            class="flex-1 bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
+          <button onclick="submitLocalPath()"
+            class="px-3.5 py-1.5 rounded-lg bg-apple-blue hover:bg-apple-blueHover text-white text-xs font-medium transition shrink-0" data-i18n="add">
+            Добавить
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MACOS SHEET MODAL 2: PER-FILE RECONFIGURE & RE-RUN (From Right-Click Menu)
+       ========================================================================= -->
+  <div id="modal-reconfigure" class="hidden fixed inset-0 bg-black/60 apple-blur z-50 flex items-center justify-center p-4" onclick="closeModalOnBackdrop(event, 'reconfigure')">
+    <div class="w-full max-w-md bg-apple-card border apple-border rounded-2xl shadow-2xl p-6 space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-semibold text-white" data-i18n="reconfigTitle">Параметры обработки записи</h3>
+        <button onclick="closeModal('reconfigure')" class="text-xs text-apple-secondary hover:text-white" data-i18n="close">Закрыть</button>
+      </div>
+      <p id="reconfig-recording-name" class="text-xs text-apple-secondary truncate"></p>
+
+      <div class="space-y-3">
+        <div>
+          <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="modelLabel">Модель Whisper</label>
+          <select id="reconfig-model" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none">
+            <option value="large-v3-turbo">large-v3-turbo</option>
+            <option value="large-v3">large-v3</option>
+            <option value="medium">medium</option>
+            <option value="small">small</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="speechLangLabel">Язык речи</label>
+          <select id="reconfig-language" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none">
+            <option value="auto">Auto (RU / EN)</option>
+            <option value="ru">Русский (RU)</option>
+            <option value="en">English (EN)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="speakersCountLabel">Количество спикеров</label>
+          <select id="reconfig-speakers" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none">
+            <option value="0">Auto</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="pt-2 flex justify-end gap-2">
+        <button onclick="closeModal('reconfigure')" class="px-3.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-apple-label" data-i18n="cancel">Отмена</button>
+        <button onclick="submitReconfigure()" class="px-4 py-1.5 rounded-lg bg-apple-blue hover:bg-apple-blueHover text-white text-xs font-medium" data-i18n="rerunBtn">Перезапустить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MACOS SHEET MODAL 3: CUSTOM DICTIONARY
+       ========================================================================= -->
+  <div id="modal-dictionary" class="hidden fixed inset-0 bg-black/60 apple-blur z-50 flex items-center justify-center p-4" onclick="closeModalOnBackdrop(event, 'dictionary')">
+    <div class="w-full max-w-lg bg-apple-card border apple-border rounded-2xl shadow-2xl p-6 space-y-4 max-h-[80vh] flex flex-col">
+      <div class="flex items-center justify-between">
+        <div>
+          <h3 class="text-sm font-semibold text-white" data-i18n="dictTitle">Пользовательский словарь</h3>
+          <p class="text-[11px] text-apple-secondary" data-i18n="dictSubtitle">Имена коллег, бренды и термины для точного распознавания</p>
+        </div>
+        <button onclick="closeModal('dictionary')" class="text-xs text-apple-secondary hover:text-white" data-i18n="close">Закрыть</button>
+      </div>
+
+      <div class="flex gap-2">
+        <input id="dict-term-input" type="text"
+          onkeydown="if(event.key==='Enter') addDictionaryItems()"
+          placeholder="Antigravity, Смирнов, Kubernetes…"
+          class="flex-1 bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
+        <select id="dict-category-input" class="bg-apple-sidebar border apple-border rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none">
+          <option value="Имя">Имя / Name</option>
+          <option value="Проект">Проект / Project</option>
+          <option value="Термин">Термин / Term</option>
+        </select>
+        <button onclick="addDictionaryItems()"
+          class="px-3.5 py-1.5 rounded-lg bg-apple-blue hover:bg-apple-blueHover text-white text-xs font-medium transition shrink-0" data-i18n="add">
+          Добавить
+        </button>
+      </div>
+
+      <div id="dictionary-list" class="flex-1 overflow-y-auto divide-y divide-white/5 border apple-border rounded-xl bg-apple-sidebar">
+        <!-- Populated dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MACOS SHEET MODAL 4: SETTINGS, FIRST-RUN WIZARD & MODEL MANAGER
+       ========================================================================= -->
+  <div id="modal-settings" class="hidden fixed inset-0 bg-black/60 apple-blur z-50 flex items-center justify-center p-4" onclick="closeModalOnBackdrop(event, 'settings')">
+    <div class="w-full max-w-xl bg-apple-card border apple-border rounded-2xl shadow-2xl p-6 space-y-5 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between">
+        <div>
+          <h3 class="text-sm font-semibold text-white" data-i18n="settings">Настройки и Модели ИИ</h3>
+          <p id="settings-hw-name" class="text-[11px] text-apple-secondary mt-0.5"></p>
+        </div>
+        <button onclick="closeModal('settings')" class="text-xs text-apple-secondary hover:text-white" data-i18n="close">Закрыть</button>
+      </div>
+
+      <!-- First-Run Welcome Banner (Shown automatically when no Whisper model is installed yet) -->
+      <div id="first-run-banner" class="hidden rounded-xl bg-apple-blue/15 border border-apple-blue/40 p-3.5 text-xs text-white space-y-1">
+        <div class="font-semibold text-apple-blue">👋 Первичная настройка VerbaScribe</div>
+        <p class="text-apple-label/90 text-[11.5px]">
+          Программа поставляется без тяжёлых нейросетей, чтобы занимать минимум места. Нажмите <b>«⬇ Скачать»</b> напротив рекомендуемой модели Whisper ниже — она скачается один раз в папку <code>models/</code>.
+        </p>
+      </div>
+
+      <!-- Whisper Speech Recognition Models Section -->
+      <div class="space-y-2.5">
+        <div class="flex items-center justify-between">
+          <div>
+            <h4 class="text-xs font-semibold text-white">1. Модели распознавания речи (Whisper + Спикеры)</h4>
+            <p class="text-[11px] text-apple-secondary">Скачайте нужную модель под вашу видеокарту или процессор</p>
+          </div>
+          <span id="diarizer-status-pill" class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/5 text-apple-secondary"></span>
+        </div>
+
+        <input id="set-whisper-model" type="hidden" value="large-v3-turbo" />
+
+        <div id="whisper-catalog-list" class="space-y-2">
+          <!-- Populated dynamically -->
+        </div>
+
+        <!-- LIVE WHISPER & DIARIZER DOWNLOAD PROGRESS WINDOW -->
+        <div id="whisper-download-panel" class="hidden rounded-xl bg-apple-bg border border-apple-blue/40 p-3.5 space-y-2.5">
+          <div class="flex items-center justify-between text-xs">
+            <span id="whisper-pull-status" class="font-medium text-white truncate">Подготовка к загрузке…</span>
+            <span id="whisper-pull-pct" class="font-mono text-apple-blue font-semibold shrink-0">0%</span>
+          </div>
+          <div class="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+            <div id="whisper-pull-bar" class="h-full bg-apple-blue transition-all duration-300" style="width: 0%"></div>
+          </div>
+          <div id="whisper-pull-logs" class="max-h-28 overflow-y-auto font-mono text-[11px] text-apple-secondary space-y-0.5 bg-black/40 rounded-lg p-2.5 border apple-border">
+          </div>
+        </div>
+      </div>
+
+      <!-- Compute Device & Precision -->
+      <div class="grid grid-cols-2 gap-3.5 pt-3 border-t apple-border">
+        <div>
+          <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="deviceLabel">Устройство вычислений</label>
+          <select id="set-device" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none">
+            <option value="cuda">NVIDIA GPU (CUDA)</option>
+            <option value="cpu">CPU</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="precisionLabel">Точность вычислений</label>
+          <select id="set-compute-type" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none">
+            <option value="float16">float16 (8+ GB VRAM)</option>
+            <option value="int8_float16">int8_float16 (4–6 GB VRAM)</option>
+            <option value="int8">int8 (Compact / CPU)</option>
+          </select>
+        </div>
+        <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label">
+          <input type="checkbox" id="set-diarization" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <span data-i18n="diarizationToggle">Разделение спикеров по голосам</span>
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label">
+          <input type="checkbox" id="set-vad" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <span data-i18n="vadToggle">Фильтр тишины (Silero VAD)</span>
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label">
+          <input type="checkbox" id="set-audio-enhance" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <span data-i18n="audioEnhanceToggle">✨ Очистка шума и выравнивание голоса</span>
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label">
+          <input type="checkbox" id="set-clean-fillers" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <span data-i18n="cleanFillersToggle">🧹 Удалять экания и слова-паразиты</span>
+        </label>
+      </div>
+
+      <!-- Ollama Local AI Model Manager Section -->
+      <div class="pt-4 border-t apple-border space-y-3">
+        <div class="flex items-center justify-between">
+          <div>
+            <h4 class="text-xs font-semibold text-white">2. Модели ИИ для Саммари (Ollama LLM · Apache 2.0)</h4>
+            <p class="text-[11px] text-apple-secondary">100% бесплатные открытые модели для коммерческого и личного использования</p>
+          </div>
+          <span id="settings-ollama-pill" class="text-[11px] font-mono px-2 py-0.5 rounded-full bg-white/5 text-apple-secondary"></span>
+        </div>
+
+        <input id="set-ollama-model" type="hidden" value="qwen2.5:7b" />
+
+        <!-- Interactive Catalog of LLM Models -->
+        <div id="ollama-catalog-list" class="space-y-2">
+          <!-- Populated dynamically -->
+        </div>
+
+        <!-- Custom Model Input (Optional) -->
+        <div class="flex gap-2 items-center pt-1">
+          <input id="custom-ollama-model-input" type="text"
+            placeholder="Или введите имя любой модели из библиотеки Ollama (напр. mistral:7b)…"
+            class="flex-1 bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white placeholder-apple-tertiary focus:outline-none" />
+          <button onclick="pullCustomOllamaModel()"
+            class="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs font-medium transition shrink-0">
+            Скачать
+          </button>
+        </div>
+
+        <!-- LIVE DOWNLOAD & INSTALLATION STATUS WINDOW -->
+        <div id="ollama-download-panel" class="hidden rounded-xl bg-apple-bg border border-apple-blue/40 p-3.5 space-y-2.5">
+          <div class="flex items-center justify-between text-xs">
+            <span id="ollama-pull-status" class="font-medium text-white truncate">Подготовка к загрузке…</span>
+            <span id="ollama-pull-pct" class="font-mono text-apple-blue font-semibold shrink-0">0%</span>
+          </div>
+          <div class="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+            <div id="ollama-pull-bar" class="h-full bg-apple-blue transition-all duration-300" style="width: 0%"></div>
+          </div>
+          <!-- Live Log Output -->
+          <div id="ollama-pull-logs" class="max-h-28 overflow-y-auto font-mono text-[11px] text-apple-secondary space-y-0.5 bg-black/40 rounded-lg p-2.5 border apple-border">
+          </div>
+        </div>
+
+        <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-secondary pt-1">
+          <input type="checkbox" id="set-auto-summary" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <span data-i18n="autoSummaryToggle">Автоматически создавать саммари после расшифровки</span>
+        </label>
+      </div>
+
+      <div class="pt-3 border-t apple-border flex justify-end">
+        <button onclick="saveAllSettings()"
+          class="px-5 py-1.5 rounded-lg bg-apple-blue hover:bg-apple-blueHover text-white font-medium text-xs transition" data-i18n="save">
+          Сохранить
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MACOS SHEET MODAL 5: LIVE MICROPHONE / MEETING RECORDER (Apple Voice Memos)
+       ========================================================================= -->
+  <div id="modal-record" class="hidden fixed inset-0 bg-black/60 apple-blur z-50 flex items-center justify-center p-4" onclick="closeModalOnBackdrop(event, 'record')">
+    <div class="w-full max-w-md bg-apple-card border apple-border rounded-2xl shadow-2xl p-6 space-y-5">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span id="rec-dot-indicator" class="w-2.5 h-2.5 rounded-full bg-apple-red"></span>
+          <h3 class="text-sm font-semibold text-white" data-i18n="recordModalTitle">Запись голоса / встречи</h3>
+        </div>
+        <button onclick="cancelLiveRecording()" class="text-xs text-apple-secondary hover:text-white" data-i18n="close">Закрыть</button>
+      </div>
+
+      <div>
+        <label class="block text-[11px] text-apple-secondary mb-1">Микрофон / Аудиовход</label>
+        <select id="record-mic-select" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none">
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-[11px] text-apple-secondary mb-1">Название записи</label>
+        <input id="record-title-input" type="text" placeholder="Созвон / Голосовая заметка"
+          class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
+      </div>
+
+      <!-- Timer & Live Level Meter -->
+      <div class="bg-apple-sidebar border apple-border rounded-2xl p-5 text-center space-y-3">
+        <div id="record-timer-display" class="text-3xl font-mono font-semibold text-white tracking-wider">00:00</div>
+        <div class="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+          <div id="record-level-bar" class="h-full bg-apple-red transition-all duration-75" style="width: 2%"></div>
+        </div>
+        <p id="record-status-hint" class="text-[11px] text-apple-secondary">Нажмите «Начать запись», чтобы записать микрофон</p>
+      </div>
+
+      <div class="flex items-center justify-center gap-3">
+        <button id="btn-start-rec" onclick="startLiveRecording()"
+          class="px-5 py-2 rounded-full bg-apple-red hover:bg-apple-red/90 text-white text-xs font-semibold transition flex items-center gap-2 shadow-lg">
+          <span class="w-2.5 h-2.5 rounded-full bg-white"></span>
+          <span>Начать запись</span>
+        </button>
+
+        <button id="btn-stop-rec" onclick="stopAndTranscribeRecording()"
+          class="hidden px-5 py-2 rounded-full bg-apple-blue hover:bg-apple-blueHover text-white text-xs font-semibold transition flex items-center gap-2 shadow-lg">
+          <span>■ Стоп и расшифровать</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Minimal Apple Pill Toast -->
+  <div id="toast" class="fixed top-4 left-1/2 -translate-x-1/2 hidden bg-apple-elevated/95 apple-blur border apple-border text-white px-4 py-1.5 rounded-full shadow-xl text-xs font-medium z-50"></div>
+
+  <script>
+    // --- Bilingual Dictionary (Russian & English) ---
+    const I18N = {
+      ru: {
+        add: 'Файлы',
+        recordBtn: 'Запись',
+        globalSearchPlaceholder: 'Поиск по всем записям…',
+        cleanSpeechBtn: 'Чистая речь',
+        studioVoiceBtn: 'Чистый голос',
+        audioEnhanceToggle: '✨ Очистка шума и выравнивание голоса',
+        cleanFillersToggle: '🧹 Удалять экания и слова-паразиты',
+        recordModalTitle: 'Запись голоса / встречи',
+        recordings: 'Записи',
+        rightClickHint: 'ПКМ — меню',
+        dictionary: 'Словарь',
+        settings: 'Настройки',
+        emptyTitle: 'Перетащите аудио или видео встречи сюда',
+        emptySubtitle: 'Поддерживаются MP4, MKV, MOV, WEBM, MP3, WAV, M4A · Локальная обработка на вашем ПК',
+        chooseFiles: 'Выбрать файлы…',
+        tabTranscript: 'Транскрипт',
+        tabSummary: 'AI-Саммари',
+        tabSpeakers: 'Участники',
+        searchPlaceholder: 'Поиск…',
+        export: 'Экспорт',
+        exportFormat: 'Сохранить как',
+        sumProtocol: 'Протокол',
+        sumTasks: 'Задачи',
+        sumTldr: 'Кратко',
+        copy: 'Копировать',
+        generate: 'Сформировать',
+        askPlaceholder: 'Спросить ИИ по содержанию встречи…',
+        askBtn: 'Спросить',
+        speakersTitle: 'Участники встречи',
+        speakersDesc: 'Прослушайте фрагмент голоса и укажите имя — оно обновится во всех репликах.',
+        followSpeech: 'Следить',
+        videoBtn: 'Видео',
+        ctxRename: 'Переименовать…',
+        ctxReconfigure: 'Параметры и перезапуск…',
+        ctxReveal: 'Показать файл в Проводнике',
+        ctxDelete: 'Удалить запись',
+        importModalTitle: 'Добавить записи встреч',
+        close: 'Закрыть',
+        cancel: 'Отмена',
+        dropFilesHere: 'Нажмите для выбора файлов или перетащите их сюда',
+        modelLabel: 'Модель ИИ',
+        speechLangLabel: 'Язык речи',
+        speakersCountLabel: 'Участники',
+        localPathLabel: 'Или путь к файлу / папке на диске (без копирования):',
+        reconfigTitle: 'Параметры обработки записи',
+        rerunBtn: 'Перезапустить',
+        dictTitle: 'Пользовательский словарь',
+        dictSubtitle: 'Имена коллег, бренды и термины для точного распознавания',
+        defaultModel: 'Модель Whisper по умолчанию',
+        deviceLabel: 'Устройство',
+        precisionLabel: 'Точность вычислений',
+        diarizationToggle: 'Разделение спикеров',
+        vadToggle: 'Фильтр тишины (VAD)',
+        downloadModel: 'Скачать модель',
+        autoSummaryToggle: 'Автоматически создавать саммари после расшифровки',
+        save: 'Сохранить',
+        noRecordings: 'Пока нет записей',
+        allSpeakers: 'Все участники',
+        editBtn: 'Изменить',
+        listenBtn: 'Голос',
+        turns: 'репл.',
+        emptySummary: 'Нажмите «Сформировать», чтобы создать AI-протокол через локальную модель Ollama.',
+      },
+      en: {
+        add: 'Import',
+        recordBtn: 'Record',
+        globalSearchPlaceholder: 'Search all meetings…',
+        cleanSpeechBtn: 'Clean Speech',
+        studioVoiceBtn: 'Studio Voice',
+        audioEnhanceToggle: '✨ Denoise & Voice Leveling',
+        cleanFillersToggle: '🧹 Strip Filler Words & Stutters',
+        recordModalTitle: 'Record Voice / Meeting',
+        recordings: 'Recordings',
+        rightClickHint: 'Right-click for options',
+        dictionary: 'Vocabulary',
+        settings: 'Settings',
+        emptyTitle: 'Drop audio or video meeting files here',
+        emptySubtitle: 'Supports MP4, MKV, MOV, WEBM, MP3, WAV, M4A · 100% On-Device Local AI',
+        chooseFiles: 'Choose Files…',
+        tabTranscript: 'Transcript',
+        tabSummary: 'AI Summary',
+        tabSpeakers: 'Speakers',
+        searchPlaceholder: 'Search…',
+        export: 'Export',
+        exportFormat: 'Export Format',
+        sumProtocol: 'Minutes',
+        sumTasks: 'Action Items',
+        sumTldr: 'TL;DR',
+        copy: 'Copy',
+        generate: 'Generate',
+        askPlaceholder: 'Ask AI anything about this meeting…',
+        askBtn: 'Ask',
+        speakersTitle: 'Meeting Participants',
+        speakersDesc: 'Listen to a voice sample and rename participants across the entire transcript.',
+        followSpeech: 'Auto-Scroll',
+        videoBtn: 'Video',
+        ctxRename: 'Rename…',
+        ctxReconfigure: 'Recording Settings & Re-run…',
+        ctxReveal: 'Reveal in Explorer',
+        ctxDelete: 'Delete Recording',
+        importModalTitle: 'Import Meeting Recordings',
+        close: 'Close',
+        cancel: 'Cancel',
+        dropFilesHere: 'Click to choose files or drag & drop them here',
+        modelLabel: 'Whisper Model',
+        speechLangLabel: 'Speech Language',
+        speakersCountLabel: 'Speakers',
+        localPathLabel: 'Or paste a local file / folder path on disk:',
+        reconfigTitle: 'Recording Processing Settings',
+        rerunBtn: 'Re-process',
+        dictTitle: 'Custom Vocabulary',
+        dictSubtitle: 'Names, brands, and technical terms for accurate recognition',
+        defaultModel: 'Default Whisper Model',
+        deviceLabel: 'Compute Device',
+        precisionLabel: 'Compute Precision',
+        diarizationToggle: 'Speaker Diarization',
+        vadToggle: 'Silence Filter (VAD)',
+        downloadModel: 'Pull Model',
+        autoSummaryToggle: 'Automatically generate summary after transcription',
+        save: 'Save',
+        noRecordings: 'No recordings yet',
+        allSpeakers: 'All Speakers',
+        editBtn: 'Edit',
+        listenBtn: 'Sample',
+        turns: 'turns',
+        emptySummary: 'Click "Generate" to create an AI summary using local Ollama.',
+      }
+    };
+
+    let state = {
+      uiLang: localStorage.getItem('whisper_ui_lang') || 'ru',
+      meetings: [],
+      activeMeeting: null,
+      contextMeetingId: null,
+      activeWorkspaceTab: 'transcript',
+      activeSummaryTab: 'protocol',
+      speakerFilter: null,
+      videoOpen: false,
+      studioVoiceActive: false,
+      globalSearchQuery: '',
+      globalSearchResults: null,
+      playbackSpeeds: [1.0, 1.25, 1.5, 1.75, 2.0],
+      speedIndex: 0,
+      system: null,
+      dictionary: [],
+      voicePreviewTimer: null,
+    };
+
+    function t(key) {
+      return (I18N[state.uiLang] && I18N[state.uiLang][key]) || I18N.ru[key] || key;
+    }
+
+    function setUILanguage(lang) {
+      state.uiLang = lang;
+      localStorage.setItem('whisper_ui_lang', lang);
+
+      document.getElementById('lang-btn-ru').className = lang === 'ru'
+        ? 'px-2 py-0.5 rounded-[6px] apple-segment-active'
+        : 'px-2 py-0.5 rounded-[6px] text-apple-secondary';
+      document.getElementById('lang-btn-en').className = lang === 'en'
+        ? 'px-2 py-0.5 rounded-[6px] apple-segment-active'
+        : 'px-2 py-0.5 rounded-[6px] text-apple-secondary';
+
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        el.textContent = t(key);
+      });
+      document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+        const key = el.getAttribute('data-i18n-placeholder');
+        el.setAttribute('placeholder', t(key));
+      });
+
+      renderMeetingsSidebar();
+      if (state.activeMeeting) {
+        renderSpeakersPanel();
+        renderTranscript();
+        renderSummaryPanel();
+      }
+    }
+
+    function showToast(msg) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.classList.remove('hidden');
+      clearTimeout(window._toastTimer);
+      window._toastTimer = setTimeout(() => el.classList.add('hidden'), 2600);
+    }
+
+    function formatTime(sec) {
+      sec = Math.max(0, Number(sec) || 0);
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      const s = Math.floor(sec % 60);
+      if (h > 0) {
+        return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+      }
+      return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    }
+
+    // --- Modals & Menus ---
+    function openModal(name) {
+      document.getElementById(`modal-${name}`).classList.remove('hidden');
+    }
+    function closeModal(name) {
+      document.getElementById(`modal-${name}`).classList.add('hidden');
+    }
+    function closeModalOnBackdrop(e, name) {
+      if (e.target === e.currentTarget) closeModal(name);
+    }
+
+    function switchWorkspaceTab(tab) {
+      state.activeWorkspaceTab = tab;
+      ['transcript', 'summary', 'speakers'].forEach(k => {
+        document.getElementById(`wview-${k}`).classList.toggle('hidden', k !== tab);
+        const btn = document.getElementById(`wtab-${k}`);
+        btn.className = (k === tab)
+          ? 'px-3.5 py-1 rounded-[6px] apple-segment-active transition'
+          : 'px-3.5 py-1 rounded-[6px] text-apple-secondary hover:text-white transition';
+      });
+    }
+
+    function toggleExportMenu(e) {
+      e.stopPropagation();
+      hideContextMenu();
+      document.getElementById('export-menu').classList.toggle('hidden');
+    }
+
+    // --- Right-Click Context Menu on Sidebar Recording Items ---
+    function openRecordingContextMenu(e, meetingId) {
+      e.preventDefault();
+      e.stopPropagation();
+      document.getElementById('export-menu')?.classList.add('hidden');
+
+      state.contextMeetingId = meetingId;
+      const m = state.meetings.find(x => x.id === meetingId);
+      if (!m) return;
+
+      document.getElementById('ctx-title-header').textContent = m.title;
+      const menu = document.getElementById('recording-context-menu');
+      menu.classList.remove('hidden');
+
+      const x = Math.min(e.clientX, window.innerWidth - 235);
+      const y = Math.min(e.clientY, window.innerHeight - 265);
+      menu.style.left = `${x}px`;
+      menu.style.top = `${y}px`;
+    }
+
+    function hideContextMenu() {
+      document.getElementById('recording-context-menu')?.classList.add('hidden');
+    }
+
+    document.addEventListener('click', () => {
+      hideContextMenu();
+      document.getElementById('export-menu')?.classList.add('hidden');
+    });
+
+    async function ctxRenameRecording() {
+      hideContextMenu();
+      const m = state.meetings.find(x => x.id === state.contextMeetingId);
+      if (!m) return;
+      const newTitle = prompt(state.uiLang === 'en' ? 'New recording title:' : 'Новое название записи:', m.title);
+      if (!newTitle || !newTitle.trim() || newTitle.trim() === m.title) return;
+
+      await fetch(`/api/meetings/${m.id}/title`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: newTitle.trim() })
+      });
+      await loadMeetingsList();
+      if (state.activeMeeting && state.activeMeeting.id === m.id) {
+        state.activeMeeting.title = newTitle.trim();
+        document.getElementById('meeting-title-input').value = newTitle.trim();
+      }
+    }
+
+    function ctxOpenReconfigureModal() {
+      hideContextMenu();
+      const m = state.meetings.find(x => x.id === state.contextMeetingId);
+      if (!m) return;
+
+      document.getElementById('reconfig-recording-name').textContent = m.title;
+      document.getElementById('reconfig-model').value = m.model_name || 'large-v3-turbo';
+      document.getElementById('reconfig-language').value = m.language || 'auto';
+      document.getElementById('reconfig-speakers').value = String(m.num_speakers_hint || 0);
+      openModal('reconfigure');
+    }
+
+    async function submitReconfigure() {
+      const id = state.contextMeetingId;
+      if (!id) return;
+      closeModal('reconfigure');
+
+      await fetch(`/api/meetings/${id}/reconfigure`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model_name: document.getElementById('reconfig-model').value,
+          language: document.getElementById('reconfig-language').value,
+          num_speakers_hint: Number(document.getElementById('reconfig-speakers').value || 0),
+        })
+      });
+      await loadMeetingsList();
+      await selectMeeting(id, false);
+      showToast(state.uiLang === 'en' ? 'Re-processing started' : 'Запущена повторная обработка');
+    }
+
+    async function ctxRevealInExplorer() {
+      hideContextMenu();
+      if (!state.contextMeetingId) return;
+      await fetch(`/api/meetings/${state.contextMeetingId}/reveal`, { method: 'POST' });
+    }
+
+    async function ctxExport(fmt) {
+      hideContextMenu();
+      if (!state.contextMeetingId) return;
+      await exportMeetingById(state.contextMeetingId, fmt);
+    }
+
+    async function ctxDeleteRecording() {
+      hideContextMenu();
+      const m = state.meetings.find(x => x.id === state.contextMeetingId);
+      if (!m) return;
+
+      await fetch(`/api/meetings/${m.id}`, { method: 'DELETE' });
+      if (state.activeMeeting && state.activeMeeting.id === m.id) {
+        state.activeMeeting = null;
+        document.getElementById('workspace-content').classList.add('hidden');
+        document.getElementById('workspace-empty').classList.remove('hidden');
+      }
+      await loadMeetingsList();
+      showToast(state.uiLang === 'en' ? 'Recording deleted' : 'Запись удалена');
+    }
+
+    // --- System & Settings ---
+    async function loadSystemInfo() {
+      try {
+        const res = await fetch('/api/system');
+        const data = await res.json();
+        state.system = data;
+
+        const hw = data.hardware;
+        document.getElementById('hw-text').textContent = hw.cuda_available
+          ? hw.device_name.replace('NVIDIA GeForce ', '')
+          : 'CPU';
+        document.getElementById('hw-dot').className = hw.cuda_available
+          ? 'w-1.5 h-1.5 rounded-full bg-apple-green shrink-0'
+          : 'w-1.5 h-1.5 rounded-full bg-apple-amber shrink-0';
+
+        document.getElementById('settings-hw-name').textContent = hw.cuda_available
+          ? `${hw.device_name} · ${hw.vram_total_gb} GB VRAM`
+          : hw.device_name;
+
+        const s = data.settings;
+        document.getElementById('set-whisper-model').value = s.whisper_model || 'large-v3-turbo';
+        document.getElementById('upload-model').value = s.whisper_model || 'large-v3-turbo';
+        document.getElementById('set-device').value = s.device || 'cuda';
+        document.getElementById('set-compute-type').value = s.compute_type || 'float16';
+        document.getElementById('set-diarization').checked = s.diarization_enabled !== 'false';
+        document.getElementById('set-vad').checked = s.vad_filter !== 'false';
+        if (document.getElementById('set-audio-enhance')) {
+          document.getElementById('set-audio-enhance').checked = s.audio_enhance !== 'false';
+        }
+        if (document.getElementById('set-clean-fillers')) {
+          document.getElementById('set-clean-fillers').checked = s.clean_fillers !== 'false';
+        }
+        document.getElementById('set-ollama-model').value = s.ollama_model || 'qwen2.5:7b';
+        document.getElementById('set-auto-summary').checked = s.auto_summary !== 'false';
+
+        updateOllamaUI(data.ollama);
+        if (data.models) {
+          updateWhisperModelsUI(data.models);
+          if (data.models.needs_first_run_setup && !window._firstRunShown) {
+            window._firstRunShown = true;
+            openModal('settings');
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function updateWhisperModelsUI(models) {
+      if (!models) return;
+      const banner = document.getElementById('first-run-banner');
+      if (banner) {
+        banner.classList.toggle('hidden', !models.needs_first_run_setup);
+      }
+
+      const diarPill = document.getElementById('diarizer-status-pill');
+      if (diarPill && models.diarizer) {
+        if (models.diarizer.installed) {
+          diarPill.textContent = state.uiLang === 'en' ? '✓ Speaker AI Ready' : '✓ Модуль спикеров готов';
+          diarPill.className = 'text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-apple-green/15 text-apple-green';
+        } else {
+          diarPill.textContent = state.uiLang === 'en' ? '○ Downloads automatically' : '○ Спикеры скачаются вместе с Whisper';
+          diarPill.className = 'text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-white/5 text-apple-secondary';
+        }
+      }
+
+      const activeModel = document.getElementById('set-whisper-model').value || 'large-v3-turbo';
+      const catalogBox = document.getElementById('whisper-catalog-list');
+      const st = models.setup_state || {};
+
+      if (catalogBox && models.whisper) {
+        catalogBox.innerHTML = models.whisper.map(item => {
+          const isSelected = item.id === activeModel;
+          const desc = state.uiLang === 'en' ? item.desc_en : item.desc_ru;
+          const isDownloadingThis = st.active && st.model_id === item.id;
+
+          let actionHtml = '';
+          if (isDownloadingThis) {
+            actionHtml = `<span class="px-2.5 py-1 rounded-lg bg-apple-blue/20 text-apple-blue text-[11px] font-mono animate-pulse">${st.progress || 1}%…</span>`;
+          } else if (item.installed && isSelected) {
+            actionHtml = `
+              <div class="flex items-center gap-1.5">
+                <span class="px-2.5 py-1 rounded-lg bg-apple-green/20 text-apple-green text-[11px] font-medium">✓ ${state.uiLang === 'en' ? 'Active' : 'Активна'}</span>
+                <button onclick="deleteWhisperModel('${escapeHtml(item.id)}')" title="${state.uiLang === 'en' ? 'Delete from disk' : 'Удалить с диска'}"
+                  class="px-2 py-1 rounded-lg bg-white/5 hover:bg-apple-red/20 text-apple-tertiary hover:text-apple-red text-[11px] transition">🗑</button>
+              </div>
+            `;
+          } else if (item.installed) {
+            actionHtml = `
+              <div class="flex items-center gap-1.5">
+                <button onclick="selectActiveWhisperModel('${escapeHtml(item.id)}')"
+                  class="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-apple-blue text-white text-[11px] font-medium transition">
+                  ${state.uiLang === 'en' ? 'Select' : 'Выбрать'}
+                </button>
+                <button onclick="deleteWhisperModel('${escapeHtml(item.id)}')" title="${state.uiLang === 'en' ? 'Delete from disk' : 'Удалить с диска'}"
+                  class="px-2 py-1 rounded-lg bg-white/5 hover:bg-apple-red/20 text-apple-tertiary hover:text-apple-red text-[11px] transition">🗑</button>
+              </div>
+            `;
+          } else {
+            actionHtml = `
+              <button onclick="startWhisperModelDownload('${escapeHtml(item.id)}')"
+                class="px-3 py-1 rounded-lg bg-apple-blue hover:bg-apple-blueHover text-white text-[11px] font-medium transition shrink-0">
+                ⬇ ${state.uiLang === 'en' ? 'Download' : 'Скачать'} (~${item.size_mb >= 1000 ? (item.size_mb / 1024).toFixed(1) + ' GB' : item.size_mb + ' MB'})
+              </button>
+            `;
+          }
+
+          return `
+            <div class="p-3 rounded-xl border transition flex items-center justify-between gap-3 ${
+              isSelected ? 'bg-apple-blue/10 border-apple-blue/50' : 'bg-apple-sidebar border-white/10'
+            }">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-semibold text-white">${escapeHtml(item.name)}</span>
+                  <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-apple-secondary">${escapeHtml(item.id)}</span>
+                  <span class="text-[10px] text-apple-tertiary">${escapeHtml(item.vram)}</span>
+                </div>
+                <p class="text-[11px] text-apple-secondary mt-0.5 truncate">${escapeHtml(desc)}</p>
+              </div>
+              <div class="shrink-0">${actionHtml}</div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      const dlPanel = document.getElementById('whisper-download-panel');
+      if (dlPanel && (st.active || (st.logs && st.logs.length > 0))) {
+        dlPanel.classList.remove('hidden');
+        document.getElementById('whisper-pull-status').textContent = st.status || '';
+        document.getElementById('whisper-pull-pct').textContent = `${st.progress || 0}%`;
+        document.getElementById('whisper-pull-bar').style.width = `${st.progress || 0}%`;
+
+        const logsBox = document.getElementById('whisper-pull-logs');
+        if (logsBox && st.logs) {
+          logsBox.innerHTML = st.logs.map(l => `<div>${escapeHtml(l)}</div>`).join('');
+          logsBox.scrollTop = logsBox.scrollHeight;
+        }
+      }
+    }
+
+    async function selectActiveWhisperModel(modelId) {
+      document.getElementById('set-whisper-model').value = modelId;
+      document.getElementById('upload-model').value = modelId;
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: { whisper_model: modelId } })
+      });
+      await loadSystemInfo();
+      showToast(state.uiLang === 'en' ? `Whisper model: ${modelId}` : `Модель Whisper: ${modelId}`);
+    }
+
+    async function deleteWhisperModel(modelId) {
+      await fetch(`/api/models/${encodeURIComponent(modelId)}`, { method: 'DELETE' });
+      await loadSystemInfo();
+      showToast(state.uiLang === 'en' ? `Deleted ${modelId} from disk` : `Модель ${modelId} удалена с диска`);
+    }
+
+    async function startWhisperModelDownload(modelId) {
+      document.getElementById('set-whisper-model').value = modelId;
+      document.getElementById('upload-model').value = modelId;
+
+      const dlPanel = document.getElementById('whisper-download-panel');
+      if (dlPanel) dlPanel.classList.remove('hidden');
+      document.getElementById('whisper-pull-status').textContent = `Запуск скачивания ${modelId}…`;
+      document.getElementById('whisper-pull-pct').textContent = '1%';
+      document.getElementById('whisper-pull-bar').style.width = '2%';
+
+      await fetch('/api/models/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          whisper_model: modelId,
+          include_diarizer: true,
+          ollama_model: ''
+        })
+      });
+
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: { whisper_model: modelId } })
+      });
+
+      clearInterval(window._whisperPollTimer);
+      window._whisperPollTimer = setInterval(async () => {
+        const res = await fetch('/api/models/status');
+        const data = await res.json();
+        updateWhisperModelsUI(data);
+        if (!data.setup_state || !data.setup_state.active) {
+          clearInterval(window._whisperPollTimer);
+          await loadSystemInfo();
+          if (data.setup_state && data.setup_state.progress === 100) {
+            showToast(state.uiLang === 'en' ? `Whisper ${modelId} ready!` : `Модель ${modelId} установлена и готова к работе!`);
+          }
+        }
+      }, 800);
+    }
+
+    function updateOllamaUI(ollama) {
+      const pill = document.getElementById('settings-ollama-pill');
+      const catalogBox = document.getElementById('ollama-catalog-list');
+      const activeModel = document.getElementById('set-ollama-model').value || ollama.active_model || 'qwen2.5:7b';
+
+      if (ollama.running) {
+        pill.textContent = state.uiLang === 'en' ? '● Ollama Active' : '● Ollama запущена';
+        pill.className = 'text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-apple-green/15 text-apple-green';
+      } else {
+        pill.textContent = state.uiLang === 'en' ? '○ Ollama Not Installed / Offline' : '○ Авто-установка при скачивании';
+        pill.className = 'text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-apple-amber/15 text-apple-amber';
+      }
+
+      // Sync dropdown in Summary tab
+      const summarySelect = document.getElementById('summary-llm-select');
+      if (summarySelect && ollama.catalog) {
+        summarySelect.innerHTML = ollama.catalog.map(item => {
+          const mark = item.installed ? '✓ ' : '';
+          return `<option value="${escapeHtml(item.id)}" ${item.id === activeModel ? 'selected' : ''}>${mark}${escapeHtml(item.name)} (${escapeHtml(item.id)})</option>`;
+        }).join('');
+      }
+
+      // Render interactive LLM Model Catalog Cards in Settings
+      if (catalogBox && ollama.catalog) {
+        catalogBox.innerHTML = ollama.catalog.map(item => {
+          const isSelected = item.id === activeModel;
+          const desc = state.uiLang === 'en' ? item.desc_en : item.desc_ru;
+          const isPullingThis = ollama.pull_state && ollama.pull_state.active && ollama.pull_state.model === item.id;
+
+          let actionHtml = '';
+          if (isPullingThis) {
+            actionHtml = `<span class="px-2.5 py-1 rounded-lg bg-apple-blue/20 text-apple-blue text-[11px] font-mono animate-pulse">${ollama.pull_state.progress || 1}%…</span>`;
+          } else if (item.installed && isSelected) {
+            actionHtml = `<span class="px-2.5 py-1 rounded-lg bg-apple-green/20 text-apple-green text-[11px] font-medium">✓ ${state.uiLang === 'en' ? 'Active' : 'Активна'}</span>`;
+          } else if (item.installed) {
+            actionHtml = `
+              <div class="flex items-center gap-1.5">
+                <span class="text-[10px] text-apple-green">✓</span>
+                <button onclick="selectActiveOllamaModel('${escapeHtml(item.id)}')"
+                  class="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-apple-blue text-white text-[11px] font-medium transition">
+                  ${state.uiLang === 'en' ? 'Select' : 'Выбрать'}
+                </button>
+              </div>
+            `;
+          } else {
+            actionHtml = `
+              <button onclick="pullOllamaModel('${escapeHtml(item.id)}')"
+                class="px-3 py-1 rounded-lg bg-apple-blue hover:bg-apple-blueHover text-white text-[11px] font-medium transition shrink-0">
+                ⬇ ${state.uiLang === 'en' ? 'Download' : 'Скачать'} (${escapeHtml(item.size)})
+              </button>
+            `;
+          }
+
+          return `
+            <div class="p-3 rounded-xl border transition flex items-center justify-between gap-3 ${
+              isSelected ? 'bg-apple-blue/10 border-apple-blue/50' : 'bg-apple-sidebar border-white/10'
+            }">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-semibold text-white">${escapeHtml(item.name)}</span>
+                  <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-apple-secondary">${escapeHtml(item.id)}</span>
+                  <span class="text-[10px] text-apple-tertiary">${escapeHtml(item.vram)}</span>
+                </div>
+                <p class="text-[11px] text-apple-secondary mt-0.5 truncate">${escapeHtml(desc)}</p>
+              </div>
+              <div class="shrink-0">${actionHtml}</div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      // Live Download & Installation Progress Window
+      const dlPanel = document.getElementById('ollama-download-panel');
+      const ps = ollama.pull_state;
+      if (dlPanel && ps && (ps.active || (ps.logs && ps.logs.length > 0))) {
+        dlPanel.classList.remove('hidden');
+        document.getElementById('ollama-pull-status').textContent = ps.status || '';
+        document.getElementById('ollama-pull-pct').textContent = `${ps.progress || 0}%`;
+        document.getElementById('ollama-pull-bar').style.width = `${ps.progress || 0}%`;
+
+        const logsBox = document.getElementById('ollama-pull-logs');
+        if (logsBox && ps.logs) {
+          logsBox.innerHTML = ps.logs.map(l => `<div>${escapeHtml(l)}</div>`).join('');
+          logsBox.scrollTop = logsBox.scrollHeight;
+        }
+      }
+    }
+
+    async function selectActiveOllamaModel(modelId) {
+      document.getElementById('set-ollama-model').value = modelId;
+      const summarySelect = document.getElementById('summary-llm-select');
+      if (summarySelect) summarySelect.value = modelId;
+
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: { ollama_model: modelId } })
+      });
+      await loadSystemInfo();
+      showToast(state.uiLang === 'en' ? `Selected LLM: ${modelId}` : `Выбрана модель: ${modelId}`);
+    }
+
+    async function saveAllSettings() {
+      const payload = {
+        settings: {
+          whisper_model: document.getElementById('set-whisper-model').value,
+          device: document.getElementById('set-device').value,
+          compute_type: document.getElementById('set-compute-type').value,
+          diarization_enabled: String(document.getElementById('set-diarization').checked),
+          vad_filter: String(document.getElementById('set-vad').checked),
+          audio_enhance: String(document.getElementById('set-audio-enhance')?.checked !== false),
+          clean_fillers: String(document.getElementById('set-clean-fillers')?.checked !== false),
+          ollama_model: document.getElementById('set-ollama-model').value.trim(),
+          auto_summary: String(document.getElementById('set-auto-summary').checked),
+        }
+      };
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      await loadSystemInfo();
+      closeModal('settings');
+      showToast(state.uiLang === 'en' ? 'Settings saved' : 'Настройки сохранены');
+    }
+
+    function pullCustomOllamaModel() {
+      const input = document.getElementById('custom-ollama-model-input');
+      const val = input.value.trim();
+      if (!val) return;
+      input.value = '';
+      pullOllamaModel(val);
+    }
+
+    async function pullOllamaModel(modelArg) {
+      const model = (modelArg || document.getElementById('set-ollama-model').value || 'qwen2.5:7b').trim();
+      document.getElementById('set-ollama-model').value = model;
+
+      const dlPanel = document.getElementById('ollama-download-panel');
+      if (dlPanel) dlPanel.classList.remove('hidden');
+      document.getElementById('ollama-pull-status').textContent = `Запуск установки / скачивания ${model}…`;
+      document.getElementById('ollama-pull-pct').textContent = '1%';
+      document.getElementById('ollama-pull-bar').style.width = '2%';
+
+      await fetch('/api/ollama/pull', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model })
+      });
+
+      clearInterval(window._ollamaPollTimer);
+      window._ollamaPollTimer = setInterval(async () => {
+        const res = await fetch('/api/ollama/status');
+        const data = await res.json();
+        updateOllamaUI(data);
+        if (!data.pull_state || !data.pull_state.active) {
+          clearInterval(window._ollamaPollTimer);
+          await loadSystemInfo();
+          if (data.pull_state && data.pull_state.progress === 100) {
+            showToast(state.uiLang === 'en' ? `Model ${model} ready!` : `Модель ${model} установлена и активна!`);
+          }
+        }
+      }, 900);
+    }
+
+    // --- Dictionary ---
+    async function loadDictionary() {
+      const res = await fetch('/api/dictionary');
+      state.dictionary = await res.json();
+      document.getElementById('dict-count-badge').textContent = state.dictionary.filter(d => d.active).length;
+
+      const box = document.getElementById('dictionary-list');
+      if (state.dictionary.length === 0) {
+        box.innerHTML = `<div class="p-6 text-center text-xs text-apple-tertiary">—</div>`;
+        return;
+      }
+
+      box.innerHTML = state.dictionary.map(item => `
+        <div class="flex items-center justify-between px-3.5 py-2 text-xs">
+          <div class="flex items-center gap-2.5">
+            <input type="checkbox" ${item.active ? 'checked' : ''}
+              onchange="toggleDictItem(${item.id}, this.checked)"
+              class="rounded bg-apple-bg border-white/20 text-apple-blue" />
+            <span class="${item.active ? 'text-white' : 'text-apple-tertiary line-through'}">${escapeHtml(item.term)}</span>
+            <span class="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-apple-secondary">${escapeHtml(item.category)}</span>
+          </div>
+          <button onclick="deleteDictItem(${item.id})" class="text-apple-tertiary hover:text-apple-red transition">✕</button>
+        </div>
+      `).join('');
+    }
+
+    async function addDictionaryItems() {
+      const input = document.getElementById('dict-term-input');
+      const cat = document.getElementById('dict-category-input').value;
+      if (!input.value.trim()) return;
+
+      await fetch('/api/dictionary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ term: input.value, category: cat })
+      });
+      input.value = '';
+      await loadDictionary();
+    }
+
+    async function toggleDictItem(id, active) {
+      await fetch(`/api/dictionary/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active })
+      });
+      await loadDictionary();
+    }
+
+    async function deleteDictItem(id) {
+      await fetch(`/api/dictionary/${id}`, { method: 'DELETE' });
+      await loadDictionary();
+    }
+
+    // --- Meetings List, Global Search & Sidebar ---
+    async function loadMeetingsList() {
+      const res = await fetch('/api/meetings');
+      state.meetings = await res.json();
+      if (!state.globalSearchQuery) {
+        renderMeetingsSidebar();
+      }
+
+      if (state.activeMeeting) {
+        const updated = state.meetings.find(m => m.id === state.activeMeeting.id);
+        if (updated && (updated.status !== state.activeMeeting.status || updated.progress !== state.activeMeeting.progress)) {
+          await selectMeeting(updated.id, false);
+        }
+      } else if (state.meetings.length > 0 && !state.activeMeeting) {
+        await selectMeeting(state.meetings[0].id, true);
+      }
+    }
+
+    async function handleGlobalSidebarSearch(rawVal) {
+      const q = (rawVal || '').trim();
+      state.globalSearchQuery = q;
+      if (!q) {
+        state.globalSearchResults = null;
+        renderMeetingsSidebar();
+        return;
+      }
+
+      clearTimeout(window._globalSearchDebounce);
+      window._globalSearchDebounce = setTimeout(async () => {
+        const res = await fetch(`/api/meetings/search?q=${encodeURIComponent(q)}`);
+        state.globalSearchResults = await res.json();
+        renderMeetingsSidebar();
+      }, 180);
+    }
+
+    async function selectMeetingAndSeek(meetingId, startSec) {
+      await selectMeeting(meetingId, true);
+      switchWorkspaceTab('transcript');
+      setTimeout(() => seekPlayer(startSec), 220);
+    }
+
+    function renderMeetingsSidebar() {
+      const listEl = document.getElementById('meetings-list');
+
+      // Global search results mode
+      if (state.globalSearchQuery && state.globalSearchResults) {
+        if (state.globalSearchResults.length === 0) {
+          listEl.innerHTML = `<div class="px-3 py-8 text-center text-xs text-apple-tertiary">Ничего не найдено</div>`;
+          return;
+        }
+        listEl.innerHTML = state.globalSearchResults.map(item => `
+          <div class="rounded-lg bg-white/[0.03] border apple-border p-2.5 space-y-1.5 mb-1.5">
+            <div onclick="selectMeeting(${item.meeting_id}, true)"
+                 class="text-xs font-semibold text-white hover:text-apple-blue cursor-pointer truncate">
+              ${escapeHtml(item.title)}
+            </div>
+            ${(item.hits || []).map(h => `
+              <div onclick="selectMeetingAndSeek(${item.meeting_id}, ${h.start})"
+                   class="px-2 py-1 rounded bg-black/30 hover:bg-apple-blue/20 cursor-pointer text-[11px] transition">
+                <div class="flex items-center justify-between text-[10px] text-apple-blue font-mono">
+                  <span>${escapeHtml(h.speaker)}</span>
+                  <span>${formatTime(h.start)}</span>
+                </div>
+                <div class="text-apple-label/90 line-clamp-2 mt-0.5">${highlightSearch(escapeHtml(h.text), state.globalSearchQuery)}</div>
+              </div>
+            `).join('')}
+          </div>
+        `).join('');
+        return;
+      }
+
+      if (state.meetings.length === 0) {
+        listEl.innerHTML = `<div class="px-3 py-8 text-center text-xs text-apple-tertiary">${t('noRecordings')}</div>`;
+        return;
+      }
+
+      listEl.innerHTML = state.meetings.map(m => {
+        const isSelected = state.activeMeeting && state.activeMeeting.id === m.id;
+        const isBusy = !['completed', 'failed'].includes(m.status);
+        const spkCount = Object.keys(m.speakers || {}).length;
+
+        return `
+          <div onclick="selectMeeting(${m.id}, true)"
+               oncontextmenu="openRecordingContextMenu(event, ${m.id})"
+               class="group cursor-pointer px-3 py-2 rounded-lg transition relative ${
+                 isSelected ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'
+               }">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-[12.5px] font-medium truncate">${escapeHtml(m.title)}</span>
+              <button onclick="openRecordingContextMenu(event, ${m.id})"
+                class="opacity-0 group-hover:opacity-100 px-1 rounded hover:bg-black/20 text-xs shrink-0 transition"
+                title="Меню">
+                •••
+              </button>
+            </div>
+            <div class="flex items-center justify-between text-[11px] mt-0.5 ${isSelected ? 'text-white/80' : 'text-apple-secondary'}">
+              <span class="font-mono">${isBusy ? `${m.progress}%` : formatTime(m.duration)}</span>
+              <span>${m.status === 'failed' ? 'Ошибка' : `${spkCount || 1} spk · ${(m.language || 'ru').toUpperCase()}`}</span>
+            </div>
+            ${isBusy ? `
+              <div class="w-full h-1 bg-black/25 rounded-full overflow-hidden mt-1.5">
+                <div class="h-full bg-white transition-all duration-300" style="width: ${m.progress}%"></div>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function handleGlobalDrop(e) {
+      e.preventDefault();
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        handleFileSelect(e.dataTransfer.files);
+      }
+    }
+
+    function handleFileDrop(e) {
+      e.preventDefault();
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        handleFileSelect(e.dataTransfer.files);
+      }
+    }
+
+    async function handleFileSelect(fileList) {
+      if (!fileList || fileList.length === 0) return;
+      const statusEl = document.getElementById('upload-status-text');
+      statusEl.classList.remove('hidden');
+      statusEl.textContent = `Uploading (${fileList.length})…`;
+
+      const fd = new FormData();
+      for (const f of fileList) fd.append('files', f);
+      fd.append('model_name', document.getElementById('upload-model').value);
+      fd.append('language', document.getElementById('upload-language').value);
+      fd.append('num_speakers', document.getElementById('upload-speakers').value);
+
+      try {
+        const res = await fetch('/api/meetings/upload', { method: 'POST', body: fd });
+        const data = await res.json();
+        statusEl.classList.add('hidden');
+        document.getElementById('file-input').value = '';
+        closeModal('import');
+        await loadMeetingsList();
+        if (data.created && data.created.length > 0) {
+          await selectMeeting(data.created[0].id, true);
+        }
+      } catch (err) {
+        statusEl.textContent = 'Error: ' + err;
+      }
+    }
+
+    async function submitLocalPath() {
+      const pathInput = document.getElementById('local-path-input');
+      const path = pathInput.value.trim();
+      if (!path) return;
+
+      const res = await fetch('/api/meetings/local-path', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path,
+          model_name: document.getElementById('upload-model').value,
+          language: document.getElementById('upload-language').value,
+          num_speakers: Number(document.getElementById('upload-speakers').value || 0),
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.detail || 'Error');
+        return;
+      }
+
+      pathInput.value = '';
+      closeModal('import');
+      await loadMeetingsList();
+      if (data.created && data.created.length > 0) {
+        await selectMeeting(data.created[0].id, true);
+      }
+    }
+
+    // --- Active Meeting Workspace ---
+    async function selectMeeting(id, reloadPlayer = true) {
+      const res = await fetch(`/api/meetings/${id}`);
+      if (!res.ok) return;
+      const m = await res.json();
+      const prevId = state.activeMeeting ? state.activeMeeting.id : null;
+      state.activeMeeting = m;
+      if (prevId !== m.id) state.speakerFilter = null;
+
+      document.getElementById('workspace-empty').classList.add('hidden');
+      document.getElementById('workspace-content').classList.remove('hidden');
+
+      document.getElementById('meeting-title-input').value = m.title;
+      const spkCount = Object.keys(m.speakers || {}).length;
+      document.getElementById('meeting-meta-badge').textContent =
+        `${formatTime(m.duration)} · ${(m.language || 'ru').toUpperCase()} · ${m.model_name}`;
+
+      const isBusy = !['completed', 'failed'].includes(m.status);
+      const banner = document.getElementById('workspace-processing-banner');
+      banner.classList.toggle('hidden', !isBusy && m.status !== 'failed');
+      if (isBusy) {
+        document.getElementById('workspace-stage-text').textContent = m.stage_text || 'Processing…';
+        document.getElementById('workspace-progress-pct').textContent = `${m.progress}%`;
+        document.getElementById('workspace-progress-bar').style.width = `${m.progress}%`;
+      } else if (m.status === 'failed') {
+        document.getElementById('workspace-stage-text').textContent = m.stage_text || 'Failed';
+        document.getElementById('workspace-progress-pct').textContent = '';
+        document.getElementById('workspace-progress-bar').style.width = '100%';
+      }
+
+      if (reloadPlayer || prevId !== m.id) {
+        const player = document.getElementById('media-player');
+        player.src = `/api/meetings/${m.id}/media`;
+        document.getElementById('player-total-time').textContent = formatTime(m.duration);
+        document.getElementById('player-current-time').textContent = '00:00';
+        document.getElementById('player-scrubber').value = 0;
+      }
+
+      renderSpeakerPillsBar();
+      renderSpeakersPanel();
+      renderTranscript();
+      renderSummaryPanel();
+      renderMeetingsSidebar();
+    }
+
+    async function saveMeetingTitle() {
+      if (!state.activeMeeting) return;
+      const newTitle = document.getElementById('meeting-title-input').value.trim();
+      if (!newTitle || newTitle === state.activeMeeting.title) return;
+
+      await fetch(`/api/meetings/${state.activeMeeting.id}/title`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: newTitle })
+      });
+      state.activeMeeting.title = newTitle;
+      await loadMeetingsList();
+    }
+
+    // Inline Speaker Pills Bar above transcript
+    function renderSpeakerPillsBar() {
+      const bar = document.getElementById('speaker-pills-bar');
+      const container = document.getElementById('speaker-pills-container');
+      const speakers = (state.activeMeeting && state.activeMeeting.speakers) || {};
+      const keys = Object.keys(speakers);
+
+      if (keys.length === 0) {
+        bar.classList.add('hidden');
+        return;
+      }
+      bar.classList.remove('hidden');
+
+      const allActive = !state.speakerFilter;
+      let html = `
+        <button onclick="filterBySpeaker(null)"
+          class="px-2.5 py-1 rounded-full text-[11px] font-medium transition ${
+            allActive ? 'bg-white text-black' : 'bg-white/5 text-apple-secondary hover:text-white'
+          }">
+          ${t('allSpeakers')}
+        </button>
+      `;
+
+      html += keys.map(spkId => {
+        const s = speakers[spkId];
+        const active = state.speakerFilter === spkId;
+        return `
+          <div class="inline-flex items-center rounded-full text-[11px] transition ${
+            active ? 'bg-apple-blue text-white' : 'bg-white/5 text-apple-label hover:bg-white/10'
+          }">
+            <button onclick="filterBySpeaker('${spkId}')" class="pl-2.5 pr-1.5 py-1 flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full" style="background:${s.color}"></span>
+              <span class="font-medium">${escapeHtml(s.name)}</span>
+            </button>
+            <button onclick="previewSpeakerVoice(${s.sample_start || 0}, ${s.sample_end || 5})"
+              title="Прослушать голос"
+              class="pr-2 pl-1 py-1 opacity-60 hover:opacity-100">
+              ▶
+            </button>
+          </div>
+        `;
+      }).join('');
+
+      container.innerHTML = html;
+    }
+
+    function renderSpeakersPanel() {
+      const box = document.getElementById('speakers-list');
+      const speakers = (state.activeMeeting && state.activeMeeting.speakers) || {};
+      const keys = Object.keys(speakers);
+
+      if (keys.length === 0) {
+        box.innerHTML = `<div class="p-6 text-xs text-apple-tertiary text-center">—</div>`;
+        return;
+      }
+
+      box.innerHTML = keys.map(spkId => {
+        const s = speakers[spkId];
+        const turnCount = (state.activeMeeting.segments || []).filter(seg => seg.speaker === spkId).length;
+
+        return `
+          <div class="px-4 py-3 flex items-center gap-3">
+            <input type="color" value="${s.color || '#0A84FF'}"
+              onchange="updateSpeaker('${spkId}', null, this.value)"
+              class="w-4 h-4 rounded-full cursor-pointer bg-transparent border-0 shrink-0" />
+
+            <input type="text" value="${escapeHtml(s.name)}"
+              onblur="updateSpeaker('${spkId}', this.value, null)"
+              onkeydown="if(event.key==='Enter') this.blur()"
+              class="flex-1 bg-transparent hover:bg-white/5 focus:bg-apple-card focus:outline-none px-2.5 py-1 rounded-md text-xs font-medium text-white" />
+
+            <span class="text-[11px] text-apple-secondary font-mono">${turnCount} ${t('turns')}</span>
+
+            <button onclick="previewSpeakerVoice(${s.sample_start || 0}, ${s.sample_end || 5})"
+              class="px-2.5 py-1 rounded-md bg-white/5 hover:bg-white/10 text-apple-label text-xs transition">
+              ▶ ${t('listenBtn')}
+            </button>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function previewSpeakerVoice(startSec, endSec) {
+      const player = document.getElementById('media-player');
+      if (!player) return;
+      clearTimeout(state.voicePreviewTimer);
+      player.currentTime = startSec;
+      player.play();
+      const durationMs = Math.max(2500, Math.min(6000, (endSec - startSec) * 1000));
+      state.voicePreviewTimer = setTimeout(() => player.pause(), durationMs);
+    }
+
+    function filterBySpeaker(spkId) {
+      state.speakerFilter = (state.speakerFilter === spkId) ? null : spkId;
+      renderSpeakerPillsBar();
+      renderTranscript();
+    }
+
+    async function updateSpeaker(speakerId, newName, newColor) {
+      if (!state.activeMeeting) return;
+      const current = state.activeMeeting.speakers[speakerId] || {};
+      const nameToSave = newName !== null ? newName.trim() : current.name;
+      const colorToSave = newColor !== null ? newColor : current.color;
+
+      const res = await fetch(`/api/meetings/${state.activeMeeting.id}/speakers`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          speaker_id: speakerId,
+          name: nameToSave || speakerId,
+          color: colorToSave
+        })
+      });
+      state.activeMeeting = await res.json();
+      renderSpeakerPillsBar();
+      renderSpeakersPanel();
+      renderTranscript();
+    }
+
+    function renderTranscript() {
+      const container = document.getElementById('transcript-inner');
+      const m = state.activeMeeting;
+      if (!m) return;
+
+      const segments = m.segments || [];
+      const speakers = m.speakers || {};
+      const query = (document.getElementById('transcript-search').value || '').trim().toLowerCase();
+
+      const filtered = segments.filter(seg => {
+        if (state.speakerFilter && seg.speaker !== state.speakerFilter) return false;
+        if (query) {
+          const spkName = (speakers[seg.speaker]?.name || seg.speaker || '').toLowerCase();
+          return seg.text.toLowerCase().includes(query) || spkName.includes(query);
+        }
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        container.innerHTML = `<div class="py-20 text-center text-xs text-apple-tertiary">
+          ${segments.length === 0 ? '…' : '—'}
+        </div>`;
+        return;
+      }
+
+      const speakerOptionsHtml = (currentSpk) => Object.keys(speakers).map(k =>
+        `<option value="${k}" ${k === currentSpk ? 'selected' : ''} class="bg-apple-card text-white">${escapeHtml(speakers[k].name)}</option>`
+      ).join('');
+
+      container.innerHTML = filtered.map((seg, idx) => {
+        const spk = speakers[seg.speaker] || { name: seg.speaker || 'Speaker', color: '#0A84FF' };
+        const words = seg.words || [];
+
+        let bodyHtml = '';
+        if (words.length > 0 && !query) {
+          bodyHtml = words.map(w =>
+            `<span class="word-token cursor-pointer" data-start="${w.start}" data-end="${w.end}" onclick="seekPlayer(${w.start})">${escapeHtml(w.word)}</span>`
+          ).join('');
+        } else {
+          bodyHtml = `<span class="cursor-pointer" onclick="seekPlayer(${seg.start})">${highlightSearch(escapeHtml(seg.text), query)}</span>`;
+        }
+
+        const mergeBtnHtml = idx > 0 ? `
+          <button onclick="mergeSegmentWithPrevious(${seg.id})"
+            title="Склеить с предыдущей репликой"
+            class="opacity-0 group-hover:opacity-100 text-[11px] text-apple-tertiary hover:text-apple-blue transition">
+            ⇈ Склеить
+          </button>
+        ` : '';
+
+        return `
+          <div id="seg-${seg.id}" data-start="${seg.start}" data-end="${seg.end}"
+            class="segment-row group px-3.5 py-2.5 flex items-baseline gap-4 hover:bg-white/[0.02]">
+            <button onclick="seekPlayer(${seg.start})"
+              class="text-[11px] font-mono text-apple-tertiary hover:text-apple-blue shrink-0 w-12 text-right transition">
+              ${formatTime(seg.start)}
+            </button>
+
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center justify-between mb-0.5">
+                <select onchange="changeSegmentSpeaker(${seg.id}, this.value)"
+                  style="color: ${spk.color}"
+                  class="bg-transparent text-xs font-semibold focus:outline-none cursor-pointer">
+                  ${speakerOptionsHtml(seg.speaker)}
+                </select>
+                <div class="flex items-center gap-2.5">
+                  ${mergeBtnHtml}
+                  <button onclick="openInlineSegmentEditor(${seg.id})"
+                    class="opacity-0 group-hover:opacity-100 text-[11px] text-apple-tertiary hover:text-white transition">
+                    ${t('editBtn')}
+                  </button>
+                </div>
+              </div>
+              <div id="seg-text-${seg.id}" class="text-[13.5px] text-apple-label/90 leading-relaxed">
+                ${bodyHtml}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function highlightSearch(safeText, query) {
+      if (!query) return safeText;
+      const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+      return safeText.replace(regex, '<mark class="bg-apple-blue/40 text-white rounded px-0.5">$1</mark>');
+    }
+
+    async function mergeSegmentWithPrevious(segId) {
+      if (!state.activeMeeting) return;
+      const res = await fetch(`/api/meetings/${state.activeMeeting.id}/segments/${segId}/merge`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        state.activeMeeting = await res.json();
+        renderSpeakerPillsBar();
+        renderSpeakersPanel();
+        renderTranscript();
+        showToast(state.uiLang === 'en' ? 'Segments merged' : 'Реплики объединены');
+      }
+    }
+
+    async function cleanActiveTranscriptFillers() {
+      if (!state.activeMeeting) return;
+      const res = await fetch(`/api/meetings/${state.activeMeeting.id}/clean-fillers`, {
+        method: 'POST'
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      state.activeMeeting = data.meeting;
+      renderTranscript();
+      const cnt = data.removed_count || 0;
+      showToast(
+        cnt > 0
+          ? (state.uiLang === 'en' ? `Cleaned ${cnt} filler words` : `Удалено слов-паразитов и повторов: ${cnt}`)
+          : (state.uiLang === 'en' ? 'Transcript is already clean!' : 'Текст уже чистый!')
+      );
+    }
+
+    function openInlineSegmentEditor(segId) {
+      const m = state.activeMeeting;
+      if (!m) return;
+      const seg = (m.segments || []).find(s => s.id === segId);
+      if (!seg) return;
+
+      const textBox = document.getElementById(`seg-text-${segId}`);
+      textBox.innerHTML = `
+        <textarea id="seg-edit-area-${segId}" rows="2"
+          class="w-full bg-apple-sidebar border border-apple-blue rounded-lg p-2 text-xs text-white focus:outline-none mt-1">${escapeHtml(seg.text)}</textarea>
+        <div class="flex justify-end gap-2 mt-1.5">
+          <button onclick="renderTranscript()" class="px-2.5 py-1 rounded text-apple-secondary hover:text-white text-xs">${t('cancel')}</button>
+          <button onclick="saveSegmentEdit(${segId})" class="px-3 py-1 rounded-md bg-apple-blue text-white text-xs font-medium">${t('save')}</button>
+        </div>
+      `;
+    }
+
+    async function saveSegmentEdit(segId) {
+      const newText = document.getElementById(`seg-edit-area-${segId}`).value.trim();
+      const res = await fetch(`/api/meetings/${state.activeMeeting.id}/segments/${segId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: newText })
+      });
+      state.activeMeeting = await res.json();
+      renderTranscript();
+    }
+
+    async function changeSegmentSpeaker(segId, newSpeaker) {
+      const res = await fetch(`/api/meetings/${state.activeMeeting.id}/segments/${segId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ speaker: newSpeaker })
+      });
+      state.activeMeeting = await res.json();
+      renderSpeakerPillsBar();
+      renderSpeakersPanel();
+      renderTranscript();
+    }
+
+    // --- Apple Bottom Dock Player Controls & Studio Voice Enhancer ---
+    function togglePlayPause() {
+      const player = document.getElementById('media-player');
+      if (!player) return;
+      if (player.paused) player.play();
+      else player.pause();
+    }
+
+    function skipPlayer(deltaSec) {
+      const player = document.getElementById('media-player');
+      if (!player) return;
+      player.currentTime = Math.max(0, player.currentTime + deltaSec);
+    }
+
+    function scrubPlayer(pct) {
+      const player = document.getElementById('media-player');
+      if (!player || !player.duration) return;
+      player.currentTime = (Number(pct) / 100) * player.duration;
+    }
+
+    function seekPlayer(seconds) {
+      const player = document.getElementById('media-player');
+      if (!player) return;
+      clearTimeout(state.voicePreviewTimer);
+      player.currentTime = Math.max(0, Number(seconds));
+      player.play();
+    }
+
+    function cyclePlaybackSpeed() {
+      state.speedIndex = (state.speedIndex + 1) % state.playbackSpeeds.length;
+      const rate = state.playbackSpeeds[state.speedIndex];
+      const player = document.getElementById('media-player');
+      if (player) player.playbackRate = rate;
+      document.getElementById('speed-cycle-btn').textContent = `${rate.toFixed(rate % 1 === 0 ? 1 : 2)}×`;
+    }
+
+    function toggleStudioVoiceEnhancer() {
+      const player = document.getElementById('media-player');
+      if (!player) return;
+
+      if (!window._audioCtx) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        const ctx = new AudioCtx();
+        const source = ctx.createMediaElementSource(player);
+
+        // 1. High-pass filter at 85 Hz (removes low rumble & mic hum)
+        const hp = ctx.createBiquadFilter();
+        hp.type = 'highpass';
+        hp.frequency.value = 85;
+
+        // 2. Presence boost around 3.1 kHz (speech clarity & intelligibility)
+        const presence = ctx.createBiquadFilter();
+        presence.type = 'peaking';
+        presence.frequency.value = 3100;
+        presence.Q.value = 1.0;
+        presence.gain.value = 4.5;
+
+        // 3. Low-pass filter at 7.8 kHz (removes high hiss)
+        const lp = ctx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.frequency.value = 7800;
+
+        // 4. Broadcast compressor (levels quiet and loud voices)
+        const comp = ctx.createDynamicsCompressor();
+        comp.threshold.value = -26;
+        comp.knee.value = 18;
+        comp.ratio.value = 4.5;
+        comp.attack.value = 0.005;
+        comp.release.value = 0.18;
+
+        const makeupGain = ctx.createGain();
+        makeupGain.gain.value = 1.45;
+
+        window._audioCtx = ctx;
+        window._audioNodes = { source, hp, presence, lp, comp, makeupGain };
+      }
+
+      state.studioVoiceActive = !state.studioVoiceActive;
+      const { source, hp, presence, lp, comp, makeupGain } = window._audioNodes;
+      const ctx = window._audioCtx;
+      if (ctx.state === 'suspended') ctx.resume();
+
+      source.disconnect();
+      hp.disconnect();
+      presence.disconnect();
+      lp.disconnect();
+      comp.disconnect();
+      makeupGain.disconnect();
+
+      if (state.studioVoiceActive) {
+        source.connect(hp);
+        hp.connect(presence);
+        presence.connect(lp);
+        lp.connect(comp);
+        comp.connect(makeupGain);
+        makeupGain.connect(ctx.destination);
+      } else {
+        source.connect(ctx.destination);
+      }
+
+      const btn = document.getElementById('studio-voice-btn');
+      if (btn) {
+        btn.className = state.studioVoiceActive
+          ? 'px-2.5 py-1 rounded-md bg-apple-blue/25 border border-apple-blue/40 text-[11px] font-medium text-apple-blue transition flex items-center gap-1'
+          : 'px-2.5 py-1 rounded-md bg-white/5 hover:bg-white/10 text-[11px] font-medium text-apple-secondary hover:text-white transition flex items-center gap-1';
+      }
+      showToast(
+        state.studioVoiceActive
+          ? (state.uiLang === 'en' ? '✨ Studio Voice Enabled' : '✨ Студийный голос включён (шумодав + компрессор)')
+          : (state.uiLang === 'en' ? 'Original Audio' : 'Исходный звук')
+      );
+    }
+
+    // --- Live Microphone Recorder (Apple Voice Memos Style) ---
+    let _mediaRecorder = null;
+    let _recChunks = [];
+    let _recStream = null;
+    let _recStartTime = 0;
+    let _recTimerInterval = null;
+    let _recAnimFrame = null;
+
+    async function openRecordModal() {
+      openModal('record');
+      const select = document.getElementById('record-mic-select');
+      const nowStr = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }).replace(':', '-');
+      document.getElementById('record-title-input').value = `Запись ${nowStr}`;
+      document.getElementById('record-timer-display').textContent = '00:00';
+      document.getElementById('record-level-bar').style.width = '2%';
+
+      try {
+        const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        tempStream.getTracks().forEach(t => t.stop());
+
+        const mics = devices.filter(d => d.kind === 'audioinput');
+        select.innerHTML = mics.map((m, i) =>
+          `<option value="${escapeHtml(m.deviceId)}">${escapeHtml(m.label || 'Микрофон ' + (i + 1))}</option>`
+        ).join('');
+      } catch (e) {
+        select.innerHTML = `<option value="">Системный микрофон по умолчанию</option>`;
+      }
+    }
+
+    async function startLiveRecording() {
+      try {
+        const micId = document.getElementById('record-mic-select').value;
+        const constraints = {
+          audio: micId
+            ? { deviceId: { exact: micId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+            : { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+        };
+        _recStream = await navigator.mediaDevices.getUserMedia(constraints);
+        _recChunks = [];
+
+        _mediaRecorder = new MediaRecorder(_recStream);
+        _mediaRecorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) _recChunks.push(e.data);
+        };
+        _mediaRecorder.start(250);
+
+        // Live audio level meter
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        const recCtx = new AudioCtx();
+        const src = recCtx.createMediaStreamSource(_recStream);
+        const analyser = recCtx.createAnalyser();
+        analyser.fftSize = 256;
+        src.connect(analyser);
+        const dataArr = new Uint8Array(analyser.frequencyBinCount);
+
+        function updateMeter() {
+          if (!_recStream) return;
+          analyser.getByteFrequencyData(dataArr);
+          let sum = 0;
+          for (let i = 0; i < dataArr.length; i++) sum += dataArr[i];
+          const avg = sum / dataArr.length;
+          const pct = Math.min(100, Math.max(3, Math.round((avg / 110) * 100)));
+          document.getElementById('record-level-bar').style.width = `${pct}%`;
+          _recAnimFrame = requestAnimationFrame(updateMeter);
+        }
+        updateMeter();
+
+        _recStartTime = Date.now();
+        clearInterval(_recTimerInterval);
+        _recTimerInterval = setInterval(() => {
+          const elapsed = Math.floor((Date.now() - _recStartTime) / 1000);
+          document.getElementById('record-timer-display').textContent = formatTime(elapsed);
+        }, 400);
+
+        document.getElementById('btn-start-rec').classList.add('hidden');
+        document.getElementById('btn-stop-rec').classList.remove('hidden');
+        document.getElementById('rec-dot-indicator').classList.add('animate-ping');
+        document.getElementById('record-status-hint').textContent = 'Идёт запись с шумоподавлением…';
+      } catch (err) {
+        alert('Не удалось получить доступ к микрофону: ' + err.message);
+      }
+    }
+
+    function _cleanupRecordingResources() {
+      clearInterval(_recTimerInterval);
+      if (_recAnimFrame) cancelAnimationFrame(_recAnimFrame);
+      if (_recStream) {
+        _recStream.getTracks().forEach(t => t.stop());
+        _recStream = null;
+      }
+      document.getElementById('btn-start-rec').classList.remove('hidden');
+      document.getElementById('btn-stop-rec').classList.add('hidden');
+      document.getElementById('rec-dot-indicator').classList.remove('animate-ping');
+    }
+
+    function cancelLiveRecording() {
+      if (_mediaRecorder && _mediaRecorder.state !== 'inactive') {
+        _mediaRecorder.stop();
+      }
+      _cleanupRecordingResources();
+      closeModal('record');
+    }
+
+    async function stopAndTranscribeRecording() {
+      if (!_mediaRecorder) return;
+      document.getElementById('record-status-hint').textContent = 'Сохранение и отправка на расшифровку…';
+
+      await new Promise(resolve => {
+        _mediaRecorder.onstop = resolve;
+        _mediaRecorder.stop();
+      });
+
+      const blob = new Blob(_recChunks, { type: 'audio/webm' });
+      _cleanupRecordingResources();
+      closeModal('record');
+
+      const rawTitle = (document.getElementById('record-title-input').value || 'Запись').trim();
+      const safeName = rawTitle.replace(/[\\/:*?"<>|]/g, '_') + '.webm';
+      const file = new File([blob], safeName, { type: 'audio/webm' });
+
+      await handleFileSelect([file]);
+      showToast('Запись отправлена на распознавание!');
+    }
+
+    function toggleVideoDrawer() {
+      state.videoOpen = !state.videoOpen;
+      document.getElementById('video-drawer').classList.toggle('hidden', !state.videoOpen);
+      document.getElementById('video-drawer-btn').className = state.videoOpen
+        ? 'px-2.5 py-1.5 rounded-lg bg-apple-blue text-white text-xs font-medium transition flex items-center gap-1.5'
+        : 'px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-apple-secondary hover:text-white text-xs font-medium transition flex items-center gap-1.5';
+    }
+
+    function toggleAutoScroll() {
+      state.autoScroll = state.autoScroll === false ? true : false;
+      const btn = document.getElementById('autoscroll-btn');
+      if (btn) {
+        btn.className = state.autoScroll
+          ? 'px-2.5 py-1.5 rounded-lg bg-apple-blue/20 text-apple-blue border border-apple-blue/30 text-xs font-medium transition flex items-center gap-1.5'
+          : 'px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-apple-secondary hover:text-white text-xs font-medium transition flex items-center gap-1.5';
+      }
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.altKey && e.code === 'Space') {
+        e.preventDefault();
+        togglePlayPause();
+      } else if (e.altKey && e.code === 'ArrowLeft') {
+        e.preventDefault();
+        skipPlayer(-5);
+      } else if (e.altKey && e.code === 'ArrowRight') {
+        e.preventDefault();
+        skipPlayer(5);
+      }
+    });
+
+    document.addEventListener('DOMContentLoaded', () => {
+      state.autoScroll = true;
+      setUILanguage(state.uiLang);
+
+      const player = document.getElementById('media-player');
+      player.addEventListener('play', () => {
+        document.getElementById('icon-play').classList.add('hidden');
+        document.getElementById('icon-pause').classList.remove('hidden');
+      });
+      player.addEventListener('pause', () => {
+        document.getElementById('icon-play').classList.remove('hidden');
+        document.getElementById('icon-pause').classList.add('hidden');
+      });
+      player.addEventListener('loadedmetadata', () => {
+        if (player.duration && isFinite(player.duration)) {
+          document.getElementById('player-total-time').textContent = formatTime(player.duration);
+        }
+      });
+      player.addEventListener('timeupdate', () => {
+        const cur = player.currentTime;
+        const dur = player.duration || (state.activeMeeting && state.activeMeeting.duration) || 1;
+        document.getElementById('player-current-time').textContent = formatTime(cur);
+        document.getElementById('player-scrubber').value = Math.min(100, (cur / dur) * 100);
+
+        let activeSegEl = null;
+        document.querySelectorAll('.segment-row').forEach(card => {
+          const s = Number(card.dataset.start);
+          const e = Number(card.dataset.end);
+          const isCurrent = cur >= s && cur <= e;
+          card.classList.toggle('segment-active', isCurrent);
+          if (isCurrent) activeSegEl = card;
+        });
+
+        document.querySelectorAll('.word-token').forEach(w => {
+          const ws = Number(w.dataset.start);
+          const we = Number(w.dataset.end);
+          w.classList.toggle('word-active', cur >= ws && cur <= we + 0.08);
+        });
+
+        if (activeSegEl && state.autoScroll !== false && !player.paused) {
+          const container = document.getElementById('transcript-container');
+          const rect = activeSegEl.getBoundingClientRect();
+          const cRect = container.getBoundingClientRect();
+          if (rect.top < cRect.top + 50 || rect.bottom > cRect.bottom - 50) {
+            activeSegEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }
+      });
+
+      loadSystemInfo();
+      loadDictionary();
+      loadMeetingsList();
+      setInterval(loadMeetingsList, 2500);
+    });
+
+    // --- Summaries ---
+    function selectSummaryTab(tab) {
+      state.activeSummaryTab = tab;
+      ['protocol', 'tasks', 'tldr'].forEach(k => {
+        const btn = document.getElementById(`sumtab-${k}`);
+        if (btn) {
+          btn.className = (k === tab)
+            ? 'px-3 py-1 rounded-[6px] apple-segment-active transition'
+            : 'px-3 py-1 rounded-[6px] text-apple-secondary hover:text-white transition';
+        }
+      });
+      renderSummaryPanel();
+    }
+
+    function renderSummaryPanel() {
+      const box = document.getElementById('summary-content');
+      if (!state.activeMeeting) return;
+      const summaries = state.activeMeeting.summaries || {};
+      const md = summaries[state.activeSummaryTab] || '';
+
+      if (!md) {
+        box.innerHTML = `<div class="py-12 text-center text-xs text-apple-secondary">
+          ${t('emptySummary')}
+          ${summaries.error ? `<div class="mt-2 text-apple-red">${escapeHtml(summaries.error)}</div>` : ''}
+        </div>`;
+        return;
+      }
+
+      let html = marked.parse(md);
+      html = html.replace(/\[(\d{1,2}):(\d{2})(?::(\d{2}))?\]/g, (match, p1, p2, p3) => {
+        const secs = p3 ? (Number(p1)*3600 + Number(p2)*60 + Number(p3)) : (Number(p1)*60 + Number(p2));
+        return `<button onclick="seekPlayer(${secs})" class="text-apple-blue hover:underline font-mono text-xs">[${p1}:${p2}${p3 ? ':'+p3 : ''}]</button>`;
+      });
+      box.innerHTML = html;
+    }
+
+    async function generateSummaryForActiveTab() {
+      if (!state.activeMeeting) return;
+      const btn = document.getElementById('generate-summary-btn');
+      const box = document.getElementById('summary-content');
+      const chosenModel = document.getElementById('summary-llm-select')?.value || undefined;
+      btn.disabled = true;
+      box.innerHTML = `<div class="py-12 text-center text-xs text-apple-secondary animate-pulse">Генерация протокола через ${escapeHtml(chosenModel || 'Ollama')}…</div>`;
+
+      try {
+        const res = await fetch(`/api/meetings/${state.activeMeeting.id}/summary`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ template: state.activeSummaryTab, model: chosenModel })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Error');
+        state.activeMeeting.summaries = data.summaries;
+        renderSummaryPanel();
+      } catch (e) {
+        box.innerHTML = `<div class="py-6 text-xs text-apple-red">${escapeHtml(e.message)}</div>`;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function runCustomQuestion() {
+      if (!state.activeMeeting) return;
+      const input = document.getElementById('custom-summary-prompt');
+      const prompt = input.value.trim();
+      if (!prompt) return;
+
+      const chosenModel = document.getElementById('summary-llm-select')?.value || undefined;
+      const box = document.getElementById('summary-content');
+      box.innerHTML = `<div class="py-12 text-center text-xs text-apple-secondary animate-pulse">Поиск ответа (${escapeHtml(chosenModel || 'Ollama')})…</div>`;
+
+      try {
+        const res = await fetch(`/api/meetings/${state.activeMeeting.id}/summary`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ template: 'custom', custom_prompt: prompt, model: chosenModel })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Error');
+        state.activeMeeting.summaries = data.summaries;
+        state.activeSummaryTab = 'custom';
+        renderSummaryPanel();
+      } catch (e) {
+        box.innerHTML = `<div class="py-6 text-xs text-apple-red">${escapeHtml(e.message)}</div>`;
+      }
+    }
+
+    function copySummaryText() {
+      if (!state.activeMeeting) return;
+      const text = (state.activeMeeting.summaries || {})[state.activeSummaryTab] || '';
+      if (!text) return;
+      navigator.clipboard.writeText(text);
+      showToast(state.uiLang === 'en' ? 'Copied' : 'Скопировано');
+    }
+
+    // --- Export ---
+    async function exportMeetingById(id, fmt) {
+      try {
+        const res = await fetch(`/api/meetings/${id}/save-export/${fmt}`, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok && data.ok) {
+          showToast(`${data.filename}`);
+          return;
+        }
+      } catch (e) {}
+      window.open(`/api/meetings/${id}/export/${fmt}`, '_blank');
+    }
+
+    async function exportCurrentMeeting(fmt) {
+      if (!state.activeMeeting) return;
+      await exportMeetingById(state.activeMeeting.id, fmt);
+    }
+
+    function escapeHtml(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+  </script>
+</body>
+</html>

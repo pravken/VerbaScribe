@@ -1,0 +1,1 @@
+# Whisper Meeting Studio package
