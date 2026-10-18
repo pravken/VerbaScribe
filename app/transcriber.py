@@ -3,6 +3,10 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from app.hardware import clear_vram, get_hardware_info, register_cuda_dlls
+
+register_cuda_dlls()
+
 from faster_whisper import WhisperModel
 
 from app.audio_utils import extract_audio_16k_mono, format_timestamp, get_media_duration
@@ -16,7 +20,6 @@ from app.database import (
     update_meeting_progress,
 )
 from app.diarizer import diarize_and_merge_segments
-from app.hardware import clear_vram, get_hardware_info, register_cuda_dlls
 from app.ollama_client import generate_meeting_summary, get_ollama_status
 
 # Single worker queue ensures batch jobs run one after another without VRAM collisions
@@ -68,7 +71,7 @@ FILLER_PHRASE_PATTERNS = (
     (r"(?i)\bну\s+типа\b[,.\s]*", ""),
     (r"(?i)\bкак\s+бы\b[,.\s]*", ""),
     (r"(?i)\bвот\s+это\s+самое\b[,.\s]*", ""),
-    (r"(?i)\b(\w+)\s+\1\b", r"\1"),  # immediate stutter repetition: "я я", "мы мы"
+    (r"(?i)\b(\w+)\s+\1\b", r"\1"),  # immediate stutter repetition of identical words
 )
 
 
@@ -86,8 +89,8 @@ def clean_filler_words_in_segments(
     segments: List[Dict[str, Any]],
 ) -> tuple[List[Dict[str, Any]], int]:
     """
-    Removes vocal hesitations (э-э, эм, ммм, uh, um), filler phrases (ну типа, как бы),
-    and stuttered duplicate words while preserving word-level timestamps.
+    Removes vocal hesitations, filler phrases, and stuttered duplicate words
+    while preserving word-level timestamps.
     Returns (cleaned_segments, removed_count).
     """
     import re
@@ -236,7 +239,10 @@ def _process_meeting_job(meeting_id: int) -> None:
         )
 
         # 2. Load Whisper model
+        from app.model_manager import format_whisper_model_name
+
         model_name = meeting.get("model_name") or settings.get("whisper_model") or "large-v3-turbo"
+        pretty_whisper = format_whisper_model_name(model_name)
         device = settings.get("device") or hw["recommended_device"]
         compute_type = settings.get("compute_type") or hw["recommended_compute_type"]
         lang_setting = meeting.get("language") or settings.get("language") or "auto"
@@ -250,7 +256,7 @@ def _process_meeting_job(meeting_id: int) -> None:
             meeting_id,
             status="transcribing",
             progress=15,
-            stage_text=f"Распознавание речи ({model_name})...",
+            stage_text=f"Распознавание речи — {pretty_whisper}",
         )
 
         segments_iter, info = whisper_model.transcribe(

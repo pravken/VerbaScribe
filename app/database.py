@@ -92,6 +92,8 @@ def init_db() -> None:
             "vad_filter": "true",
             "audio_enhance": "true",
             "clean_fillers": "true",
+            "record_source_mode": "mic",
+            "record_mic_device": "",
         }
 
         for k, v in default_settings.items():
@@ -101,7 +103,7 @@ def init_db() -> None:
         conn.close()
 
 
-#Settings helpers
+# Settings helpers
 def get_all_settings() -> Dict[str, str]:
     with _db_lock:
         conn = get_connection()

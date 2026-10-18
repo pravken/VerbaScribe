@@ -18,32 +18,46 @@ if hasattr(sys.stdout, "reconfigure"):
 def register_cuda_dlls() -> None:
     """
     Automatically locates and registers NVIDIA cuBLAS and cuDNN DLLs installed inside
-    the Python virtual environment so CTranslate2 (faster-whisper) works on ANY Windows PC
-    with an NVIDIA GPU without requiring a system-wide CUDA Toolkit installation.
+    the Python virtual environment so CTranslate2 (faster-whisper) and PyTorch (SpeechBrain)
+    coexist on Windows without DLL symbol conflicts (such as cudnnGetLibConfig Error 127).
     """
     if sys.platform != "win32":
         return
 
-    site_packages_Candidates = [
+    import ctypes
+
+    site_packages_candidates = [
         Path(sys.prefix) / "Lib" / "site-packages" / "nvidia",
         Path(__file__).resolve().parent.parent / ".venv" / "Lib" / "site-packages" / "nvidia",
     ]
 
     dll_dirs = []
-    for base in site_packages_Candidates:
+    # Prioritize torch/lib first so its newer cuDNN 9 DLLs take precedence over older shims
+    for base in site_packages_candidates:
+        torch_lib = base.parent / "torch" / "lib"
+        if torch_lib.exists():
+            dll_dirs.append(str(torch_lib.resolve()))
+            for cudnn_dll in (
+                "cudnn64_9.dll",
+                "cudnn_graph64_9.dll",
+                "cudnn_ops64_9.dll",
+                "cudnn_cnn64_9.dll",
+            ):
+                dll_file = torch_lib / cudnn_dll
+                if dll_file.exists():
+                    try:
+                        ctypes.WinDLL(str(dll_file))
+                    except Exception:
+                        pass
+
+    for base in site_packages_candidates:
         if base.exists():
             for bin_dir in base.glob("*/bin"):
                 if bin_dir.is_dir():
                     dll_dirs.append(str(bin_dir.resolve()))
 
-    # Also add torch/lib if present
-    for base in site_packages_Candidates:
-        torch_lib = base.parent / "torch" / "lib"
-        if torch_lib.exists():
-            dll_dirs.append(str(torch_lib.resolve()))
-
     current_path = os.environ.get("PATH", "")
-    for d in dll_dirs:
+    for d in reversed(dll_dirs):
         if d not in current_path:
             os.environ["PATH"] = d + os.pathsep + os.environ.get("PATH", "")
         if hasattr(os, "add_dll_directory"):

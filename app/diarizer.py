@@ -148,8 +148,8 @@ def _extract_embedding_for_slice(
     if dur < 0.35:
         return None
 
-    # Expand window slightly if segment is short (< 1.2s) for cleaner voiceprint
-    pad = max(0.0, (1.2 - dur) / 2.0)
+    # Expand window if segment is short (< 2.2s) for a more stable voiceprint
+    pad = max(0.0, (2.2 - dur) / 2.0)
     s_idx = max(0, int((start_sec - pad) * sr))
     e_idx = min(total_samples, int((end_sec + pad) * sr))
     # Cap window to 10s around center for speed
@@ -186,33 +186,34 @@ def _determine_clusters(
 ) -> np.ndarray:
     """
     Clusters L2-normalized speaker embeddings using Cosine Agglomerative Clustering.
-    Automatically detects if only 1 speaker is present or picks optimal K via Silhouette Score.
+    Automatically detects if only 1 speaker is present or picks optimal K via Silhouette Score,
+    duration-weighted centroids, and inter-centroid cosine distance verification.
     """
     n_samples = len(embeddings)
     if n_samples == 0:
         return np.array([], dtype=int)
-    if n_samples == 1:
-        return np.array([0], dtype=int)
+    if n_samples == 1 or num_speakers_hint == 1:
+        return np.zeros(n_samples, dtype=int)
 
-    # Filter reliable anchor segments (duration >= 1.2s) to determine speaker clusters
-    anchor_mask = durations >= 1.2
-    if np.sum(anchor_mask) < 3:
+    # Filter reliable anchor segments (duration >= 2.2s) to determine speaker clusters
+    # Short emotional phrases (< 2.2s) have higher pitch/timbre variance in ECAPA space
+    anchor_mask = durations >= 2.2
+    if np.sum(anchor_mask) < 2:
+        anchor_mask = durations >= 1.4
+    if np.sum(anchor_mask) < 2:
         anchor_mask = np.ones(n_samples, dtype=bool)
 
     anchor_embs = embeddings[anchor_mask]
+    anchor_durs = durations[anchor_mask]
     dist_matrix = cosine_distances(anchor_embs)
 
-    # If user explicitly specified 1 speaker
-    if num_speakers_hint == 1:
-        return np.zeros(n_samples, dtype=int)
-
-    # Check if all reliable segments belong to the same single voice
+    # In Auto mode (num_speakers_hint <= 0), check if anchor segments belong to a single speaker
     if num_speakers_hint <= 0:
         upper_tri = dist_matrix[np.triu_indices_from(dist_matrix, k=1)]
         if len(upper_tri) > 0:
             p90_dist = float(np.percentile(upper_tri, 90))
-            # ECAPA-TDNN cosine distance for the same speaker is typically < 0.42
-            if p90_dist < 0.38:
+            # Same speaker across varying intonation/emotion in ECAPA-TDNN typically stays < 0.48
+            if p90_dist < 0.48:
                 return np.zeros(n_samples, dtype=int)
 
     # Determine optimal number of speakers K
@@ -224,7 +225,7 @@ def _determine_clusters(
             return np.zeros(n_samples, dtype=int)
 
         best_k = 1
-        best_score = 0.16  # Minimum silhouette threshold to split into >=2 speakers
+        best_score = 0.25  # Minimum silhouette threshold to split into >=2 speakers in Auto mode
         for k in range(2, max_k + 1):
             try:
                 clustering = AgglomerativeClustering(
@@ -233,9 +234,10 @@ def _determine_clusters(
                     linkage="average",
                 )
                 labels = clustering.fit_predict(anchor_embs)
-                # Ensure tiny noise clusters don't dominate
+                # Ensure tiny noise clusters don't create phantom speakers in Auto mode
                 counts = np.bincount(labels)
-                if np.min(counts) < 2 and len(anchor_embs) > 10:
+                cluster_durs = [float(np.sum(anchor_durs[labels == c_idx])) for c_idx in range(k)]
+                if min(cluster_durs) < 2.4 and np.min(counts) < 2:
                     continue
                 score = float(silhouette_score(dist_matrix, labels, metric="precomputed"))
                 if score > best_score:
@@ -247,7 +249,7 @@ def _determine_clusters(
     if best_k <= 1:
         return np.zeros(n_samples, dtype=int)
 
-    # Fit on anchor segments and compute speaker centroids
+    # Fit on anchor segments and compute duration-weighted speaker centroids
     clustering = AgglomerativeClustering(
         n_clusters=best_k,
         metric="cosine",
@@ -255,12 +257,35 @@ def _determine_clusters(
     )
     anchor_labels = clustering.fit_predict(anchor_embs)
 
-    centroids = np.zeros((best_k, embeddings.shape[1]), dtype=np.float32)
+    centroids_list: List[np.ndarray] = []
+    cluster_weights: List[float] = []
     for k in range(best_k):
-        k_embs = anchor_embs[anchor_labels == k]
-        c = np.mean(k_embs, axis=0)
+        mask_k = anchor_labels == k
+        k_embs = anchor_embs[mask_k]
+        k_weights = np.clip(anchor_durs[mask_k], 0.5, 10.0)[:, None]
+        c = np.sum(k_embs * k_weights, axis=0)
         norm = np.linalg.norm(c)
-        centroids[k] = c / (norm if norm > 1e-8 else 1.0)
+        centroids_list.append((c / (norm if norm > 1e-8 else 1.0)).astype(np.float32))
+        cluster_weights.append(float(np.sum(anchor_durs[mask_k])))
+
+    # In Auto mode, merge any two centroids whose cosine distance is < 0.46 (same voice with pitch shift)
+    if num_speakers_hint <= 0 and len(centroids_list) > 1:
+        keep_indices = list(range(len(centroids_list)))
+        keep_indices.sort(key=lambda idx: cluster_weights[idx], reverse=True)
+        merged_centroids: List[np.ndarray] = []
+        for idx in keep_indices:
+            cand = centroids_list[idx]
+            if not merged_centroids:
+                merged_centroids.append(cand)
+                continue
+            dists_to_existing = [float(1.0 - np.dot(cand, existing)) for existing in merged_centroids]
+            if min(dists_to_existing) >= 0.46:
+                merged_centroids.append(cand)
+        centroids = np.vstack(merged_centroids)
+        if len(centroids) <= 1:
+            return np.zeros(n_samples, dtype=int)
+    else:
+        centroids = np.vstack(centroids_list)
 
     # Assign all segments to nearest speaker centroid
     all_dists = cosine_distances(embeddings, centroids)
@@ -345,7 +370,7 @@ def diarize_and_merge_segments(
     unload_diarizer()
 
     if progress_callback:
-        progress_callback(86, "Кластеризация участников встречи по голосам...")
+        progress_callback(86, "Кластеризация спикеров по голосам...")
 
     speaker_assignments = [0] * len(fine_segments)
 
@@ -365,10 +390,10 @@ def diarize_and_merge_segments(
                 closest = min(valid_indices, key=lambda v: abs(v - i))
                 speaker_assignments[i] = speaker_assignments[closest]
 
-        # Temporal collar smoothing: if a very short segment (< 0.9s) is surrounded by the same speaker, smooth it
+        # Temporal collar smoothing: if a short segment (< 2.2s) is surrounded by the same speaker, smooth it
         for i in range(1, len(fine_segments) - 1):
             dur = float(fine_segments[i]["end"]) - float(fine_segments[i]["start"])
-            if dur < 0.95 and speaker_assignments[i - 1] == speaker_assignments[i + 1]:
+            if dur < 2.2 and speaker_assignments[i - 1] == speaker_assignments[i + 1]:
                 speaker_assignments[i] = speaker_assignments[i - 1]
 
     labeled_segments = []

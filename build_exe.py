@@ -11,10 +11,33 @@ ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 ICO_PATH = ASSETS_DIR / "icon.ico"
 
 
+def _dist_to_segment(px: float, py: float, x1: float, y1: float, x2: float, y2: float) -> float:
+    dx = x2 - x1
+    dy = y2 - y1
+    len_sq = dx * dx + dy * dy
+    if len_sq < 1e-9:
+        return math.hypot(px - x1, py - y1)
+    t = max(0.0, min(1.0, ((px - x1) * dx + (py - y1) * dy) / len_sq))
+    proj_x = x1 + t * dx
+    proj_y = y1 + t * dy
+    return math.hypot(px - proj_x, py - proj_y)
+
+
+def _dist_to_rotated_ellipse(
+    px: float, py: float, cx: float, cy: float, rx: float, ry: float, angle_rad: float
+) -> float:
+    cos_a = math.cos(angle_rad)
+    sin_a = math.sin(angle_rad)
+    lx = (px - cx) * cos_a + (py - cy) * sin_a
+    ly = -(px - cx) * sin_a + (py - cy) * cos_a
+    norm_d = math.hypot(lx / rx, ly / ry)
+    return (norm_d - 1.0) * min(rx, ry)
+
+
 def make_png(size: int) -> bytes:
     """
     Generates an RGBA PNG image of size x size with an Apple macOS squircle background
-    (#0A84FF to #5E5CE6 gradient) and a clean studio audio waveform / mic icon in white.
+    and a minimalist Willow (Verba) branch with three fluffy silver-white catkins.
     Uses pure Python (zlib + struct) with zero external dependencies.
     """
     raw_rows = bytearray()
@@ -23,25 +46,40 @@ def make_png(size: int) -> bytes:
     half = size * 0.44
     corner_r = size * 0.22
 
-    # Waveform bar x positions (normalized -1..1) and heights (normalized 0..1)
-    bars = [
-        (-0.52, 0.22),
-        (-0.26, 0.48),
-        (0.00, 0.72),
-        (0.26, 0.52),
-        (0.52, 0.26),
+    # Willow branch polyline segments in normalized coordinates (-1..1)
+    stem_pts = [
+        (-0.48, 0.58),
+        (-0.22, 0.24),
+        (0.04, -0.08),
+        (0.32, -0.44),
     ]
-    bar_half_w = 0.068
+    stem_radius = 0.036
+
+    # Fluffy willow catkins (buds): (cx, cy, rx, ry, angle_deg)
+    buds = [
+        (-0.30, 0.08, 0.125, 0.185, -28.0),
+        (0.16, 0.06, 0.125, 0.185, 32.0),
+        (-0.04, -0.34, 0.125, 0.190, -22.0),
+        (0.36, -0.48, 0.110, 0.165, 25.0),
+    ]
+
+    # Small warm wood cups at base of each willow bud: (cx, cy, r)
+    cups = [
+        (-0.24, 0.21, 0.065),
+        (0.06, 0.17, 0.065),
+        (0.02, -0.20, 0.065),
+        (0.30, -0.38, 0.060),
+    ]
 
     for y in range(size):
         raw_rows.append(0)  # PNG filter type 0 (None)
         ny = (y - cy) / half
         t_grad = y / max(1, size - 1)
 
-        # Gradient colors: top (#1A8CFF) -> bottom (#4B48E6)
-        bg_r = int(26 * (1 - t_grad) + 75 * t_grad)
-        bg_g = int(140 * (1 - t_grad) + 72 * t_grad)
-        bg_b = int(255 * (1 - t_grad) + 230 * t_grad)
+        # Deep botanical slate-teal gradient: top (#16334B) -> bottom (#0E1E2E)
+        bg_r = int(22 * (1 - t_grad) + 14 * t_grad)
+        bg_g = int(51 * (1 - t_grad) + 30 * t_grad)
+        bg_b = int(75 * (1 - t_grad) + 46 * t_grad)
 
         for x in range(size):
             nx = (x - cx) / half
@@ -55,32 +93,58 @@ def make_png(size: int) -> bytes:
                 raw_rows.extend((0, 0, 0, 0))
                 continue
 
-            # Anti-aliased edge alpha
             bg_alpha = 1.0 if dist < -0.8 else max(0.0, min(1.0, 0.5 - dist / 1.6))
 
-            # Subtle inner top highlight
+            # Subtle inner border highlight
             if dist > -size * 0.03 and y < cy:
-                bg_r_px = min(255, bg_r + 22)
-                bg_g_px = min(255, bg_g + 22)
-                bg_b_px = min(255, bg_b + 22)
+                r_px = min(255, bg_r + 24)
+                g_px = min(255, bg_g + 28)
+                b_px = min(255, bg_b + 32)
             else:
-                bg_r_px, bg_g_px, bg_b_px = bg_r, bg_g, bg_b
+                r_px, g_px, b_px = bg_r, bg_g, bg_b
 
-            # Check if pixel is inside one of the 5 rounded voice waveform bars
-            fg_alpha = 0.0
-            for bx, bh in bars:
-                bdx = max(abs(nx - bx) - (bar_half_w * 0.2), 0.0)
-                bdy = max(abs(ny) - (bh - bar_half_w), 0.0)
-                bdist = (math.hypot(bdx, bdy) - bar_half_w * 0.85) * half
-                if bdist < 0.8:
-                    a = 1.0 if bdist < -0.8 else max(0.0, min(1.0, 0.5 - bdist / 1.6))
-                    fg_alpha = max(fg_alpha, a)
+            # 1. Draw willow branch stem (warm emerald-sage #4ADE80)
+            stem_d = 999.0
+            for (x1, y1), (x2, y2) in zip(stem_pts[:-1], stem_pts[1:]):
+                d_seg = (_dist_to_segment(nx, ny, x1, y1, x2, y2) - stem_radius) * half
+                if d_seg < stem_d:
+                    stem_d = d_seg
 
-            r = int(bg_r_px * (1 - fg_alpha) + 255 * fg_alpha)
-            g = int(bg_g_px * (1 - fg_alpha) + 255 * fg_alpha)
-            b = int(bg_b_px * (1 - fg_alpha) + 255 * fg_alpha)
+            if stem_d < 0.8:
+                sa = 1.0 if stem_d < -0.8 else max(0.0, min(1.0, 0.5 - stem_d / 1.6))
+                r_px = int(r_px * (1 - sa) + 82 * sa)
+                g_px = int(g_px * (1 - sa) + 214 * sa)
+                b_px = int(b_px * (1 - sa) + 148 * sa)
+
+            # 2. Draw fluffy silver-white willow catkins (buds)
+            bud_d = 999.0
+            for bx, by, brx, bry, bang in buds:
+                d_b = _dist_to_rotated_ellipse(nx, ny, bx, by, brx, bry, math.radians(bang)) * half
+                if d_b < bud_d:
+                    bud_d = d_b
+
+            if bud_d < 0.8:
+                ba = 1.0 if bud_d < -0.8 else max(0.0, min(1.0, 0.5 - bud_d / 1.6))
+                r_px = int(r_px * (1 - ba) + 248 * ba)
+                g_px = int(g_px * (1 - ba) + 250 * ba)
+                b_px = int(b_px * (1 - ba) + 252 * ba)
+
+            # 3. Draw subtle golden-emerald bud base cups
+            cup_d = 999.0
+            for cx_cup, cy_cup, cr in cups:
+                d_c = (math.hypot(nx - cx_cup, ny - cy_cup) - cr) * half
+                if d_c < cup_d:
+                    cup_d = d_c
+
+            if cup_d < 0.8 and stem_d < 3.5:
+                ca = 1.0 if cup_d < -0.8 else max(0.0, min(1.0, 0.5 - cup_d / 1.6))
+                ca *= 0.85
+                r_px = int(r_px * (1 - ca) + 52 * ca)
+                g_px = int(g_px * (1 - ca) + 199 * ca)
+                b_px = int(b_px * (1 - ca) + 128 * ca)
+
             a = int(bg_alpha * 255)
-            raw_rows.extend((r, g, b, a))
+            raw_rows.extend((r_px, g_px, b_px, a))
 
     def png_chunk(chunk_type: bytes, data: bytes) -> bytes:
         crc = zlib.crc32(chunk_type + data) & 0xFFFFFFFF
@@ -120,13 +184,23 @@ CS_SOURCE = r"""
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
-class WhisperStudioLauncher
+class VerbaScribeLauncher
 {
+    [DllImport("shell32.dll", SetLastError = true)]
+    static extern void SetCurrentProcessExplicitAppUserModelID([MarshalAs(UnmanagedType.LPWStr)] string AppID);
+
     [STAThread]
     static void Main(string[] args)
     {
+        try
+        {
+            SetCurrentProcessExplicitAppUserModelID("VerbaScribe.Desktop.Studio.1");
+        }
+        catch { }
+
         string baseDir = AppDomain.CurrentDomain.BaseDirectory;
         Directory.SetCurrentDirectory(baseDir);
 
@@ -176,7 +250,7 @@ class WhisperStudioLauncher
             }
         }
 
-        // Launch python.exe run.py with zero console window!
+        // Launch python.exe run.py with zero console window
         ProcessStartInfo psi = new ProcessStartInfo();
         psi.FileName = venvPython;
         psi.Arguments = "\"" + runPy + "\"";
@@ -203,10 +277,8 @@ class WhisperStudioLauncher
 
 
 def compile_exe() -> Path:
-    import shutil
-
     build_ico(ICO_PATH)
-    print(f"[OK] Icon generated: {ICO_PATH} ({ICO_PATH.stat().st_size} bytes)")
+    print(f"[OK] Willow icon generated: {ICO_PATH} ({ICO_PATH.stat().st_size} bytes)")
 
     cs_path = BASE_DIR / "launcher.cs"
     cs_path.write_text(CS_SOURCE.strip(), encoding="utf-8-sig")
@@ -236,12 +308,6 @@ def compile_exe() -> Path:
 
     try:
         cs_path.unlink()
-    except Exception:
-        pass
-
-    # Also keep WhisperStudio.exe updated
-    try:
-        shutil.copy2(exe_path, BASE_DIR / "WhisperStudio.exe")
     except Exception:
         pass
 

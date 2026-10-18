@@ -13,16 +13,18 @@ WHISPER_CATALOG: List[Dict[str, Any]] = [
     {
         "id": "large-v3-turbo",
         "repo_id": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
-        "name": "Whisper Large v3 Turbo",
+        "name": "Whisper Turbo",
+        "badge": "1.5 GB · MIT",
         "size": "1.5 GB",
         "vram": "4+ GB VRAM",
-        "desc_ru": "Рекомендуется ★ Скорость в 4 раза выше Large-v3 при почти той же точности",
-        "desc_en": "Recommended ★ 4x faster than Large-v3 with near-identical accuracy",
+        "desc_ru": "Рекомендуется — скорость в 4 раза выше Pro-версии при почти той же точности",
+        "desc_en": "Recommended — 4x faster than Pro with near-identical accuracy",
     },
     {
         "id": "large-v3",
         "repo_id": "Systran/faster-whisper-large-v3",
-        "name": "Whisper Large v3",
+        "name": "Whisper Pro",
+        "badge": "2.9 GB · MIT",
         "size": "2.9 GB",
         "vram": "8+ GB VRAM",
         "desc_ru": "Максимальная точность для сложного звука, акцентов и сленга",
@@ -32,6 +34,7 @@ WHISPER_CATALOG: List[Dict[str, Any]] = [
         "id": "medium",
         "repo_id": "Systran/faster-whisper-medium",
         "name": "Whisper Medium",
+        "badge": "1.4 GB · MIT",
         "size": "1.4 GB",
         "vram": "4+ GB / CPU",
         "desc_ru": "Сбалансированная модель для средних видеокарт и ноутбуков",
@@ -40,7 +43,8 @@ WHISPER_CATALOG: List[Dict[str, Any]] = [
     {
         "id": "small",
         "repo_id": "Systran/faster-whisper-small",
-        "name": "Whisper Small",
+        "name": "Whisper Light",
+        "badge": "465 MB · MIT",
         "size": "465 MB",
         "vram": "2+ GB / CPU",
         "desc_ru": "Лёгкая модель для быстрой работы на процессоре (CPU)",
@@ -48,8 +52,24 @@ WHISPER_CATALOG: List[Dict[str, Any]] = [
     },
 ]
 
+_WHISPER_DISPLAY_NAMES: Dict[str, str] = {
+    "large-v3-turbo": "Whisper Turbo",
+    "large-v3": "Whisper Pro",
+    "medium": "Whisper Medium",
+    "small": "Whisper Light",
+}
+
+
+def format_whisper_model_name(model_id: str) -> str:
+    raw = (model_id or "").strip()
+    if not raw:
+        return "Whisper"
+    return _WHISPER_DISPLAY_NAMES.get(raw.lower(), f"Whisper {raw.replace('-', ' ').title()}")
+
+
 _setup_state: Dict[str, Any] = {
     "active": False,
+    "model_id": "",
     "status": "Ожидание",
     "progress": 0,
     "downloaded_mb": 0.0,
@@ -209,13 +229,15 @@ def start_models_setup(
     whisper_model_id: str,
     install_diarizer: bool = True,
 ) -> Dict[str, Any]:
+    pretty_name = format_whisper_model_name(whisper_model_id)
     with _setup_lock:
         if _setup_state["active"]:
             return dict(_setup_state)
         _setup_state.update(
             {
                 "active": True,
-                "status": "Подготовка к скачиванию ИИ-моделей...",
+                "model_id": whisper_model_id,
+                "status": f"Подготовка к скачиванию {pretty_name}",
                 "progress": 1,
                 "downloaded_mb": 0.0,
                 "total_mb": 0.0,
@@ -223,7 +245,7 @@ def start_models_setup(
                 "logs": [],
             }
         )
-        _log(f"Запуск установки моделей (Whisper: {whisper_model_id})")
+        _log(f"Запуск установки модели {pretty_name}")
 
     def _worker():
         try:

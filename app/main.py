@@ -1,5 +1,6 @@
 import mimetypes
 import shutil
+import sys
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -66,6 +67,11 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 @app.on_event("startup")
 def on_startup() -> None:
     init_db()
+    # Automatically resume any recordings that were interrupted mid-processing
+    active_states = {"queued", "extracting_audio", "transcribing", "diarizing", "summarizing"}
+    for m in list_meetings():
+        if m.get("status") in active_states:
+            enqueue_meeting_job(int(m["id"]))
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -73,7 +79,10 @@ def index() -> HTMLResponse:
     index_file = STATIC_DIR / "index.html"
     if not index_file.exists():
         return HTMLResponse("<h1>UI loading...</h1>")
-    return HTMLResponse(index_file.read_text(encoding="utf-8"))
+    return HTMLResponse(
+        index_file.read_text(encoding="utf-8"),
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+    )
 
 
 # --- System, Hardware & Settings ---
@@ -589,32 +598,126 @@ def api_export_meeting(meeting_id: int, fmt: str) -> Response:
 
     content, media_type, filename = _build_export_bytes(m, fmt)
     encoded_filename = quote(filename)
-    headers = {"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"}
+    headers = {
+        "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}",
+        "Access-Control-Expose-Headers": "Content-Disposition",
+    }
     return Response(content=content, media_type=media_type, headers=headers)
+
+
+_EXPORT_FILE_TYPES = {
+    "md": ("Markdown (*.md)", "*.md", ".md"),
+    "txt": ("Текстовый файл (*.txt)", "*.txt", ".txt"),
+    "srt": ("Субтитры (*.srt)", "*.srt", ".srt"),
+    "json": ("JSON (*.json)", "*.json", ".json"),
+    "docx": ("Документ Word (*.docx)", "*.docx", ".docx"),
+}
+
+
+def _default_export_dir() -> Path:
+    """Returns the last used export folder, or the user's Documents folder."""
+    saved = (get_all_settings().get("export_dir") or "").strip()
+    if saved and Path(saved).is_dir():
+        return Path(saved)
+    docs = Path.home() / "Documents"
+    return docs if docs.is_dir() else Path.home()
+
+
+def _pick_path_native(mode: str, directory: Path, filename: str = "", fmt: str = "") -> Optional[str]:
+    """
+    Spawns an isolated native file/folder dialog via app.native_dialog in a subprocess.
+    This guarantees 100% thread safety and prevents any deadlocks with pywebview or uvicorn.
+    """
+    import subprocess
+
+    desc, pat, ext = _EXPORT_FILE_TYPES.get(fmt.lower(), ("All files (*.*)", "*.*", ""))
+    filter_arg = f"{desc}|{pat}|Все файлы (*.*)|*.*" if ext else "Все файлы (*.*)|*.*"
+
+    cmd = [
+        sys.executable,
+        "-m",
+        "app.native_dialog",
+        "--mode",
+        mode,
+        "--dir",
+        str(directory),
+        "--filename",
+        filename,
+        "--filter",
+        filter_arg,
+        "--ext",
+        ext,
+        "--title",
+        "Сохранить как" if mode == "save" else "Выбор папки для экспорта",
+    ]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=300)
+        out = (proc.stdout or "").strip()
+        return out if out else None
+    except Exception as e:
+        print(f"[export] Native dialog failed: {e}")
+        return None
 
 
 @app.post("/api/meetings/{meeting_id}/save-export/{fmt}")
 def api_save_export_to_disk(meeting_id: int, fmt: str) -> Dict[str, Any]:
     """
-    Saves the exported file directly to D:\\Projects\\Antigravity\\Whisper\\exports
-    and highlights it in Windows Explorer (ideal for standalone desktop app window mode).
+    Asks the user where to save the export via a native Save dialog,
+    writes the file there and remembers the chosen folder for next time.
     """
-    import subprocess
-    from app.database import EXPORTS_DIR
-
     m = get_meeting(meeting_id)
     if not m:
         raise HTTPException(status_code=404, detail="Встреча не найдена")
 
     content, _, filename = _build_export_bytes(m, fmt)
-    EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = (EXPORTS_DIR / filename).resolve()
+    chosen = _pick_path_native("save", _default_export_dir(), filename, fmt.lower())
+    if not chosen:
+        return {"ok": False, "cancelled": True}
+
+    out_path = Path(chosen)
+    ext = _EXPORT_FILE_TYPES.get(fmt.lower(), ("", "", ""))[2]
+    if ext and out_path.suffix.lower() != ext.lower():
+        out_path = out_path.with_name(out_path.name + ext)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_bytes(content)
+    update_settings({"export_dir": str(out_path.parent)})
 
+    return {"ok": True, "path": str(out_path), "filename": out_path.name, "folder": str(out_path.parent)}
+
+
+@app.post("/api/export-dir/pick")
+def api_pick_export_dir() -> Dict[str, Any]:
+    """Lets the user choose the default export folder via a native folder dialog."""
+    chosen = _pick_path_native("folder", _default_export_dir())
+    if not chosen:
+        return {"ok": False, "cancelled": True}
+    update_settings({"export_dir": chosen})
+    return {"ok": True, "folder": chosen}
+
+
+@app.get("/api/export-dir")
+def api_get_export_dir() -> Dict[str, Any]:
+    return {"folder": str(_default_export_dir())}
+
+
+class RevealPayload(BaseModel):
+    path: str
+
+
+@app.post("/api/reveal")
+def api_reveal_path(payload: RevealPayload) -> Dict[str, Any]:
+    """Highlights a saved file (or opens a folder) in Windows Explorer."""
+    import subprocess
+
+    p = Path(payload.path)
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="Файл не найден")
     try:
-        subprocess.Popen(["explorer.exe", f"/select,{out_path}"])
-    except Exception:
-        pass
-
-    return {"ok": True, "path": str(out_path), "filename": filename}
+        if p.is_dir():
+            subprocess.Popen(["explorer.exe", str(p)])
+        else:
+            subprocess.Popen(["explorer.exe", f"/select,{p}"])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"ok": True}
 

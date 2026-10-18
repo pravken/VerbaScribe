@@ -10,22 +10,68 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
+ICO_PATH = BASE_DIR / "assets" / "icon.ico"
+WINDOW_TITLE = "VerbaScribe — AI Speech & Media Studio"
 
 import uvicorn
 from app.hardware import register_cuda_dlls
 
 
-def hide_console_window() -> None:
+def set_app_user_model_id() -> None:
     """
-    Hides the console window once the native desktop GUI window is open.
+    Sets an explicit Windows AppUserModelID so the taskbar groups the window
+    under VerbaScribe with our custom Willow icon rather than python.exe.
     """
     if sys.platform == "win32":
         try:
-            hwnd = ctypes.windll.kernel32.GetConsoleWindow()
-            if hwnd:
-                ctypes.windll.user32.ShowWindow(hwnd, 0)  # SW_HIDE = 0
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                "VerbaScribe.Desktop.Studio.1"
+            )
         except Exception:
             pass
+
+
+def apply_native_window_icon_and_hide_console() -> None:
+    """
+    Hides the console window and applies assets/icon.ico directly to the native
+    Win32 window handle (both ICON_SMALL and ICON_BIG) so the taskbar and titlebar
+    display the Willow icon instead of the default Python icon.
+    """
+    if sys.platform == "win32":
+        try:
+            hwnd_console = ctypes.windll.kernel32.GetConsoleWindow()
+            if hwnd_console:
+                ctypes.windll.user32.ShowWindow(hwnd_console, 0)  # SW_HIDE = 0
+        except Exception:
+            pass
+
+        if ICO_PATH.exists():
+            try:
+                user32 = ctypes.windll.user32
+                LR_LOADFROMFILE = 0x00000010
+                IMAGE_ICON = 1
+                WM_SETICON = 0x0080
+                ICON_SMALL = 0
+                ICON_BIG = 1
+
+                hicon_big = user32.LoadImageW(
+                    0, str(ICO_PATH), IMAGE_ICON, 256, 256, LR_LOADFROMFILE
+                )
+                hicon_small = user32.LoadImageW(
+                    0, str(ICO_PATH), IMAGE_ICON, 32, 32, LR_LOADFROMFILE
+                )
+
+                for _ in range(25):
+                    hwnd = user32.FindWindowW(None, WINDOW_TITLE)
+                    if hwnd:
+                        if hicon_big:
+                            user32.SendMessageW(hwnd, WM_SETICON, ICON_BIG, hicon_big)
+                        if hicon_small:
+                            user32.SendMessageW(hwnd, WM_SETICON, ICON_SMALL, hicon_small)
+                        break
+                    time.sleep(0.1)
+            except Exception:
+                pass
 
 
 def is_port_in_use(host: str, port: int) -> bool:
@@ -53,11 +99,13 @@ def start_server_in_thread(host: str, port: int) -> threading.Thread:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Whisper Meeting Studio")
-    parser.add_argument("--host", default="127.0.0.1", help="Хост сервера")
-    parser.add_argument("--port", type=int, default=8765, help="Порт сервера")
-    parser.add_argument("--browser", action="store_true", help="Открыть в обычном браузере вместо нативного окна")
-    parser.add_argument("--headless", action="store_true", help="Только сервер без открытия окна")
+    set_app_user_model_id()
+
+    parser = argparse.ArgumentParser(description="VerbaScribe Desktop Studio")
+    parser.add_argument("--host", default="127.0.0.1", help="Server host")
+    parser.add_argument("--port", type=int, default=8765, help="Server port")
+    parser.add_argument("--browser", action="store_true", help="Open in external web browser")
+    parser.add_argument("--headless", action="store_true", help="Run server without GUI window")
     args = parser.parse_args()
 
     url = f"http://{args.host}:{args.port}"
@@ -74,24 +122,25 @@ def main() -> None:
             import webview
 
             if not already_running:
-                print("Запуск локального ИИ-сервера VerbaScribe...")
+                print("Starting VerbaScribe local AI server...")
                 start_server_in_thread(args.host, args.port)
                 wait_for_server(args.host, args.port)
 
             webview.settings["ALLOW_DOWNLOADS"] = True
             webview.create_window(
-                title="VerbaScribe — ИИ-транскрибация и протоколы встреч",
+                title=WINDOW_TITLE,
                 url=url,
                 width=1460,
                 height=900,
-                min_size=(1080, 680),
+                min_size=(1100, 700),
                 background_color="#141416",
                 text_select=True,
             )
-            webview.start(func=hide_console_window)
+            icon_arg = str(ICO_PATH) if ICO_PATH.exists() else None
+            webview.start(func=apply_native_window_icon_and_hide_console, icon=icon_arg)
             os._exit(0)
         except Exception as e:
-            print(f"[!] Не удалось открыть нативное окно pywebview ({e}), переключаюсь на браузер...")
+            print(f"[!] Native window fallback to browser ({e})...")
 
     # Fallback: regular browser mode
     if already_running:
