@@ -4,44 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>VerbaScribe</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['-apple-system', 'BlinkMacSystemFont', 'Inter', 'Segoe UI', 'sans-serif'],
-            mono: ['JetBrains Mono', 'monospace'],
-          },
-          colors: {
-            apple: {
-              bg: '#141416',
-              sidebar: '#1C1C1E',
-              card: '#242426',
-              elevated: '#2C2C2E',
-              border: 'rgba(255, 255, 255, 0.08)',
-              blue: '#0A84FF',
-              blueHover: '#0070E0',
-              red: '#FF453A',
-              green: '#30D158',
-              amber: '#FF9F0A',
-              label: '#F5F5F7',
-              secondary: '#98989D',
-              tertiary: '#636366'
-            }
-          }
-        }
-      }
-    };
-  </script>
+  <link rel="stylesheet" href="/static/vendor/tailwind.css">
+  <script src="/static/vendor/marked.min.js"></script>
+  <script src="/static/vendor/purify.min.js"></script>
   <style>
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+      font-family: 'Inter Variable', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
       background-color: #141416;
       color: #F5F5F7;
       -webkit-font-smoothing: antialiased;
@@ -267,7 +235,7 @@
         <div class="flex items-center gap-2.5">
           <!-- Custom Minimalist Willow Branch (Verba) Botanical Logo -->
           <div class="w-7 h-7 rounded-lg bg-gradient-to-b from-[#163850] to-[#0E2233] border border-white/10 flex items-center justify-center shadow-sm shrink-0"
-               data-i18n-title="tipAppLogo" title="VerbaScribe — Локальная ИИ-студия распознавания речи, анализа аудио и видео">
+               data-i18n-title="tipAppLogo" title="VerbaScribe — локальное распознавание речи и анализ расшифровок">
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none">
               <!-- Willow branch stem -->
               <path d="M5 20C8.5 15.5 13 10.5 18.5 4.5" stroke="#4ADE80" stroke-width="1.8" stroke-linecap="round"/>
@@ -436,7 +404,7 @@
     <!-- ACTIVE RECORDING WORKSPACE -->
     <div id="workspace-content" class="hidden flex-1 flex flex-col overflow-hidden">
 
-      <!-- TOP HEADER BAR: Dedicated strictly to Recording Title, Primary View Tabs, and Document Export -->
+      <!-- TOP HEADER BAR: Recording Title, Primary View Tabs, and Document Export -->
       <header class="border-b apple-border bg-apple-sidebar/80 apple-blur px-5 flex items-center justify-between shrink-0 gap-4 z-20" style="height: 52px;">
 
         <!-- Left: Editable Recording Title + Meta -->
@@ -502,7 +470,11 @@
         <div class="max-w-3xl mx-auto">
           <div class="flex items-center justify-between text-xs mb-1.5">
             <span id="workspace-stage-text" class="text-apple-label font-medium">Обработка…</span>
-            <span id="workspace-progress-pct" class="font-mono text-apple-blue">0%</span>
+            <span class="flex items-center gap-2.5">
+              <span id="workspace-progress-pct" class="font-mono text-apple-blue">0%</span>
+              <button id="workspace-cancel-btn" onclick="cancelActiveProcessing()" data-i18n-title="tipCancelProcessing" title="Остановить обработку этой записи"
+                class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]" data-i18n="cancelProcessingBtn">Отменить</button>
+            </span>
           </div>
           <div class="w-full h-1 bg-white/10 rounded-full overflow-hidden">
             <div id="workspace-progress-bar" class="h-full bg-apple-blue transition-all duration-300" style="width: 0%"></div>
@@ -808,6 +780,12 @@
     </button>
     <button onclick="ctxOpenReconfigureModal()" data-i18n-title="tipCtxReconfigure" title="Изменить модель Whisper или число спикеров и запустить заново" class="macos-menu-item">
       <span data-i18n="ctxReconfigure">Параметры и перезапуск…</span>
+    </button>
+    <button id="ctx-cancel-item" onclick="ctxCancelProcessing()" data-i18n-title="tipCtxCancel" title="Остановить распознавание этой записи" class="macos-menu-item hidden">
+      <span data-i18n="ctxCancel">Отменить обработку</span>
+    </button>
+    <button id="ctx-restore-item" onclick="ctxRestoreSegments()" data-i18n-title="tipCtxRestore" title="Вернуть исходный текст распознавания" class="macos-menu-item hidden">
+      <span data-i18n="ctxRestore">Вернуть текст до очистки</span>
     </button>
     <button onclick="ctxRevealInExplorer()" data-i18n-title="tipCtxReveal" title="Открыть папку с исходным медиафайлом в Проводнике Windows" class="macos-menu-item">
       <span data-i18n="ctxReveal">Показать файл в Проводнике</span>
@@ -1173,7 +1151,7 @@
           <div class="flex items-center justify-between gap-2">
             <div>
               <h4 class="text-xs font-semibold text-white" data-i18n="ollamaSectionTitle">3. Модели ИИ для Саммари (Ollama LLM · Apache 2.0)</h4>
-              <p class="text-[11px] text-apple-secondary" data-i18n="ollamaSectionDesc">100% бесплатные открытые модели для коммерческого и личного использования</p>
+              <p class="text-[11px] text-apple-secondary" data-i18n="ollamaSectionDesc">Бесплатные модели с открытыми весами; лицензию конкретной модели стоит проверить перед коммерческим использованием</p>
             </div>
             <span id="settings-ollama-pill" class="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-white/5 text-apple-secondary shrink-0"></span>
           </div>
@@ -1392,7 +1370,7 @@
         whisperSectionTitle: '2. Модели распознавания речи (Whisper + Спикеры)',
         whisperSectionDesc: 'Скачайте нужную модель под вашу видеокарту или процессор',
         ollamaSectionTitle: '3. Модели ИИ для Саммари (Ollama LLM · Apache 2.0)',
-        ollamaSectionDesc: '100% бесплатные открытые модели для коммерческого и личного использования',
+        ollamaSectionDesc: 'Бесплатные модели с открытыми весами; лицензию конкретной модели стоит проверить перед коммерческим использованием',
         downloadBtn: 'Скачать',
         recordings: 'Медиатека',
         rightClickHint: 'ПКМ — меню',
@@ -1449,7 +1427,7 @@
         turns: 'репл.',
         emptySummary: 'Нажмите «Сформировать», чтобы создать структурированный ИИ-разбор через локальную модель Ollama.',
         // Tooltips (RU)
-        tipAppLogo: 'VerbaScribe — Локальная ИИ-студия распознавания речи, анализа аудио и видео',
+        tipAppLogo: 'VerbaScribe — локальное распознавание речи и анализ расшифровок',
         tipHwStatus: 'Открыть настройки оборудования и моделей ИИ',
         tipRecordBtn: 'Записать звук с микрофона, динамиков или обоих источников',
         tipImportBtn: 'Добавить аудио или видео файлы для расшифровки',
@@ -1551,6 +1529,15 @@
         showInFolder: 'Показать в папке',
         tipShowInFolder: 'Выделить сохранённый файл в проводнике',
         exportFailed: 'Не удалось сохранить файл',
+        ctxCancel: 'Отменить обработку',
+        tipCtxCancel: 'Остановить распознавание этой записи',
+        ctxRestore: 'Вернуть текст до очистки',
+        tipCtxRestore: 'Отменить удаление слов-паразитов и вернуть исходный текст распознавания',
+        cancelProcessingBtn: 'Отменить',
+        tipCancelProcessing: 'Остановить обработку этой записи',
+        undo: 'Отменить',
+        confirmDelete: 'Удалить запись «{title}»? Расшифровка и загруженная в программу копия файла будут удалены без возможности восстановления. Исходные файлы, добавленные по пути на диске, не удаляются.',
+        statusCancelled: 'Отменено',
       },
       en: {
         appTagline: 'AI Speech & Media Studio',
@@ -1582,7 +1569,7 @@
         whisperSectionTitle: '2. Speech Recognition Models (Whisper + Speakers)',
         whisperSectionDesc: 'Download the optimal model for your GPU or CPU',
         ollamaSectionTitle: '3. AI Analysis Models (Ollama LLM · Apache 2.0)',
-        ollamaSectionDesc: '100% free open-weights models for commercial and personal use',
+        ollamaSectionDesc: 'Free open-weights models; check the license of each model before commercial use',
         downloadBtn: 'Download',
         recordings: 'Library',
         rightClickHint: 'Right-click for menu',
@@ -1590,7 +1577,7 @@
         settings: 'Settings',
         settingsModalTitle: 'Settings & AI Models',
         emptyTitle: 'Drop audio or video files here',
-        emptySubtitle: 'Supports MP4, MKV, MOV, WEBM, MP3, WAV, M4A · 100% On-Device Local AI',
+        emptySubtitle: 'Supports MP4, MKV, MOV, WEBM, MP3, WAV, M4A · Processed locally on your computer',
         chooseFiles: 'Choose Files…',
         tabTranscript: 'Transcript',
         tabSummary: 'AI Insights',
@@ -1639,7 +1626,7 @@
         turns: 'turns',
         emptySummary: 'Click "Generate" to create structured AI insights using local Ollama.',
         // Tooltips (EN)
-        tipAppLogo: 'VerbaScribe — Local AI Speech, Audio & Video Intelligence Studio',
+        tipAppLogo: 'VerbaScribe — local speech recognition and transcript analysis',
         tipHwStatus: 'Open hardware and AI model settings',
         tipRecordBtn: 'Record audio from microphone, system speakers, or both',
         tipImportBtn: 'Import audio or video files for transcription',
@@ -1741,8 +1728,19 @@
         showInFolder: 'Show in folder',
         tipShowInFolder: 'Highlight the saved file in Explorer',
         exportFailed: 'Could not save the file',
+        ctxCancel: 'Cancel processing',
+        tipCtxCancel: 'Stop transcribing this recording',
+        ctxRestore: 'Restore text before cleanup',
+        tipCtxRestore: 'Undo filler-word removal and restore the original recognized text',
+        cancelProcessingBtn: 'Cancel',
+        tipCancelProcessing: 'Stop processing this recording',
+        undo: 'Undo',
+        confirmDelete: 'Delete "{title}"? The transcript and the copy of the file uploaded into the app will be permanently removed. Original files added by disk path are not deleted.',
+        statusCancelled: 'Cancelled',
       }
     };
+
+    const DONE_STATUSES = ['completed', 'failed', 'cancelled'];
 
     let state = {
       uiLang: localStorage.getItem('whisper_ui_lang') || 'ru',
@@ -1767,7 +1765,7 @@
       muted: false,
     };
 
-    // Minimalist SVG Icon Helpers (100% uniform stroke style, zero emojis)
+    // Minimalist SVG Icon Helpers (uniform stroke style)
     const SVG_ICONS = {
       download: `<svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>`,
       check: `<svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>`,
@@ -1896,6 +1894,9 @@
       if (!m) return;
 
       document.getElementById('ctx-title-header').textContent = m.title;
+      document.getElementById('ctx-cancel-item').classList.toggle('hidden', DONE_STATUSES.includes(m.status));
+      const hasBackup = state.activeMeeting && state.activeMeeting.id === m.id && state.activeMeeting.has_segments_backup;
+      document.getElementById('ctx-restore-item').classList.toggle('hidden', !hasBackup);
       const menu = document.getElementById('recording-context-menu');
       menu.classList.remove('hidden');
 
@@ -1964,6 +1965,31 @@
       showToast(state.uiLang === 'en' ? 'Re-processing started' : 'Запущена повторная обработка');
     }
 
+    async function ctxCancelProcessing() {
+      hideContextMenu();
+      if (state.contextMeetingId) await cancelProcessing(state.contextMeetingId);
+    }
+
+    async function ctxRestoreSegments() {
+      hideContextMenu();
+      if (state.contextMeetingId) await restoreSegments(state.contextMeetingId);
+    }
+
+    async function restoreSegments(id) {
+      const res = await fetch(`/api/meetings/${id}/restore-segments`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.detail || 'Error');
+        return;
+      }
+      if (state.activeMeeting && state.activeMeeting.id === id) {
+        state.activeMeeting = data;
+        renderTranscript();
+        renderSpeakersPanel();
+      }
+      showToast(state.uiLang === 'en' ? 'Original text restored' : 'Исходный текст восстановлен');
+    }
+
     async function ctxRevealInExplorer() {
       hideContextMenu();
       if (!state.contextMeetingId) return;
@@ -1980,8 +2006,15 @@
       hideContextMenu();
       const m = state.meetings.find(x => x.id === state.contextMeetingId);
       if (!m) return;
+      if (!confirm(t('confirmDelete').replace('{title}', m.title))) return;
 
-      await fetch(`/api/meetings/${m.id}`, { method: 'DELETE' });
+      const delRes = await fetch(`/api/meetings/${m.id}`, { method: 'DELETE' });
+      if (!delRes.ok) {
+        const data = await delRes.json().catch(() => ({}));
+        showToast(data.detail || 'Error');
+        await loadMeetingsList();
+        return;
+      }
       if (state.activeMeeting && state.activeMeeting.id === m.id) {
         state.activeMeeting = null;
         document.getElementById('workspace-content').classList.add('hidden');
@@ -2065,8 +2098,7 @@
       'qwen2.5:14b': 'Qwen 14B Pro',
       'mistral:7b': 'Mistral 7B',
       'qwen2.5:1.5b': 'Qwen Lite',
-      'qwen2.5:3b': 'Qwen 3B Compact',
-    };
+          };
 
     function formatModelName(modelId) {
       const raw = String(modelId || '').trim();
@@ -2175,24 +2207,24 @@
             actionHtml = `
               <div class="flex items-center gap-1.5">
                 <span class="ui-btn bg-apple-green/20 text-apple-green">${SVG_ICONS.check}<span>${state.uiLang === 'en' ? 'Active' : 'Активна'}</span></span>
-                <button onclick="deleteWhisperModel('${escapeHtml(item.id)}')" title="${escapeHtml(t('tipDeleteModel'))}"
+                <button data-id="${escapeHtml(item.id)}" onclick="deleteWhisperModel(this.dataset.id)" title="${escapeHtml(t('tipDeleteModel'))}"
                   class="ui-btn ui-btn-subtle px-2 hover:text-apple-red">${SVG_ICONS.trash}</button>
               </div>
             `;
           } else if (item.installed) {
             actionHtml = `
               <div class="flex items-center gap-1.5">
-                <button onclick="selectActiveWhisperModel('${escapeHtml(item.id)}')" title="${escapeHtml(t('tipSelectModel'))}"
+                <button data-id="${escapeHtml(item.id)}" onclick="selectActiveWhisperModel(this.dataset.id)" title="${escapeHtml(t('tipSelectModel'))}"
                   class="ui-btn ui-btn-subtle text-white hover:bg-apple-blue">
                   ${state.uiLang === 'en' ? 'Select' : 'Выбрать'}
                 </button>
-                <button onclick="deleteWhisperModel('${escapeHtml(item.id)}')" title="${escapeHtml(t('tipDeleteModel'))}"
+                <button data-id="${escapeHtml(item.id)}" onclick="deleteWhisperModel(this.dataset.id)" title="${escapeHtml(t('tipDeleteModel'))}"
                   class="ui-btn ui-btn-subtle px-2 hover:text-apple-red">${SVG_ICONS.trash}</button>
               </div>
             `;
           } else {
             actionHtml = `
-              <button onclick="startWhisperModelDownload('${escapeHtml(item.id)}')" title="${escapeHtml(t('tipDownloadModel'))}"
+              <button data-id="${escapeHtml(item.id)}" onclick="startWhisperModelDownload(this.dataset.id)" title="${escapeHtml(t('tipDownloadModel'))}"
                 class="ui-btn ui-btn-primary">
                 ${SVG_ICONS.download}
                 <span>${state.uiLang === 'en' ? 'Download' : 'Скачать'} (${escapeHtml(sizeLabel)})</span>
@@ -2327,7 +2359,9 @@
         pill.textContent = state.uiLang === 'en' ? 'Ollama Active' : 'Ollama запущена';
         pill.className = 'text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-apple-green/15 text-apple-green shrink-0';
       } else {
-        pill.textContent = state.uiLang === 'en' ? 'Auto-installs on download' : 'Авто-установка при скачивании';
+        pill.textContent = ollama.installed
+          ? (state.uiLang === 'en' ? 'Ollama not running' : 'Ollama не запущена')
+          : (state.uiLang === 'en' ? 'Ollama not installed' : 'Ollama не установлена');
         pill.className = 'text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-apple-amber/15 text-apple-amber shrink-0';
       }
 
@@ -2355,14 +2389,14 @@
             actionHtml = `<span class="ui-btn bg-apple-green/20 text-apple-green">${SVG_ICONS.check}<span>${state.uiLang === 'en' ? 'Active' : 'Активна'}</span></span>`;
           } else if (item.installed) {
             actionHtml = `
-              <button onclick="selectActiveOllamaModel('${escapeHtml(item.id)}')" title="${escapeHtml(t('tipSelectModel'))}"
+              <button data-id="${escapeHtml(item.id)}" onclick="selectActiveOllamaModel(this.dataset.id)" title="${escapeHtml(t('tipSelectModel'))}"
                 class="ui-btn ui-btn-subtle text-white hover:bg-apple-blue">
                 ${state.uiLang === 'en' ? 'Select' : 'Выбрать'}
               </button>
             `;
           } else {
             actionHtml = `
-              <button onclick="pullOllamaModel('${escapeHtml(item.id)}')" title="${escapeHtml(t('tipDownloadModel'))}"
+              <button data-id="${escapeHtml(item.id)}" onclick="pullOllamaModel(this.dataset.id)" title="${escapeHtml(t('tipDownloadModel'))}"
                 class="ui-btn ui-btn-primary">
                 ${SVG_ICONS.download}
                 <span>${state.uiLang === 'en' ? 'Download' : 'Скачать'} (${escapeHtml(item.size)})</span>
@@ -2483,6 +2517,13 @@
 
     async function pullOllamaModel(modelArg) {
       const model = (modelArg || document.getElementById('set-ollama-model').value || 'qwen2.5:7b').trim();
+      let allowInstall = false;
+      if (state.system && state.system.ollama && !state.system.ollama.installed) {
+        allowInstall = confirm(state.uiLang === 'en'
+          ? 'Ollama is not installed. Install it now via winget (package Ollama.Ollama, about 1 GB)?\n\nYou can also install it manually from https://ollama.com/download'
+          : 'Ollama не установлена. Установить её сейчас через winget (пакет Ollama.Ollama, около 1 ГБ)?\n\nМожно установить и вручную: https://ollama.com/download');
+        if (!allowInstall) return;
+      }
       document.getElementById('set-ollama-model').value = model;
       const pretty = formatModelName(model);
 
@@ -2504,7 +2545,7 @@
       await fetch('/api/ollama/pull', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model })
+        body: JSON.stringify({ model, allow_install: allowInstall })
       });
 
       startOllamaPollingLoop(model);
@@ -2574,12 +2615,29 @@
 
       if (state.activeMeeting) {
         const updated = state.meetings.find(m => m.id === state.activeMeeting.id);
-        if (updated && (updated.status !== state.activeMeeting.status || updated.progress !== state.activeMeeting.progress)) {
+        if (updated && updated.status !== state.activeMeeting.status) {
+          // Segments and speakers only change when a processing stage finishes
+          const finished = updated.status === 'completed';
           await selectMeeting(updated.id, false);
+          if (finished) buildPlayerWaveformEnvelope(state.activeMeeting);
+        } else if (updated && (updated.progress !== state.activeMeeting.progress || updated.stage_text !== state.activeMeeting.stage_text)) {
+          state.activeMeeting.progress = updated.progress;
+          state.activeMeeting.stage_text = updated.stage_text;
+          updateProcessingBanner(state.activeMeeting);
         }
       } else if (state.meetings.length > 0 && !state.activeMeeting) {
         await selectMeeting(state.meetings[0].id, true);
       }
+    }
+
+    async function pollMeetingsLoop() {
+      try {
+        await loadMeetingsList();
+      } catch (e) {
+        console.error(e);
+      }
+      const busy = state.meetings.some(m => !DONE_STATUSES.includes(m.status));
+      setTimeout(pollMeetingsLoop, busy ? 2000 : 8000);
     }
 
     async function handleGlobalSidebarSearch(rawVal) {
@@ -2643,7 +2701,7 @@
 
       listEl.innerHTML = state.meetings.map(m => {
         const isSelected = state.activeMeeting && state.activeMeeting.id === m.id;
-        const isBusy = !['completed', 'failed'].includes(m.status);
+        const isBusy = !DONE_STATUSES.includes(m.status);
         const spkCount = Object.keys(m.speakers || {}).length;
 
         return `
@@ -2662,7 +2720,7 @@
             </div>
             <div class="flex items-center justify-between text-[11px] mt-0.5 ${isSelected ? 'text-white/80' : 'text-apple-secondary'}">
               <span class="font-mono">${isBusy ? `${m.progress}%` : formatTime(m.duration)}</span>
-              <span>${m.status === 'failed' ? (state.uiLang === 'en' ? 'Error' : 'Ошибка') : `${spkCount || 1} spk · ${(m.language || 'ru').toUpperCase()}`}</span>
+              <span>${m.status === 'failed' ? (state.uiLang === 'en' ? 'Error' : 'Ошибка') : m.status === 'cancelled' ? t('statusCancelled') : `${spkCount || 1} spk · ${(m.language || 'ru').toUpperCase()}`}</span>
             </div>
             ${isBusy ? `
               <div class="w-full h-1 bg-black/25 rounded-full overflow-hidden mt-1.5">
@@ -2761,18 +2819,7 @@
       document.getElementById('meeting-meta-badge').textContent =
         `${formatTime(m.duration)} · ${(m.language || 'ru').toUpperCase()} · ${formatModelName(m.model_name)}`;
 
-      const isBusy = !['completed', 'failed'].includes(m.status);
-      const banner = document.getElementById('workspace-processing-banner');
-      banner.classList.toggle('hidden', !isBusy && m.status !== 'failed');
-      if (isBusy) {
-        document.getElementById('workspace-stage-text').textContent = m.stage_text || 'Processing…';
-        document.getElementById('workspace-progress-pct').textContent = `${m.progress}%`;
-        document.getElementById('workspace-progress-bar').style.width = `${m.progress}%`;
-      } else if (m.status === 'failed') {
-        document.getElementById('workspace-stage-text').textContent = m.stage_text || 'Failed';
-        document.getElementById('workspace-progress-pct').textContent = '';
-        document.getElementById('workspace-progress-bar').style.width = '100%';
-      }
+      updateProcessingBanner(m);
 
       if (reloadPlayer || prevId !== m.id) {
         const player = document.getElementById('media-player');
@@ -2788,6 +2835,39 @@
       renderTranscript();
       renderSummaryPanel();
       renderMeetingsSidebar();
+    }
+
+    function updateProcessingBanner(m) {
+      const isBusy = !DONE_STATUSES.includes(m.status);
+      const banner = document.getElementById('workspace-processing-banner');
+      banner.classList.toggle('hidden', !isBusy && m.status !== 'failed' && m.status !== 'cancelled');
+      document.getElementById('workspace-cancel-btn').classList.toggle('hidden', !isBusy);
+      if (isBusy) {
+        document.getElementById('workspace-stage-text').textContent = m.stage_text || 'Processing…';
+        document.getElementById('workspace-progress-pct').textContent = `${m.progress}%`;
+        document.getElementById('workspace-progress-bar').style.width = `${m.progress}%`;
+      } else {
+        document.getElementById('workspace-stage-text').textContent =
+          m.stage_text || (m.status === 'cancelled' ? t('statusCancelled') : 'Failed');
+        document.getElementById('workspace-progress-pct').textContent = '';
+        document.getElementById('workspace-progress-bar').style.width = '100%';
+      }
+    }
+
+    async function cancelActiveProcessing() {
+      if (!state.activeMeeting) return;
+      await cancelProcessing(state.activeMeeting.id);
+    }
+
+    async function cancelProcessing(id) {
+      const res = await fetch(`/api/meetings/${id}/cancel`, { method: 'POST' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.detail || 'Error');
+        return;
+      }
+      showToast(state.uiLang === 'en' ? 'Cancelling…' : 'Обработка отменяется…');
+      await loadMeetingsList();
     }
 
     async function saveMeetingTitle() {
@@ -2950,6 +3030,7 @@
         container.innerHTML = `<div class="py-20 text-center text-xs text-apple-tertiary">
           ${segments.length === 0 ? '…' : '—'}
         </div>`;
+        rebuildPlaybackIndex();
         return;
       }
 
@@ -3012,6 +3093,30 @@
           </div>
         `;
       }).join('');
+      rebuildPlaybackIndex();
+    }
+
+    // Sorted [start, end, element] lists for O(log n) lookup of the playing segment/word
+    const _playbackIndex = { segments: [], words: [], activeSeg: null, activeWord: null };
+
+    function rebuildPlaybackIndex() {
+      const toItems = (selector) => Array.from(document.querySelectorAll(selector))
+        .map(el => ({ s: Number(el.dataset.start), e: Number(el.dataset.end), el }))
+        .sort((a, b) => a.s - b.s);
+      _playbackIndex.segments = toItems('#transcript-inner .segment-row');
+      _playbackIndex.words = toItems('#transcript-inner .word-token');
+      _playbackIndex.activeSeg = null;
+      _playbackIndex.activeWord = null;
+    }
+
+    function findActiveElement(items, t, pad) {
+      let lo = 0, hi = items.length - 1, found = -1;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (items[mid].s <= t) { found = mid; lo = mid + 1; } else { hi = mid - 1; }
+      }
+      if (found >= 0 && t <= items[found].e + pad) return items[found].el;
+      return null;
     }
 
     function highlightSearch(safeText, query) {
@@ -3044,10 +3149,12 @@
       state.activeMeeting = data.meeting;
       renderTranscript();
       const cnt = data.removed_count || 0;
+      const meetingId = state.activeMeeting.id;
       showToast(
         cnt > 0
           ? (state.uiLang === 'en' ? `Cleaned ${cnt} filler words` : `Удалено слов-паразитов и повторов: ${cnt}`)
-          : (state.uiLang === 'en' ? 'Transcript is already clean' : 'Текст уже чистый')
+          : (state.uiLang === 'en' ? 'Transcript is already clean' : 'Текст уже чистый'),
+        cnt > 0 ? { label: t('undo'), onClick: () => restoreSegments(meetingId) } : undefined
       );
     }
 
@@ -3094,36 +3201,23 @@
     // =========================================================================
     // SOUNDCLOUD-STYLE WAVEFORM VISUALIZER FOR BOTTOM PLAYER BAR
     // =========================================================================
-    function buildPlayerWaveformEnvelope(meeting) {
-      const numBars = 120;
-      const peaks = new Array(numBars).fill(0.12);
-      const dur = Math.max(1, Number(meeting?.duration) || 60);
-      const segments = meeting?.segments || [];
-
-      if (segments.length > 0) {
-        for (let i = 0; i < numBars; i++) {
-          const tStart = (i / numBars) * dur;
-          const tEnd = ((i + 1) / numBars) * dur;
-          let activeEnergy = 0.14;
-          for (const seg of segments) {
-            if (seg.end >= tStart && seg.start <= tEnd) {
-              const seed = Math.sin((i + 1) * 12.9898 + (seg.id || 1) * 78.233) * 43758.5453;
-              const frac = seed - Math.floor(seed);
-              activeEnergy = Math.max(activeEnergy, 0.32 + frac * 0.64);
-            }
-          }
-          peaks[i] = activeEnergy;
-        }
-      } else {
-        for (let i = 0; i < numBars; i++) {
-          const seed = Math.sin((i + 1) * 19.19) * 10000;
-          const frac = seed - Math.floor(seed);
-          peaks[i] = 0.20 + frac * 0.65;
-        }
-      }
-
-      state.playerPeaks = peaks;
+    async function buildPlayerWaveformEnvelope(meeting) {
+      // Flat placeholder until the real loudness envelope of the recording is loaded
+      state.playerPeaks = new Array(120).fill(0.14);
       renderPlayerWaveform(0);
+      if (!meeting || !meeting.audio_path) return;
+      try {
+        const res = await fetch(`/api/meetings/${meeting.id}/peaks?bars=120`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!state.activeMeeting || state.activeMeeting.id !== meeting.id) return;
+        if (Array.isArray(data.peaks) && data.peaks.length > 0) {
+          state.playerPeaks = data.peaks.map(v => Math.max(0.08, Number(v) || 0));
+          const player = document.getElementById('media-player');
+          const dur = (player && player.duration) || meeting.duration || 1;
+          renderPlayerWaveform(((player && player.currentTime) || 0) / dur);
+        }
+      } catch (e) {}
     }
 
     function renderPlayerWaveform(progressRatio = 0) {
@@ -3865,20 +3959,18 @@
         document.getElementById('player-current-time').textContent = formatTime(cur);
         renderPlayerWaveform(Math.min(1, cur / dur));
 
-        let activeSegEl = null;
-        document.querySelectorAll('.segment-row').forEach(card => {
-          const s = Number(card.dataset.start);
-          const e = Number(card.dataset.end);
-          const isCurrent = cur >= s && cur <= e;
-          card.classList.toggle('segment-active', isCurrent);
-          if (isCurrent) activeSegEl = card;
-        });
-
-        document.querySelectorAll('.word-token').forEach(w => {
-          const ws = Number(w.dataset.start);
-          const we = Number(w.dataset.end);
-          w.classList.toggle('word-active', cur >= ws && cur <= we + 0.08);
-        });
+        const activeSegEl = findActiveElement(_playbackIndex.segments, cur, 0);
+        if (activeSegEl !== _playbackIndex.activeSeg) {
+          _playbackIndex.activeSeg?.classList.remove('segment-active');
+          activeSegEl?.classList.add('segment-active');
+          _playbackIndex.activeSeg = activeSegEl;
+        }
+        const activeWordEl = findActiveElement(_playbackIndex.words, cur, 0.08);
+        if (activeWordEl !== _playbackIndex.activeWord) {
+          _playbackIndex.activeWord?.classList.remove('word-active');
+          activeWordEl?.classList.add('word-active');
+          _playbackIndex.activeWord = activeWordEl;
+        }
 
         if (activeSegEl && state.autoScroll !== false && !player.paused) {
           const container = document.getElementById('transcript-container');
@@ -3892,8 +3984,7 @@
 
       loadSystemInfo();
       loadDictionary();
-      loadMeetingsList();
-      setInterval(loadMeetingsList, 2500);
+      pollMeetingsLoop();
     });
 
     // --- Summaries ---
@@ -3924,7 +4015,8 @@
         return;
       }
 
-      let html = marked.parse(md);
+      // LLM output is derived from the recording's speech, so it is treated as untrusted HTML
+      let html = DOMPurify.sanitize(marked.parse(md), { FORBID_TAGS: ['style', 'form', 'input'], FORBID_ATTR: ['style'] });
       html = html.replace(/\[(\d{1,2}):(\d{2})(?::(\d{2}))?\]/g, (match, p1, p2, p3) => {
         const secs = p3 ? (Number(p1)*3600 + Number(p2)*60 + Number(p3)) : (Number(p1)*60 + Number(p2));
         return `<button onclick="seekPlayer(${secs})" title="${escapeHtml(t('tipSeekTimestamp'))}" class="text-apple-blue hover:underline font-mono text-xs">[${p1}:${p2}${p3 ? ':'+p3 : ''}]</button>`;
@@ -3945,7 +4037,7 @@
         const res = await fetch(`/api/meetings/${state.activeMeeting.id}/summary`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ template: state.activeSummaryTab, model: chosenModel })
+          body: JSON.stringify({ template: state.activeSummaryTab, model: chosenModel, lang: state.uiLang })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Error');
@@ -3973,7 +4065,7 @@
         const res = await fetch(`/api/meetings/${state.activeMeeting.id}/summary`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ template: 'custom', custom_prompt: prompt, model: chosenModel })
+          body: JSON.stringify({ template: 'custom', custom_prompt: prompt, model: chosenModel, lang: state.uiLang })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Error');
@@ -4115,7 +4207,8 @@
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     }
   </script>
 </body>

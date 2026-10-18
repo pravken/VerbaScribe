@@ -23,6 +23,11 @@ SPEAKER_COLORS = [
     "#14b8a6",  # Teal
 ]
 
+# Auto mode: minimum anchor speech for a cluster to count as a separate speaker
+MIN_SPEAKER_SECONDS = 4.0
+MIN_SPEAKER_SHARE = 0.03
+MAX_MIN_SPEAKER_SECONDS = 20.0
+
 _ecapa_model = None
 _ecapa_device = None
 
@@ -226,6 +231,13 @@ def _determine_clusters(
 
         best_k = 1
         best_score = 0.25  # Minimum silhouette threshold to split into >=2 speakers in Auto mode
+        # A separate speaker must be backed by several anchor segments and enough speech: a single
+        # emotional or noisy phrase can sit far from the rest of the same voice in ECAPA space.
+        total_anchor_dur = float(np.sum(anchor_durs))
+        min_cluster_dur = min(
+            MAX_MIN_SPEAKER_SECONDS,
+            max(MIN_SPEAKER_SECONDS, MIN_SPEAKER_SHARE * total_anchor_dur),
+        )
         for k in range(2, max_k + 1):
             try:
                 clustering = AgglomerativeClustering(
@@ -237,7 +249,7 @@ def _determine_clusters(
                 # Ensure tiny noise clusters don't create phantom speakers in Auto mode
                 counts = np.bincount(labels)
                 cluster_durs = [float(np.sum(anchor_durs[labels == c_idx])) for c_idx in range(k)]
-                if min(cluster_durs) < 2.4 and np.min(counts) < 2:
+                if np.min(counts) < 2 or min(cluster_durs) < min_cluster_dur:
                     continue
                 score = float(silhouette_score(dist_matrix, labels, metric="precomputed"))
                 if score > best_score:

@@ -61,7 +61,6 @@ _LLM_DISPLAY_NAMES: Dict[str, str] = {
     "qwen2.5:14b": "Qwen 14B Pro",
     "mistral:7b": "Mistral 7B",
     "qwen2.5:1.5b": "Qwen Lite",
-    "qwen2.5:3b": "Qwen 3B Compact",
 }
 
 
@@ -169,8 +168,9 @@ def get_ollama_status(base_url: Optional[str] = None) -> Dict[str, Any]:
     active_model = settings.get("ollama_model", "qwen2.5:7b")
 
     exe = find_ollama_executable()
-    # Do not block trying to auto-start if Ollama is not installed or currently installing
-    running = ensure_ollama_running(base_url, auto_start=(exe is not None and not _pull_state["active"]))
+    # Status polling never starts background processes: Ollama is only launched after an
+    # explicit user action (model download or AI summary request).
+    running = _is_ollama_port_open()
     models: List[str] = []
     if running:
         try:
@@ -209,7 +209,7 @@ def get_ollama_status(base_url: Optional[str] = None) -> Dict[str, Any]:
             )
 
     return {
-        "installed": find_ollama_executable() is not None or running,
+        "installed": exe is not None or running,
         "running": running,
         "base_url": base_url,
         "active_model": active_model,
@@ -266,10 +266,14 @@ def _install_ollama_if_needed() -> bool:
     return False
 
 
-def start_model_pull(model_name: str, base_url: Optional[str] = None) -> Dict[str, Any]:
+def start_model_pull(
+    model_name: str,
+    base_url: Optional[str] = None,
+    allow_install: bool = False,
+) -> Dict[str, Any]:
     """
-    Starts downloading an Ollama model (and installs Ollama first if missing)
-    in a background thread with detailed real-time logs and MB/GB progress.
+    Starts downloading an Ollama model in a background thread with real-time logs and progress.
+    Ollama itself is installed via winget only when the user explicitly confirmed it (allow_install).
     """
     if not base_url:
         base_url = get_all_settings().get("ollama_url", "http://127.0.0.1:11434")
@@ -297,6 +301,10 @@ def start_model_pull(model_name: str, base_url: Optional[str] = None) -> Dict[st
         try:
             # 1. Check / Install Ollama if not present
             if not ensure_ollama_running(base_url):
+                if find_ollama_executable() is None and not allow_install:
+                    raise RuntimeError(
+                        "Ollama не установлена. Подтвердите установку в окне настроек или установите её вручную: https://ollama.com/download"
+                    )
                 installed_ok = _install_ollama_if_needed()
                 if not installed_ok:
                     raise RuntimeError(
@@ -375,45 +383,76 @@ def start_model_pull(model_name: str, base_url: Optional[str] = None) -> Dict[st
     return dict(_pull_state)
 
 
-def build_transcript_text_for_llm(
+def build_transcript_lines(
     segments: List[Dict[str, Any]],
     speakers: Dict[str, Dict[str, Any]],
-    max_chars: int = 48000,
-) -> str:
+) -> List[str]:
     lines = []
     for seg in segments:
         spk_id = seg.get("speaker", "SPEAKER_00")
         spk_name = speakers.get(spk_id, {}).get("name", spk_id)
         ts = format_timestamp(seg.get("start", 0.0))
         lines.append(f"[{ts}] {spk_name}: {seg.get('text', '').strip()}")
+    return lines
 
-    full_text = "\n".join(lines)
-    if len(full_text) > max_chars:
-        half = max_chars // 2
-        full_text = (
-            full_text[:half]
-            + "\n\n... [часть середины длинной встречи сокращена для контекстного окна] ...\n\n"
-            + full_text[-half:]
-        )
-    return full_text
+
+def _chunk_lines(lines: List[str], max_chars: int) -> List[str]:
+    chunks: List[str] = []
+    current: List[str] = []
+    size = 0
+    for line in lines:
+        if current and size + len(line) + 1 > max_chars:
+            chunks.append("\n".join(current))
+            current, size = [], 0
+        current.append(line)
+        size += len(line) + 1
+    if current:
+        chunks.append("\n".join(current))
+    return chunks
+
+
+# A transcript up to this size is analysed in one request (fits num_ctx together with the prompt).
+# Longer recordings are summarised chunk by chunk first, so nothing in the middle is dropped.
+SINGLE_PASS_MAX_CHARS = 20000
+CHUNK_MAX_CHARS = 14000
+LLM_NUM_CTX = 16384
+
+_LANG_PHRASES: Dict[str, str] = {
+    "ru": "на русском языке",
+    "en": "на английском языке",
+    "uk": "на украинском языке",
+    "be": "на белорусском языке",
+    "kk": "на казахском языке",
+    "de": "на немецком языке",
+    "fr": "на французском языке",
+    "es": "на испанском языке",
+    "it": "на итальянском языке",
+    "pt": "на португальском языке",
+    "zh": "на китайском языке",
+    "ja": "на японском языке",
+}
+
+
+def _lang_phrase(code: Optional[str]) -> str:
+    key = (code or "").strip().lower()[:2]
+    return _LANG_PHRASES.get(key, "на том же языке, на котором ведётся запись")
 
 
 SYSTEM_GROUNDING_PROMPT = (
-    "Ты — точный ИИ-аналитик аудио- и видеозаписей в программе VerbaScribe. "
-    "Твоя главная задача — анализировать ТОЛЬКО реальный текст предоставленной расшифровки.\n"
-    "СТРОГИЕ ПРАВИЛА:\n"
-    "1. Опирайся ИСКЛЮЧИТЕЛЬНО на факты, фразы, предметы и имена, которые явно присутствуют в тексте расшифровки.\n"
-    "2. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО выдумывать имена людей, корпоративные встречи, проекты, планы на месяц, "
-    "решения или задачи, которых нет в исходном тексте.\n"
+    "Ты — аккуратный ассистент для анализа расшифровок аудио- и видеозаписей в программе VerbaScribe. "
+    "Анализируй ТОЛЬКО реальный текст предоставленной расшифровки.\n"
+    "ПРАВИЛА:\n"
+    "1. Опирайся только на факты, фразы, предметы и имена, которые явно есть в тексте расшифровки.\n"
+    "2. Не выдумывай имена людей, встречи, проекты, решения или задачи, которых нет в исходном тексте.\n"
     "3. Запись может быть любого жанра: интервью, монолог, обзор, лекция, подкаст, бытовой разговор, видеоролик или беседа. "
-    "Описывай ровно то, о чём реально говорят спикеры (даже если речь идёт о еде, бытовых вещах, впечатлениях или юморе).\n"
-    "4. Не повторяй одну и ту же фразу несколько раз. Пиши грамотно на русском языке в формате Markdown без эмодзи."
+    "Описывай ровно то, о чём реально говорят спикеры.\n"
+    "4. Не повторяй одну и ту же фразу несколько раз. Пиши грамотно {lang} в формате Markdown без эмодзи."
 )
 
 SUMMARY_TEMPLATES: Dict[str, str] = {
     "protocol": (
-        "Составь точный структурированный обзор приведённой ниже расшифровки записи на русском языке в формате Markdown (без эмодзи).\n\n"
-        "Используй следующую структуру:\n"
+        "Составь точный структурированный обзор приведённой ниже расшифровки записи {lang} в формате Markdown (без эмодзи).\n\n"
+        "Используй следующую структуру (заголовки тоже пиши на языке ответа):\n"
         "## Краткое содержание\n"
         "(2–3 предложения о том, кто говорит и о чём конкретно идёт речь в записи — строго по тексту расшифровки)\n\n"
         "## Основные темы и высказывания (с таймкодами)\n"
@@ -424,17 +463,42 @@ SUMMARY_TEMPLATES: Dict[str, str] = {
         "(Краткое резюме сказанного в 1–2 предложениях строго по тексту)"
     ),
     "tasks": (
-        "Проанализируй приведённую ниже расшифровку и выпиши только те задачи, планы или действия, которые реально упоминаются в тексте.\n\n"
+        "Проанализируй приведённую ниже расшифровку и выпиши {lang} только те задачи, планы или действия, которые реально упоминаются в тексте.\n\n"
         "ВАЖНО: Если в записи нет никаких рабочих задач, поручений или дедлайнов (например, это рассказ, интервью, обзор или бытовая беседа), "
-        "НЕ выдумывай их! В таком случае прямо напиши: «В данной записи не ставились задачи или поручения», и ниже кратко перечисли, "
+        "НЕ выдумывай их! В таком случае прямо напиши, что в записи не ставились задачи или поручения, и ниже кратко перечисли, "
         "какие действия или события описывали говорящие в своих репликах (с таймкодами `[ММ:СС]`)."
     ),
     "tldr": (
-        "Сделай короткую и точную выжимку (TL;DR) этой записи на русском языке строго по фактам из текста (без выдумывания и без эмодзи):\n"
+        "Сделай короткую и точную выжимку (TL;DR) этой записи {lang} строго по фактам из текста (без выдумывания и без эмодзи):\n"
         "- **О чём запись**: 1–2 предложения.\n"
         "- **Ключевые моменты**: 2–5 коротких пунктов с таймкодами `[ММ:СС]` о том, что именно было сказано."
     ),
 }
+
+
+def _ollama_chat(base_url: str, model: str, system: str, user: str) -> str:
+    with httpx.Client(timeout=600.0) as client:
+        resp = client.post(
+            f"{base_url}/api/chat",
+            json={
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                "stream": False,
+                "options": {
+                    "temperature": 0.1,
+                    "top_p": 0.85,
+                    "repeat_penalty": 1.15,
+                    "num_ctx": LLM_NUM_CTX,
+                },
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        msg = data.get("message") or {}
+        return str(msg.get("content") or data.get("response") or "").strip()
 
 
 def generate_meeting_summary(
@@ -444,15 +508,18 @@ def generate_meeting_summary(
     custom_prompt: str = "",
     model_name: Optional[str] = None,
     base_url: Optional[str] = None,
+    answer_lang: Optional[str] = "ru",
 ) -> str:
     settings = get_all_settings()
     base_url = (base_url or settings.get("ollama_url") or "http://127.0.0.1:11434").replace("localhost", "127.0.0.1").rstrip("/")
     model_name = model_name or settings.get("ollama_model") or "qwen2.5:7b"
 
+    # Generating a summary is an explicit user action, so starting an installed Ollama is fine here
+    ensure_ollama_running(base_url)
     status = get_ollama_status(base_url)
     if not status["running"]:
         raise RuntimeError(
-            "Локальный сервер Ollama ещё не установлен или не запущен. Откройте «Настройки» -> выберите модель LLM и нажмите «Скачать»."
+            "Локальный сервер Ollama не установлен или не запущен. Откройте «Настройки», выберите модель LLM и нажмите «Скачать»."
         )
 
     available_models = status["models"]
@@ -466,47 +533,57 @@ def generate_meeting_summary(
         matches = [m for m in available_models if m.startswith(selected_model.split(":")[0])]
         selected_model = matches[0] if matches else available_models[0]
 
-    transcript_text = build_transcript_text_for_llm(segments, speakers)
+    lines = build_transcript_lines(segments, speakers)
+    transcript_text = "\n".join(lines)
     if not transcript_text.strip():
         raise RuntimeError("Транскрипт пуст, нечего анализировать.")
+
+    lang = _lang_phrase(answer_lang)
+    system_prompt = SYSTEM_GROUNDING_PROMPT.format(lang=lang)
 
     if custom_prompt.strip():
         instruction = (
             "Ответь на вопрос или выполни задание пользователя СТРОГО на основе приведённой ниже "
             "расшифровки записи. Ничего не додумывай от себя. Указывай имена спикеров и таймкоды `[ММ:СС]`, "
-            "где это уместно. Отвечай на русском языке в формате Markdown без эмодзи.\n\n"
+            f"где это уместно. Отвечай {lang} в формате Markdown без эмодзи.\n\n"
             f"Вопрос / задание пользователя: {custom_prompt.strip()}"
         )
     else:
-        instruction = SUMMARY_TEMPLATES.get(template_key, SUMMARY_TEMPLATES["protocol"])
+        instruction = SUMMARY_TEMPLATES.get(template_key, SUMMARY_TEMPLATES["protocol"]).format(lang=lang)
+
+    source_label = "Вот точная расшифровка аудио/видеозаписи"
+    if len(transcript_text) > SINGLE_PASS_MAX_CHARS:
+        # Map step: condense each part of a long recording into detailed timestamped notes
+        chunks = _chunk_lines(lines, CHUNK_MAX_CHARS)
+        focus = (
+            f"Особенно подробно выпиши всё, что относится к вопросу: {custom_prompt.strip()}\n"
+            if custom_prompt.strip()
+            else ""
+        )
+        notes: List[str] = []
+        for idx, chunk in enumerate(chunks, start=1):
+            notes.append(
+                _ollama_chat(
+                    base_url,
+                    selected_model,
+                    system_prompt,
+                    f"Это фрагмент {idx} из {len(chunks)} расшифровки длинной записи:\n```text\n{chunk}\n```\n\n"
+                    f"Составь {lang} подробный конспект этого фрагмента списком: кто что сказал, факты, мнения, "
+                    f"решения, задачи и сроки — каждый пункт с таймкодом `[ММ:СС]`. {focus}"
+                    "Пиши только то, что есть в тексте фрагмента.",
+                )
+            )
+        transcript_text = "\n\n".join(f"### Фрагмент {i}\n{n}" for i, n in enumerate(notes, start=1))
+        source_label = (
+            "Запись длинная, поэтому ниже приведены последовательные конспекты всех её фрагментов "
+            "(с таймкодами исходной записи)"
+        )
 
     user_message = (
-        f"Вот точная расшифровка аудио/видеозаписи:\n"
+        f"{source_label}:\n"
         f"```text\n{transcript_text}\n```\n\n"
         f"Задание:\n{instruction}\n\n"
-        f"Напоминание: пиши ТОЛЬКО о том, что реально сказано в приведённом выше тексте расшифровки. "
-        f"Не выдумывай никаких посторонних людей, встреч или проектов."
+        "Напоминание: пиши ТОЛЬКО о том, что реально сказано в записи. "
+        "Не выдумывай посторонних людей, встреч или проектов."
     )
-
-    with httpx.Client(timeout=300.0) as client:
-        resp = client.post(
-            f"{base_url}/api/chat",
-            json={
-                "model": selected_model,
-                "messages": [
-                    {"role": "system", "content": SYSTEM_GROUNDING_PROMPT},
-                    {"role": "user", "content": user_message},
-                ],
-                "stream": False,
-                "options": {
-                    "temperature": 0.1,
-                    "top_p": 0.85,
-                    "repeat_penalty": 1.15,
-                    "num_ctx": 16384,
-                },
-            },
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        msg = data.get("message") or {}
-        return str(msg.get("content") or data.get("response") or "").strip()
+    return _ollama_chat(base_url, selected_model, system_prompt, user_message)

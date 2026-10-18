@@ -89,6 +89,26 @@ def wait_for_server(host: str, port: int, timeout: float = 12.0) -> bool:
     return False
 
 
+def read_session_token(timeout: float = 5.0) -> str:
+    """Reads the per-launch session token written by the running server (app.main)."""
+    token_file = DATA_DIR / ".session_token"
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            token = token_file.read_text(encoding="utf-8").strip()
+            if token:
+                return token
+        except OSError:
+            pass
+        time.sleep(0.1)
+    return ""
+
+
+def app_url(host: str, port: int) -> str:
+    token = read_session_token()
+    return f"http://{host}:{port}/?token={token}" if token else f"http://{host}:{port}/"
+
+
 def start_server_in_thread(host: str, port: int) -> threading.Thread:
     register_cuda_dlls()
     config = uvicorn.Config("app.main:app", host=host, port=port, log_level="warning")
@@ -108,12 +128,19 @@ def main() -> None:
     parser.add_argument("--headless", action="store_true", help="Run server without GUI window")
     args = parser.parse_args()
 
-    url = f"http://{args.host}:{args.port}"
+    if args.host not in ("127.0.0.1", "localhost", "::1"):
+        # Allow the explicitly chosen host in the server's Host header check
+        os.environ["VERBASCRIBE_ALLOWED_HOSTS"] = args.host
     already_running = is_port_in_use(args.host, args.port)
 
     if args.headless:
         if not already_running:
             register_cuda_dlls()
+            threading.Thread(
+                target=lambda: wait_for_server(args.host, args.port)
+                and print(f"VerbaScribe: {app_url(args.host, args.port)}", flush=True),
+                daemon=True,
+            ).start()
             uvicorn.run("app.main:app", host=args.host, port=args.port, log_level="info")
         return
 
@@ -126,6 +153,7 @@ def main() -> None:
                 start_server_in_thread(args.host, args.port)
                 wait_for_server(args.host, args.port)
 
+            url = app_url(args.host, args.port)
             webview.settings["ALLOW_DOWNLOADS"] = True
             webview.create_window(
                 title=WINDOW_TITLE,
@@ -144,12 +172,12 @@ def main() -> None:
 
     # Fallback: regular browser mode
     if already_running:
-        webbrowser.open(url)
+        webbrowser.open(app_url(args.host, args.port))
         return
 
     def _open_browser():
         wait_for_server(args.host, args.port)
-        webbrowser.open(url)
+        webbrowser.open(app_url(args.host, args.port))
 
     threading.Thread(target=_open_browser, daemon=True).start()
     register_cuda_dlls()

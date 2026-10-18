@@ -22,7 +22,7 @@ _db_lock = threading.Lock()
 
 
 def get_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False, timeout=10)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -31,6 +31,8 @@ def init_db() -> None:
     hw = get_hardware_info()
     with _db_lock:
         conn = get_connection()
+        # WAL lets the UI read while the worker writes progress updates
+        conn.execute("PRAGMA journal_mode=WAL")
         cur = conn.cursor()
 
         cur.execute(
@@ -52,11 +54,17 @@ def init_db() -> None:
                 speakers_json TEXT DEFAULT '{}',
                 segments_json TEXT DEFAULT '[]',
                 summaries_json TEXT DEFAULT '{}',
+                segments_backup_json TEXT DEFAULT '',
                 created_at TEXT NOT NULL,
                 completed_at TEXT DEFAULT ''
             )
             """
         )
+
+        # Migrations for databases created by earlier versions
+        existing_cols = {r["name"] for r in cur.execute("PRAGMA table_info(meetings)").fetchall()}
+        if "segments_backup_json" not in existing_cols:
+            cur.execute("ALTER TABLE meetings ADD COLUMN segments_backup_json TEXT DEFAULT ''")
 
         cur.execute(
             """
@@ -176,11 +184,10 @@ def delete_dictionary_term(term_id: int) -> None:
         conn.close()
 
 
-def get_dictionary_prompt() -> str:
+def get_dictionary_hotwords() -> str:
+    """Active vocabulary terms joined for faster-whisper's `hotwords` (applied to every 30s window)."""
     terms = [item["term"] for item in list_dictionary(active_only=True)]
-    if not terms:
-        return ""
-    return "Ключевые слова, имена и термины встречи: " + ", ".join(terms) + "."
+    return ", ".join(terms)
 
 
 # Meetings helpers
@@ -289,6 +296,51 @@ def save_meeting_results(
         conn.close()
 
 
+def save_segments_backup(meeting_id: int, segments: List[Dict[str, Any]]) -> None:
+    """Keeps a copy of the segments before a destructive operation (e.g. filler cleanup)."""
+    with _db_lock:
+        conn = get_connection()
+        conn.execute(
+            "UPDATE meetings SET segments_backup_json = ? WHERE id = ?",
+            (json.dumps(segments, ensure_ascii=False), meeting_id),
+        )
+        conn.commit()
+        conn.close()
+
+
+def restore_segments_backup(meeting_id: int) -> bool:
+    with _db_lock:
+        conn = get_connection()
+        row = conn.execute(
+            "SELECT segments_backup_json FROM meetings WHERE id = ?", (meeting_id,)
+        ).fetchone()
+        if not row or not row["segments_backup_json"]:
+            conn.close()
+            return False
+        conn.execute(
+            "UPDATE meetings SET segments_json = segments_backup_json, segments_backup_json = '' WHERE id = ?",
+            (meeting_id,),
+        )
+        conn.commit()
+        conn.close()
+    return True
+
+
+def update_meeting_fields(meeting_id: int, **fields: Any) -> None:
+    allowed = {"title", "model_name", "language", "num_speakers_hint"}
+    items = [(k, v) for k, v in fields.items() if k in allowed]
+    if not items:
+        return
+    with _db_lock:
+        conn = get_connection()
+        conn.execute(
+            f"UPDATE meetings SET {', '.join(f'{k} = ?' for k, _ in items)} WHERE id = ?",
+            tuple(v for _, v in items) + (meeting_id,),
+        )
+        conn.commit()
+        conn.close()
+
+
 def get_meeting(meeting_id: int) -> Optional[Dict[str, Any]]:
     with _db_lock:
         conn = get_connection()
@@ -347,6 +399,7 @@ def delete_meeting(meeting_id: int) -> bool:
 
 
 def _deserialize_meeting(d: Dict[str, Any]) -> Dict[str, Any]:
+    d["has_segments_backup"] = bool(d.pop("segments_backup_json", ""))
     for key, target in (
         ("speakers_json", "speakers"),
         ("segments_json", "segments"),

@@ -1,7 +1,8 @@
+import threading
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from app.hardware import clear_vram, get_hardware_info, register_cuda_dlls
 
@@ -14,127 +15,51 @@ from app.database import (
     AUDIO_DIR,
     MODELS_DIR,
     get_all_settings,
-    get_dictionary_prompt,
+    get_dictionary_hotwords,
     get_meeting,
     save_meeting_results,
+    save_segments_backup,
     update_meeting_progress,
 )
 from app.diarizer import diarize_and_merge_segments
 from app.ollama_client import generate_meeting_summary, get_ollama_status
+from app.text_utils import (
+    clean_filler_words_in_segments,
+    is_hallucination,
+    is_low_quality_segment,
+)
 
 # Single worker queue ensures batch jobs run one after another without VRAM collisions
 _executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="whisper_worker")
 
-# Known Whisper hallucination phrases on Russian/English silence
-HALLUCINATION_SUBSTRINGS = (
-    "субтитры делал",
-    "субтитры сделал",
-    "редактор субтитров",
-    "корректор а.егорова",
-    "а.синецкая",
-    "dimatorzok",
-    "продолжение следует",
-    "подпишись на канал",
-    "ставьте лайки",
-    "amara.org",
-)
+# Jobs that are queued or running, and jobs the user asked to cancel
+_jobs_lock = threading.Lock()
+_active_jobs: Set[int] = set()
+_cancel_requested: Set[int] = set()
 
 
-# Vocal hesitations & filler tokens stripped when clean_fillers is active
-FILLER_TOKENS = {
-    "э",
-    "ээ",
-    "эээ",
-    "э-э",
-    "э-э-э",
-    "эм",
-    "эмм",
-    "мм",
-    "ммм",
-    "м-м",
-    "а-а",
-    "ааа",
-    "хм",
-    "хмм",
-    "uh",
-    "uhh",
-    "um",
-    "umm",
-    "erm",
-    "er",
-    "hmm",
-    "hm",
-}
-
-FILLER_PHRASE_PATTERNS = (
-    (r"(?i)\b(э+[\-\s]*э+|м+[\-\s]*м+|э+м+|uh+|um+|er+m*)\b[,.\s]*", ""),
-    (r"(?i)\bну\s+типа\b[,.\s]*", ""),
-    (r"(?i)\bкак\s+бы\b[,.\s]*", ""),
-    (r"(?i)\bвот\s+это\s+самое\b[,.\s]*", ""),
-    (r"(?i)\b(\w+)\s+\1\b", r"\1"),  # immediate stutter repetition of identical words
-)
+class JobCancelled(Exception):
+    pass
 
 
-def _is_hallucination(text: str) -> bool:
-    t = text.strip().lower()
-    if not t:
+def is_job_active(meeting_id: int) -> bool:
+    with _jobs_lock:
+        return meeting_id in _active_jobs
+
+
+def request_cancel(meeting_id: int) -> bool:
+    """Marks a queued/running job for cancellation. It stops at the next checkpoint."""
+    with _jobs_lock:
+        if meeting_id not in _active_jobs:
+            return False
+        _cancel_requested.add(meeting_id)
         return True
-    for bad in HALLUCINATION_SUBSTRINGS:
-        if bad in t and len(t) < 65:
-            return True
-    return False
 
 
-def clean_filler_words_in_segments(
-    segments: List[Dict[str, Any]],
-) -> tuple[List[Dict[str, Any]], int]:
-    """
-    Removes vocal hesitations, filler phrases, and stuttered duplicate words
-    while preserving word-level timestamps.
-    Returns (cleaned_segments, removed_count).
-    """
-    import re
-
-    removed_count = 0
-    cleaned_segments: List[Dict[str, Any]] = []
-
-    for seg in segments:
-        seg_copy = dict(seg)
-        words = list(seg_copy.get("words") or [])
-        if words:
-            filtered_words = []
-            prev_norm = ""
-            for w in words:
-                raw_w = str(w.get("word", ""))
-                norm = re.sub(r"[^\w\-а-яёa-z]", "", raw_w.lower())
-                if norm in FILLER_TOKENS:
-                    removed_count += 1
-                    continue
-                if norm and norm == prev_norm and len(norm) <= 3:
-                    removed_count += 1
-                    continue
-                prev_norm = norm
-                filtered_words.append(w)
-            seg_copy["words"] = filtered_words
-
-        orig_text = str(seg_copy.get("text") or "").strip()
-        new_text = orig_text
-        for pat, repl in FILLER_PHRASE_PATTERNS:
-            new_text, n_sub = re.subn(pat, repl, new_text)
-            removed_count += n_sub
-
-        new_text = re.sub(r"\s{2,}", " ", new_text).strip(" ,;-")
-        if new_text and new_text[0].islower() and orig_text and orig_text[0].isupper():
-            new_text = new_text[0].upper() + new_text[1:]
-
-        if new_text:
-            seg_copy["text"] = new_text
-            cleaned_segments.append(seg_copy)
-
-    for idx, s in enumerate(cleaned_segments):
-        s["id"] = idx + 1
-
-    return cleaned_segments, removed_count
+def _check_cancel(meeting_id: int) -> None:
+    with _jobs_lock:
+        if meeting_id in _cancel_requested:
+            raise JobCancelled()
 
 
 def clean_meeting_transcript(meeting_id: int) -> Dict[str, Any]:
@@ -143,13 +68,31 @@ def clean_meeting_transcript(meeting_id: int) -> Dict[str, Any]:
         raise ValueError("Встреча не найдена")
     segments = m.get("segments") or []
     cleaned, removed = clean_filler_words_in_segments(segments)
-    save_meeting_results(meeting_id, segments=cleaned)
+    if removed:
+        save_segments_backup(meeting_id, segments)
+        save_meeting_results(meeting_id, segments=cleaned)
     updated = get_meeting(meeting_id)
     return {"meeting": updated, "removed_count": removed}
 
 
-def enqueue_meeting_job(meeting_id: int) -> None:
-    _executor.submit(_process_meeting_job, meeting_id)
+def enqueue_meeting_job(meeting_id: int) -> bool:
+    """Queues a job unless the same recording is already queued or being processed."""
+    with _jobs_lock:
+        if meeting_id in _active_jobs:
+            return False
+        _active_jobs.add(meeting_id)
+        _cancel_requested.discard(meeting_id)
+    _executor.submit(_run_job, meeting_id)
+    return True
+
+
+def _run_job(meeting_id: int) -> None:
+    try:
+        _process_meeting_job(meeting_id)
+    finally:
+        with _jobs_lock:
+            _active_jobs.discard(meeting_id)
+            _cancel_requested.discard(meeting_id)
 
 
 def _load_whisper_with_fallback(model_name: str, device: str, compute_type: str) -> WhisperModel:
@@ -196,6 +139,7 @@ def _process_meeting_job(meeting_id: int) -> None:
     meeting = get_meeting(meeting_id)
     if not meeting:
         return
+    whisper_model = None
 
     settings = get_all_settings()
     hw = get_hardware_info()
@@ -249,9 +193,12 @@ def _process_meeting_job(meeting_id: int) -> None:
         language = None if lang_setting in ("auto", "", None) else lang_setting
         vad_enabled = settings.get("vad_filter", "true").lower() == "true"
 
+        _check_cancel(meeting_id)
         whisper_model = _load_whisper_with_fallback(model_name, device, compute_type)
 
-        dict_prompt = get_dictionary_prompt()
+        # `hotwords` is applied to every 30s window; `initial_prompt` would only affect the first
+        # window because condition_on_previous_text is disabled.
+        hotwords = get_dictionary_hotwords()
         update_meeting_progress(
             meeting_id,
             status="transcribing",
@@ -262,7 +209,7 @@ def _process_meeting_job(meeting_id: int) -> None:
         segments_iter, info = whisper_model.transcribe(
             str(wav_path),
             language=language,
-            initial_prompt=dict_prompt if dict_prompt else None,
+            hotwords=hotwords or None,
             word_timestamps=True,
             vad_filter=vad_enabled,
             vad_parameters=dict(min_silence_duration_ms=450, speech_pad_ms=250),
@@ -274,8 +221,13 @@ def _process_meeting_job(meeting_id: int) -> None:
 
         raw_segments: List[Dict[str, Any]] = []
         for seg in segments_iter:
+            _check_cancel(meeting_id)
             text = (seg.text or "").strip()
-            if _is_hallucination(text):
+            if is_hallucination(text) or is_low_quality_segment(
+                getattr(seg, "no_speech_prob", None),
+                getattr(seg, "avg_logprob", None),
+                getattr(seg, "compression_ratio", None),
+            ):
                 continue
 
             words_list = []
@@ -312,8 +264,9 @@ def _process_meeting_job(meeting_id: int) -> None:
             )
 
         # Explicitly unload Whisper from VRAM before Diarization & LLM
-        del whisper_model
+        whisper_model = None
         clear_vram()
+        _check_cancel(meeting_id)
 
         # 3. Speaker Diarization (token-free ECAPA-TDNN clustering)
         diarization_enabled = settings.get("diarization_enabled", "true").lower() == "true"
@@ -338,8 +291,13 @@ def _process_meeting_job(meeting_id: int) -> None:
             progress_callback=_diar_cb,
         )
 
+        _check_cancel(meeting_id)
         if settings.get("clean_fillers", "true").lower() == "true":
-            merged_segments, _ = clean_filler_words_in_segments(merged_segments)
+            cleaned_segments, removed = clean_filler_words_in_segments(merged_segments)
+            if removed:
+                # Keep the unmodified recognition result so the cleanup can be undone
+                save_segments_backup(meeting_id, merged_segments)
+            merged_segments = cleaned_segments
 
         save_meeting_results(
             meeting_id,
@@ -368,6 +326,7 @@ def _process_meeting_job(meeting_id: int) -> None:
                         segments=merged_segments,
                         speakers=speakers_meta,
                         template_key="protocol",
+                        answer_lang=detected_lang,
                     )
                     summaries["protocol"] = summary_md
                     save_meeting_results(meeting_id, summaries=summaries)
@@ -384,7 +343,17 @@ def _process_meeting_job(meeting_id: int) -> None:
             stage_text=f"Готово! Участников: {len(speakers_meta)}, реплик: {len(merged_segments)}",
         )
 
+    except JobCancelled:
+        whisper_model = None
+        clear_vram()
+        update_meeting_progress(
+            meeting_id,
+            status="cancelled",
+            stage_text="Обработка отменена",
+            error_message="",
+        )
     except Exception as e:
+        whisper_model = None
         clear_vram()
         tb = traceback.format_exc()
         update_meeting_progress(

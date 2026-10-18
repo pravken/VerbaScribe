@@ -1,9 +1,7 @@
-# VerbaScribe — Local AI Speech, Audio & Video Intelligence Studio
+# VerbaScribe
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Models: MIT & Apache 2.0](https://img.shields.io/badge/AI%20Models-MIT%20%7C%20Apache%202.0-success.svg)](LICENSE)
-[![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D6.svg)](#)
-[![Privacy: 100% Offline](https://img.shields.io/badge/Privacy-100%25%20On--Device-30D158.svg)](#)
+[![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D6.svg)](#requirements)
 
 [English](#english) | [Русский](#русский)
 
@@ -12,109 +10,149 @@
 <a name="english"></a>
 ## English
 
-**VerbaScribe** is a desktop AI studio for **100% local, free, and private** speech-to-text transcription, speaker diarization, studio voice cleanup, and intelligent content analysis across audio and video media: interviews, podcasts, lectures, streams, research recordings, voice memos, and conferences.
+**VerbaScribe** is a Windows desktop app for transcribing audio and video on your own computer. It recognizes speech, splits it by speaker, and can optionally summarize the transcript or answer questions about it with a local language model through [Ollama](https://ollama.com).
 
-All computation is performed **strictly on your computer** (NVIDIA GPU CUDA or CPU). No audio, video, or transcript data ever leaves your device — delivering complete privacy, offline resilience, and corporate compliance without cloud subscriptions or API keys.
+Recordings and transcripts are processed and stored locally (NVIDIA GPU via CUDA, or CPU). The app needs no account or API key. Network access is described [below](#network-access).
 
-### Key Features
+### Features
 
-- **Local Speech Recognition (`faster-whisper` + `Silero VAD`)**:
-  - Support for `large-v3-turbo` (Whisper Turbo), `large-v3` (Whisper Pro), `medium` (Whisper Medium), and `small` (Whisper Light).
-  - Automatic compute precision detection (`float16`, `int8_float16`, `int8`) matching your GPU VRAM (4 GB to 24 GB) or CPU.
-- **Voice-Based Speaker Diarization (`SpeechBrain ECAPA-TDNN`)**:
-  - 100% local, token-free voice clustering with automatic single-speaker detection and intelligent thresholding.
-  - 1-click voice sample preview per speaker and batch speaker renaming across the entire transcript.
-- **Studio Voice Denoise & Loudnorm**:
-  - Automatic FFmpeg filter pipeline (`highpass` + `lowpass` + adaptive spectral denoiser `afftdn` + click removal `adeclick` + dynamic loudness normalization `dynaudnorm`).
-  - Real-time "Studio Voice" switch inside the player using Web Audio API compressor and biquad filter.
-- **Filler Word Stripping (`Clean Speech`)**:
-  - Automatic and manual removal of verbal hesitations and filler words (*"uh", "um", "like", "you know", "э-э", "ммм", "ну типа"*) while preserving exact word-level timestamps.
-- **On-Device LLM Summaries, Action Items & Q&A (`Ollama`)**:
-  - Structured meeting protocols, action item lists, executive summaries (TL;DR), and interactive question-answering powered by permissive Apache 2.0 open models (`Qwen 2.5 7B / 14B / 1.5B`, `Mistral 7B`).
-- **Interactive Player with Waveform & Word-Click Navigation**:
-  - SoundCloud-style interactive waveform, click any word to seek immediately, follow-speech auto-scroll, volume slider, playback speeds (`1.0x – 2.0x`), and segment merging.
-- **Built-in Audio Recording Studio**:
-  - Record from microphone, system audio (loopback), or both channels simultaneously with real-time waveform visualization and live dB signal meter.
-- **Global Full-Text Search**:
-  - Instant search across all library recordings with direct jumps to matching timestamps.
-- **Custom Vocabulary Dictionary**:
-  - Add domain terminology, names, and acronyms for accurate Whisper transcription.
-- **Native Multi-Format Export**:
-  - Save to `Word (.docx)`, `Markdown (.md)`, `Text (.txt)`, `Subtitles (.srt)`, and `JSON (.json)` via the native OS Save dialog with folder selection.
+- **Speech recognition** with [faster-whisper](https://github.com/SYSTRAN/faster-whisper) and Silero VAD. Models: `large-v3-turbo`, `large-v3`, `medium`, `small`. Compute precision (`float16`, `int8_float16`, `int8`) is chosen from available VRAM, with fallback to CPU.
+- **Speaker separation** by clustering SpeechBrain ECAPA-TDNN voice embeddings. Works without tokens. Accuracy drops with overlapping speech, very short replies, or similar voices, so check the result and fix speakers where needed.
+- **Optional audio cleanup** before recognition: FFmpeg filters for noise reduction, click removal and loudness leveling. A simple voice filter is also available in the player.
+- **Filler-word removal** ("uh", "um", "э-э", "ммм"…). The original text is kept and can be restored.
+- **Local summaries and Q&A** via Ollama (default models: Qwen 2.5 and Mistral 7B). Language models can make mistakes; treat summaries as a draft, not a source of truth. Long recordings are summarized in parts.
+- **Transcript editor and player**: click a word to jump to it, edit segments, merge them, rename speakers, waveform, playback speed.
+- **Recording** from a microphone, system audio, or both.
+- **Search** across all recordings.
+- **Custom vocabulary** (names, terms) passed to Whisper as hotwords.
+- **Export** to Word (`.docx`), Markdown, plain text, SRT subtitles and JSON.
 
-### Quick Start
+### Requirements
 
-The repository is distributed **without bulky AI model weights** (~85 KB code bundle). Necessary models are downloaded on demand in 1 click through the built-in Model Manager on first launch:
+- Windows 10/11 (64-bit)
+- [FFmpeg](https://ffmpeg.org) in `PATH`, e.g. `winget install Gyan.FFmpeg`
+- An NVIDIA GPU with CUDA is recommended; a CPU works but is noticeably slower
+- Disk space for models: about 0.5–3 GB per Whisper model, plus Ollama models if you use summaries
 
-1. Clone repository:
-   ```bash
-   git clone https://github.com/pravken/VerbaScribe.git
-   cd VerbaScribe
-   ```
-2. Launch **`VerbaScribe.exe`** (or `start.bat`):
-   - On the first run, the launcher automatically creates a local virtual environment (`.venv`) and installs dependencies via `setup.bat`.
-   - The native desktop studio window opens with a first-run setup wizard where you can download Whisper and Ollama models with live progress bars and logs.
+### Getting started
 
-> **Requirements**: Windows 10/11 (64-bit), FFmpeg in system `PATH` (e.g. `winget install Gyan.FFmpeg`). NVIDIA GPU with CUDA recommended; modern CPU supported.
+**Option A — release archive.** Download `VerbaScribe-vX.Y.Z.zip` from [Releases](https://github.com/pravken/VerbaScribe/releases), check it against `SHA256SUMS.txt`, unpack it and run `VerbaScribe.exe`. The launcher is built from [`build_exe.py`](build_exe.py) by the [release workflow](.github/workflows/release.yml).
 
-### License & Commercial Use
+**Option B — from source.**
 
-VerbaScribe and all default AI models use permissive open-source licenses (**MIT** and **Apache 2.0**), permitting free commercial and corporate on-premise usage:
+```bash
+git clone https://github.com/pravken/VerbaScribe.git
+cd VerbaScribe
+start.bat
+```
 
-| Component | License | Commercial / Corporate Use |
-| :--- | :--- | :--- |
-| **VerbaScribe** | **MIT License** | Allowed |
-| **OpenAI Whisper / faster-whisper** | **MIT License** | Allowed |
-| **Silero VAD** | **MIT License** | Allowed |
-| **SpeechBrain (ECAPA-TDNN)** | **Apache 2.0** | Allowed |
-| **Qwen 2.5 (7B / 14B / 1.5B) & Mistral 7B** | **Apache 2.0** | Allowed |
-| **Ollama / FastAPI / PyWebView** | **MIT / BSD-3** | Allowed |
+On first launch `setup.bat` creates a Python virtual environment (`.venv`) and installs dependencies. The app then opens a setup screen where you choose which Whisper model to download. To build the launcher yourself, run `python build_exe.py`; it uses the C# compiler bundled with the .NET Framework.
+
+<a name="network-access"></a>
+### Network access
+
+VerbaScribe has no telemetry. It connects to the internet only for these actions:
+
+| When | Where |
+| :--- | :--- |
+| First-time setup (`setup.bat`) | PyPI and download.pytorch.org (Python packages); winget, if `uv` is missing |
+| You download a Whisper or speaker model | Hugging Face (`huggingface.co`) |
+| You download an Ollama model | Ollama's model registry, via your local Ollama |
+| You confirm installing Ollama | winget (package `Ollama.Ollama`) |
+
+The user interface, fonts and scripts are served locally. The built-in server listens only on `127.0.0.1`. Every launch creates a random session token, so other websites open in your browser cannot read or control the app.
+
+### Licenses
+
+VerbaScribe's own code is released under the [MIT License](LICENSE). Models and libraries keep their own licenses; check them yourself before commercial use:
+
+| Component | License |
+| :--- | :--- |
+| Whisper models (OpenAI) / faster-whisper | MIT |
+| Silero VAD | MIT |
+| SpeechBrain ECAPA-TDNN (`spkrec-ecapa-voxceleb`) | Apache 2.0 |
+| Qwen 2.5 1.5B / 7B / 14B, Mistral 7B | Apache 2.0 |
+| Ollama, FastAPI, pywebview | MIT / BSD-3 |
+| Inter, JetBrains Mono fonts | SIL Open Font License |
+
+Not every Qwen 2.5 size is Apache 2.0 (the 3B and 72B models use a different license). If you download other models through Ollama, check their terms.
+
+### Development
+
+```bash
+.venv\Scripts\python.exe -m unittest discover -s tests -t .
+```
+
+Front-end libraries (Tailwind CSS, marked, DOMPurify, fonts) are pinned in `package.json`, and their built copies are committed to `static/vendor/`. You only need Node.js if you change CSS classes in `static/index.html`. In that case, rebuild with:
+
+```bash
+npm install
+npm run vendor
+```
 
 ---
 
 <a name="русский"></a>
 ## Русский
 
-**VerbaScribe** — это настольная ИИ-студия для **100% локального, бесплатного и приватного** распознавания речи, разделения спикеров по голосам, студийной очистки звука и интеллектуального анализа любых аудио- и видеоматериалов: интервью, подкастов, лекций, трансляций, исследований, голосовых заметок и рабочих совещаний.
+**VerbaScribe** — настольное приложение для Windows, которое расшифровывает аудио и видео на вашем компьютере. Оно распознаёт речь, разделяет её по спикерам и, если нужно, составляет краткое содержание или отвечает на вопросы по тексту с помощью локальной языковой модели через [Ollama](https://ollama.com).
 
-Все вычисления выполняются **строго на вашем компьютере** (NVIDIA GPU CUDA или CPU). Никакие медиафайлы или тексты никогда не отправляются в облако — полностью автономная работа с соблюдением конфиденциальности и корпоративных требований ИБ.
+Записи и расшифровки обрабатываются и хранятся локально (видеокарта NVIDIA через CUDA или процессор). Аккаунт и API-ключи не нужны. Какие сетевые подключения бывают, описано [ниже](#сеть).
 
-### Ключевые возможности
+### Возможности
 
-- **Локальное распознавание речи (`faster-whisper` + `Silero VAD`)**:
-  - Модели `large-v3-turbo` (Whisper Turbo), `large-v3` (Whisper Pro), `medium` (Whisper Medium), `small` (Whisper Light).
-  - Автоматический подбор точности (`float16`, `int8_float16`, `int8`) под видеокарту (от 4 ГБ VRAM) или процессор.
-- **Разделение спикеров по голосам (`SpeechBrain ECAPA-TDNN`)**:
-  - Полностью локальная кластеризация тембров голоса без токенов и регистраций, автоматическое определение количества участников.
-  - Прослушивание образца голоса в 1 клик и пакетное переименование спикера во всей записи.
-- **Студийная очистка голоса и шумоподавление**:
-  - Автоматический фильтр FFmpeg (`afftdn` + `adeclick` + `dynaudnorm`) и живой переключатель «Чистый голос» прямо в плеере.
-- **Удаление слов-паразитов (`Clean Speech`)**:
-  - Очистка от заиканий и голосовых хезитаций (*«э-э», «ммм», «ну типа», «uh», «um»*) с сохранением пословных таймкодов.
-- **Локальный ИИ-анализ, структура и Q&A (`Ollama`)**:
-  - Протоколы, списки задач (Action Items), краткая выжимка (TL;DR) и ответы на любые вопросы по содержанию через открытые модели с лицензией Apache 2.0 (`Qwen 2.5`, `Mistral 7B`).
-- **Интерактивный плеер с визуализацией звуковой дорожки**:
-  - Звуковая волна в стиле SoundCloud, клик по слову перематывает на нужную секунду, автопрокрутка за речью, регулятор громкости и скорости `1.0x – 2.0x`.
-- **Встроенная студия записи звука**:
-  - Запись микрофона, системного звука (динамики) или обоих каналов одновременно с индикатором уровня сигнала (dB) и живой волной.
-- **Полнотекстовый поиск по всей медиатеке**:
-  - Мгновенный поиск любого слова или фразы по всем сохранённым записям.
-- **Пользовательский словарь терминов**:
-  - Добавление профильных терминов, имён и названий для точного распознавания.
-- **Экспорт в 5 форматов**:
-  - `Word (.docx)`, `Markdown (.md)`, `Text (.txt)`, `Subtitles (.srt)`, `JSON (.json)` через системное окно с выбором папки.
+- **Распознавание речи**: [faster-whisper](https://github.com/SYSTRAN/faster-whisper) и Silero VAD. Модели `large-v3-turbo`, `large-v3`, `medium`, `small`. Точность вычислений (`float16`, `int8_float16`, `int8`) подбирается под объём видеопамяти, при необходимости работа переходит на CPU.
+- **Разделение по спикерам**: кластеризация голосовых эмбеддингов SpeechBrain ECAPA-TDNN, без токенов. Точность снижается при перебиваниях, очень коротких репликах и похожих голосах, поэтому результат стоит проверять и при необходимости поправлять спикеров вручную.
+- **Очистка звука перед распознаванием** (по желанию): фильтры FFmpeg для шумоподавления, удаления щелчков и выравнивания громкости. В плеере также есть простой голосовой фильтр.
+- **Удаление слов-паразитов** («э-э», «ммм», «uh», «um»…). Исходный текст сохраняется, его можно вернуть.
+- **Локальные саммари и ответы на вопросы** через Ollama (модели по умолчанию — Qwen 2.5 и Mistral 7B). Языковые модели могут ошибаться, поэтому считайте саммари черновиком, а не источником истины. Длинные записи обрабатываются по частям.
+- **Редактор расшифровки и плеер**: клик по слову перематывает к нему, реплики можно править и склеивать, спикеров — переименовывать; есть звуковая дорожка и выбор скорости.
+- **Запись** с микрофона, системного звука или обоих источников.
+- **Поиск** по всем записям.
+- **Словарь** имён и терминов, который передаётся в Whisper как hotwords.
+- **Экспорт** в Word (`.docx`), Markdown, текст, субтитры SRT и JSON.
 
-### Быстрый старт
+### Требования
 
-Программа поставляется без тяжёлых файлов нейросетей (~85 КБ). Модели скачиваются в 1 клик через встроенный менеджер при первом запуске:
+- Windows 10/11 (64-bit)
+- [FFmpeg](https://ffmpeg.org) в `PATH`, например `winget install Gyan.FFmpeg`
+- Желательна видеокарта NVIDIA с CUDA; на процессоре работает, но заметно медленнее
+- Место под модели: примерно 0,5–3 ГБ на модель Whisper и ещё место под модели Ollama, если нужны саммари
 
-1. Склонируйте репозиторий:
-   ```bash
-   git clone https://github.com/pravken/VerbaScribe.git
-   cd VerbaScribe
-   ```
-2. Запустите **`VerbaScribe.exe`** (или `start.bat`):
-   - При первом запуске автоматически создаётся виртуальное окружение `.venv` и устанавливаются зависимости (`setup.bat`).
-   - Откроется окно **VerbaScribe** с мастером настройки для скачивания нужных моделей.
+### Как начать
 
-> **Требования**: Windows 10/11 (64-bit), FFmpeg в `PATH` (`winget install Gyan.FFmpeg`). Видеокарта NVIDIA (CUDA) или современный CPU.
+**Вариант А — архив релиза.** Скачайте `VerbaScribe-vX.Y.Z.zip` со страницы [Releases](https://github.com/pravken/VerbaScribe/releases), сверьте его с `SHA256SUMS.txt`, распакуйте и запустите `VerbaScribe.exe`. Лаунчер собирается из [`build_exe.py`](build_exe.py) в [workflow релиза](.github/workflows/release.yml).
+
+**Вариант Б — из исходников.**
+
+```bash
+git clone https://github.com/pravken/VerbaScribe.git
+cd VerbaScribe
+start.bat
+```
+
+При первом запуске `setup.bat` создаёт виртуальное окружение Python (`.venv`) и ставит зависимости. Затем открывается экран настройки, где вы выбираете модель Whisper для скачивания. Чтобы собрать лаунчер самостоятельно, выполните `python build_exe.py`; он использует компилятор C# из комплекта .NET Framework.
+
+<a name="сеть"></a>
+### Сетевые подключения
+
+Телеметрии в VerbaScribe нет. В интернет приложение обращается только в этих случаях:
+
+| Когда | Куда |
+| :--- | :--- |
+| Первичная установка (`setup.bat`) | PyPI и download.pytorch.org (пакеты Python); winget, если нет `uv` |
+| Вы скачиваете модель Whisper или модель спикеров | Hugging Face (`huggingface.co`) |
+| Вы скачиваете модель Ollama | Реестр моделей Ollama, через вашу локальную Ollama |
+| Вы подтверждаете установку Ollama | winget (пакет `Ollama.Ollama`) |
+
+Интерфейс, шрифты и скрипты загружаются локально. Встроенный сервер слушает только `127.0.0.1`. При каждом запуске создаётся случайный токен сессии, поэтому другие сайты, открытые в браузере, не могут читать данные приложения или управлять им.
+
+### Лицензии
+
+Код VerbaScribe распространяется по [лицензии MIT](LICENSE). У моделей и библиотек свои лицензии; перед коммерческим использованием проверьте их самостоятельно (таблица выше, в английском разделе). Не все размеры Qwen 2.5 выпущены под Apache 2.0: у моделей 3B и 72B другая лицензия. Если скачиваете через Ollama другие модели, проверьте и их условия.
+
+### Разработка
+
+Тесты: `.venv\Scripts\python.exe -m unittest discover -s tests -t .`
+
+Фронтенд-библиотеки (Tailwind CSS, marked, DOMPurify, шрифты) закреплены по версиям в `package.json`, а их собранные копии лежат в `static/vendor/`. Node.js нужен, только если вы меняете CSS-классы в `static/index.html`. После этого пересоберите библиотеки командами `npm install` и `npm run vendor`.

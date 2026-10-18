@@ -22,3 +22,9 @@ __pycache__/
 launcher.cs
 .DS_Store
 Thumbs.db
+
+# Front-end build tooling (static/vendor is committed, node_modules is not)
+node_modules/
+
+# Launcher is built by GitHub Actions (see .github/workflows/release.yml) or locally via build_exe.py
+VerbaScribe.exe

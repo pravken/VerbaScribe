@@ -1,7 +1,7 @@
 import subprocess
 from pathlib import Path
 
-# Broadcast-grade speech enhancement filter chain for FFmpeg:
+# Speech enhancement filter chain for FFmpeg:
 # 1. highpass=f=80       -> removes mic rumble, AC hum, table vibrations (< 80 Hz)
 # 2. lowpass=f=7600      -> removes high-frequency electronic hiss above speech band
 # 3. afftdn=nf=-25:tn=1  -> adaptive FFT spectral denoiser with automatic noise floor tracking

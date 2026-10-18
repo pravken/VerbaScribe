@@ -1,19 +1,25 @@
+import hmac
 import mimetypes
+import os
+import re
+import secrets
 import shutil
 import sys
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from app import __version__
 from app.database import (
     BASE_DIR,
+    DATA_DIR,
     UPLOADS_DIR,
     add_dictionary_term,
     create_meeting,
@@ -32,7 +38,16 @@ from app.database import (
 from app.exporter import export_docx, export_json, export_markdown, export_srt, export_txt
 from app.hardware import get_hardware_info
 from app.ollama_client import generate_meeting_summary, get_ollama_status, start_model_pull
-from app.transcriber import enqueue_meeting_job
+from app.text_utils import realign_words
+from app.transcriber import enqueue_meeting_job, is_job_active, request_cancel
+
+_SPEAKER_ID_RE = re.compile(r"^[A-Za-z0-9_\-]{1,40}$")
+_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def _ensure_not_processing(meeting_id: int) -> None:
+    if is_job_active(meeting_id):
+        raise HTTPException(status_code=409, detail="Запись уже обрабатывается. Дождитесь окончания или отмените обработку.")
 
 STATIC_DIR = BASE_DIR / "static"
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
@@ -52,26 +67,89 @@ SUPPORTED_EXTENSIONS = {
     ".wma",
 }
 
-app = FastAPI(title="VerbaScribe", version="1.2.0")
+# --- Local session security ---
+# The server only listens on localhost, but any web page open in a browser can still send
+# requests to 127.0.0.1. Every launch therefore gets a random session token: the desktop
+# window opens /?token=..., receives it as an HttpOnly SameSite=Strict cookie, and every
+# other request without that cookie is rejected. Requests with a foreign Host header
+# (DNS rebinding) are rejected as well.
+SESSION_COOKIE = "vs_session"
+SESSION_TOKEN = os.environ.get("VERBASCRIBE_TOKEN") or secrets.token_urlsafe(32)
+SESSION_TOKEN_FILE = DATA_DIR / ".session_token"
+SESSION_TOKEN_FILE.write_text(SESSION_TOKEN, encoding="utf-8")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+_ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]"} | {
+    h.strip().lower() for h in os.environ.get("VERBASCRIBE_ALLOWED_HOSTS", "").split(",") if h.strip()
+}
+_PUBLIC_PREFIXES = ("/static/",)
 
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+_LOCKED_PAGE = """<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>VerbaScribe</title></head>
+<body style="font-family:Segoe UI,sans-serif;background:#141416;color:#f5f5f7;padding:48px">
+<h2>VerbaScribe</h2>
+<p>Откройте программу через VerbaScribe.exe или start.bat — эта страница доступна только из окна приложения.</p>
+<p style="color:#98989d">Open the app via VerbaScribe.exe or start.bat — this page is only available from the app window.</p>
+</body></html>"""
 
 
-@app.on_event("startup")
-def on_startup() -> None:
+def _host_allowed(host_header: str) -> bool:
+    host = (host_header or "").strip().lower()
+    if host.startswith("["):
+        host = host.split("]")[0] + "]"
+    else:
+        host = host.split(":")[0]
+    return host in _ALLOWED_HOSTS
+
+
+def _token_valid(value: Optional[str]) -> bool:
+    return bool(value) and hmac.compare_digest(value, SESSION_TOKEN)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
     init_db()
-    # Automatically resume any recordings that were interrupted mid-processing
+    # Resume recordings that were interrupted mid-processing
     active_states = {"queued", "extracting_audio", "transcribing", "diarizing", "summarizing"}
     for m in list_meetings():
         if m.get("status") in active_states:
             enqueue_meeting_job(int(m["id"]))
+    yield
+
+
+app = FastAPI(
+    title="VerbaScribe",
+    version=__version__,
+    lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
+
+
+@app.middleware("http")
+async def local_session_guard(request: Request, call_next):
+    if not _host_allowed(request.headers.get("host", "")):
+        return Response("Forbidden host", status_code=403)
+
+    path = request.url.path
+    if path == "/":
+        query_token = request.query_params.get("token")
+        if _token_valid(query_token):
+            resp = RedirectResponse("/", status_code=303)
+            resp.set_cookie(SESSION_COOKIE, SESSION_TOKEN, httponly=True, samesite="strict", path="/")
+            return resp
+        if not _token_valid(request.cookies.get(SESSION_COOKIE)):
+            return HTMLResponse(_LOCKED_PAGE, status_code=401)
+        return await call_next(request)
+
+    if path.startswith(_PUBLIC_PREFIXES):
+        return await call_next(request)
+
+    if not _token_valid(request.cookies.get(SESSION_COOKIE)):
+        return Response('{"detail":"Unauthorized"}', status_code=401, media_type="application/json")
+    return await call_next(request)
+
+
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -81,7 +159,15 @@ def index() -> HTMLResponse:
         return HTMLResponse("<h1>UI loading...</h1>")
     return HTMLResponse(
         index_file.read_text(encoding="utf-8"),
-        headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            # Everything is served locally; the page may only talk to this server.
+            "Content-Security-Policy": (
+                "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; "
+                "connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+            ),
+        },
     )
 
 
@@ -145,11 +231,12 @@ def api_ollama_status() -> Dict[str, Any]:
 
 class OllamaPullPayload(BaseModel):
     model: str
+    allow_install: bool = False
 
 
 @app.post("/api/ollama/pull")
 def api_ollama_pull(payload: OllamaPullPayload) -> Dict[str, Any]:
-    return start_model_pull(payload.model.strip())
+    return start_model_pull(payload.model.strip(), allow_install=payload.allow_install)
 
 
 # --- Custom Dictionary ---
@@ -322,16 +409,12 @@ class MeetingTitlePayload(BaseModel):
 
 @app.patch("/api/meetings/{meeting_id}/title")
 def api_rename_meeting(meeting_id: int, payload: MeetingTitlePayload) -> Dict[str, Any]:
-    from app.database import _db_lock, get_connection
+    from app.database import update_meeting_fields
 
     title = payload.title.strip()
     if not title:
         raise HTTPException(status_code=400, detail="Название не может быть пустым")
-    with _db_lock:
-        conn = get_connection()
-        conn.execute("UPDATE meetings SET title = ? WHERE id = ?", (title, meeting_id))
-        conn.commit()
-        conn.close()
+    update_meeting_fields(meeting_id, title=title[:300])
     return get_meeting(meeting_id)
 
 
@@ -340,6 +423,7 @@ def api_retry_meeting(meeting_id: int) -> Dict[str, Any]:
     m = get_meeting(meeting_id)
     if not m:
         raise HTTPException(status_code=404, detail="Встреча не найдена")
+    _ensure_not_processing(meeting_id)
     update_meeting_progress(
         meeting_id,
         status="queued",
@@ -359,33 +443,38 @@ class MeetingReconfigurePayload(BaseModel):
 
 @app.post("/api/meetings/{meeting_id}/reconfigure")
 def api_reconfigure_meeting(meeting_id: int, payload: MeetingReconfigurePayload) -> Dict[str, Any]:
-    from app.database import _db_lock, get_connection
+    from app.database import update_meeting_fields
 
     m = get_meeting(meeting_id)
     if not m:
         raise HTTPException(status_code=404, detail="Встреча не найдена")
+    _ensure_not_processing(meeting_id)
 
-    with _db_lock:
-        conn = get_connection()
-        conn.execute(
-            """
-            UPDATE meetings
-            SET model_name = ?, language = ?, num_speakers_hint = ?,
-                status = 'queued', progress = 0,
-                stage_text = 'Повторная обработка с новыми параметрами...', error_message = ''
-            WHERE id = ?
-            """,
-            (
-                payload.model_name.strip() or "large-v3-turbo",
-                payload.language.strip() or "auto",
-                int(payload.num_speakers_hint),
-                meeting_id,
-            ),
-        )
-        conn.commit()
-        conn.close()
-
+    update_meeting_fields(
+        meeting_id,
+        model_name=payload.model_name.strip() or "large-v3-turbo",
+        language=payload.language.strip() or "auto",
+        num_speakers_hint=max(0, int(payload.num_speakers_hint)),
+    )
+    update_meeting_progress(
+        meeting_id,
+        status="queued",
+        progress=0,
+        stage_text="Повторная обработка с новыми параметрами...",
+        error_message="",
+    )
     enqueue_meeting_job(meeting_id)
+    return get_meeting(meeting_id)
+
+
+@app.post("/api/meetings/{meeting_id}/cancel")
+def api_cancel_meeting(meeting_id: int) -> Dict[str, Any]:
+    m = get_meeting(meeting_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    if not request_cancel(meeting_id):
+        raise HTTPException(status_code=409, detail="Запись сейчас не обрабатывается")
+    update_meeting_progress(meeting_id, stage_text="Отмена обработки...")
     return get_meeting(meeting_id)
 
 
@@ -412,6 +501,9 @@ def api_reveal_meeting_file(meeting_id: int) -> Dict[str, Any]:
 
 @app.delete("/api/meetings/{meeting_id}")
 def api_delete_meeting(meeting_id: int) -> Dict[str, Any]:
+    if is_job_active(meeting_id):
+        request_cancel(meeting_id)
+        raise HTTPException(status_code=409, detail="Запись обрабатывается: обработка отменяется, удалите её через несколько секунд.")
     ok = delete_meeting(meeting_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Встреча не найдена")
@@ -431,17 +523,23 @@ def api_update_speaker(meeting_id: int, payload: SpeakerUpdatePayload) -> Dict[s
     if not m:
         raise HTTPException(status_code=404, detail="Встреча не найдена")
 
+    if not _SPEAKER_ID_RE.match(payload.speaker_id):
+        raise HTTPException(status_code=400, detail="Некорректный идентификатор спикера")
+    if payload.color and not _COLOR_RE.match(payload.color):
+        raise HTTPException(status_code=400, detail="Цвет должен быть в формате #RRGGBB")
+    name = payload.name.strip()[:120]
+
     speakers = m.get("speakers") or {}
     if payload.speaker_id not in speakers:
         speakers[payload.speaker_id] = {
             "id": payload.speaker_id,
-            "name": payload.name.strip() or payload.speaker_id,
+            "name": name or payload.speaker_id,
             "color": payload.color or "#6366f1",
             "sample_start": 0.0,
             "sample_end": 5.0,
         }
     else:
-        speakers[payload.speaker_id]["name"] = payload.name.strip() or payload.speaker_id
+        speakers[payload.speaker_id]["name"] = name or payload.speaker_id
         if payload.color:
             speakers[payload.speaker_id]["color"] = payload.color
 
@@ -462,12 +560,26 @@ def api_update_segment(
     if not m:
         raise HTTPException(status_code=404, detail="Встреча не найдена")
 
+    if payload.speaker is not None and payload.speaker not in (m.get("speakers") or {}):
+        raise HTTPException(status_code=400, detail="Неизвестный спикер")
+
     segments = m.get("segments") or []
     found = False
     for seg in segments:
         if int(seg.get("id", -1)) == segment_id:
             if payload.text is not None:
-                seg["text"] = payload.text.strip()
+                new_text = payload.text.strip()
+                if not new_text:
+                    raise HTTPException(status_code=400, detail="Текст реплики не может быть пустым")
+                if new_text != (seg.get("text") or "").strip():
+                    # The player renders words, so they must follow the edited text
+                    seg["words"] = realign_words(
+                        seg.get("words") or [],
+                        new_text,
+                        float(seg.get("start", 0.0)),
+                        float(seg.get("end", 0.0)),
+                    )
+                    seg["text"] = new_text
             if payload.speaker is not None:
                 seg["speaker"] = payload.speaker
             found = True
@@ -500,11 +612,24 @@ def api_clean_fillers(meeting_id: int) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail=str(e))
 
 
+@app.post("/api/meetings/{meeting_id}/restore-segments")
+def api_restore_segments(meeting_id: int) -> Dict[str, Any]:
+    """Undoes the last filler cleanup (automatic or manual) for this recording."""
+    from app.database import restore_segments_backup
+
+    if not get_meeting(meeting_id):
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    if not restore_segments_backup(meeting_id):
+        raise HTTPException(status_code=400, detail="Нет сохранённой версии для восстановления")
+    return get_meeting(meeting_id)
+
+
 # --- AI Summary & Custom Q&A via Ollama ---
 class SummaryRequestPayload(BaseModel):
     template: str = "protocol"
     custom_prompt: str = ""
     model: Optional[str] = None
+    lang: Optional[str] = None
 
 
 @app.post("/api/meetings/{meeting_id}/summary")
@@ -532,6 +657,7 @@ def api_generate_summary(meeting_id: int, payload: SummaryRequestPayload) -> Dic
             template_key=payload.template,
             custom_prompt=payload.custom_prompt,
             model_name=payload.model,
+            answer_lang=payload.lang or m.get("language") or "ru",
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -564,6 +690,34 @@ def api_stream_media(meeting_id: int) -> FileResponse:
         media_type=mime_type or "application/octet-stream",
         filename=target.name,
     )
+
+
+@app.get("/api/meetings/{meeting_id}/peaks")
+def api_media_peaks(meeting_id: int, bars: int = 120) -> Dict[str, Any]:
+    """Real loudness envelope of the extracted 16 kHz WAV for the player waveform."""
+    import numpy as np
+    import soundfile as sf
+
+    m = get_meeting(meeting_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    wav = Path(m.get("audio_path") or "")
+    if not wav.is_file():
+        return {"peaks": []}
+    bars = max(20, min(400, int(bars)))
+    try:
+        data, _sr = sf.read(str(wav), dtype="float32", always_2d=False)
+    except Exception:
+        return {"peaks": []}
+    if data.ndim > 1:
+        data = data.mean(axis=1)
+    if len(data) < bars:
+        return {"peaks": []}
+    usable = len(data) - (len(data) % bars)
+    rms = np.sqrt(np.mean(np.square(data[:usable].reshape(bars, -1)), axis=1))
+    top = float(np.percentile(rms, 98)) or 1.0
+    peaks = np.clip(rms / top, 0.0, 1.0)
+    return {"peaks": [round(float(v), 3) for v in peaks]}
 
 
 # --- Multi-format Export ---
@@ -600,7 +754,6 @@ def api_export_meeting(meeting_id: int, fmt: str) -> Response:
     encoded_filename = quote(filename)
     headers = {
         "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}",
-        "Access-Control-Expose-Headers": "Content-Disposition",
     }
     return Response(content=content, media_type=media_type, headers=headers)
 
@@ -626,7 +779,7 @@ def _default_export_dir() -> Path:
 def _pick_path_native(mode: str, directory: Path, filename: str = "", fmt: str = "") -> Optional[str]:
     """
     Spawns an isolated native file/folder dialog via app.native_dialog in a subprocess.
-    This guarantees 100% thread safety and prevents any deadlocks with pywebview or uvicorn.
+    This avoids thread-affinity problems and deadlocks with pywebview or uvicorn.
     """
     import subprocess
 
