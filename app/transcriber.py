@@ -17,6 +17,7 @@ from app.database import (
     get_all_settings,
     get_dictionary_hotwords,
     get_meeting,
+    save_meeting_dub,
     save_meeting_results,
     save_segments_backup,
     update_meeting_progress,
@@ -96,6 +97,61 @@ def _run_job(meeting_id: int) -> None:
             queue_empty = not _active_jobs
         if queue_empty:
             release_whisper_model()
+
+
+def enqueue_dub_job(meeting_id: int, target_lang: str) -> bool:
+    """Queues a translate-and-dub job in the same single worker, so it never shares VRAM with a transcription."""
+    with _jobs_lock:
+        if meeting_id in _active_jobs:
+            return False
+        _active_jobs.add(meeting_id)
+        _cancel_requested.discard(meeting_id)
+    update_meeting_progress(
+        meeting_id, status="dubbing", progress=0, stage_text="Дубляж в очереди...", error_message=""
+    )
+    _executor.submit(_run_dub_job, meeting_id, target_lang)
+    return True
+
+
+def _run_dub_job(meeting_id: int, target_lang: str) -> None:
+    from app.dubbing import run_dub_job
+
+    def _progress(pct: int, text: str) -> None:
+        update_meeting_progress(meeting_id, progress=pct, stage_text=text)
+
+    # The transcript stays valid whatever happens to the dub, so the recording always goes back to
+    # "completed"; the dub result (or error) is reported in stage_text / error_message.
+    try:
+        meeting = get_meeting(meeting_id)
+        if not meeting:
+            return
+        # Whisper may still be cached from a previous job; the dub models need that VRAM
+        release_whisper_model()
+        entry = run_dub_job(meeting, target_lang, _progress, lambda: _check_cancel(meeting_id))
+        save_meeting_dub(meeting_id, entry)
+        update_meeting_progress(
+            meeting_id,
+            status="completed",
+            progress=100,
+            stage_text=f"Дубляж ({target_lang.upper()}) готов: {Path(entry['path']).name}",
+            error_message="",
+        )
+    except JobCancelled:
+        update_meeting_progress(meeting_id, status="completed", progress=100, stage_text="Дубляж отменён", error_message="")
+    except Exception as e:
+        tb = traceback.format_exc()
+        update_meeting_progress(
+            meeting_id,
+            status="completed",
+            progress=100,
+            stage_text=f"Ошибка дубляжа: {str(e)[:140]}",
+            error_message=f"{e}\n\n{tb[-800:]}",
+        )
+    finally:
+        clear_vram()
+        with _jobs_lock:
+            _active_jobs.discard(meeting_id)
+            _cancel_requested.discard(meeting_id)
 
 
 def _load_whisper_with_fallback(model_name: str, device: str, compute_type: str) -> WhisperModel:
