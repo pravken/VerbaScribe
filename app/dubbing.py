@@ -16,6 +16,8 @@ job and give all VRAM back.
 """
 
 import json
+import os
+import queue
 import re
 import shutil
 import subprocess
@@ -32,7 +34,13 @@ import soundfile as sf
 
 from app.audio_utils import format_timestamp, get_media_duration
 from app.database import get_all_settings
-from app.dub_text import build_dub_units
+from app.dub_text import (
+    build_dub_units,
+    choose_tts_workers,
+    expected_speech_sec,
+    has_foreign_script,
+    plan_placement,
+)
 from app.ollama_client import ensure_ollama_running, get_ollama_status
 from app.paths import APP_DIR, DATA_DIR, MODELS_DIR
 
@@ -54,6 +62,7 @@ MIX_SR = 44100
 REF_TARGET_SEC = 10.0    # length of the voice reference cut per speaker
 TEMPO_RETRANSLATE = 1.35 # clips needing more speed-up than this are re-translated shorter once
 TEMPO_MAX = 1.6          # hard cap for speed-up; whatever is left is trimmed with a fade
+BLOAT_RESYNTH = 1.7      # synthesized audio this much longer than the text needs: generate it again
 
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
 
@@ -163,7 +172,11 @@ def translate_units(
         chunk = units[b : b + batch_size]
         res = _translate_batch(base_url, model, [u["text"] for u in chunk], src, tgt)
         for u, t in zip(chunk, res):
-            u["translation"] = t if t else _translate_single(base_url, model, u["text"], src, tgt)
+            if not t or has_foreign_script(t, tgt_code):
+                t = _translate_single(base_url, model, u["text"], src, tgt)
+            if has_foreign_script(t, tgt_code):
+                t = re.sub(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]+", "", t).strip()
+            u["translation"] = t
         progress(5 + int(10 * min(1.0, (b + batch_size) / max(1, len(units)))), f"Перевод: {min(len(units), b + batch_size)} из {len(units)} фраз")
 
 
@@ -247,6 +260,97 @@ class DubWorker:
                 self.proc.kill()
 
 
+def _free_vram_gb() -> float:
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            free, _total = torch.cuda.mem_get_info(0)
+            return free / 2**30
+    except Exception:
+        pass
+    return 0.0
+
+
+class TtsPool:
+    """
+    Several DubWorker processes synthesizing phrases side by side. Phrases are handed out in small
+    batches from one queue, so all processes finish at about the same time. If a process fails
+    (e.g. out of memory) its batch goes back to the queue for the others; cancelling stops all.
+    """
+
+    BATCH = 6
+
+    def __init__(self, first: DubWorker, count: int, check_cancel: CancelFn):
+        self.workers: List[DubWorker] = [first]
+        self.errors: List[str] = []
+        lock = threading.Lock()
+
+        def _spawn() -> None:
+            try:
+                w = DubWorker(check_cancel)
+            except Exception as e:  # fewer processes is fine; the job continues
+                with lock:
+                    self.errors.append(str(e)[:300])
+                return
+            with lock:
+                self.workers.append(w)
+
+        # Start the extra processes in parallel: each needs several seconds to load the model
+        threads = [threading.Thread(target=_spawn, daemon=True) for _ in range(max(0, count - 1))]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        check_cancel()
+
+    def run(self, items: List[Dict[str, Any]], req: Dict[str, Any], on_item_done: Callable[[], None]) -> Dict[str, Any]:
+        """Synthesizes all items; returns {"results": {id: result}, "peak_vram_gb": float}."""
+        pending: "queue.Queue[List[Dict[str, Any]]]" = queue.Queue()
+        for i in range(0, len(items), self.BATCH):
+            pending.put(items[i : i + self.BATCH])
+        results: Dict[Any, Dict[str, Any]] = {}
+        peak = 0.0
+        lock = threading.Lock()
+        fatal: List[BaseException] = []
+        failures: List[BaseException] = []
+
+        def _loop(w: DubWorker) -> None:
+            nonlocal peak
+            while not fatal:
+                try:
+                    batch = pending.get_nowait()
+                except queue.Empty:
+                    return
+                try:
+                    res = w.call({**req, "cmd": "tts", "items": batch}, lambda _p: on_item_done())
+                except BaseException as e:  # noqa: BLE001 - re-raised below or retried by others
+                    if w._cancelled:
+                        fatal.append(e)
+                    else:
+                        pending.put(batch)  # another process takes it
+                        failures.append(e)
+                    return
+                with lock:
+                    results.update({r["id"]: r for r in res["results"]})
+                    peak = max(peak, float(res.get("peak_vram_gb") or 0.0))
+
+        threads = [threading.Thread(target=_loop, args=(w,), daemon=True) for w in self.workers]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        if fatal:
+            raise fatal[0]
+        if not pending.empty() or len(results) < len(items):
+            raise failures[0] if failures else RuntimeError("Синтез речи не завершён")
+        return {"results": results, "peak_vram_gb": round(peak, 2)}
+
+    def close(self) -> None:
+        for w in self.workers:
+            w.close()
+
+
 # ---------------------------------------------------------------- audio helpers
 def _ffmpeg(args: List[str]) -> None:
     proc = subprocess.run(
@@ -293,6 +397,35 @@ def _trim_silence(x: np.ndarray, sr: int, thresh_db: float = -42.0) -> np.ndarra
     a = max(0, (active[0] - 2) * win)
     b = min(len(x), (active[-1] + 3) * win)
     return x[a:b]
+
+
+def _cut_trailing_artifacts(x: np.ndarray, sr: int, expected_sec: float,
+                            gap_sec: float = 0.4, silent_db: float = -35.0) -> np.ndarray:
+    """
+    Chatterbox sometimes keeps generating after the sentence: a pause, then breaths, mumbling or
+    noise. Cuts at the first long pause that starts after most of the expected speech, so that tail
+    is neither played nor counted when the clip is fitted into its time slot.
+    """
+    step = 0.05
+    win = max(1, int(sr * step))
+    frames = x[: len(x) // win * win].reshape(-1, win)
+    if frames.shape[0] == 0:
+        return x
+    db = 20 * np.log10(np.sqrt((frames ** 2).mean(axis=1)) + 1e-9)
+    need = int(round(gap_sec / step))
+    min_start = 0.7 * expected_sec
+    run = 0
+    for i, value in enumerate(db):
+        run = run + 1 if value < silent_db else 0
+        if run == need:
+            gap_start = (i - need + 1) * step
+            if gap_start >= min_start:
+                cut = x[: int((gap_start + 0.08) * sr)].copy()
+                fade = min(cut.size, int(0.03 * sr))
+                if fade:
+                    cut[-fade:] *= np.linspace(1, 0, fade, dtype=np.float32)
+                return cut
+    return x
 
 
 def _rms(x: np.ndarray) -> float:
@@ -428,6 +561,7 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
         check_cancel()
         progress(16, "Отделение голоса от фона (Demucs)...")
         worker = DubWorker(check_cancel)
+        pool: Optional[TtsPool] = None
         try:
             sep = worker.call({"cmd": "separate", "input": str(orig_wav), "out_dir": str(work)})
             vocals = _read_mono(Path(sep["vocals"]), MIX_SR)
@@ -437,22 +571,36 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
                 raise RuntimeError("Не удалось вырезать образец голоса ни для одного участника")
             fallback_ref = next(iter(refs.values()))
 
-            # 4. synthesis
+            # 4. synthesis, in several processes when there is enough free VRAM
+            n_workers = choose_tts_workers(settings.get("dub_tts_workers", "auto"), _free_vram_gb(), os.cpu_count() or 1)
+            if n_workers > 1:
+                progress(20, f"Запуск {n_workers} процессов синтеза речи...")
+            pool = TtsPool(worker, n_workers, check_cancel)
+            stats["tts_workers"] = len(pool.workers)
+
             def _tts(batch: List[Dict[str, Any]], lo: int, hi: int, label: str) -> None:
                 items = [{"id": u["id"], "text": u["translation"], "lang": target_lang,
                           "ref": str(refs.get(u["speaker"], fallback_ref)),
                           "out": str(work / "tts" / f"u{u['id']:04d}.wav")} for u in batch]
 
-                def _on(p: Dict[str, Any]) -> None:
-                    progress(lo + int((hi - lo) * p["done"] / max(1, p["total"])), f"{label}: {p['done']} из {p['total']}")
+                done = [0]
+                done_lock = threading.Lock()
+
+                def _on() -> None:
+                    with done_lock:
+                        done[0] += 1
+                        n = done[0]
+                    progress(lo + int((hi - lo) * n / max(1, len(items))), f"{label}: {n} из {len(items)}")
 
                 items.sort(key=lambda it: it["ref"])  # group by speaker: conditioning is cached per reference
-                res = worker.call({"cmd": "tts", "items": items, "cfg_weight": cfg_weight, "exaggeration": exaggeration}, _on)
-                by_id = {r["id"]: r for r in res["results"]}
+                t_wall = datetime.now()
+                res = pool.run(items, {"cfg_weight": cfg_weight, "exaggeration": exaggeration}, _on)
+                stats["tts_wall_sec"] = round(stats.get("tts_wall_sec", 0.0) + (datetime.now() - t_wall).total_seconds(), 1)
+                by_id = res["results"]
                 for u in batch:
                     u["tts_path"] = by_id[u["id"]]["out"]
                 stats["tts_peak_vram_gb"] = res.get("peak_vram_gb")
-                stats["tts_gen_sec"] = stats.get("tts_gen_sec", 0.0) + sum(r["gen_sec"] for r in res["results"])
+                stats["tts_gen_sec"] = stats.get("tts_gen_sec", 0.0) + sum(r["gen_sec"] for r in by_id.values())
 
             check_cancel()
             progress(22, "Загрузка Chatterbox и синтез речи голосом участника...")
@@ -463,6 +611,12 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
                 for i, u in enumerate(units):
                     clip, sr = sf.read(u["tts_path"], dtype="float32")
                     clip = _trim_silence(clip if clip.ndim == 1 else clip.mean(axis=1), sr)
+                    expected = expected_speech_sec(u["translation"], target_lang)
+                    cut = _cut_trailing_artifacts(clip, sr, expected)
+                    if cut.size < clip.size:
+                        u["tail_cut"] = True
+                    clip = cut
+                    u["bloat"] = (clip.size / sr) / expected
                     u["_clip"], u["_sr"] = clip, sr
                     nxt = units[i + 1]["start"] if i + 1 < len(units) else total_dur
                     u["slot"] = max(0.3, min(nxt - 0.05, max(u["end"], u["start"] + 0.3)) - u["start"])
@@ -470,21 +624,33 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
                     u["tempo"] = (clip.size / sr) / u["room"]
 
             _measure()
-            too_long = [u for u in units if u["tempo"] > TEMPO_RETRANSLATE]
+            # Audio much longer than its text needs is a TTS glitch (rambling, long pauses):
+            # generate the same text once more instead of shortening the translation
+            bloated = [u for u in units if u["bloat"] > BLOAT_RESYNTH and u["tempo"] > 1.0]
+            stats["resynthesized"] = len(bloated)
+            if bloated:
+                check_cancel()
+                progress(85, f"Повторный синтез {len(bloated)} неудачных фраз...")
+                _tts(bloated, 85, 88, "Повторный синтез")
+                _measure()
+            too_long = [u for u in units if u["tempo"] > TEMPO_RETRANSLATE and u["bloat"] <= BLOAT_RESYNTH]
             stats["retranslated"] = len(too_long)
             if too_long:
                 check_cancel()
-                progress(85, f"Сокращение {len(too_long)} слишком длинных фраз...")
+                progress(88, f"Сокращение {len(too_long)} слишком длинных фраз...")
                 src_name, tgt_name = DUB_LANGUAGES.get(src_lang, src_lang), DUB_LANGUAGES[target_lang]
                 model = settings_now.get("ollama_model") or "qwen2.5:7b"
                 for u in too_long:
                     max_chars = max(8, int(len(u["translation"]) / u["tempo"] * 1.1))
                     u["translation"] = _shorten(ollama_url, model, u["text"], u["translation"], max_chars, src_name, tgt_name)
                 _unload_ollama(ollama_url, model)
-                _tts(too_long, 86, 91, "Повторный синтез")
+                _tts(too_long, 89, 91, "Синтез сокращённых фраз")
                 _measure()
         finally:
-            worker.close()
+            if pool is not None:
+                pool.close()
+            else:
+                worker.close()
 
         # 5b. time-fit + 6. mix
         check_cancel()
@@ -493,21 +659,29 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
         voice = np.zeros(n, dtype=np.float32)
         gains = []
         tempos = []
-        for u in units:
+        plan = plan_placement(
+            [{**u, "dur": u["_clip"].size / u["_sr"]} for u in units], total_dur, TEMPO_MAX
+        )
+        for u, place in zip(units, plan):
             tmp_src = work / "fit" / f"t{u['id']:04d}.wav"
             sf.write(str(tmp_src), u["_clip"], u["_sr"])
-            tempo = min(TEMPO_MAX, u["tempo"]) if u["tempo"] > 1.0 else 1.0
+            tempo = place["tempo"]
             tempos.append(tempo)
             fit_path = work / "fit" / f"f{u['id']:04d}.wav"
             _stretch_clip(tmp_src, fit_path, tempo, use_rubberband)
             clip = _read_mono(fit_path, MIX_SR)
-            max_len = int(u["room"] * MIX_SR)
-            if clip.size > max_len:  # still too long after the speed cap: fade out at the slot end
+            max_len = int(place["room"] * MIX_SR)
+            # A few ms of overshoot after stretching is harmless (the slot ends 50 ms before the next phrase)
+            if clip.size > max_len + int(0.12 * MIX_SR):  # still too long after the speed cap: fade out
                 clip = clip[:max_len]
-                fade = min(clip.size, int(0.08 * MIX_SR))
+                fade = min(clip.size, int(0.15 * MIX_SR))
                 clip[-fade:] *= np.linspace(1, 0, fade, dtype=np.float32)
-            a = int(u["start"] * MIX_SR)
-            orig_rms = _rms(vocals[a : a + int(u["slot"] * MIX_SR)])
+                stats["trimmed"] = stats.get("trimmed", 0) + 1
+            a = int(place["start"] * MIX_SR)
+            if place["start"] < u["start"] - 0.01:
+                stats["pulled_earlier"] = stats.get("pulled_earlier", 0) + 1
+            o = int(u["start"] * MIX_SR)
+            orig_rms = _rms(vocals[o : o + int(u["slot"] * MIX_SR)])
             g = float(np.clip(orig_rms / (_rms(clip) + 1e-9), 0.25, 4.0)) if orig_rms > 1e-4 else 1.0
             gains.append(g)
             seg = clip[: max(0, n - a)] * g
@@ -559,6 +733,7 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
             "avg_tempo": round(float(np.mean(tempos)), 3),
             "max_tempo": round(float(np.max(tempos)), 3),
             "stretch": "rubberband" if use_rubberband else "atempo",
+            "tails_cut": sum(1 for u in units if u.get("tail_cut")),
         })
         return {
             "lang": target_lang,

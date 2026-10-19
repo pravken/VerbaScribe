@@ -207,14 +207,14 @@
       <header class="border-b apple-border bg-apple-sidebar/80 apple-blur px-5 flex items-center justify-between shrink-0 gap-4 z-20" style="height: 52px;">
 
         <!-- Left: Editable Recording Title + Meta -->
-        <div class="flex items-center gap-2.5 min-w-0 flex-1">
+        <div class="flex items-center gap-2.5 min-w-0 flex-1 overflow-hidden">
           <input id="meeting-title-input" type="text"
             onblur="saveMeetingTitle()"
             onkeydown="if(event.key==='Enter') this.blur()"
             data-i18n-title="tipRenameInline"
             title="Нажмите, чтобы переименовать запись"
-            class="bg-transparent hover:bg-white/5 focus:bg-apple-card focus:outline-none focus:ring-1 focus:ring-apple-blue px-2 h-7 -ml-2 rounded-md text-[14px] font-semibold text-white truncate min-w-[140px] max-w-[320px] transition" />
-          <span id="meeting-meta-badge" class="text-[11px] text-apple-secondary font-mono shrink-0"></span>
+            class="bg-transparent hover:bg-white/5 focus:bg-apple-card focus:outline-none focus:ring-1 focus:ring-apple-blue px-2 h-7 -ml-2 rounded-md text-[14px] font-semibold text-white truncate min-w-[100px] max-w-[320px] transition" />
+          <span id="meeting-meta-badge" class="text-[11px] text-apple-secondary font-mono truncate min-w-0"></span>
         </div>
 
         <!-- Center: Primary View Tabs (Separated from transcript tools) -->
@@ -239,8 +239,10 @@
           </button>
         </div>
 
-        <!-- Right: Dub + Document Export Menu -->
+        <!-- Right: audio track switch (original / dubs) + Dub + Document Export Menu -->
         <div class="flex items-center justify-end gap-2 flex-1 shrink-0">
+          <div id="audio-track-switch" class="hidden apple-segmented shrink-0" data-i18n-title="tipAudioTrack"
+            title="Какую звуковую дорожку играть: оригинал или дубляж"></div>
           <button onclick="openDubModal()" id="dub-open-btn"
             data-i18n-title="tipDubOpen"
             title="Перевести запись и озвучить её голосами участников (прототип)"
@@ -268,6 +270,8 @@
               <button onclick="exportCurrentMeeting('txt')" data-i18n-title="tipExportTxt" title="Сохранить как обычный текст (.txt)" class="macos-menu-item"><span>Text (.txt)</span><span class="text-[11px] opacity-60">TXT</span></button>
               <button onclick="exportCurrentMeeting('srt')" data-i18n-title="tipExportSrt" title="Сохранить субтитры с таймкодами (.srt)" class="macos-menu-item"><span>Subtitles (.srt)</span><span class="text-[11px] opacity-60">SRT</span></button>
               <button onclick="exportCurrentMeeting('json')" data-i18n-title="tipExportJson" title="Сохранить структурированные данные (.json)" class="macos-menu-item"><span>JSON (.json)</span><span class="text-[11px] opacity-60">JSON</span></button>
+              <!-- Filled by renderDubExportMenu() when the recording has dubs -->
+              <div id="export-dub-section"></div>
             </div>
           </div>
         </div>

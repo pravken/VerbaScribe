@@ -1,6 +1,13 @@
 import unittest
 
-from app.dub_text import UNIT_MAX_SEC, build_dub_units
+from app.dub_text import (
+    MAX_LEAD,
+    UNIT_MAX_SEC,
+    build_dub_units,
+    expected_speech_sec,
+    has_foreign_script,
+    plan_placement,
+)
 
 
 def _words(*items):
@@ -40,6 +47,47 @@ class BuildDubUnitsTest(unittest.TestCase):
                                  {"start": 3.0, "end": 3.5, "speaker": "S", "text": "  ", "words": []}])
         self.assertEqual(len(units), 1)
         self.assertEqual((units[0]["text"], units[0]["start"], units[0]["end"]), ("Ок", 1.0, 2.5))
+
+
+class PlacementTest(unittest.TestCase):
+    def test_monologue_phrases_are_pulled_together_within_limit(self):
+        units = [
+            {"start": 0.0, "end": 3.0, "speaker": "A", "dur": 1.5},
+            {"start": 3.2, "end": 6.0, "speaker": "A", "dur": 2.0},
+        ]
+        plan = plan_placement(units, 20.0, 1.6)
+        self.assertLess(plan[1]["start"], 3.2)
+        self.assertGreaterEqual(plan[1]["start"], 3.2 - MAX_LEAD - 1e-9)
+
+    def test_speaker_change_keeps_original_start(self):
+        units = [
+            {"start": 0.0, "end": 3.0, "speaker": "A", "dur": 1.0},
+            {"start": 3.2, "end": 6.0, "speaker": "B", "dur": 2.0},
+        ]
+        self.assertEqual(plan_placement(units, 20.0, 1.6)[1]["start"], 3.2)
+
+    def test_long_clip_is_sped_up_but_capped(self):
+        units = [
+            {"start": 0.0, "end": 1.0, "speaker": "A", "dur": 5.0},
+            {"start": 1.5, "end": 3.0, "speaker": "B", "dur": 1.0},
+        ]
+        self.assertEqual(plan_placement(units, 10.0, 1.6)[0]["tempo"], 1.6)
+
+    def test_phrases_never_overlap(self):
+        units = [{"start": i * 1.0, "end": i * 1.0 + 0.9, "speaker": "A", "dur": 0.8} for i in range(10)]
+        plan = plan_placement(units, 20.0, 1.6)
+        for a, b, u in zip(plan, plan[1:], units):
+            self.assertLessEqual(a["start"] + u["dur"] / a["tempo"], b["start"] + 1e-6)
+
+
+class TextChecksTest(unittest.TestCase):
+    def test_expected_duration_depends_on_script(self):
+        self.assertGreater(expected_speech_sec("你好世界你好世界", "zh"), expected_speech_sec("helloworld", "en"))
+
+    def test_cjk_leakage_detection(self):
+        self.assertTrue(has_foreign_script("Вы先开始。", "ru"))
+        self.assertFalse(has_foreign_script("Вы начинайте.", "ru"))
+        self.assertFalse(has_foreign_script("你先开始。", "zh"))
 
 
 if __name__ == "__main__":

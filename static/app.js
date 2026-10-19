@@ -11,6 +11,7 @@ let state = {
   speakerFilter: null,
   videoMode: (() => { try { return localStorage.getItem('verbascribe_video_mode') === 'mini' ? 'mini' : 'expanded'; } catch (e) { return 'expanded'; } })(),
   hasVideo: false,
+  audioTrack: 'orig',
   studioVoiceActive: false,
   globalSearchQuery: '',
   globalSearchResults: null,
@@ -1278,11 +1279,14 @@ async function selectMeeting(id, reloadPlayer = true) {
   document.getElementById('meeting-title-input').value = m.title;
   document.getElementById('meeting-meta-badge').textContent =
     `${formatTime(m.duration)} · ${(m.language || 'ru').toUpperCase()} · ${formatModelName(m.model_name)}`;
+  document.getElementById('meeting-meta-badge').title = document.getElementById('meeting-meta-badge').textContent;
 
   updateProcessingBanner(m);
+  renderAudioTrackSwitch();
 
   if (reloadPlayer || prevId !== m.id) {
     const player = document.getElementById('media-player');
+    state.audioTrack = 'orig';
     player.src = `/api/meetings/${m.id}/media`;
     player.volume = state.muted ? 0 : (state.volume / 100);
     document.getElementById('player-total-time').textContent = formatTime(m.duration);
@@ -1317,6 +1321,86 @@ function updateProcessingBanner(m) {
       m.stage_text || (m.status === 'cancelled' ? t('statusCancelled') : 'Failed');
     document.getElementById('workspace-progress-pct').textContent = '';
     document.getElementById('workspace-progress-bar').style.width = '100%';
+  }
+}
+
+// --- Audio track switch (original / AI dubs) and dub export ---
+function availableDubs(m) {
+  return ((m && m.dubs) || []).filter(d => d && d.lang);
+}
+
+function renderAudioTrackSwitch() {
+  const box = document.getElementById('audio-track-switch');
+  if (!box) return;
+  const m = state.activeMeeting;
+  const dubs = availableDubs(m);
+  if (state.audioTrack !== 'orig' && !dubs.some(d => d.lang === state.audioTrack)) state.audioTrack = 'orig';
+  box.classList.toggle('hidden', !dubs.length);
+  if (!dubs.length) { box.innerHTML = ''; renderDubExportMenu(); return; }
+  const btn = (key, label, title) => `
+    <button onclick="setAudioTrack('${key}')" title="${escapeHtml(title)}"
+      class="apple-segment-btn ${state.audioTrack === key ? 'apple-segment-active' : 'text-apple-secondary hover:text-white'}">${escapeHtml(label)}</button>`;
+  if (dubs.length === 1) {
+    const d = dubs[0];
+    box.innerHTML = btn('orig', t('trackOriginal'), t('tipTrackOriginal'))
+      + btn(d.lang, `${t('trackDub')} ${d.lang.toUpperCase()}`, t('tipTrackDub').replace('{lang}', dubLangName(d.lang)));
+  } else {
+    // Several dubs: keep the header compact with a language list instead of one button per dub
+    const onDub = state.audioTrack !== 'orig';
+    box.innerHTML = btn('orig', t('trackOriginal'), t('tipTrackOriginal')) + `
+      <select onchange="setAudioTrack(this.value)" title="${escapeHtml(t('tipAudioTrack'))}"
+        class="apple-segment-btn bg-transparent focus:outline-none cursor-pointer ${onDub ? 'apple-segment-active' : 'text-apple-secondary hover:text-white'}">
+        ${onDub ? '' : `<option value="" selected disabled>${escapeHtml(t('trackDub'))}…</option>`}
+        ${dubs.map(d => `<option value="${escapeHtml(d.lang)}" ${d.lang === state.audioTrack ? 'selected' : ''} class="bg-apple-card text-white">${escapeHtml(t('trackDub'))} ${escapeHtml(d.lang.toUpperCase())}</option>`).join('')}
+      </select>`;
+  }
+  renderDubExportMenu();
+}
+
+// Switches the player between the original file and a dubbed file, keeping position and play state
+function setAudioTrack(key) {
+  const m = state.activeMeeting;
+  if (!m || key === state.audioTrack) return;
+  const player = document.getElementById('media-player');
+  const pos = player.currentTime || 0;
+  const wasPlaying = !player.paused;
+  state.audioTrack = key;
+  player.src = key === 'orig' ? `/api/meetings/${m.id}/media` : `/api/meetings/${m.id}/dub/${encodeURIComponent(key)}/file`;
+  player.addEventListener('loadedmetadata', () => {
+    player.currentTime = Math.min(pos, player.duration || pos);
+    if (wasPlaying) player.play().catch(() => {});
+  }, { once: true });
+  renderAudioTrackSwitch();
+  showToast(key === 'orig' ? t('trackOriginalOn') : t('trackDubOn').replace('{lang}', dubLangName(key)));
+}
+
+function renderDubExportMenu() {
+  const box = document.getElementById('export-dub-section');
+  if (!box) return;
+  const dubs = availableDubs(state.activeMeeting);
+  box.innerHTML = dubs.map(d => {
+    const lang = escapeHtml(d.lang);
+    const ext = String(d.path || '').split('.').pop().toUpperCase();
+    return `
+      <div class="px-2.5 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-apple-amber">${escapeHtml(t('exportDubHeader').replace('{lang}', d.lang.toUpperCase()))}</div>
+      <button onclick="saveDubFile('${lang}', 'media')" title="${escapeHtml(t('tipExportDubMedia'))}" class="macos-menu-item"><span>${escapeHtml(t('exportDubMedia'))}</span><span class="text-[11px] opacity-60">${escapeHtml(ext)}</span></button>
+      <button onclick="saveDubFile('${lang}', 'srt')" title="${escapeHtml(t('tipExportDubSrt'))}" class="macos-menu-item"><span>${escapeHtml(t('exportDubSrt'))}</span><span class="text-[11px] opacity-60">SRT</span></button>`;
+  }).join('');
+}
+
+async function saveDubFile(lang, kind) {
+  document.getElementById('export-menu')?.classList.add('hidden');
+  const m = state.activeMeeting;
+  if (!m) return;
+  try {
+    const res = await fetch(`/api/meetings/${m.id}/dub/${encodeURIComponent(lang)}/save/${kind}`, { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { showToast(data.detail || t('exportFailed')); return; }
+    if (data.cancelled) return;
+    showToast(`${t('exportSavedTo')} ${data.filename}`, { label: t('showInFolder'), title: t('tipShowInFolder'), onClick: () => revealPath(data.path) });
+  } catch (e) {
+    console.error(e);
+    showToast(t('exportFailed'));
   }
 }
 

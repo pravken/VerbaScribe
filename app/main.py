@@ -860,6 +860,31 @@ def api_dub_file(meeting_id: int, lang: str) -> FileResponse:
     return FileResponse(path=str(target), media_type=mime_type or "application/octet-stream", filename=target.name)
 
 
+@app.post("/api/meetings/{meeting_id}/dub/{lang}/save/{kind}")
+def api_dub_save(meeting_id: int, lang: str, kind: str) -> Dict[str, Any]:
+    """Copies the dubbed file (kind=media) or its translated subtitles (kind=srt) to a folder the user picks."""
+    d = _find_dub(meeting_id, lang)
+    if kind == "media":
+        src = Path(d["path"])
+    elif kind == "srt":
+        src = Path(d.get("srt_path") or Path(d["path"]).with_suffix(".srt"))
+    else:
+        raise HTTPException(status_code=400, detail="Неизвестный тип файла")
+    if not src.is_file():
+        raise HTTPException(status_code=404, detail="Файл не найден")
+    fmt = src.suffix.lower().lstrip(".")
+    chosen = _pick_path_native("save", _default_export_dir(), src.name, fmt)
+    if not chosen:
+        return {"ok": False, "cancelled": True}
+    out_path = Path(chosen)
+    if out_path.suffix.lower() != src.suffix.lower():
+        out_path = out_path.with_name(out_path.name + src.suffix)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, out_path)
+    update_settings({"export_dir": str(out_path.parent)})
+    return {"ok": True, "path": str(out_path), "filename": out_path.name, "folder": str(out_path.parent)}
+
+
 @app.post("/api/meetings/{meeting_id}/dub/{lang}/reveal")
 def api_dub_reveal(meeting_id: int, lang: str) -> Dict[str, Any]:
     import subprocess
@@ -941,6 +966,9 @@ _EXPORT_FILE_TYPES = {
     "srt": ("Субтитры (*.srt)", "*.srt", ".srt"),
     "json": ("JSON (*.json)", "*.json", ".json"),
     "docx": ("Документ Word (*.docx)", "*.docx", ".docx"),
+    "mp4": ("Видео MP4 (*.mp4)", "*.mp4", ".mp4"),
+    "mkv": ("Видео MKV (*.mkv)", "*.mkv", ".mkv"),
+    "m4a": ("Аудио M4A (*.m4a)", "*.m4a", ".m4a"),
 }
 
 
