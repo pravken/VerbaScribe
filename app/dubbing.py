@@ -400,6 +400,11 @@ class TtsStream:
                 self._cond.wait(0.5)
         if self.fatal:
             raise self.fatal[0]
+        if any(getattr(w, "_cancelled", False) for w in self._pool.workers):
+            check = getattr(self._pool, "_check_cancel", None)
+            if check:
+                check()  # raises JobCancelled
+            raise RuntimeError("Синтез речи отменён")
         if not self._pending.empty() or len(self.results) < self._expected:
             raise self.failures[0] if self.failures else RuntimeError("Синтез речи не завершён")
         return {"results": self.results, "peak_vram_gb": round(self.peak, 2)}
