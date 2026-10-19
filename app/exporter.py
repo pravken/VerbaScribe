@@ -15,8 +15,60 @@ def _hex_to_rgb(hex_color: str) -> Tuple[int, int, int]:
     return 79, 70, 229
 
 
+# Headings of exported documents, in the language of the document: the translation for a translated
+# export, otherwise the language of the recording. Other languages use English.
+_LABELS: Dict[str, Dict[str, str]] = {
+    "ru": {
+        "untitled": "Запись", "date": "Дата", "processed": "Дата обработки", "duration": "Длительность",
+        "model": "Модель", "participants": "Участники", "unknown": "не определены", "overview": "Обзор",
+        "transcript": "Расшифровка", "translation": "Перевод",
+        "mt_note": "Машинный перевод ({lang}), модель {model}", "mt_stale": "устарело: {stale}, без перевода: {missing}",
+    },
+    "en": {
+        "untitled": "Recording", "date": "Date", "processed": "Processed", "duration": "Duration",
+        "model": "Model", "participants": "Participants", "unknown": "not identified", "overview": "Overview",
+        "transcript": "Transcript", "translation": "Translation",
+        "mt_note": "Machine translation ({lang}), model {model}", "mt_stale": "outdated: {stale}, untranslated: {missing}",
+    },
+    "de": {
+        "untitled": "Aufnahme", "date": "Datum", "processed": "Verarbeitet", "duration": "Dauer",
+        "model": "Modell", "participants": "Teilnehmer", "unknown": "nicht erkannt", "overview": "Überblick",
+        "transcript": "Transkript", "translation": "Übersetzung",
+        "mt_note": "Maschinelle Übersetzung ({lang}), Modell {model}", "mt_stale": "veraltet: {stale}, nicht übersetzt: {missing}",
+    },
+    "fr": {
+        "untitled": "Enregistrement", "date": "Date", "processed": "Traité le", "duration": "Durée",
+        "model": "Modèle", "participants": "Participants", "unknown": "non identifiés", "overview": "Synthèse",
+        "transcript": "Transcription", "translation": "Traduction",
+        "mt_note": "Traduction automatique ({lang}), modèle {model}", "mt_stale": "obsolètes : {stale}, non traduits : {missing}",
+    },
+    "es": {
+        "untitled": "Grabación", "date": "Fecha", "processed": "Procesado", "duration": "Duración",
+        "model": "Modelo", "participants": "Participantes", "unknown": "no identificados", "overview": "Resumen",
+        "transcript": "Transcripción", "translation": "Traducción",
+        "mt_note": "Traducción automática ({lang}), modelo {model}", "mt_stale": "desactualizados: {stale}, sin traducir: {missing}",
+    },
+}
+
+
+def _labels(meeting: Dict[str, Any]) -> Dict[str, str]:
+    lang = (meeting.get("translation_lang") or meeting.get("language") or "ru").lower()
+    return _LABELS.get(lang, _LABELS["en"])
+
+
+def _translation_note(meeting: Dict[str, Any], L: Dict[str, str]) -> str:
+    info = meeting.get("translation_info")
+    if not info:
+        return meeting.get("translation_note") or ""
+    note = L["mt_note"].format(lang=info["lang"].upper(), model=info["model"])
+    if info.get("stale") or info.get("missing"):
+        note += "; " + L["mt_stale"].format(stale=info.get("stale", 0), missing=info.get("missing", 0))
+    return note
+
+
 def export_markdown(meeting: Dict[str, Any]) -> str:
-    title = meeting.get("title", "Встреча")
+    L = _labels(meeting)
+    title = meeting.get("title") or L["untitled"]
     created_at = meeting.get("created_at", "")
     duration_str = format_timestamp(meeting.get("duration", 0.0))
     speakers = meeting.get("speakers") or {}
@@ -26,13 +78,16 @@ def export_markdown(meeting: Dict[str, Any]) -> str:
     lines = [
         f"# {title}",
         "",
-        f"- **Дата обработки:** {created_at}",
-        f"- **Длительность:** {duration_str}",
-        f"- **Модель:** `{meeting.get('model_name', 'large-v3-turbo')}`",
-        f"- **Участники ({len(speakers)}):** "
-        + (", ".join(s.get("name", k) for k, s in speakers.items()) or "Не определены"),
-        "",
+        f"- **{L['processed']}:** {created_at}",
+        f"- **{L['duration']}:** {duration_str}",
+        f"- **{L['model']}:** `{meeting.get('model_name', 'large-v3-turbo')}`",
+        f"- **{L['participants']} ({len(speakers)}):** "
+        + (", ".join(s.get("name", k) for k, s in speakers.items()) or L["unknown"]),
     ]
+    note = _translation_note(meeting, L)
+    if note:
+        lines.append(f"- **{L['translation']}:** {note}")
+    lines.append("")
 
     if summaries.get("protocol"):
         lines.extend(
@@ -57,7 +112,7 @@ def export_markdown(meeting: Dict[str, Any]) -> str:
         [
             "---",
             "",
-            "## Полная расшифровка встречи",
+            f"## {L['transcript']}",
             "",
         ]
     )
@@ -77,7 +132,8 @@ def export_markdown(meeting: Dict[str, Any]) -> str:
 
 
 def export_txt(meeting: Dict[str, Any]) -> str:
-    title = meeting.get("title", "Встреча")
+    L = _labels(meeting)
+    title = meeting.get("title") or L["untitled"]
     created_at = meeting.get("created_at", "")
     duration_str = format_timestamp(meeting.get("duration", 0.0))
     speakers = meeting.get("speakers") or {}
@@ -85,17 +141,18 @@ def export_txt(meeting: Dict[str, Any]) -> str:
     summaries = meeting.get("summaries") or {}
 
     lines = [
-        f"ПРОТОКОЛ ВСТРЕЧИ: {title}",
-        f"Дата: {created_at} | Длительность: {duration_str}",
+        title,
+        f"{L['date']}: {created_at} | {L['duration']}: {duration_str}",
     ]
-    if meeting.get("translation_note"):
-        lines.append(f"Перевод: {meeting['translation_note']}")
+    note = _translation_note(meeting, L)
+    if note:
+        lines.append(f"{L['translation']}: {note}")
     lines += ["=" * 60, ""]
 
     if summaries.get("protocol"):
         lines.extend(
             [
-                "ИИ-САММАРИ ВСТРЕЧИ:",
+                f"{L['overview'].upper()}:",
                 "-" * 40,
                 summaries["protocol"],
                 "",
@@ -104,7 +161,7 @@ def export_txt(meeting: Dict[str, Any]) -> str:
             ]
         )
 
-    lines.append("РАСШИФРОВКА ПО РОЛЯМ:")
+    lines.append(f"{L['transcript'].upper()}:")
     lines.append("-" * 40)
 
     for seg in segments:
@@ -155,7 +212,8 @@ def export_json(meeting: Dict[str, Any]) -> str:
 def export_docx(meeting: Dict[str, Any]) -> bytes:
     doc = Document()
 
-    title = meeting.get("title", "Протокол встречи")
+    L = _labels(meeting)
+    title = meeting.get("title") or L["untitled"]
     speakers = meeting.get("speakers") or {}
     segments = meeting.get("segments") or []
     summaries = meeting.get("summaries") or {}
@@ -163,17 +221,18 @@ def export_docx(meeting: Dict[str, Any]) -> bytes:
     doc.add_heading(title, level=0)
 
     meta_p = doc.add_paragraph()
-    meta_p.add_run(f"Дата: {meeting.get('created_at', '')}  |  ").italic = True
+    meta_p.add_run(f"{L['date']}: {meeting.get('created_at', '')}  |  ").italic = True
     meta_p.add_run(
-        f"Длительность: {format_timestamp(meeting.get('duration', 0.0))}  |  "
+        f"{L['duration']}: {format_timestamp(meeting.get('duration', 0.0))}  |  "
     ).italic = True
     participant_names = ", ".join(s.get("name", k) for k, s in speakers.items())
-    meta_p.add_run(f"Участники: {participant_names or '1'}").italic = True
-    if meeting.get("translation_note"):
-        meta_p.add_run(f"\nПеревод: {meeting['translation_note']}").italic = True
+    meta_p.add_run(f"{L['participants']}: {participant_names or L['unknown']}").italic = True
+    note = _translation_note(meeting, L)
+    if note:
+        meta_p.add_run(f"\n{L['translation']}: {note}").italic = True
 
     if summaries.get("protocol"):
-        doc.add_heading("AI-Саммари встречи", level=1)
+        doc.add_heading(L["overview"], level=1)
         for line in summaries["protocol"].splitlines():
             clean = line.strip()
             if not clean:
@@ -185,7 +244,7 @@ def export_docx(meeting: Dict[str, Any]) -> bytes:
             else:
                 doc.add_paragraph(clean)
 
-    doc.add_heading("Расшифровка встречи по участникам", level=1)
+    doc.add_heading(L["transcript"], level=1)
 
     for seg in segments:
         spk_id = seg.get("speaker", "SPEAKER_00")

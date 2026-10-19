@@ -134,6 +134,53 @@ class WindowApi:
         return self._fullscreen
 
 
+_instance_mutex = None
+
+
+def acquire_single_instance() -> bool:
+    """
+    True if this is the only desktop window of VerbaScribe for this user. A named mutex is
+    atomic, unlike checking the port: two quick double-clicks cannot both start a window.
+    """
+    global _instance_mutex
+    if sys.platform != "win32":
+        return True
+    ERROR_ALREADY_EXISTS = 183
+    kernel32 = ctypes.windll.kernel32
+    kernel32.CreateMutexW.restype = ctypes.c_void_p
+    _instance_mutex = kernel32.CreateMutexW(None, False, "Local\\VerbaScribe.Desktop.Window")
+    return bool(_instance_mutex) and kernel32.GetLastError() != ERROR_ALREADY_EXISTS
+
+
+def activate_existing_window(timeout: float = 30.0) -> bool:
+    """Brings the already open VerbaScribe window to the front (it may still be starting)."""
+    if sys.platform != "win32":
+        return False
+    user32 = ctypes.windll.user32
+    SW_RESTORE = 9
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        hwnd = user32.FindWindowW(None, WINDOW_TITLE)
+        if hwnd:
+            if user32.IsIconic(hwnd):
+                user32.ShowWindow(hwnd, SW_RESTORE)
+            user32.SetForegroundWindow(hwnd)
+            return True
+        time.sleep(0.25)
+    return False
+
+
+def show_error_box(text: str) -> None:
+    if sys.platform == "win32":
+        try:
+            MB_ICONERROR = 0x10
+            ctypes.windll.user32.MessageBoxW(None, text, "VerbaScribe", MB_ICONERROR)
+            return
+        except Exception:
+            pass
+    print(text, file=sys.stderr)
+
+
 def main() -> None:
     set_app_user_model_id()
 
@@ -161,6 +208,11 @@ def main() -> None:
         return
 
     if not args.browser:
+        if not acquire_single_instance():
+            # A second double-click shows the window that is already open instead of a second copy
+            print("VerbaScribe is already open: bringing its window to the front")
+            activate_existing_window()
+            return
         try:
             import webview
 
@@ -202,4 +254,21 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    from app.applog import LOG_FILE, start_file_log
+
+    if "--headless" not in sys.argv:
+        start_file_log()
+    try:
+        main()
+    except SystemExit:
+        raise
+    except BaseException:
+        import traceback
+
+        traceback.print_exc()
+        show_error_box(
+            "Не удалось запустить VerbaScribe.\n\n"
+            f"Подробности записаны в журнал:\n{LOG_FILE}\n\n"
+            "VerbaScribe could not start. Details are in the log file above."
+        )
+        sys.exit(1)

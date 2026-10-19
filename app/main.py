@@ -7,6 +7,7 @@ import re
 import secrets
 import shutil
 import sys
+import traceback
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -624,7 +625,7 @@ def api_update_speaker(meeting_id: int, payload: SpeakerUpdatePayload) -> Dict[s
         raise HTTPException(status_code=404, detail="Встреча не найдена")
 
     if not _SPEAKER_ID_RE.match(payload.speaker_id):
-        raise HTTPException(status_code=400, detail="Некорректный идентификатор спикера")
+        raise HTTPException(status_code=400, detail="Некорректный идентификатор участника")
     if payload.color and not _COLOR_RE.match(payload.color):
         raise HTTPException(status_code=400, detail="Цвет должен быть в формате #RRGGBB")
     name = payload.name.strip()[:120]
@@ -639,12 +640,100 @@ def api_update_speaker(meeting_id: int, payload: SpeakerUpdatePayload) -> Dict[s
             "sample_end": 5.0,
         }
     else:
+        old_name = speakers[payload.speaker_id].get("name") or ""
         speakers[payload.speaker_id]["name"] = name or payload.speaker_id
         if payload.color:
             speakers[payload.speaker_id]["color"] = payload.color
+        if name and name != old_name:
+            # Naming a voice teaches its profile: later recordings get the name automatically
+            from app.voice_profiles import learn
+
+            try:
+                learn(name, speakers[payload.speaker_id].get("embedding"))
+            except Exception:
+                traceback.print_exc()
+            speakers[payload.speaker_id].pop("voice_profile", None)
 
     save_meeting_results(meeting_id, speakers=speakers)
     return get_meeting(meeting_id)
+
+
+# --- Live captions while recording (see app/live.py) ---
+class LiveStartPayload(BaseModel):
+    lang: Optional[str] = None
+    translate_to: Optional[str] = None
+
+
+@app.post("/api/live/start")
+def api_live_start(payload: LiveStartPayload) -> Dict[str, Any]:
+    from app.dubbing import DUB_LANGUAGES
+    from app.live import start_session
+
+    target = (payload.translate_to or "").strip().lower() or None
+    if target and target not in DUB_LANGUAGES:
+        raise HTTPException(status_code=400, detail="Неподдерживаемый язык перевода")
+    return start_session(payload.lang, target).state()
+
+
+@app.post("/api/live/{session_id}/audio")
+async def api_live_audio(session_id: str, request: Request, since: int = 0) -> Dict[str, Any]:
+    """Body: 16 kHz mono 16-bit little-endian PCM. Returns new final lines, translations and the draft."""
+    from starlette.concurrency import run_in_threadpool
+
+    from app.live import get_session
+
+    s = get_session(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Сеанс субтитров не найден")
+    data = await request.body()
+    if len(data) > 4 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Слишком большой фрагмент звука")
+    s.add_pcm16(data)
+    await run_in_threadpool(s.step)
+    return s.state(since)
+
+
+@app.post("/api/live/{session_id}/stop")
+def api_live_stop(session_id: str) -> Dict[str, Any]:
+    from app.live import stop_session
+
+    stop_session(session_id)
+    return {"ok": True}
+
+
+class LibraryAskPayload(BaseModel):
+    question: str
+    lang: str = "ru"
+    model: Optional[str] = None
+
+
+@app.post("/api/library/ask")
+def api_library_ask(payload: LibraryAskPayload) -> Dict[str, Any]:
+    """Answers a question from the transcripts of all recordings (see app/library_qa.py)."""
+    from app.library_qa import ask_library
+
+    try:
+        return ask_library(payload.question, answer_lang=payload.lang, model_name=payload.model)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+
+@app.get("/api/voice-profiles")
+def api_voice_profiles() -> Dict[str, Any]:
+    from app.voice_profiles import enabled, list_profiles
+
+    return {"enabled": enabled(), "profiles": list_profiles()}
+
+
+@app.delete("/api/voice-profiles/{profile_id}")
+def api_delete_voice_profile(profile_id: int) -> Dict[str, Any]:
+    from app.voice_profiles import delete_profile, enabled, list_profiles
+
+    if not delete_profile(profile_id):
+        raise HTTPException(status_code=404, detail="Голосовой профиль не найден")
+    return {"enabled": enabled(), "profiles": list_profiles()}
 
 
 class SegmentUpdatePayload(BaseModel):
@@ -661,7 +750,7 @@ def api_update_segment(
         raise HTTPException(status_code=404, detail="Встреча не найдена")
 
     if payload.speaker is not None and payload.speaker not in (m.get("speakers") or {}):
-        raise HTTPException(status_code=400, detail="Неизвестный спикер")
+        raise HTTPException(status_code=400, detail="Неизвестный участник")
 
     segments = m.get("segments") or []
     found = False
@@ -744,7 +833,7 @@ def api_generate_summary(meeting_id: int, payload: SummaryRequestPayload) -> Dic
     segments = m.get("segments") or []
     speakers = m.get("speakers") or {}
     if not segments:
-        raise HTTPException(status_code=400, detail="Нет текста встречи для генерации саммари")
+        raise HTTPException(status_code=400, detail="Нет текста записи для анализа")
 
     # Free any cached speech models from VRAM before invoking local LLM
     unload_diarizer()

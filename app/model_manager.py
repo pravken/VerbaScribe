@@ -267,16 +267,16 @@ def start_models_setup(
 
             # 2. Download Speaker Diarization Model (SpeechBrain ECAPA-TDNN)
             if install_diarizer and not is_diarizer_installed():
-                _log("Загрузка голосовой модели разделения спикеров (ECAPA-TDNN)...")
+                _log("Загрузка модели разделения участников (ECAPA-TDNN)...")
                 ecapa_dir = MODELS_DIR / "spkrec-ecapa-voxceleb"
                 _download_hf_repo_with_progress(
                     repo_id="speechbrain/spkrec-ecapa-voxceleb",
                     target_dir=ecapa_dir,
-                    label="Модель спикеров ECAPA-TDNN",
+                    label="Модель разделения участников ECAPA-TDNN",
                     base_pct=85,
                     span_pct=14,
                 )
-                _log("Модель разделения спикеров успешно установлена!")
+                _log("Модель разделения участников установлена")
 
             _log("Все выбранные модели готовы к работе!")
             _setup_state.update(

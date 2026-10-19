@@ -296,7 +296,7 @@ def _burn_runner(meeting_id: int, lang: str, srt_text: str, out_path: str) -> st
         raise RuntimeError(f"Исходный файл не найден: {media}")
     # Whisper may still be cached; the encoder is CPU-bound, but free the VRAM anyway
     release_whisper_model()
-    update_meeting_progress(meeting_id, progress=1, stage_text="Вшивание субтитров: подготовка...")
+    update_meeting_progress(meeting_id, progress=1, stage_text="Встраивание субтитров: подготовка...")
     duration = probe_media(media)["duration"] or float(meeting.get("duration") or 0.0)
     out = burn_subtitles(
         media,
@@ -312,7 +312,7 @@ def _burn_runner(meeting_id: int, lang: str, srt_text: str, out_path: str) -> st
 # runner -> (name for error messages, text after a cancel)
 _SIDE_JOB_NAMES = {
     _translate_runner: ("перевод", "Перевод отменён"),
-    _burn_runner: ("вшивание субтитров", "Вшивание субтитров отменено"),
+    _burn_runner: ("встраивание субтитров", "Встраивание субтитров отменено"),
 }
 
 
@@ -325,7 +325,7 @@ def enqueue_translate_job(meeting_id: int, target_lang: str, model: Optional[str
 
 def enqueue_burn_subtitles_job(meeting_id: int, lang: str, srt_text: str, out_path: str) -> bool:
     return _enqueue_side_job(
-        meeting_id, "burn_subs", lang, "rendering", "Вшивание субтитров в очереди...",
+        meeting_id, "burn_subs", lang, "rendering", "Встраивание субтитров в очереди...",
         _burn_runner, lang, srt_text, out_path,
     )
 
@@ -698,6 +698,15 @@ def _process_meeting_job(meeting_id: int) -> None:
             diarization_enabled=diarization_enabled,
             progress_callback=_diar_cb,
         )
+        # Speakers whose voice was named in earlier recordings get that name again
+        try:
+            from app.voice_profiles import apply_to_speakers
+
+            named = apply_to_speakers(speakers_meta)
+            if named:
+                print(f"[voice profiles] recognised {named} speaker(s) in meeting {meeting_id}")
+        except Exception:
+            traceback.print_exc()
 
         _check_cancel(meeting_id)
         if settings.get("clean_fillers", "true").lower() == "true":
@@ -729,7 +738,7 @@ def _process_meeting_job(meeting_id: int) -> None:
                     meeting_id,
                     status="summarizing",
                     progress=90,
-                    stage_text="Генерация AI-протокола встречи через локальную Ollama...",
+                    stage_text="Формирование обзора записи (Ollama)...",
                 )
                 try:
                     summary_md = generate_meeting_summary(

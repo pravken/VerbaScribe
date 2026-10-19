@@ -201,7 +201,7 @@ def burn_subtitles(
                 if pct != last_pct:
                     last_pct = pct
                     speed = sec / max(0.1, time.time() - t0)
-                    progress(pct, f"Вшивание субтитров (перекодирование видео, {speed:.1f}x): {pct}%")
+                    progress(pct, f"Встраивание субтитров (перекодирование видео, {speed:.1f}x): {pct}%")
         proc.wait()
         if cancelled["flag"]:
             check_cancel()  # raises the job's cancel exception

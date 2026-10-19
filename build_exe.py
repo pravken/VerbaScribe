@@ -258,9 +258,10 @@ class VerbaScribeLauncher
         psi.UseShellExecute = false;
         psi.CreateNoWindow = true;
 
+        Process app;
         try
         {
-            Process.Start(psi);
+            app = Process.Start(psi);
         }
         catch (Exception ex)
         {
@@ -270,7 +271,67 @@ class VerbaScribeLauncher
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error
             );
+            return;
         }
+        ShowSplashUntilWindow(app);
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    static extern IntPtr FindWindow(string cls, string title);
+    [DllImport("user32.dll")]
+    static extern bool IsWindowVisible(IntPtr hwnd);
+
+    const string WindowTitle = "VerbaScribe — AI Speech & Media Studio";
+
+    // A small "starting" window: the first start after an update can take a while (Python compiles
+    // its files, the speech libraries load), and without it nothing seems to happen.
+    // It closes when the app window appears or the app process ends (errors are shown by the app).
+    static void ShowSplashUntilWindow(Process app)
+    {
+        Application.EnableVisualStyles();
+        Form splash = new Form();
+        splash.FormBorderStyle = FormBorderStyle.None;
+        splash.StartPosition = FormStartPosition.CenterScreen;
+        splash.Size = new System.Drawing.Size(340, 96);
+        splash.BackColor = System.Drawing.Color.FromArgb(28, 28, 30);
+        splash.ShowInTaskbar = true;
+        splash.Text = "VerbaScribe";
+        try { splash.Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
+
+        Label title = new Label();
+        title.Text = "VerbaScribe";
+        title.ForeColor = System.Drawing.Color.White;
+        title.Font = new System.Drawing.Font("Segoe UI Semibold", 12f);
+        title.SetBounds(20, 14, 300, 26);
+        Label status = new Label();
+        status.Text = "Запуск приложения…";
+        status.ForeColor = System.Drawing.Color.FromArgb(152, 152, 157);
+        status.Font = new System.Drawing.Font("Segoe UI", 9f);
+        status.SetBounds(20, 42, 300, 20);
+        ProgressBar bar = new ProgressBar();
+        bar.Style = ProgressBarStyle.Marquee;
+        bar.MarqueeAnimationSpeed = 30;
+        bar.SetBounds(20, 68, 300, 6);
+        splash.Controls.Add(title);
+        splash.Controls.Add(status);
+        splash.Controls.Add(bar);
+
+        DateTime started = DateTime.Now;
+        Timer timer = new Timer();
+        timer.Interval = 250;
+        timer.Tick += delegate
+        {
+            IntPtr hwnd = FindWindow(null, WindowTitle);
+            bool done = (hwnd != IntPtr.Zero && IsWindowVisible(hwnd)) || app.HasExited
+                || (DateTime.Now - started).TotalSeconds > 180;
+            if (done)
+            {
+                timer.Stop();
+                splash.Close();
+            }
+        };
+        timer.Start();
+        Application.Run(splash);
     }
 }
 """
@@ -300,6 +361,7 @@ def compile_exe() -> Path:
         f"/out:{exe_path}",
         f"/win32icon:{ICO_PATH}",
         "/r:System.Windows.Forms.dll",
+        "/r:System.Drawing.dll",
         str(cs_path),
     ]
     res = subprocess.run(cmd, cwd=str(BASE_DIR), capture_output=True, text=True)

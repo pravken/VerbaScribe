@@ -264,3 +264,97 @@ select option, select optgroup {
   background-color: #242426;
   color: #f5f5f7;
 }
+
+/* Files dragged over the window */
+.drop-overlay {
+  position: fixed; inset: 0; z-index: 70;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(12, 12, 14, 0.62);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+  animation: drop-fade-in 0.14s ease-out;
+}
+.drop-overlay.hidden { display: none; }
+.drop-overlay::before {
+  content: ""; position: absolute; inset: 14px;
+  border: 2px dashed rgba(10, 132, 255, 0.85); border-radius: 18px;
+  background: rgba(10, 132, 255, 0.06);
+  animation: drop-border-pulse 1.6s ease-in-out infinite;
+}
+.drop-overlay.unsupported::before { border-color: rgba(255, 69, 58, 0.85); background: rgba(255, 69, 58, 0.06); }
+.drop-overlay-card { position: relative; text-align: center; }
+.drop-overlay-icon {
+  width: 64px; height: 64px; margin: 0 auto 14px; border-radius: 18px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(10, 132, 255, 0.18); color: #0A84FF;
+  animation: drop-icon-bob 1.2s ease-in-out infinite;
+}
+.drop-overlay.unsupported .drop-overlay-icon { background: rgba(255, 69, 58, 0.18); color: #FF453A; animation: none; }
+@keyframes drop-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes drop-border-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+@keyframes drop-icon-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) {
+  .drop-overlay, .drop-overlay::before, .drop-overlay-icon { animation: none; }
+}
+
+/* Empty workspace: ways to start */
+.empty-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.empty-card {
+  position: relative; text-align: left; padding: 18px 16px 16px;
+  border-radius: 14px; border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+.empty-card:hover { background: rgba(255, 255, 255, 0.06); border-color: rgba(10, 132, 255, 0.5); transform: translateY(-1px); }
+.empty-card[tabindex="-1"] { cursor: default; border-style: dashed; }
+.empty-card[tabindex="-1"]:hover { transform: none; border-color: rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.03); }
+.empty-card-icon {
+  width: 38px; height: 38px; border-radius: 11px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(10, 132, 255, 0.15); color: #0A84FF;
+}
+.empty-card-icon-red { background: rgba(255, 69, 58, 0.15); color: #FF453A; }
+.empty-card-icon-dashed { background: rgba(255, 255, 255, 0.06); color: #EBEBF5; }
+.empty-card-kbd, .sc-kbd {
+  font-family: 'JetBrains Mono Variable', ui-monospace, monospace; font-size: 10px; line-height: 1;
+  padding: 3px 6px; border-radius: 5px; color: #EBEBF5;
+  background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.empty-card-kbd { position: absolute; top: 14px; right: 14px; }
+.empty-card-kbd.\!static { position: static; }
+
+/* Theatre, "Subtitles" layout */
+.theatre-caption {
+  position: absolute; left: 50%; bottom: 7%; transform: translateX(-50%);
+  max-width: min(88%, 1100px); z-index: 2;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  pointer-events: none; text-align: center;
+}
+.theatre-caption.hidden, .theatre-caption.empty { display: none; }
+.theatre-caption-line {
+  display: inline-block; padding: 4px 12px; border-radius: 6px;
+  background: rgba(0, 0, 0, 0.72); color: #fff;
+  font-size: clamp(16px, 2.1vw, 36px); line-height: 1.3; font-weight: 500;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+.theatre-caption-second { font-size: clamp(13px, 1.6vw, 28px); color: #e5e5ea; font-weight: 400; }
+
+/* Chapters bar above the transcript */
+.chapters-scroll { scrollbar-width: none; }
+.chapters-scroll::-webkit-scrollbar { display: none; }
+.chapter-chip {
+  flex-shrink: 0; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 11.5px; padding: 3px 9px; border-radius: 7px; color: #c7c7cc;
+  border: 1px solid transparent; transition: background-color 0.12s ease, color 0.12s ease;
+}
+.chapter-chip:hover { background: rgba(255, 255, 255, 0.07); color: #fff; }
+.chapter-chip-active { background: rgba(10, 132, 255, 0.16); border-color: rgba(10, 132, 255, 0.35); color: #fff; }
+
+/* Citations in library answers */
+.lib-cite {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 16px; padding: 0 4px; margin: 0 1px; border-radius: 4px;
+  font-size: 10px; font-weight: 600; vertical-align: 1px;
+  background: rgba(10, 132, 255, 0.18); color: #64B5FF; cursor: pointer;
+}
+.lib-cite:hover { background: rgba(10, 132, 255, 0.35); color: #fff; }

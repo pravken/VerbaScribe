@@ -4,14 +4,14 @@ process), the speaker-embedding model, the model Ollama keeps loaded (/api/ps) a
 processes. Unloading frees VRAM; preloading saves the load time of the next job.
 """
 
-import subprocess
-from typing import Any, Dict, List, Optional
+import ctypes
+import sys
+import threading
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
 from app.database import get_all_settings
-
-_NO_WINDOW = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
 
 
 def _ollama_base() -> str:
@@ -19,21 +19,50 @@ def _ollama_base() -> str:
     return url.replace("localhost", "127.0.0.1").rstrip("/")
 
 
+class _NvmlMemory(ctypes.Structure):
+    _fields_ = [("total", ctypes.c_ulonglong), ("free", ctypes.c_ulonglong), ("used", ctypes.c_ulonglong)]
+
+
+_nvml_lock = threading.Lock()
+_nvml: Dict[str, Any] = {"lib": None, "handle": None, "failed": False}
+
+
+def _nvml_memory() -> Optional[Tuple[int, int]]:
+    """
+    (used, total) bytes of GPU 0 from the driver's NVML library, loaded once into this process.
+    Faster than starting nvidia-smi on every poll, and nothing is left hanging if the driver stalls.
+    """
+    with _nvml_lock:
+        if _nvml["failed"]:
+            return None
+        try:
+            if _nvml["lib"] is None:
+                lib = ctypes.CDLL("nvml.dll") if sys.platform == "win32" else ctypes.CDLL("libnvidia-ml.so.1")
+                if lib.nvmlInit_v2() != 0:
+                    raise OSError("nvmlInit failed")
+                handle = ctypes.c_void_p()
+                if lib.nvmlDeviceGetHandleByIndex_v2(0, ctypes.byref(handle)) != 0:
+                    raise OSError("no GPU 0")
+                _nvml.update(lib=lib, handle=handle)
+            mem = _NvmlMemory()
+            if _nvml["lib"].nvmlDeviceGetMemoryInfo(_nvml["handle"], ctypes.byref(mem)) != 0:
+                return None
+            return int(mem.used), int(mem.total)
+        except Exception:
+            _nvml["failed"] = True  # no NVIDIA driver: do not try again on every poll
+            return None
+
+
 def gpu_memory() -> Optional[Dict[str, float]]:
     """
-    Device-wide used/free/total in GB (all programs), or None without an NVIDIA GPU. nvidia-smi is
-    asked first: on Windows (WDDM) torch.cuda.mem_get_info misses other programs' memory.
+    Device-wide used/free/total in GB (all programs), or None without an NVIDIA GPU. NVML is asked
+    first: on Windows (WDDM) torch.cuda.mem_get_info misses other programs' memory.
     """
-    try:
-        proc = subprocess.run(
-            ["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,noheader,nounits", "-i", "0"],
-            capture_output=True, text=True, timeout=5, creationflags=_NO_WINDOW,
-        )
-        used_mb, total_mb = (float(x) for x in proc.stdout.strip().splitlines()[0].split(","))
-        return {"total_gb": round(total_mb / 1024, 1), "free_gb": round((total_mb - used_mb) / 1024, 1),
-                "used_gb": round(used_mb / 1024, 1)}
-    except Exception:
-        pass
+    gb = 2**30
+    nv = _nvml_memory()
+    if nv:
+        used, total = nv
+        return {"total_gb": round(total / gb, 1), "free_gb": round((total - used) / gb, 1), "used_gb": round(used / gb, 1)}
     try:
         import torch
 
@@ -42,7 +71,6 @@ def gpu_memory() -> Optional[Dict[str, float]]:
         free, total = torch.cuda.mem_get_info(0)
     except Exception:
         return None
-    gb = 2**30
     return {"total_gb": round(total / gb, 1), "free_gb": round(free / gb, 1), "used_gb": round((total - free) / gb, 1)}
 
 
@@ -121,7 +149,7 @@ def unload(kind: str, name: str = "") -> Dict[str, Any]:
         transcriber.release_whisper_model()
     elif kind == "speakers":
         if busy == "transcribe":
-            raise RuntimeError("Модель спикеров сейчас используется")
+            raise RuntimeError("Модель распознавания участников сейчас используется")
         from app.diarizer import unload_diarizer
 
         unload_diarizer()

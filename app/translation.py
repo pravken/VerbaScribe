@@ -346,6 +346,11 @@ def meeting_for_export(meeting: Dict[str, Any], lang: str, variant: str) -> Dict
         note += f"; устарело: {resolved['stale']}, без перевода: {resolved['missing']}"
     out["translation_note"] = note
     out["translation_lang"] = lang
+    # The exporters write their headings and this note in the language of the document
+    out["translation_info"] = {
+        "lang": lang, "model": resolved.get("model") or "—",
+        "stale": resolved.get("stale") or 0, "missing": resolved.get("missing") or 0,
+    }
     return out
 
 

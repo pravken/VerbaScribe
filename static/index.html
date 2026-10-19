@@ -10,8 +10,19 @@
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body class="h-screen overflow-hidden flex select-none"
-      ondragover="event.preventDefault()"
+      ondragover="onWindowDragOver(event)"
       ondrop="handleGlobalDrop(event)">
+
+  <!-- Shown while files are dragged over the window (see onWindowDragEnter) -->
+  <div id="drop-overlay" class="drop-overlay hidden" aria-hidden="true">
+    <div class="drop-overlay-card">
+      <div class="drop-overlay-icon">
+        <svg class="w-8 h-8" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+      </div>
+      <div id="drop-overlay-title" class="text-[17px] font-semibold text-white" data-i18n="dropOverlayTitle">Отпустите, чтобы добавить файлы</div>
+      <div id="drop-overlay-sub" class="text-xs text-apple-secondary mt-1.5" data-i18n="dropOverlaySub">Каждый файл станет отдельной записью в медиатеке</div>
+    </div>
+  </div>
 
   <!-- =========================================================================
        LEFT SIDEBAR (Willow Brand Header + Action Buttons + Recordings List)
@@ -81,7 +92,7 @@
           <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
           </svg>
-          <span data-i18n="add">Файлы</span>
+          <span data-i18n="add">Импорт</span>
         </button>
       </div>
     </div>
@@ -114,8 +125,8 @@
 
     <!-- Sidebar Section Header -->
     <div class="px-4 pt-2 pb-1 flex items-center justify-between">
-      <span class="text-[11px] font-semibold text-apple-secondary uppercase tracking-wider" data-i18n="recordings">Записи</span>
-      <span class="text-[10px] text-apple-tertiary" data-i18n="rightClickHint">ПКМ — меню</span>
+      <span class="text-[11px] font-semibold text-apple-secondary uppercase tracking-wider" data-i18n="recordings">Медиатека</span>
+      <span class="text-[10px] text-apple-tertiary" data-i18n="rightClickHint">Правый клик — меню</span>
     </div>
 
     <!-- Recordings List (Supports Left-Click to select, Right-Click for Context Menu) -->
@@ -136,7 +147,7 @@
             data-i18n-title="tipToggleDlLogs"
             title="Показать или скрыть подробный лог скачивания"
             class="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 text-[10px] text-apple-secondary hover:text-white transition"
-            data-i18n="logsBtn">Логи</button>
+            data-i18n="logsBtn">Журнал</button>
         </div>
       </div>
 
@@ -194,20 +205,32 @@
 
     <!-- EMPTY STATE: Shown when no recording is selected -->
     <div id="workspace-empty" class="flex-1 flex flex-col items-center justify-center p-10">
-      <div onclick="openModal('import')"
-        data-i18n-title="tipDropzone"
-        title="Нажмите для выбора аудио или видео файлов"
-        class="w-full max-w-lg border border-dashed border-white/15 hover:border-apple-blue/60 bg-apple-sidebar/50 hover:bg-apple-sidebar rounded-2xl p-12 text-center cursor-pointer transition group">
-        <div class="w-12 h-12 rounded-2xl bg-apple-blue/15 text-apple-blue flex items-center justify-center mx-auto mb-4 group-hover:scale-105 transition">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
-          </svg>
+      <div class="w-full max-w-2xl text-center">
+        <h2 class="text-[19px] font-semibold text-white" data-i18n="emptyTitle">Начните работу</h2>
+        <p class="text-xs text-apple-secondary mt-1.5" data-i18n="emptySubtitle">Запишите встречу или добавьте аудио и видео. Обработка выполняется локально на этом компьютере.</p>
+        <div class="empty-cards mt-7">
+        <button onclick="openRecordModal()" class="empty-card group">
+          <span class="empty-card-icon empty-card-icon-red"><svg class="w-5 h-5" viewBox="0 0 12 12" fill="currentColor"><circle cx="6" cy="6" r="4"/></svg></span>
+          <span class="block text-[13px] font-semibold text-white mt-3" data-i18n="emptyRecordTitle">Записать</span>
+          <span class="block text-[11.5px] text-apple-secondary mt-1 leading-snug" data-i18n="emptyRecordDesc">Микрофон и системный звук</span>
+          <kbd class="empty-card-kbd">R</kbd>
+        </button>
+        <button onclick="openModal('import')" class="empty-card group">
+          <span class="empty-card-icon "><svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg></span>
+          <span class="block text-[13px] font-semibold text-white mt-3" data-i18n="emptyImportTitle">Открыть файлы</span>
+          <span class="block text-[11.5px] text-apple-secondary mt-1 leading-snug" data-i18n="emptyImportDesc">Аудио и видео с диска или по пути к папке</span>
+          <kbd class="empty-card-kbd">Ctrl+O</kbd>
+        </button>
+        <button type="button" tabindex="-1" class="empty-card group">
+          <span class="empty-card-icon empty-card-icon-dashed"><svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.042 21.672L13.684 16.6m0 0l-2.51 2.225.569-9.47 5.227 7.917-3.286-.672zM12 2.25V4.5m5.834.166l-1.591 1.591M20.25 10.5H18M7.757 14.743l-1.59 1.59M6 10.5H3.75m4.007-4.243l-1.59-1.59"/></svg></span>
+          <span class="block text-[13px] font-semibold text-white mt-3" data-i18n="emptyDropTitle">Перетащите в окно</span>
+          <span class="block text-[11.5px] text-apple-secondary mt-1 leading-snug" data-i18n="emptyDropDesc">MP4, MKV, MOV, WEBM, MP3, WAV, M4A</span>
+          
+        </button>
         </div>
-        <h2 class="text-[15px] font-semibold text-white mb-1" data-i18n="emptyTitle">Перетащите аудио или видео файлы сюда</h2>
-        <p class="text-xs text-apple-secondary mb-5" data-i18n="emptySubtitle">Поддерживаются MP4, MKV, MOV, WEBM, MP3, WAV, M4A · Локальная ИИ-обработка на вашем ПК</p>
-        <span class="ui-btn ui-btn-primary px-4 h-8">
-          <span data-i18n="chooseFiles">Выбрать файлы…</span>
-        </span>
+        <p class="text-[11px] text-apple-tertiary mt-6">
+          <span data-i18n="emptyShortcutsHint">Горячие клавиши</span> — <kbd class="empty-card-kbd !static">?</kbd>
+        </p>
       </div>
     </div>
 
@@ -233,21 +256,15 @@
           <button onclick="switchWorkspaceTab('transcript')" id="wtab-transcript"
             data-i18n-title="tipTabTranscript"
             title="Показать полную расшифровку разговора по ролям"
-            class="apple-segment-btn apple-segment-active" data-i18n="tabTranscript">
-            Транскрипт
-          </button>
+            class="apple-segment-btn apple-segment-active" data-i18n="tabTranscript">Расшифровка</button>
           <button onclick="switchWorkspaceTab('summary')" id="wtab-summary"
             data-i18n-title="tipTabSummary"
-            title="Показать ИИ-протокол, задачи и ответы на вопросы"
-            class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="tabSummary">
-            AI-Саммари
-          </button>
+            title="Структурированный обзор, задачи и ответы на вопросы по записи"
+            class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="tabSummary">Анализ</button>
           <button onclick="switchWorkspaceTab('speakers')" id="wtab-speakers"
             data-i18n-title="tipTabSpeakers"
-            title="Управление спикерами, прослушивание образцов голоса и переименование"
-            class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="tabSpeakers">
-            Участники
-          </button>
+            title="Управление участниками, прослушивание образцов голоса и переименование"
+            class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="tabSpeakers">Участники</button>
         </div>
 
         <!-- Right: Translation menu (text translation / voice dub) + Document Export Menu -->
@@ -268,9 +285,9 @@
                 <span data-i18n="translateMenuText">Перевод текста и субтитры…</span>
               </button>
               <button onclick="hideTranslateMenu(); openDubModal()" id="dub-open-btn" data-i18n-title="tipDubOpen"
-                title="Перевести запись и озвучить её голосами участников (прототип)" class="macos-menu-item">
+                title="Перевести запись и озвучить её голосами участников (бета)" class="macos-menu-item">
                 <span data-i18n="translateMenuDub">Озвучка голосом (дубляж)…</span>
-                <span class="text-[10px] opacity-60" data-i18n="dubProto">(прототип)</span>
+                <span class="text-[10px] opacity-60" data-i18n="dubProto">(бета)</span>
               </button>
             </div>
           </div>
@@ -361,7 +378,7 @@
                 <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12"/>
                 </svg>
-                <span data-i18n="followSpeech">Следить</span>
+                <span data-i18n="followSpeech">Автопрокрутка</span>
               </button>
 
               <div class="relative w-44 shrink-0">
@@ -376,6 +393,14 @@
                   class="w-full h-7 bg-white/5 focus:bg-apple-card border border-transparent focus:border-apple-blue/60 rounded-[7px] pl-8 pr-2.5 text-xs text-white placeholder-apple-tertiary focus:outline-none transition" />
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- Chapters (from the "Chapters" analysis): a clickable table of contents above the text -->
+        <div id="chapters-bar" class="hidden border-b apple-border bg-apple-bg/95 px-6 py-1.5 shrink-0">
+          <div class="max-w-3xl mx-auto flex items-center gap-2 min-w-0">
+            <span class="text-[10.5px] uppercase tracking-wider text-apple-tertiary shrink-0" data-i18n="chaptersLabel">Главы</span>
+            <div id="chapters-list" class="flex items-center gap-1 overflow-x-auto min-w-0 chapters-scroll"></div>
           </div>
         </div>
 
@@ -395,21 +420,19 @@
               <button onclick="selectSummaryTab('protocol')" id="sumtab-protocol"
                 data-i18n-title="tipSumProtocol"
                 title="Подробный протокол встречи с основными темами и решениями"
-                class="apple-segment-btn apple-segment-active" data-i18n="sumProtocol">
-                Протокол
-              </button>
+                class="apple-segment-btn apple-segment-active" data-i18n="sumProtocol">Обзор</button>
               <button onclick="selectSummaryTab('tasks')" id="sumtab-tasks"
                 data-i18n-title="tipSumTasks"
                 title="Список задач, поручений и дедлайнов по участникам"
-                class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumTasks">
-                Задачи
-              </button>
+                class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumTasks">Задачи</button>
               <button onclick="selectSummaryTab('tldr')" id="sumtab-tldr"
                 data-i18n-title="tipSumTldr"
                 title="Краткая выжимка встречи на 30 секунд чтения"
-                class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumTldr">
-                Кратко
-              </button>
+                class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumTldr">Резюме</button>
+              <button onclick="selectSummaryTab('chapters')" id="sumtab-chapters"
+                data-i18n-title="tipSumChapters"
+                title="Смысловые главы записи с отметками времени; по ним над текстом появляется оглавление"
+                class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumChapters">Главы</button>
             </div>
 
             <div class="flex items-center gap-1.5">
@@ -442,7 +465,7 @@
               </button>
               <button onclick="generateSummaryForActiveTab()" id="generate-summary-btn"
                 data-i18n-title="tipGenerateSummary"
-                title="Сгенерировать ИИ-саммари для выбранной вкладки"
+                title="Сформировать анализ для выбранной вкладки"
                 class="ui-btn ui-btn-primary shadow-sm">
                 <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/>
@@ -464,9 +487,7 @@
             <button onclick="runCustomQuestion()"
               data-i18n-title="tipAskBtn"
               title="Отправить вопрос локальной модели ИИ"
-              class="ui-btn ui-btn-subtle h-8 px-4 text-white" data-i18n="askBtn">
-              Спросить
-            </button>
+              class="ui-btn ui-btn-subtle h-8 px-4 text-white" data-i18n="askBtn">Спросить</button>
           </div>
 
           <div id="summary-content" class="markdown-body text-[13.5px] bg-apple-sidebar/60 border apple-border rounded-2xl p-6">
@@ -479,8 +500,8 @@
       <div id="wview-speakers" class="hidden flex-1 overflow-y-auto px-6 py-6 tab-pane-anim">
         <div class="max-w-2xl mx-auto space-y-4">
           <div>
-            <h3 class="text-sm font-semibold text-white" data-i18n="speakersTitle">Участники встречи</h3>
-            <p class="text-xs text-apple-secondary mt-0.5" data-i18n="speakersDesc">Прослушайте образец голоса и введите имя участника — оно обновится во всём документе.</p>
+            <h3 class="text-sm font-semibold text-white" data-i18n="speakersTitle">Участники</h3>
+            <p class="text-xs text-apple-secondary mt-0.5" data-i18n="speakersDesc">Прослушайте фрагмент голоса и укажите имя — оно обновится во всех репликах.</p>
           </div>
           <div id="speakers-list" class="divide-y divide-white/5 border apple-border rounded-xl bg-apple-sidebar overflow-hidden">
             <!-- Populated dynamically -->
@@ -546,7 +567,7 @@
                 <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M9.348 14.651a3.75 3.75 0 010-5.303m5.304 0a3.75 3.75 0 010 5.303m-7.425 2.122a6.75 6.75 0 010-9.546m9.546 0a6.75 6.75 0 010 9.546M5.106 18.894c-3.808-3.808-3.808-9.98 0-13.789m13.788 0c3.808 3.808 3.808 9.981 0 13.79M12 12h.008v.007H12V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"/>
                 </svg>
-                <span class="player-btn-label" data-i18n="studioVoiceBtn">Чистый голос</span>
+                <span class="player-btn-label" data-i18n="studioVoiceBtn">Шумоподавление</span>
               </button>
 
               <button onclick="cyclePlaybackSpeed()" id="speed-cycle-btn"
@@ -642,18 +663,24 @@
     <div class="h-10 px-4 flex items-center justify-between gap-3 border-b apple-border shrink-0 bg-apple-sidebar/95">
       <div id="theatre-title" class="text-xs font-semibold text-white truncate min-w-0"></div>
       <div class="flex items-center gap-1.5 shrink-0">
+        <!-- In the "Subtitles" layout the text language menu moves here from the hidden text pane -->
+        <div id="theatre-lang-slot" class="flex items-center"></div>
         <div class="apple-segmented" style="height: 26px;">
           <button onclick="setTheatreLayout('side')" id="theatre-layout-side" class="apple-segment-btn text-[11px]" data-i18n="theatreSide">Текст справа</button>
           <button onclick="setTheatreLayout('below')" id="theatre-layout-below" class="apple-segment-btn text-[11px]" data-i18n="theatreBelow">Текст снизу</button>
+          <button onclick="setTheatreLayout('subs')" id="theatre-layout-subs" class="apple-segment-btn text-[11px]" data-i18n="theatreSubs">Субтитры</button>
         </div>
         <button onclick="toggleTheatreFullscreen()" id="theatre-fs-btn" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" data-i18n="theatreFullscreen">Во весь экран</button>
         <button onclick="exitTheatre()" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" data-i18n-title="tipTheatreExit" title="Выйти из режима кинотеатра (Esc)">
-          <span data-i18n="theatreExit">Выйти</span> <kbd class="ml-1 text-[9.5px] font-mono text-apple-tertiary">Esc</kbd>
+          <span data-i18n="theatreExit">Закрыть</span> <kbd class="ml-1 text-[9.5px] font-mono text-apple-tertiary">Esc</kbd>
         </button>
       </div>
     </div>
     <div id="theatre-body" class="flex-1 min-h-0 flex">
-      <div id="theatre-video-slot" class="flex-1 min-w-0 min-h-0 bg-black flex items-center justify-center"></div>
+      <div id="theatre-video-slot" class="flex-1 min-w-0 min-h-0 bg-black flex items-center justify-center">
+        <!-- "Subtitles" layout: the phrase being spoken, over the picture -->
+        <div id="theatre-caption" class="theatre-caption hidden" aria-live="off"></div>
+      </div>
       <div id="theatre-text-slot" class="min-w-0 min-h-0 flex flex-col bg-apple-bg"></div>
     </div>
     <div id="theatre-footer-slot" class="shrink-0"></div>
@@ -668,8 +695,8 @@
     <button onclick="ctxRenameRecording()" data-i18n-title="tipCtxRename" title="Изменить название выбранной записи" class="macos-menu-item">
       <span data-i18n="ctxRename">Переименовать…</span>
     </button>
-    <button onclick="ctxOpenReconfigureModal()" data-i18n-title="tipCtxReconfigure" title="Изменить модель Whisper или число спикеров и запустить заново" class="macos-menu-item">
-      <span data-i18n="ctxReconfigure">Параметры и перезапуск…</span>
+    <button onclick="ctxOpenReconfigureModal()" data-i18n-title="tipCtxReconfigure" title="Изменить модель Whisper или число участников и запустить заново" class="macos-menu-item">
+      <span data-i18n="ctxReconfigure">Повторная обработка…</span>
     </button>
     <button id="ctx-cancel-item" onclick="ctxCancelProcessing()" data-i18n-title="tipCtxCancel" title="Остановить распознавание этой записи" class="macos-menu-item hidden">
       <span data-i18n="ctxCancel">Отменить обработку</span>
@@ -678,7 +705,7 @@
       <span data-i18n="ctxRestore">Вернуть текст до очистки</span>
     </button>
     <button onclick="ctxRevealInExplorer()" data-i18n-title="tipCtxReveal" title="Открыть папку с исходным медиафайлом в Проводнике Windows" class="macos-menu-item">
-      <span data-i18n="ctxReveal">Показать файл в Проводнике</span>
+      <span data-i18n="ctxReveal">Показать файл в папке</span>
     </button>
 
     <div class="my-1 border-t border-white/10"></div>
@@ -702,7 +729,7 @@
     <div class="w-full max-w-lg bg-apple-card border apple-border rounded-2xl shadow-2xl overflow-hidden modal-card">
       <div class="p-6 space-y-5">
         <div class="flex items-center justify-between">
-          <h3 class="text-sm font-semibold text-white" data-i18n="importModalTitle">Добавить записи встреч</h3>
+          <h3 class="text-sm font-semibold text-white" data-i18n="importModalTitle">Добавить аудио и видео файлы</h3>
           <button onclick="closeModal('import')" data-i18n-title="tipCloseModal" title="Закрыть окно" class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
         </div>
 
@@ -722,7 +749,7 @@
         <!-- Recognition Options -->
         <div class="grid grid-cols-3 gap-3">
           <div>
-            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="modelLabel">Модель ИИ</label>
+            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="modelLabel">Модель распознавания</label>
             <select id="upload-model" data-i18n-title="tipSelectWhisper" title="Выберите модель Whisper для распознавания речи" class="w-full bg-apple-sidebar border apple-border rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none">
               <option value="large-v3-turbo">Whisper Turbo</option>
               <option value="large-v3">Whisper Pro</option>
@@ -739,7 +766,7 @@
             </select>
           </div>
           <div>
-            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="speakersCountLabel">Участники</label>
+            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="speakersCountLabel">Число участников</label>
             <select id="upload-speakers" data-i18n-title="tipSelectSpeakersCount" title="Укажите точное число участников или оставьте Auto" class="w-full bg-apple-sidebar border apple-border rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none">
               <option value="0">Auto</option>
               <option value="1">1</option>
@@ -764,9 +791,7 @@
             <button onclick="submitLocalPath()"
               data-i18n-title="tipAddLocalPathBtn"
               title="Добавить файл или папку по указанному пути в очередь обработки"
-              class="ui-btn ui-btn-primary h-8 px-3.5" data-i18n="addBtnText">
-              Добавить
-            </button>
+              class="ui-btn ui-btn-primary h-8 px-3.5" data-i18n="addBtnText">Добавить</button>
           </div>
         </div>
       </div>
@@ -776,6 +801,74 @@
   <!-- =========================================================================
        MODAL 2: PER-FILE RECONFIGURE & RE-RUN
        ========================================================================= -->
+  <div id="modal-library" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4" onclick="closeModalOnBackdrop(event, 'library')">
+    <div class="w-full max-w-2xl bg-apple-card border apple-border rounded-2xl shadow-2xl overflow-hidden modal-card flex flex-col max-h-[85vh]">
+      <div class="p-6 pb-4 space-y-3 shrink-0">
+        <div class="flex items-center justify-between">
+          <h3 class="text-sm font-semibold text-white" data-i18n="libraryAskTitle">Вопрос по медиатеке</h3>
+          <button onclick="closeModal('library')" data-i18n-title="tipCloseModal" title="Закрыть окно" class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
+        </div>
+        <p class="text-[11.5px] text-apple-secondary leading-snug" data-i18n="libraryAskIntro">Ответ формирует локальная модель Ollama только по найденным фрагментам расшифровок. Ссылки в ответе открывают запись на нужном моменте.</p>
+        <div class="flex items-center gap-2">
+          <input id="library-question" type="text" onkeydown="if(event.key==='Enter') askLibrary()"
+            data-i18n-placeholder="libraryAskPlaceholder" placeholder="Например: что решили по срокам релиза?"
+            class="flex-1 h-8 bg-apple-sidebar border apple-border rounded-lg px-3 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
+          <button onclick="askLibrary()" id="library-ask-btn" class="ui-btn ui-btn-primary h-8 px-4"><svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg><span data-i18n="askBtn">Спросить</span></button>
+        </div>
+      </div>
+      <div id="library-answer" class="px-6 pb-6 overflow-y-auto min-h-0"></div>
+    </div>
+  </div>
+
+  <div id="modal-shortcuts" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4" onclick="closeModalOnBackdrop(event, 'shortcuts')">
+    <div class="w-full max-w-sm bg-apple-card border apple-border rounded-2xl shadow-2xl overflow-hidden modal-card">
+      <div class="p-6 space-y-3">
+        <div class="flex items-center justify-between">
+          <h3 class="text-sm font-semibold text-white" data-i18n="shortcutsTitle">Горячие клавиши</h3>
+          <button onclick="closeModal('shortcuts')" data-i18n-title="tipCloseModal" title="Закрыть окно" class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
+        </div>
+        <div>
+          <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
+            <span class="text-xs text-apple-label" data-i18n="scPlay">Воспроизведение / пауза</span>
+            <kbd class="sc-kbd">Space</kbd>
+          </div>
+          <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
+            <span class="text-xs text-apple-label" data-i18n="scSeek">Перемотка на 5 секунд</span>
+            <kbd class="sc-kbd">← →</kbd>
+          </div>
+          <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
+            <span class="text-xs text-apple-label" data-i18n="scSeekLong">Перемотка на 15 секунд</span>
+            <kbd class="sc-kbd">Shift + ← →</kbd>
+          </div>
+          <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
+            <span class="text-xs text-apple-label" data-i18n="scTheatre">Режим кинотеатра (для видео)</span>
+            <kbd class="sc-kbd">F</kbd>
+          </div>
+          <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
+            <span class="text-xs text-apple-label" data-i18n="scSearch">Поиск в тексте записи</span>
+            <kbd class="sc-kbd">/</kbd> <kbd class="sc-kbd">Ctrl + F</kbd>
+          </div>
+          <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
+            <span class="text-xs text-apple-label" data-i18n="scImport">Открыть файлы</span>
+            <kbd class="sc-kbd">Ctrl + O</kbd>
+          </div>
+          <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
+            <span class="text-xs text-apple-label" data-i18n="scRecord">Новая запись звука</span>
+            <kbd class="sc-kbd">R</kbd>
+          </div>
+          <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
+            <span class="text-xs text-apple-label" data-i18n="scEsc">Закрыть окно или режим кинотеатра</span>
+            <kbd class="sc-kbd">Esc</kbd>
+          </div>
+          <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
+            <span class="text-xs text-apple-label" data-i18n="scHelp">Эта справка</span>
+            <kbd class="sc-kbd">?</kbd>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="modal-reconfigure" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4" onclick="closeModalOnBackdrop(event, 'reconfigure')">
     <div class="w-full max-w-md bg-apple-card border apple-border rounded-2xl shadow-2xl overflow-hidden modal-card">
       <div class="p-6 space-y-4">
@@ -787,7 +880,7 @@
 
         <div class="space-y-3">
           <div>
-            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="modelLabel">Модель Whisper</label>
+            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="modelLabel">Модель распознавания</label>
             <select id="reconfig-model" data-i18n-title="tipSelectWhisper" title="Выберите модель Whisper" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none">
               <option value="large-v3-turbo">Whisper Turbo</option>
               <option value="large-v3">Whisper Pro</option>
@@ -804,7 +897,7 @@
             </select>
           </div>
           <div>
-            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="speakersCountLabel">Количество спикеров</label>
+            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="speakersCountLabel">Число участников</label>
             <select id="reconfig-speakers" data-i18n-title="tipSelectSpeakersCount" title="Выберите количество участников" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none">
               <option value="0">Auto</option>
               <option value="1">1</option>
@@ -819,7 +912,7 @@
 
         <div class="pt-2 flex justify-end gap-2">
           <button onclick="closeModal('reconfigure')" data-i18n-title="tipCancelBtn" title="Отменить изменения" class="ui-btn ui-btn-subtle px-3.5" data-i18n="cancel">Отмена</button>
-          <button onclick="submitReconfigure()" data-i18n-title="tipRerunBtn" title="Запустить повторную расшифровку записи с новыми параметрами" class="ui-btn ui-btn-primary px-4" data-i18n="rerunBtn">Перезапустить</button>
+          <button onclick="submitReconfigure()" data-i18n-title="tipRerunBtn" title="Запустить повторную расшифровку записи с новыми параметрами" class="ui-btn ui-btn-primary px-4" data-i18n="rerunBtn">Обработать заново</button>
         </div>
       </div>
     </div>
@@ -835,9 +928,9 @@
           <h3 class="text-sm font-semibold text-white" data-i18n="translateTitle">Перевод текста</h3>
           <button onclick="closeModal('translate')" class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
         </div>
-        <p class="text-xs text-apple-secondary leading-relaxed" data-i18n="translateIntro"></p>
+        <p class="text-xs text-apple-secondary leading-relaxed" data-i18n="translateIntro">Каждая реплика переводится выбранной моделью Ollama на этом компьютере — текст никуда не отправляется. Это машинный перевод: качество зависит от модели, имена и термины стоит проверить. Таймкоды реплик сохраняются.</p>
         <div id="translate-last-error" class="hidden text-xs rounded-lg border border-apple-red/30 bg-apple-red/15 text-apple-red px-3 py-2"></div>
-        <div id="translate-no-ollama" class="hidden text-xs rounded-lg border apple-border bg-apple-amber/15 text-apple-amber px-3 py-2" data-i18n="translateNoOllama"></div>
+        <div id="translate-no-ollama" class="hidden text-xs rounded-lg border apple-border bg-apple-amber/15 text-apple-amber px-3 py-2" data-i18n="translateNoOllama">Ollama сейчас не запущена или в ней нет моделей. Программа попробует запустить её при старте перевода; модель можно скачать в настройках.</div>
 
         <div class="grid grid-cols-2 gap-3">
           <div>
@@ -874,15 +967,15 @@
           </div>
           <label class="flex items-center gap-2 text-[11.5px] text-apple-label cursor-pointer">
             <input type="checkbox" id="subs-ask-path" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
-            <span data-i18n="subsAskPath">Спросить, куда сохранить видео</span>
+            <span data-i18n="subsAskPath">Спросить, куда сохранить видео (иначе — папка exports в папке данных)</span>
           </label>
           <div class="grid grid-cols-3 gap-2">
             <button onclick="makeSubtitles('srt')" class="ui-btn ui-btn-subtle justify-center text-[11.5px]" data-i18n-title="tipSubsSrt" title="Отдельный файл субтитров .srt" data-i18n="subsSrtBtn">Файл .srt</button>
             <button onclick="makeSubtitles('soft')" id="subs-soft-btn" class="ui-btn ui-btn-subtle justify-center text-[11.5px]" data-i18n-title="tipSubsSoft" title="Копия видео с отключаемой дорожкой субтитров, без перекодирования" data-i18n="subsSoftBtn">Дорожка в видео</button>
-            <button onclick="makeSubtitles('burn')" id="subs-burn-btn" class="ui-btn ui-btn-subtle justify-center text-[11.5px]" data-i18n-title="tipSubsBurn" title="Копия видео с субтитрами в изображении; видео перекодируется, задача идёт через очередь" data-i18n="subsBurnBtn">Вшить в видео</button>
+            <button onclick="makeSubtitles('burn')" id="subs-burn-btn" class="ui-btn ui-btn-subtle justify-center text-[11.5px]" data-i18n-title="tipSubsBurn" title="Копия видео с субтитрами в изображении; видео перекодируется, задача идёт через очередь" data-i18n="subsBurnBtn">Встроить в изображение</button>
           </div>
-          <p id="subs-no-video" class="hidden text-[11px] text-apple-tertiary" data-i18n="subsNoVideo"></p>
-          <p class="text-[11px] text-apple-tertiary leading-relaxed" data-i18n="subsNote"></p>
+          <p id="subs-no-video" class="hidden text-[11px] text-apple-tertiary" data-i18n="subsNoVideo">У этой записи нет видео — доступен только файл .srt.</p>
+          <p class="text-[11px] text-apple-tertiary leading-relaxed" data-i18n="subsNote">Исходный файл не изменяется: создаётся новая копия. «Дорожка в видео» занимает секунды; «Встроить в изображение» перекодирует видео (H.264) и может занять много времени. Длинные реплики делятся на несколько субтитров, время внутри реплики распределяется приблизительно.</p>
         </div>
       </div>
     </div>
@@ -895,12 +988,12 @@
     <div class="w-full max-w-lg bg-apple-card border apple-border rounded-2xl shadow-2xl overflow-hidden modal-card">
       <div class="p-6 space-y-4 overflow-y-auto" style="max-height: 85vh">
         <div class="flex items-center justify-between">
-          <h3 class="text-sm font-semibold text-white"><span data-i18n="dubTitle">Перевод и дубляж</span> <span class="text-[10px] font-normal text-apple-secondary" data-i18n="dubProto">(прототип)</span></h3>
+          <h3 class="text-sm font-semibold text-white"><span data-i18n="dubTitle">Перевод и дубляж</span> <span class="text-[10px] font-normal text-apple-secondary" data-i18n="dubProto">(бета)</span></h3>
           <button onclick="closeModal('dub')" class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
         </div>
-        <p class="text-xs text-apple-secondary leading-relaxed" data-i18n="dubIntro"></p>
+        <p class="text-xs text-apple-secondary leading-relaxed" data-i18n="dubIntro">Каждая фраза переводится локальной моделью Ollama, озвучивается клоном голоса её участника (Chatterbox Multilingual), фон сохраняется (Demucs), результат пишется в новый файл. Всё работает локально.</p>
         <div id="dub-env-panel" class="hidden rounded-xl border apple-border bg-apple-amber/15 p-3 space-y-2">
-          <div class="text-xs text-apple-amber leading-relaxed" data-i18n="dubNoEnv"></div>
+          <div class="text-xs text-apple-amber leading-relaxed" data-i18n="dubNoEnv">Для дубляжа нужно отдельное окружение: PyTorch, Chatterbox Multilingual и Demucs. Оно ставится в папку программы (.venv-dub) и не затрагивает основную установку.</div>
           <div id="dub-setup-meta" class="text-[11px] text-apple-secondary"></div>
           <div id="dub-setup-progress" class="hidden space-y-1.5">
             <div class="flex items-center justify-between gap-2 text-[11px]">
@@ -914,7 +1007,7 @@
           </div>
           <div id="dub-setup-error" class="hidden text-[11px] text-apple-red"></div>
           <div class="flex items-center justify-end gap-2">
-            <button id="dub-setup-logs-btn" onclick="toggleDubSetupLogs()" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px] hidden" data-i18n="logsBtn">Логи</button>
+            <button id="dub-setup-logs-btn" onclick="toggleDubSetupLogs()" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px] hidden" data-i18n="logsBtn">Журнал</button>
             <button id="dub-setup-cancel-btn" onclick="cancelDubSetup()" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px] hidden" data-i18n="cancel">Отмена</button>
             <button id="dub-setup-btn" onclick="startDubSetup()" class="ui-btn ui-btn-primary h-7 px-3 text-[11px]">Установить</button>
           </div>
@@ -928,10 +1021,10 @@
 
         <div class="rounded-xl border apple-border bg-apple-amber/15 p-3 space-y-2">
           <div class="text-xs font-semibold text-apple-amber" data-i18n="dubConsentTitle">⚠ Клонирование голоса</div>
-          <p class="text-[11.5px] text-apple-label leading-relaxed" data-i18n="dubConsentText"></p>
+          <p class="text-[11.5px] text-apple-label leading-relaxed" data-i18n="dubConsentText">Дубляж имитирует голоса реальных людей, произносящих слова, которых они не говорили. Используйте его только с разрешения участников и никогда для обмана, выдачи себя за другого или клеветы. Результат помечается как сгенерированный ИИ: «.AI-dub.» в имени файла, пометка в метаданных и неслышимый водяной знак Perth в синтезированном голосе.</p>
           <label class="flex items-start gap-2 text-[11.5px] text-white cursor-pointer">
             <input type="checkbox" id="dub-consent" onchange="updateDubStartButton()" class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
-            <span data-i18n="dubConsentLabel"></span>
+            <span data-i18n="dubConsentLabel">У меня есть согласие всех, чей голос будет клонирован, и я не буду выдавать результат за их настоящую речь.</span>
           </label>
         </div>
 
@@ -939,17 +1032,17 @@
         <div class="space-y-2">
           <label class="flex items-start gap-2 cursor-pointer text-[11.5px] text-white">
             <input type="checkbox" id="dub-denoise" onchange="syncDubNoiseControls('dub')" class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
-            <span><span data-i18n="dubDenoiseLabel">Убрать шум</span>
-              <span class="block text-[10.5px] text-apple-tertiary leading-snug mt-0.5" data-i18n="dubDenoiseHint"></span></span>
+            <span><span data-i18n="dubDenoiseLabel">Шумоподавление</span>
+              <span class="block text-[10.5px] text-apple-tertiary leading-snug mt-0.5" data-i18n="dubDenoiseHint">Шумоподавление FFmpeg для фона дубляжа и для исходной дорожки в файле дубляжа. Убирает ровный шум (гул, шипение, вентилятор), но не стук и голоса вдали; музыка и атмосфера становятся немного глуше. Голос при этом чистый на обеих дорожках.</span></span>
           </label>
           <label class="flex items-start gap-2 cursor-pointer text-[11.5px] text-white">
             <input type="checkbox" id="dub-roomtone" checked class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
-            <span><span data-i18n="dubRoomToneLabel">Добавить к синтезированному голосу шум помещения</span>
-              <span class="block text-[10.5px] text-apple-tertiary leading-snug mt-0.5" data-i18n="dubRoomToneHint"></span></span>
+            <span><span data-i18n="dubRoomToneLabel">Добавлять к синтезированному голосу шум помещения</span>
+              <span class="block text-[10.5px] text-apple-tertiary leading-snug mt-0.5" data-i18n="dubRoomToneHint">Фон остаётся как в оригинале. К синтезированному голосу добавляется шум помещения из пауз исходной записи, чтобы голос звучал естественно, а не наложенным поверх. Голос станет немного менее чистым. При включённом шумоподавлении не применяется.</span></span>
           </label>
         </div>
 
-        <p class="text-[11px] text-apple-tertiary leading-relaxed" data-i18n="dubLimits"></p>
+        <p class="text-[11px] text-apple-tertiary leading-relaxed" data-i18n="dubLimits">Ограничения бета-версии: нет синхронизации губ; фразы ускоряются (до 1,6×) или обрезаются под исходный тайминг; качество перевода зависит от модели Ollama (рекомендуется 7B+); перекрывающаяся речь озвучивается по одной фразе.</p>
 
         <div class="flex justify-end gap-2">
           <button onclick="closeModal('dub')" class="ui-btn ui-btn-subtle px-3.5" data-i18n="cancel">Отмена</button>
@@ -970,7 +1063,7 @@
         <div class="flex items-center justify-between shrink-0">
           <div>
             <h3 class="text-sm font-semibold text-white" data-i18n="dictTitle">Пользовательский словарь</h3>
-            <p class="text-[11px] text-apple-secondary" data-i18n="dictSubtitle">Имена коллег, бренды и термины для точного распознавания</p>
+            <p class="text-[11px] text-apple-secondary" data-i18n="dictSubtitle">Имена, бренды и профильные термины для точного распознавания</p>
           </div>
           <button onclick="closeModal('dictionary')" data-i18n-title="tipCloseModal" title="Закрыть окно" class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
         </div>
@@ -990,9 +1083,7 @@
           <button onclick="addDictionaryItems()"
             data-i18n-title="tipDictAddBtn"
             title="Добавить слово в пользовательский словарь"
-            class="ui-btn ui-btn-primary h-8 px-3.5" data-i18n="addBtnText">
-            Добавить
-          </button>
+            class="ui-btn ui-btn-primary h-8 px-3.5" data-i18n="addBtnText">Добавить</button>
         </div>
 
         <div id="dictionary-list" class="flex-1 overflow-y-auto divide-y divide-white/5 border apple-border rounded-xl bg-apple-sidebar">
@@ -1012,7 +1103,7 @@
       <!-- Sticky Modal Header -->
       <div class="px-6 py-4 border-b apple-border flex items-center justify-between shrink-0 bg-apple-card">
         <div>
-          <h3 class="text-sm font-semibold text-white" data-i18n="settingsModalTitle">Настройки и Модели ИИ</h3>
+          <h3 class="text-sm font-semibold text-white" data-i18n="settingsModalTitle">Настройки</h3>
           <p id="settings-hw-name" class="text-[11px] text-apple-secondary mt-0.5"></p>
           <p id="settings-data-dir" class="text-[11px] text-apple-tertiary mt-0.5 truncate max-w-[28rem] select-text"></p>
         </div>
@@ -1031,7 +1122,7 @@
         <!-- FFmpeg availability (download only on explicit click) -->
         <div id="ffmpeg-row" class="hidden rounded-xl bg-black/20 border apple-border px-3.5 py-2.5 flex items-center justify-between gap-3">
           <div class="min-w-0">
-            <div class="text-xs font-semibold text-white" data-i18n="ffmpegTitle">FFmpeg</div>
+            <div class="text-xs font-semibold text-white" data-i18n="ffmpegTitle">FFmpeg (извлечение звука)</div>
             <div id="ffmpeg-status-text" class="text-[11px] text-apple-secondary truncate"></div>
           </div>
           <button id="ffmpeg-download-btn" onclick="installFfmpeg()" class="hidden ui-btn ui-btn-primary shrink-0" data-i18n="ffmpegDownloadBtn">Скачать FFmpeg</button>
@@ -1039,17 +1130,15 @@
 
         <!-- First-Run Welcome Banner -->
         <div id="first-run-banner" class="hidden rounded-xl bg-apple-blue/15 border border-apple-blue/40 p-3.5 text-xs text-white space-y-1">
-          <div class="font-semibold text-apple-blue" data-i18n="firstRunTitle">Первичная настройка VerbaScribe</div>
-          <p class="text-apple-label/90 text-[11.5px]" data-i18n="firstRunText">
-            Программа поставляется без тяжёлых нейросетей, чтобы занимать минимум места. Нажмите «Скачать» напротив рекомендуемой модели Whisper ниже — она скачается один раз в папку models/.
-          </p>
+          <div class="font-semibold text-apple-blue" data-i18n="firstRunTitle">Начальная настройка</div>
+          <p class="text-apple-label/90 text-[11.5px]" data-i18n="firstRunText">Модели распознавания не входят в установку, чтобы она занимала меньше места. Скачайте рекомендуемую модель Whisper ниже.</p>
         </div>
 
         <!-- Section 1: Audio Recording & Input Source Settings -->
         <div class="space-y-3 pb-4 border-b apple-border">
           <div>
-            <h4 class="text-xs font-semibold text-white" data-i18n="recSettingsTitle">1. Запись звука и выбор источника</h4>
-            <p class="text-[11px] text-apple-secondary" data-i18n="recSettingsDesc">Выберите источник захвата звука (микрофон, динамики или оба канала) и проверьте уровень сигнала</p>
+            <h4 class="text-xs font-semibold text-white" data-i18n="recSettingsTitle">1. Источник звука</h4>
+            <p class="text-[11px] text-apple-secondary" data-i18n="recSettingsDesc">Выберите источник (микрофон, системный звук или оба) и проверьте уровень сигнала</p>
           </div>
 
           <div class="grid grid-cols-2 gap-3">
@@ -1060,8 +1149,8 @@
                 title="Выберите, откуда записывать звук: только микрофон, системный звук (динамики) или оба канала одновременно"
                 class="w-full h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
                 <option value="mic" data-i18n="sourceMic">Только микрофон</option>
-                <option value="system" data-i18n="sourceSystem">Системный звук (Динамики)</option>
-                <option value="both" data-i18n="sourceBoth">Микрофон + Системный звук (Встреча)</option>
+                <option value="system" data-i18n="sourceSystem">Системный звук</option>
+                <option value="both" data-i18n="sourceBoth">Микрофон и системный звук</option>
               </select>
             </div>
 
@@ -1081,7 +1170,7 @@
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-2">
                 <span id="settings-audio-dot" class="w-2 h-2 rounded-full bg-apple-tertiary transition"></span>
-                <span id="settings-audio-status" class="text-[11px] font-medium text-apple-secondary" data-i18n="audioMeterIdle">Шкала проверки звука (нажмите «Проверить звук»)</span>
+                <span id="settings-audio-status" class="text-[11px] font-medium text-apple-secondary" data-i18n="audioMeterIdle">Уровень сигнала — нажмите «Проверить звук»</span>
               </div>
               <div class="flex items-center gap-2">
                 <span id="settings-db-readout" class="text-[11px] font-mono text-apple-tertiary">-60 dB</span>
@@ -1120,8 +1209,8 @@
         <div class="space-y-2.5">
           <div class="flex items-center justify-between gap-2">
             <div>
-              <h4 class="text-xs font-semibold text-white" data-i18n="whisperSectionTitle">2. Модели распознавания речи (Whisper + Спикеры)</h4>
-              <p class="text-[11px] text-apple-secondary" data-i18n="whisperSectionDesc">Скачайте нужную модель под вашу видеокарту или процессор</p>
+              <h4 class="text-xs font-semibold text-white" data-i18n="whisperSectionTitle">2. Распознавание речи и участников</h4>
+              <p class="text-[11px] text-apple-secondary" data-i18n="whisperSectionDesc">Выберите модель под вашу видеокарту или процессор</p>
             </div>
             <span id="diarizer-status-pill" class="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-white/5 text-apple-secondary shrink-0"></span>
           </div>
@@ -1142,7 +1231,7 @@
                   data-i18n-title="tipMinimizeBg"
                   title="Закрыть настройки и продолжить работу — загрузка продолжится в боковой панели"
                   class="px-2 py-0.5 rounded bg-apple-blue/15 hover:bg-apple-blue/25 text-apple-blue text-[11px] font-medium transition"
-                  data-i18n="minimizeBgBtn">Свернуть в фон</button>
+                  data-i18n="minimizeBgBtn">Продолжить в фоне</button>
               </div>
             </div>
             <div class="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
@@ -1172,19 +1261,28 @@
           </div>
           <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label" data-i18n-title="tipDiarizationToggle" title="Автоматически разделять участников разговора по тембру голоса">
             <input type="checkbox" id="set-diarization" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
-            <span data-i18n="diarizationToggle">Разделение спикеров по голосам</span>
+            <span data-i18n="diarizationToggle">Разделение участников по голосам</span>
           </label>
+          <div class="rounded-lg border apple-border bg-white/[0.02] px-3 py-2.5 space-y-2">
+            <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label" data-i18n-title="tipVoiceProfilesToggle"
+              title="Когда вы называете участника по имени, его голос запоминается, и в новых записях он получает это имя автоматически">
+              <input type="checkbox" id="set-voice-profiles" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+              <span data-i18n="voiceProfilesToggle">Запоминать голоса участников</span>
+            </label>
+            <p class="text-[11px] text-apple-tertiary leading-snug" data-i18n="voiceProfilesHint">Голос запоминается, когда вы указываете имя участника. В новых записях похожий голос получает это имя автоматически. Отпечатки голосов хранятся только в базе на этом компьютере.</p>
+            <div id="voice-profiles-list" class="space-y-1"></div>
+          </div>
           <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label" data-i18n-title="tipVadToggle" title="Отсекать пустые паузы и тишину нейросетью Silero VAD">
             <input type="checkbox" id="set-vad" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
             <span data-i18n="vadToggle">Фильтр тишины (Silero VAD)</span>
           </label>
           <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label" data-i18n-title="tipAudioEnhanceToggle" title="Применять фильтр подавления фонового шума, щелчков и выравнивания громкости перед распознаванием">
             <input type="checkbox" id="set-audio-enhance" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
-            <span data-i18n="audioEnhanceToggle">Очистка шума и выравнивание голоса</span>
+            <span data-i18n="audioEnhanceToggle">Шумоподавление и выравнивание громкости</span>
           </label>
           <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label" data-i18n-title="tipCleanFillersToggle" title="Автоматически убирать звуки «э-э», «ммм», «ну типа» и повторы при расшифровке">
             <input type="checkbox" id="set-clean-fillers" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
-            <span data-i18n="cleanFillersToggle">Удалять экания и слова-паразиты</span>
+            <span data-i18n="cleanFillersToggle">Удалять слова-паразиты и запинки</span>
           </label>
         </div>
 
@@ -1192,8 +1290,8 @@
         <div class="pt-4 border-t apple-border space-y-3">
           <div class="flex items-center justify-between gap-2">
             <div>
-              <h4 class="text-xs font-semibold text-white" data-i18n="ollamaSectionTitle">3. Модели ИИ для Саммари (Ollama LLM · Apache 2.0)</h4>
-              <p class="text-[11px] text-apple-secondary" data-i18n="ollamaSectionDesc">Бесплатные модели с открытыми весами; лицензию конкретной модели стоит проверить перед коммерческим использованием</p>
+              <h4 class="text-xs font-semibold text-white" data-i18n="ollamaSectionTitle">3. Языковые модели для анализа (Ollama)</h4>
+              <p class="text-[11px] text-apple-secondary" data-i18n="ollamaSectionDesc">Модели с открытыми весами работают локально; перед коммерческим использованием проверьте лицензию модели</p>
             </div>
             <span id="settings-ollama-pill" class="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-white/5 text-apple-secondary shrink-0"></span>
           </div>
@@ -1230,7 +1328,7 @@
                   data-i18n-title="tipMinimizeBg"
                   title="Закрыть настройки и продолжить работу — загрузка продолжится в боковой панели"
                   class="px-2 py-0.5 rounded bg-apple-blue/15 hover:bg-apple-blue/25 text-apple-blue text-[11px] font-medium transition"
-                  data-i18n="minimizeBgBtn">Свернуть в фон</button>
+                  data-i18n="minimizeBgBtn">Продолжить в фоне</button>
               </div>
             </div>
             <div class="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
@@ -1242,7 +1340,7 @@
 
           <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-secondary pt-1" data-i18n-title="tipAutoSummaryToggle" title="Генерировать структурированный протокол автоматически сразу после завершения транскрибации">
             <input type="checkbox" id="set-auto-summary" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
-            <span data-i18n="autoSummaryToggle">Автоматически создавать саммари после расшифровки</span>
+            <span data-i18n="autoSummaryToggle">Создавать обзор автоматически после расшифровки</span>
           </label>
         </div>
 
@@ -1280,7 +1378,7 @@
             </div>
             <div id="sdub-setup-error" class="hidden text-[11px] text-apple-red"></div>
             <div class="flex items-center justify-end gap-2">
-              <button id="sdub-setup-logs-btn" onclick="toggleDubSetupLogs('sdub')" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px] hidden" data-i18n="logsBtn">Логи</button>
+              <button id="sdub-setup-logs-btn" onclick="toggleDubSetupLogs('sdub')" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px] hidden" data-i18n="logsBtn">Журнал</button>
               <button id="sdub-setup-cancel-btn" onclick="cancelDubSetup()" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px] hidden" data-i18n="cancel">Отмена</button>
               <button id="sdub-setup-btn" onclick="startDubSetup()" class="ui-btn ui-btn-primary h-7 px-3 text-[11px]">Установить</button>
             </div>
@@ -1313,7 +1411,7 @@
                 <option value="2">2</option>
                 <option value="3">3</option>
               </select>
-              <p class="text-[10.5px] text-apple-tertiary mt-1 leading-snug" data-i18n="sdubWorkersHint">Каждый процесс — ~4 ГБ VRAM. Несколько процессов озвучивают фразы параллельно: быстрее, но больше памяти.</p>
+              <p class="text-[10.5px] text-apple-tertiary mt-1 leading-snug" data-i18n="sdubWorkersHint">Каждый процесс — около 4 ГБ видеопамяти. Несколько процессов озвучивают фразы параллельно: быстрее, но памяти нужно больше.</p>
             </div>
             <div>
               <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="sdubStretchLabel">Подгонка длительности</label>
@@ -1321,7 +1419,7 @@
                 <option value="atempo">atempo (FFmpeg)</option>
                 <option value="rubberband">Rubber Band</option>
               </select>
-              <p id="sdub-stretch-hint" class="text-[10.5px] text-apple-tertiary mt-1 leading-snug" data-i18n="sdubStretchHint">Как ускоряется фраза, не влезающая в исходный тайминг. Rubber Band звучит естественнее, но есть не во всех сборках FFmpeg.</p>
+              <p id="sdub-stretch-hint" class="text-[10.5px] text-apple-tertiary mt-1 leading-snug" data-i18n="sdubStretchHint">Как ускоряется фраза, которая не влезает в исходный тайминг. Rubber Band звучит естественнее, но есть не во всех сборках FFmpeg.</p>
             </div>
             <div>
               <label class="flex items-center justify-between text-[11px] text-apple-secondary mb-1">
@@ -1329,7 +1427,7 @@
                 <span id="set-dub-cfg-val" class="font-mono text-apple-label">0.30</span>
               </label>
               <input id="set-dub-cfg" type="range" min="0" max="1" step="0.05" value="0.3" oninput="document.getElementById('set-dub-cfg-val').textContent = Number(this.value).toFixed(2)" class="volume-slider w-full" />
-              <p class="text-[10.5px] text-apple-tertiary mt-1 leading-snug" data-i18n="sdubCfgHint">Ниже — меньше акцента исходного языка и спокойнее темп; выше — точнее манера речи образца. По умолчанию 0,30.</p>
+              <p class="text-[10.5px] text-apple-tertiary mt-1 leading-snug" data-i18n="sdubCfgHint">Ниже — меньше акцента исходного языка и ровнее темп; выше — точнее манера речи образца. По умолчанию 0,30.</p>
             </div>
             <div>
               <label class="flex items-center justify-between text-[11px] text-apple-secondary mb-1">
@@ -1337,7 +1435,7 @@
                 <span id="set-dub-exag-val" class="font-mono text-apple-label">0.50</span>
               </label>
               <input id="set-dub-exag" type="range" min="0.25" max="1" step="0.05" value="0.5" oninput="document.getElementById('set-dub-exag-val').textContent = Number(this.value).toFixed(2)" class="volume-slider w-full" />
-              <p class="text-[10.5px] text-apple-tertiary mt-1 leading-snug" data-i18n="sdubExagHint">0,5 — нейтрально. Выше — эмоциональнее и быстрее, но чаще срывы и лишние звуки.</p>
+              <p class="text-[10.5px] text-apple-tertiary mt-1 leading-snug" data-i18n="sdubExagHint">0,5 — нейтрально. Выше — эмоциональнее и быстрее, но чаще сбои и лишние звуки.</p>
             </div>
           </div>
 
@@ -1345,13 +1443,13 @@
           <div class="space-y-2 pt-1">
             <label class="flex items-start gap-2 cursor-pointer text-xs text-apple-label">
               <input type="checkbox" id="set-dub-denoise" onchange="syncDubNoiseControls('set')" class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
-              <span><span data-i18n="dubDenoiseLabel">Убрать шум</span>
-                <span class="block text-[10.5px] text-apple-tertiary leading-snug mt-0.5" data-i18n="dubDenoiseHint"></span></span>
+              <span><span data-i18n="dubDenoiseLabel">Шумоподавление</span>
+                <span class="block text-[10.5px] text-apple-tertiary leading-snug mt-0.5" data-i18n="dubDenoiseHint">Шумоподавление FFmpeg для фона дубляжа и для исходной дорожки в файле дубляжа. Убирает ровный шум (гул, шипение, вентилятор), но не стук и голоса вдали; музыка и атмосфера становятся немного глуше. Голос при этом чистый на обеих дорожках.</span></span>
             </label>
             <label class="flex items-start gap-2 cursor-pointer text-xs text-apple-label">
               <input type="checkbox" id="set-dub-roomtone" checked class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
-              <span><span data-i18n="dubRoomToneLabel">Добавить к синтезированному голосу шум помещения</span>
-                <span class="block text-[10.5px] text-apple-tertiary leading-snug mt-0.5" data-i18n="dubRoomToneHint"></span></span>
+              <span><span data-i18n="dubRoomToneLabel">Добавлять к синтезированному голосу шум помещения</span>
+                <span class="block text-[10.5px] text-apple-tertiary leading-snug mt-0.5" data-i18n="dubRoomToneHint">Фон остаётся как в оригинале. К синтезированному голосу добавляется шум помещения из пауз исходной записи, чтобы голос звучал естественно, а не наложенным поверх. Голос станет немного менее чистым. При включённом шумоподавлении не применяется.</span></span>
             </label>
           </div>
         </div>
@@ -1365,15 +1463,11 @@
           <button onclick="closeModal('settings')"
             data-i18n-title="tipCloseModal"
             title="Закрыть окно настроек"
-            class="ui-btn ui-btn-subtle h-8 px-4" data-i18n="close">
-            Закрыть
-          </button>
+            class="ui-btn ui-btn-subtle h-8 px-4" data-i18n="close">Закрыть</button>
           <button onclick="saveAllSettings()"
             data-i18n-title="tipSaveSettingsBtn"
             title="Сохранить все настройки приложения и закрыть окно"
-            class="ui-btn ui-btn-primary h-8 px-5" data-i18n="save">
-            Сохранить
-          </button>
+            class="ui-btn ui-btn-primary h-8 px-5" data-i18n="save">Сохранить</button>
         </div>
       </div>
     </div>
@@ -1388,7 +1482,7 @@
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
             <span id="rec-dot-indicator" class="w-2.5 h-2.5 rounded-full bg-apple-red"></span>
-            <h3 class="text-sm font-semibold text-white" data-i18n="recordModalTitle">Запись звука / встречи</h3>
+            <h3 class="text-sm font-semibold text-white" data-i18n="recordModalTitle">Запись звука</h3>
           </div>
           <button onclick="cancelLiveRecording()" data-i18n-title="tipCloseModal" title="Отменить и закрыть окно записи" class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
         </div>
@@ -1401,8 +1495,8 @@
               title="Выберите источник записи: микрофон, системный звук (динамики) или оба канала"
               class="w-full h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
               <option value="mic" data-i18n="sourceMic">Только микрофон</option>
-              <option value="system" data-i18n="sourceSystem">Системный звук (Динамики)</option>
-              <option value="both" data-i18n="sourceBoth">Микрофон + Системный звук</option>
+              <option value="system" data-i18n="sourceSystem">Системный звук</option>
+              <option value="both" data-i18n="sourceBoth">Микрофон и системный звук</option>
             </select>
           </div>
 
@@ -1457,9 +1551,21 @@
             </div>
           </div>
 
-          <p id="record-status-hint" class="text-[11px] text-apple-secondary text-center" data-i18n="recordWaveHint">
-            Волна в реальном времени показывает наличие звука на выбранном источнике
-          </p>
+          <p id="record-status-hint" class="text-[11px] text-apple-secondary text-center" data-i18n="recordWaveHint">Индикатор показывает уровень сигнала выбранного источника в реальном времени</p>
+        </div>
+
+        <!-- Live captions while recording (app/live.py); the full transcription still runs afterwards -->
+        <div class="rounded-xl border apple-border bg-white/[0.02] px-3 py-2.5 space-y-2">
+          <div class="flex items-center justify-between gap-3">
+            <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label" data-i18n-title="tipLiveCaptions"
+              title="Показывать текст речи во время записи. После остановки запись, как обычно, расшифровывается полностью и точнее">
+              <input type="checkbox" id="live-captions-toggle" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" onchange="saveLiveCaptionPrefs()" />
+              <span data-i18n="liveCaptionsToggle">Субтитры в реальном времени</span>
+            </label>
+            <select id="live-translate-select" onchange="saveLiveCaptionPrefs()" data-i18n-title="tipLiveTranslate" title="Переводить субтитры на другой язык через локальную модель Ollama"
+              class="h-7 w-[150px] bg-apple-sidebar border apple-border rounded-lg px-2 text-[11.5px] text-white focus:outline-none"></select>
+          </div>
+          <div id="live-captions" class="hidden max-h-56 overflow-y-auto space-y-1.5 pr-1 text-[13px] leading-snug"></div>
         </div>
 
         <div class="flex items-center justify-center gap-3 pt-1">
@@ -1480,7 +1586,7 @@
             <svg class="w-3 h-3 shrink-0" viewBox="0 0 12 12" fill="currentColor">
               <rect x="2" y="2" width="8" height="8" rx="1.5" />
             </svg>
-            <span data-i18n="stopRecBtn">Стоп и расшифровать</span>
+            <span data-i18n="stopRecBtn">Остановить и расшифровать</span>
           </button>
         </div>
       </div>

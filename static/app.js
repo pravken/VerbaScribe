@@ -115,12 +115,52 @@ function formatTime(sec) {
 function openModal(name) {
   document.getElementById(`modal-${name}`).classList.remove('hidden');
   if (name === 'settings') {
+    loadVoiceProfiles();
     loadDubInfo();
     populateAudioInputDevices();
     refreshExportDirLabel();
     setTimeout(() => drawIdleSoundCloudBars('settings-waveform-canvas'), 30);
   }
 }
+// --- Voice profiles (Settings): names remembered from earlier recordings ---
+async function loadVoiceProfiles() {
+  const box = document.getElementById('voice-profiles-list');
+  if (!box) return;
+  try {
+    const res = await fetch('/api/voice-profiles');
+    renderVoiceProfiles(await res.json());
+  } catch (e) {
+    box.innerHTML = '';
+  }
+}
+
+function renderVoiceProfiles(data) {
+  const box = document.getElementById('voice-profiles-list');
+  const list = (data && data.profiles) || [];
+  if (!list.length) {
+    box.innerHTML = `<div class="text-[11px] text-apple-tertiary">${escapeHtml(t('voiceProfilesNone'))}</div>`;
+    return;
+  }
+  box.innerHTML = list.map(p => `
+    <div class="flex items-center justify-between gap-2 text-xs">
+      <span class="text-apple-label truncate">${escapeHtml(p.name)}
+        <span class="text-apple-tertiary">· ${escapeHtml(t('voiceProfileSamples').replace('{n}', p.samples))}</span></span>
+      <button onclick="deleteVoiceProfile(${Number(p.id)}, this.dataset.name)" data-name="${escapeHtml(p.name)}"
+        class="ui-btn ui-btn-subtle h-6 px-2 text-[11px] text-apple-red" title="${escapeHtml(t('tipVoiceProfileDelete'))}">${escapeHtml(t('voiceProfileDelete'))}</button>
+    </div>`).join('');
+}
+
+async function deleteVoiceProfile(id, name) {
+  if (!confirm(t('voiceProfileDeleteConfirm').replace('{name}', name || ''))) return;
+  const res = await fetch(`/api/voice-profiles/${id}`, { method: 'DELETE' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    showToast(data.detail || 'Error');
+    return;
+  }
+  renderVoiceProfiles(data);
+}
+
 function closeModal(name) {
   if (name === 'settings') {
     stopSettingsAudioTest();
@@ -374,6 +414,7 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     document.getElementById('set-device').value = s.device || 'cuda';
     document.getElementById('set-compute-type').value = s.compute_type || 'float16';
     document.getElementById('set-diarization').checked = s.diarization_enabled !== 'false';
+    document.getElementById('set-voice-profiles').checked = s.voice_profiles !== 'false';
     document.getElementById('set-vad').checked = s.vad_filter !== 'false';
     if (document.getElementById('set-audio-enhance')) {
       document.getElementById('set-audio-enhance').checked = s.audio_enhance !== 'false';
@@ -596,7 +637,7 @@ function updateWhisperModelsUI(models) {
   const diarInstalled = models.diarizer_installed || (models.diarizer && models.diarizer.installed);
   if (diarPill) {
     if (diarInstalled) {
-      diarPill.textContent = state.uiLang === 'en' ? 'Speaker AI Ready' : 'Модуль спикеров готов';
+      diarPill.textContent = state.uiLang === 'en' ? 'Speaker model ready' : 'Модель участников готова';
       diarPill.className = 'text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-apple-green/15 text-apple-green shrink-0';
     } else {
       diarPill.textContent = state.uiLang === 'en' ? 'Downloads with Whisper' : 'Скачается вместе с Whisper';
@@ -878,6 +919,7 @@ async function saveAllSettings() {
       device: document.getElementById('set-device').value,
       compute_type: document.getElementById('set-compute-type').value,
       diarization_enabled: String(document.getElementById('set-diarization').checked),
+      voice_profiles: String(document.getElementById('set-voice-profiles').checked),
       vad_filter: String(document.getElementById('set-vad').checked),
       audio_enhance: String(document.getElementById('set-audio-enhance')?.checked !== false),
       clean_fillers: String(document.getElementById('set-clean-fillers')?.checked !== false),
@@ -1245,6 +1287,79 @@ async function handleGlobalSidebarSearch(rawVal) {
   }, 180);
 }
 
+// --- Questions about the whole library (answers cite transcript fragments) ---
+const SVG_SPARK = '<svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>';
+let _libraryAnswer = null;
+
+function openLibraryAsk(question) {
+  openModal('library');
+  const input = document.getElementById('library-question');
+  if (question) input.value = question;
+  input.focus();
+  if (!_libraryAnswer) document.getElementById('library-answer').innerHTML = '';
+}
+
+async function askLibrary() {
+  const input = document.getElementById('library-question');
+  const question = input.value.trim();
+  if (!question) return;
+  const box = document.getElementById('library-answer');
+  const btn = document.getElementById('library-ask-btn');
+  btn.disabled = true;
+  box.innerHTML = `<div class="py-8 text-center text-xs text-apple-secondary animate-pulse">${escapeHtml(t('libraryAskWorking'))}</div>`;
+  try {
+    const res = await fetch('/api/library/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question, lang: state.uiLang === 'en' ? 'en' : 'ru' }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || 'Error');
+    _libraryAnswer = data;
+    renderLibraryAnswer(data);
+  } catch (e) {
+    box.innerHTML = `<div class="py-6 text-center text-xs text-apple-red">${escapeHtml(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function renderLibraryAnswer(data) {
+  const box = document.getElementById('library-answer');
+  if (!data.found) {
+    box.innerHTML = `<div class="py-6 text-center text-xs text-apple-secondary">${escapeHtml(t('libraryAskNothing'))}</div>`;
+    return;
+  }
+  const byN = Object.fromEntries((data.sources || []).map(s => [s.n, s]));
+  // The answer comes from a model reading the recordings' speech: sanitized like any other LLM output
+  let html = DOMPurify.sanitize(marked.parse(data.answer || ''), { FORBID_TAGS: ['style', 'form', 'input'], FORBID_ATTR: ['style'] });
+  html = html.replace(/\[(\d{1,2})\]/g, (m, n) => byN[n]
+    ? `<button class="lib-cite" onclick="openLibrarySource(${Number(n)})" title="${escapeHtml(byN[n].title)} · ${formatTime(byN[n].start)}">${n}</button>`
+    : m);
+  const sources = (data.sources || []).map(s => `
+    <button onclick="openLibrarySource(${s.n})" class="w-full text-left px-2.5 py-1.5 rounded-md hover:bg-white/5 transition">
+      <div class="flex items-center gap-2 text-[11px]">
+        <span class="lib-cite">${s.n}</span>
+        <span class="text-white truncate">${escapeHtml(s.title)}</span>
+        <span class="text-apple-tertiary font-mono shrink-0">${escapeHtml(s.date)} · ${formatTime(s.start)}</span>
+      </div>
+      <div class="text-[11px] text-apple-secondary truncate mt-0.5 pl-7">${escapeHtml(s.speaker || '')}: ${escapeHtml(s.text)}</div>
+    </button>`).join('');
+  box.innerHTML = `
+    <div class="markdown-body text-[13px]">${html}</div>
+    <div class="mt-4 pt-3 border-t apple-border">
+      <div class="text-[10.5px] uppercase tracking-wider text-apple-tertiary mb-1">${escapeHtml(t('libraryAskSources'))}</div>
+      ${sources}
+    </div>`;
+}
+
+function openLibrarySource(n) {
+  const s = ((_libraryAnswer && _libraryAnswer.sources) || []).find(x => x.n === n);
+  if (!s) return;
+  closeModal('library');
+  selectMeetingAndSeek(s.meeting_id, s.start);
+}
+
 async function selectMeetingAndSeek(meetingId, startSec) {
   await selectMeeting(meetingId, true);
   switchWorkspaceTab('transcript');
@@ -1255,11 +1370,16 @@ function renderMeetingsSidebar() {
   const listEl = document.getElementById('meetings-list');
 
   if (state.globalSearchQuery && state.globalSearchResults) {
+    const askHtml = `
+      <button onclick="openLibraryAsk(state.globalSearchQuery)" title="${escapeHtml(t('tipLibraryAsk'))}"
+        class="w-full mb-1.5 px-2.5 py-2 rounded-lg border border-apple-blue/30 bg-apple-blue/10 hover:bg-apple-blue/20 text-left text-[11.5px] text-white transition flex items-center gap-2">
+        ${SVG_SPARK}<span class="truncate">${escapeHtml(t('libraryAskFromSearch'))}</span>
+      </button>`;
     if (state.globalSearchResults.length === 0) {
-      listEl.innerHTML = `<div class="px-3 py-8 text-center text-xs text-apple-tertiary">${state.uiLang === 'en' ? 'No matches found' : 'Ничего не найдено'}</div>`;
+      listEl.innerHTML = askHtml + `<div class="px-3 py-8 text-center text-xs text-apple-tertiary">${escapeHtml(t('noMatches'))}</div>`;
       return;
     }
-    listEl.innerHTML = state.globalSearchResults.map(item => `
+    listEl.innerHTML = askHtml + state.globalSearchResults.map(item => `
       <div class="rounded-lg bg-white/[0.03] border apple-border p-2.5 space-y-1.5 mb-1.5">
         <div onclick="selectMeeting(${item.meeting_id}, true)"
              title="${escapeHtml(item.title)}"
@@ -1308,7 +1428,7 @@ function renderMeetingsSidebar() {
         </div>
         <div class="flex items-center justify-between text-[11px] mt-0.5 ${isSelected ? 'text-white/80' : 'text-apple-secondary'}">
           <span class="font-mono">${isBusy ? `${m.progress}%` : formatTime(m.duration)}</span>
-          <span>${m.status === 'failed' ? (state.uiLang === 'en' ? 'Error' : 'Ошибка') : m.status === 'cancelled' ? t('statusCancelled') : `${spkCount || 1} spk · ${(m.language || 'ru').toUpperCase()}`}</span>
+          <span>${m.status === 'failed' ? (state.uiLang === 'en' ? 'Error' : 'Ошибка') : m.status === 'cancelled' ? t('statusCancelled') : `${spkCount || 1} ${t('spkShort')} · ${(m.language || 'ru').toUpperCase()}`}</span>
         </div>
         ${isBusy ? `
           <div class="w-full h-1 bg-black/25 rounded-full overflow-hidden mt-1.5">
@@ -1320,25 +1440,85 @@ function renderMeetingsSidebar() {
   }).join('');
 }
 
-function handleGlobalDrop(e) {
-  e.preventDefault();
-  if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-    handleFileSelect(e.dataTransfer.files);
+// --- Files dragged onto the window: a full-window overlay shows that they can be dropped ---
+const MEDIA_EXT = /\.(mp4|mkv|mov|webm|avi|m4v|mpg|mpeg|ts|mts|3gp|wmv|flv|mp3|wav|m4a|aac|flac|ogg|oga|opus|wma|amr|aiff?)$/i;
+let _dragDepth = 0;
+let _dragSupported = true;
+
+function isFileDrag(e) {
+  return !!e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+}
+
+function isMediaFile(file) {
+  return /^(audio|video)\//.test(file.type || '') || MEDIA_EXT.test(file.name || '');
+}
+
+// While dragging only MIME types are known (no names); an empty type is given the benefit of the doubt
+function dragLooksSupported(e) {
+  const items = Array.from(e.dataTransfer.items || []).filter(i => i.kind === 'file');
+  return !items.length || items.some(i => !i.type || /^(audio|video)\//.test(i.type));
+}
+
+function showDropOverlay(supported) {
+  const el = document.getElementById('drop-overlay');
+  el.classList.toggle('unsupported', !supported);
+  document.getElementById('drop-overlay-title').textContent = t(supported ? 'dropOverlayTitle' : 'dropOverlayUnsupported');
+  document.getElementById('drop-overlay-sub').textContent = t(supported ? 'dropOverlaySub' : 'dropOverlayFormats');
+  el.classList.remove('hidden');
+}
+
+function hideDropOverlay() {
+  _dragDepth = 0;
+  document.getElementById('drop-overlay')?.classList.add('hidden');
+}
+
+document.addEventListener('dragenter', (e) => {
+  if (!isFileDrag(e)) return;
+  _dragDepth++;
+  if (_dragDepth === 1) {
+    _dragSupported = dragLooksSupported(e);
+    showDropOverlay(_dragSupported);
   }
+});
+document.addEventListener('dragleave', (e) => {
+  if (!isFileDrag(e)) return;
+  _dragDepth = Math.max(0, _dragDepth - 1);
+  if (_dragDepth === 0) hideDropOverlay();
+});
+document.addEventListener('drop', hideDropOverlay, true);
+document.addEventListener('dragend', hideDropOverlay);
+
+function onWindowDragOver(e) {
+  e.preventDefault();
+  if (isFileDrag(e)) e.dataTransfer.dropEffect = _dragSupported ? 'copy' : 'none';
+}
+
+function dropMediaFiles(e) {
+  e.preventDefault();
+  hideDropOverlay();
+  const files = Array.from((e.dataTransfer && e.dataTransfer.files) || []);
+  if (!files.length) return;
+  const media = files.filter(isMediaFile);
+  if (media.length < files.length) {
+    const skipped = files.filter(f => !isMediaFile(f)).map(f => f.name).slice(0, 3).join(', ');
+    showToast(t('dropSkipped').replace('{names}', skipped));
+  }
+  if (media.length) handleFileSelect(media);
+}
+
+function handleGlobalDrop(e) {
+  dropMediaFiles(e);
 }
 
 function handleFileDrop(e) {
-  e.preventDefault();
-  if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-    handleFileSelect(e.dataTransfer.files);
-  }
+  dropMediaFiles(e);
 }
 
 async function handleFileSelect(fileList) {
   if (!fileList || fileList.length === 0) return;
   const statusEl = document.getElementById('upload-status-text');
   statusEl.classList.remove('hidden');
-  statusEl.textContent = `Uploading (${fileList.length})…`;
+  statusEl.textContent = t('uploadingFiles').replace('{n}', fileList.length);
 
   const fd = new FormData();
   for (const f of fileList) fd.append('files', f);
@@ -1425,6 +1605,7 @@ async function selectMeeting(id, reloadPlayer = true) {
   renderSpeakerPillsBar();
   renderSpeakersPanel();
   renderTranslationControls();
+  renderChaptersBar();
   renderTranscript();
   renderSummaryPanel();
   renderMeetingsSidebar();
@@ -2167,6 +2348,7 @@ function setTranscriptView(view) {
   try { localStorage.setItem('verbascribe_tx_view', view); } catch (e) {}
   renderTranslationControls();
   renderTranscript();
+  updateTheatreCaption(document.getElementById('media-player').currentTime || 0, true);
 }
 
 function setTranscriptViewLang(lang) {
@@ -2307,6 +2489,8 @@ function renderSpeakersPanel() {
           onkeydown="if(event.key==='Enter') this.blur()"
           class="flex-1 bg-transparent hover:bg-white/5 focus:bg-apple-card focus:outline-none px-2.5 py-1 rounded-md text-xs font-medium text-white" />
 
+        ${s.voice_profile ? `<span class="text-[10.5px] px-1.5 py-0.5 rounded bg-apple-blue/15 text-apple-blue shrink-0"
+          title="${escapeHtml(t('tipVoiceRecognised'))}">${escapeHtml(t('voiceRecognisedBadge'))}</span>` : ''}
         <span class="text-[11px] text-apple-secondary font-mono">${turnCount} ${t('turns')}</span>
 
         <button onclick="previewSpeakerVoice(${s.sample_start || 0}, ${s.sample_end || 5})"
@@ -3243,6 +3427,7 @@ function stopSettingsAudioTest() {
 
 async function openRecordModal() {
   openModal('record');
+  initLiveCaptionControls();
   await populateAudioInputDevices();
 
   const savedSource = (state.system && state.system.settings && state.system.settings.record_source_mode) || 'both';
@@ -3261,6 +3446,156 @@ async function openRecordModal() {
   setTimeout(() => drawIdleSoundCloudBars('record-waveform-canvas'), 40);
 }
 
+// --- Live captions while recording ---
+// The same mixed stream that is recorded is tapped by an AudioWorklet, resampled to 16 kHz mono
+// 16-bit PCM and posted about once a second; each answer carries new final lines, their
+// translations and the current draft line.
+const liveCap = { session: null, node: null, pcm: [], pcmLen: 0, inFlight: false, timer: null, lines: new Map(), partial: '', lastId: 0 };
+
+function liveCaptionPrefs() {
+  try { return JSON.parse(localStorage.getItem('verbascribe_live_captions') || '{}'); } catch (e) { return {}; }
+}
+
+function saveLiveCaptionPrefs() {
+  const prefs = {
+    on: document.getElementById('live-captions-toggle').checked,
+    translate: document.getElementById('live-translate-select').value,
+  };
+  try { localStorage.setItem('verbascribe_live_captions', JSON.stringify(prefs)); } catch (e) {}
+}
+
+function initLiveCaptionControls() {
+  const prefs = liveCaptionPrefs();
+  const names = t('dubLangNames') || {};
+  const sel = document.getElementById('live-translate-select');
+  sel.innerHTML = `<option value="">${escapeHtml(t('liveNoTranslation'))}</option>`
+    + Object.keys(names).sort((a, b) => names[a].localeCompare(names[b]))
+      .map(c => `<option value="${c}">${escapeHtml(t('liveTranslateTo').replace('{lang}', names[c]))}</option>`).join('');
+  sel.value = prefs.translate || '';
+  document.getElementById('live-captions-toggle').checked = !!prefs.on;
+  const box = document.getElementById('live-captions');
+  box.classList.add('hidden');
+  box.innerHTML = '';
+}
+
+function downsampleTo16k(input, rate) {
+  if (rate === 16000) return input;
+  const ratio = rate / 16000;
+  const out = new Float32Array(Math.floor(input.length / ratio));
+  for (let i = 0; i < out.length; i++) {
+    const a = Math.floor(i * ratio), b = Math.min(input.length, Math.floor((i + 1) * ratio));
+    let sum = 0;
+    for (let j = a; j < b; j++) sum += input[j];
+    out[i] = sum / Math.max(1, b - a);
+  }
+  return out;
+}
+
+async function startLiveCaptions(ctx, stream) {
+  liveCap.lines = new Map();
+  liveCap.partial = '';
+  liveCap.lastId = 0;
+  liveCap.pcm = [];
+  liveCap.pcmLen = 0;
+  const box = document.getElementById('live-captions');
+  box.classList.remove('hidden');
+  box.innerHTML = `<div class="text-[11.5px] text-apple-tertiary">${escapeHtml(t('liveStarting'))}</div>`;
+  const res = await fetch('/api/live/start', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      lang: (state.system && state.system.settings && state.system.settings.language) || 'auto',
+      translate_to: document.getElementById('live-translate-select').value || null,
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Error');
+  liveCap.session = data.session;
+  await ctx.audioWorklet.addModule('/static/live-capture-worklet.js');
+  liveCap.node = new AudioWorkletNode(ctx, 'pcm-capture');
+  ctx.createMediaStreamSource(stream).connect(liveCap.node);
+  // The worklet must be pulled by the graph; a silent gain keeps it out of the speakers
+  const mute = ctx.createGain();
+  mute.gain.value = 0;
+  liveCap.node.connect(mute).connect(ctx.destination);
+  liveCap.node.port.onmessage = (e) => {
+    const pcm = downsampleTo16k(e.data, ctx.sampleRate);
+    liveCap.pcm.push(pcm);
+    liveCap.pcmLen += pcm.length;
+  };
+  liveCap.timer = setInterval(sendLiveAudio, 1000);
+}
+
+async function sendLiveAudio() {
+  if (!liveCap.session || liveCap.inFlight || !liveCap.pcmLen) return;
+  const buf = new Int16Array(liveCap.pcmLen);
+  let pos = 0;
+  for (const chunk of liveCap.pcm) {
+    for (let i = 0; i < chunk.length; i++) buf[pos++] = Math.max(-32768, Math.min(32767, Math.round(chunk[i] * 32767)));
+  }
+  liveCap.pcm = [];
+  liveCap.pcmLen = 0;
+  liveCap.inFlight = true;
+  const session = liveCap.session;
+  try {
+    const res = await fetch(`/api/live/${session}/audio?since=${liveCap.lastId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: buf.buffer,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (session !== liveCap.session) return;
+    if (!res.ok) throw new Error(data.detail || 'Error');
+    for (const ln of data.lines || []) {
+      liveCap.lines.set(ln.id, { ...(liveCap.lines.get(ln.id) || {}), ...ln });
+      liveCap.lastId = Math.max(liveCap.lastId, ln.id);
+    }
+    for (const [id, tr] of Object.entries(data.translations || {})) {
+      const ln = liveCap.lines.get(Number(id));
+      if (ln) ln.translation = tr;
+    }
+    liveCap.partial = data.partial || '';
+    renderLiveCaptions(data.error);
+  } catch (e) {
+    renderLiveCaptionsError(e.message);
+  } finally {
+    liveCap.inFlight = false;
+  }
+}
+
+function renderLiveCaptions(error) {
+  const box = document.getElementById('live-captions');
+  const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+  const translating = !!document.getElementById('live-translate-select').value;
+  const lines = [...liveCap.lines.values()].sort((a, b) => a.id - b.id).map(ln => `
+    <div>
+      <div class="text-white">${escapeHtml(ln.text)}</div>
+      ${translating ? `<div class="text-apple-blue/90 text-[12.5px]">${ln.translation ? escapeHtml(ln.translation) : '<span class="text-apple-tertiary">…</span>'}</div>` : ''}
+    </div>`).join('');
+  box.innerHTML = (lines || '')
+    + (liveCap.partial ? `<div class="text-apple-secondary italic">${escapeHtml(liveCap.partial)}</div>` : '')
+    + (!lines && !liveCap.partial ? `<div class="text-[11.5px] text-apple-tertiary">${escapeHtml(t('liveListening'))}</div>` : '')
+    + (error ? `<div class="text-[11px] text-apple-amber">${escapeHtml(error)}</div>` : '');
+  if (nearBottom) box.scrollTop = box.scrollHeight;
+}
+
+function renderLiveCaptionsError(msg) {
+  const box = document.getElementById('live-captions');
+  box.classList.remove('hidden');
+  box.insertAdjacentHTML('beforeend', `<div class="text-[11px] text-apple-red">${escapeHtml(t('liveFailed'))}: ${escapeHtml(msg || '')}</div>`);
+}
+
+function stopLiveCaptions() {
+  clearInterval(liveCap.timer);
+  liveCap.timer = null;
+  try { liveCap.node && liveCap.node.disconnect(); } catch (e) {}
+  liveCap.node = null;
+  if (liveCap.session) {
+    fetch(`/api/live/${liveCap.session}/stop`, { method: 'POST' }).catch(() => {});
+    liveCap.session = null;
+  }
+}
+
 async function startLiveRecording() {
   try {
     const sourceMode = document.getElementById('record-source-select').value || 'mic';
@@ -3277,6 +3612,12 @@ async function startLiveRecording() {
       if (e.data && e.data.size > 0) _recChunks.push(e.data);
     };
     _mediaRecorder.start(250);
+    if (document.getElementById('live-captions-toggle').checked) {
+      startLiveCaptions(ctx, mixedStream).catch(err => {
+        console.error(err);
+        renderLiveCaptionsError(err.message);
+      });
+    }
 
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 512;
@@ -3336,6 +3677,7 @@ async function startLiveRecording() {
 }
 
 function _cleanupRecordingResources() {
+  stopLiveCaptions();
   clearInterval(_recTimerInterval);
   if (_recAnimFrame) cancelAnimationFrame(_recAnimFrame);
   _recAnimFrame = null;
@@ -3453,28 +3795,125 @@ function applyVideoLayout() {
 const VIDEO_CLASS_THEATRE = 'max-w-full max-h-full w-full h-full object-contain bg-black cursor-pointer';
 const theatre = { home: {} };
 
+const THEATRE_LAYOUTS = ['side', 'below', 'subs'];
+
 function theatreLayout() {
-  try { return localStorage.getItem('verbascribe_theatre_layout') === 'below' ? 'below' : 'side'; } catch (e) { return 'side'; }
+  try {
+    const v = localStorage.getItem('verbascribe_theatre_layout');
+    return THEATRE_LAYOUTS.includes(v) ? v : 'side';
+  } catch (e) { return 'side'; }
 }
 
 function setTheatreLayout(layout) {
-  try { localStorage.setItem('verbascribe_theatre_layout', layout === 'below' ? 'below' : 'side'); } catch (e) {}
+  try { localStorage.setItem('verbascribe_theatre_layout', THEATRE_LAYOUTS.includes(layout) ? layout : 'side'); } catch (e) {}
   applyTheatreLayout();
 }
 
 function applyTheatreLayout() {
   const layout = theatreLayout();
   const below = layout === 'below';
+  const subs = layout === 'subs';
   document.getElementById('theatre-body').className = `flex-1 min-h-0 flex ${below ? 'flex-col' : 'flex-row'}`;
-  document.getElementById('theatre-video-slot').className =
-    `${below ? 'h-[58%] w-full' : 'flex-1 min-w-0'} min-h-0 bg-black flex items-center justify-center shrink-0`;
-  document.getElementById('theatre-text-slot').className =
-    `${below ? 'flex-1 w-full border-t' : 'w-[38%] min-w-[320px] max-w-[640px] border-l'} apple-border min-h-0 flex flex-col bg-apple-bg`;
-  ['side', 'below'].forEach(k => {
+  document.getElementById('theatre-video-slot').className = subs
+    ? 'flex-1 min-w-0 min-h-0 bg-black flex items-center justify-center relative'
+    : `${below ? 'h-[58%] w-full' : 'flex-1 min-w-0'} min-h-0 bg-black flex items-center justify-center shrink-0 relative`;
+  document.getElementById('theatre-text-slot').className = subs
+    ? 'hidden'
+    : `${below ? 'flex-1 w-full border-t' : 'w-[38%] min-w-[320px] max-w-[640px] border-l'} apple-border min-h-0 flex flex-col bg-apple-bg`;
+  document.getElementById('theatre-caption').classList.toggle('hidden', !subs);
+  const langCtrl = document.getElementById('tx-view-controls');
+  if (subs && !theatre.home.txctrl) moveIntoTheatre('txctrl', langCtrl, document.getElementById('theatre-lang-slot'));
+  if (!subs && theatre.home.txctrl) {
+    moveBackFromTheatre('txctrl', langCtrl);
+    renderTranslationControls();
+  }
+  if (subs) updateTheatreCaption(document.getElementById('media-player').currentTime || 0, true);
+  THEATRE_LAYOUTS.forEach(k => {
     document.getElementById(`theatre-layout-${k}`).className =
       `apple-segment-btn text-[11px] ${k === layout ? 'apple-segment-active' : 'text-apple-secondary hover:text-white'}`;
   });
   redrawAfterLayoutChange();
+}
+
+// --- "Subtitles" layout: the current phrase over the video, in the language chosen for the text ---
+// A long phrase is shown in parts of at most two lines: by word timings for the original, in
+// proportion to length for a translation (it has no word timings).
+const CAPTION_MAX_CHARS = 90;
+const _caption = { key: '' };
+
+function splitCaption(words) {
+  const parts = [];
+  let cur = [];
+  let len = 0;
+  for (const w of words) {
+    const add = w.text.length + (cur.length ? 1 : 0);
+    if (cur.length && len + add > CAPTION_MAX_CHARS) {
+      parts.push(cur);
+      cur = [];
+      len = 0;
+    }
+    cur.push(w);
+    len += w.text.length + (cur.length > 1 ? 1 : 0);
+  }
+  if (cur.length) parts.push(cur);
+  return parts;
+}
+
+// Words of a text with estimated times inside [start, end], by their length
+function timedWordsByLength(text, start, end) {
+  const tokens = (text || '').split(/\s+/).filter(Boolean);
+  const total = tokens.reduce((a, w) => a + w.length + 1, 0) || 1;
+  let acc = 0;
+  return tokens.map(w => {
+    const s = start + (end - start) * acc / total;
+    acc += w.length + 1;
+    return { text: w, start: s, end: start + (end - start) * acc / total };
+  });
+}
+
+function captionPart(words, cur) {
+  const parts = splitCaption(words);
+  if (!parts.length) return '';
+  let idx = parts.findIndex(p => cur < p[p.length - 1].end);
+  if (idx < 0) idx = parts.length - 1;
+  // Whisper words carry their own leading space (" какой", "-то"); estimated words do not
+  return parts[idx].map(w => (w.raw !== undefined ? w.raw : ` ${w.text}`)).join('').trim();
+}
+
+function updateTheatreCaption(cur, force) {
+  const box = document.getElementById('theatre-caption');
+  if (!box || !state.theatre || theatreLayout() !== 'subs') return;
+  const m = state.activeMeeting;
+  const segs = (m && m.segments) || [];
+  // The phrase being spoken, or nothing in a pause (a short grace keeps a caption from flickering)
+  let lo = 0, hi = segs.length - 1, found = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (Number(segs[mid].start) <= cur) { found = mid; lo = mid + 1; } else { hi = mid - 1; }
+  }
+  const seg = found >= 0 && cur <= Number(segs[found].end) + 0.4 ? segs[found] : null;
+  let main = '';
+  let second = '';
+  if (seg) {
+    const start = Number(seg.start), end = Number(seg.end);
+    const words = (seg.words || []).length
+      ? seg.words.map(w => ({ text: String(w.word).trim(), raw: String(w.word), start: Number(w.start), end: Number(w.end) })).filter(w => w.text)
+      : timedWordsByLength(seg.text, start, end);
+    const orig = captionPart(words, cur);
+    const tr = activeSegmentTranslation(seg);
+    const trText = tr && tr.text ? captionPart(timedWordsByLength(tr.text, start, end), cur) : '';
+    if (state.txView === 'tr' && trText) main = trText;
+    else if (state.txView === 'both' && trText) { main = orig; second = trText; }
+    else main = orig;
+  }
+  const key = `${main}\u0000${second}`;
+  if (!force && key === _caption.key) return;
+  _caption.key = key;
+  box.innerHTML = main
+    ? `<span class="theatre-caption-line">${escapeHtml(main)}</span>`
+      + (second ? `<span class="theatre-caption-line theatre-caption-second">${escapeHtml(second)}</span>` : '')
+    : '';
+  box.classList.toggle('empty', !main);
 }
 
 function redrawAfterLayoutChange() {
@@ -3528,6 +3967,10 @@ function exitTheatre() {
   state.theatre = false;
   if (isTheatreFullscreen()) setTheatreFullscreen(false);
   document.getElementById('theatre').classList.add('hidden');
+  if (theatre.home.txctrl) {
+    moveBackFromTheatre('txctrl', document.getElementById('tx-view-controls'));
+    renderTranslationControls();
+  }
   moveBackFromTheatre('footer', document.getElementById('player-footer'));
   moveBackFromTheatre('pane', document.getElementById('wview-transcript'));
   // The workspace tab may have changed meanwhile; the pane follows the current tab
@@ -3609,6 +4052,74 @@ function toggleAutoScroll() {
       : 'ui-btn ui-btn-subtle';
   }
 }
+
+// --- Keyboard shortcuts (listed in the "?" window). Codes, not letters: they work in any layout ---
+function isTypingTarget(el) {
+  return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
+}
+
+function anyModalOpen() {
+  return [...document.querySelectorAll('[id^="modal-"]')].some(m => !m.classList.contains('hidden'));
+}
+
+function focusTranscriptSearch() {
+  if (!state.activeMeeting) {
+    document.getElementById('global-search-input')?.focus();
+    return;
+  }
+  if (state.activeWorkspaceTab !== 'transcript' && !state.theatre) switchWorkspaceTab('transcript');
+  const input = document.getElementById('transcript-search');
+  input.focus();
+  input.select();
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.defaultPrevented || e.altKey || e.metaKey) return;
+  if (e.key === 'Escape') {
+    // Closes the dialog on top; the recording window stays open while it records
+    const open = [...document.querySelectorAll('[id^="modal-"]')].filter(m => !m.classList.contains('hidden'));
+    const top = open[open.length - 1];
+    if (top && top.id !== 'modal-record' && !isTypingTarget(e.target)) {
+      e.preventDefault();
+      closeModal(top.id.slice('modal-'.length));
+    }
+    return;
+  }
+  if (e.ctrlKey) {
+    if (e.code === 'KeyO' && !e.shiftKey) {
+      e.preventDefault();
+      openModal('import');
+    } else if (e.code === 'KeyF' && !e.shiftKey) {
+      e.preventDefault();
+      focusTranscriptSearch();
+    }
+    return;
+  }
+  if (isTypingTarget(e.target) || anyModalOpen()) return;
+  const player = document.getElementById('media-player');
+  const hasMedia = !!state.activeMeeting && !!player && !!player.src;
+  if (e.key === '?' || (e.code === 'Slash' && e.shiftKey)) {
+    e.preventDefault();
+    openModal('shortcuts');
+  } else if (e.code === 'Slash') {
+    e.preventDefault();
+    focusTranscriptSearch();
+  } else if (e.code === 'Space' && hasMedia) {
+    e.preventDefault();
+    document.activeElement?.blur?.();
+    togglePlayPause();
+  } else if ((e.code === 'ArrowLeft' || e.code === 'ArrowRight') && hasMedia) {
+    e.preventDefault();
+    const step = e.shiftKey ? 15 : 5;
+    skipPlayer(e.code === 'ArrowLeft' ? -step : step);
+  } else if (e.code === 'KeyF' && !e.shiftKey && state.hasVideo) {
+    e.preventDefault();
+    toggleTheatre();
+  } else if (e.code === 'KeyR' && !e.shiftKey) {
+    e.preventDefault();
+    openRecordModal();
+  }
+});
 
 document.addEventListener('keydown', (e) => {
   if (e.altKey && e.code === 'Space') {
@@ -3705,6 +4216,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const follow = state.autoScroll !== false && !player.paused;
     const activeSegEl = updatePlaybackHighlight(cur, follow);
+    updateTheatreCaption(cur);
+    updateActiveChapter(cur);
 
     if (activeSegEl && follow) {
       const container = document.getElementById('transcript-container');
@@ -3728,7 +4241,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // --- Summaries ---
 function selectSummaryTab(tab) {
   state.activeSummaryTab = tab;
-  ['protocol', 'tasks', 'tldr'].forEach(k => {
+  ['protocol', 'tasks', 'tldr', 'chapters'].forEach(k => {
     const btn = document.getElementById(`sumtab-${k}`);
     if (btn) {
       btn.className = (k === tab)
@@ -3737,6 +4250,47 @@ function selectSummaryTab(tab) {
     }
   });
   renderSummaryPanel();
+}
+
+// --- Chapters: "- [MM:SS] Title — description" lines of the "chapters" analysis ---
+function parseChapters(md) {
+  const out = [];
+  for (const raw of String(md || '').split('\n')) {
+    const line = raw.replace(/\*\*|__/g, '');  // models sometimes bold the time stamp
+    const m = line.match(/^\s*(?:[-*\d.]+\s*)?\[?(\d{1,2}):(\d{2})(?::(\d{2}))?\]?\s*[-–—:]?\s*(.+?)\s*$/);
+    if (!m) continue;
+    const secs = m[3] !== undefined ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) : Number(m[1]) * 60 + Number(m[2]);
+    const [title, ...rest] = m[4].split(/\s+[—–-]\s+/);
+    out.push({ start: secs, title: title.trim(), desc: rest.join(' — ').trim() });
+  }
+  return out.sort((a, b) => a.start - b.start);
+}
+
+let _chapters = [];
+let _activeChapter = -1;
+
+function renderChaptersBar() {
+  const m = state.activeMeeting;
+  _chapters = parseChapters(m && m.summaries && m.summaries.chapters);
+  _activeChapter = -1;
+  const bar = document.getElementById('chapters-bar');
+  bar.classList.toggle('hidden', _chapters.length < 2);
+  document.getElementById('chapters-list').innerHTML = _chapters.map((c, i) =>
+    `<button onclick="seekPlayer(${c.start})" id="chapter-${i}" title="${escapeHtml(c.desc || c.title)}"
+      class="chapter-chip"><span class="font-mono text-apple-tertiary">${formatTime(c.start)}</span> ${escapeHtml(c.title)}</button>`
+  ).join('');
+}
+
+function updateActiveChapter(cur) {
+  if (!_chapters.length) return;
+  let idx = -1;
+  for (let i = 0; i < _chapters.length; i++) if (_chapters[i].start <= cur + 0.25) idx = i;
+  if (idx === _activeChapter) return;
+  document.getElementById(`chapter-${_activeChapter}`)?.classList.remove('chapter-chip-active');
+  const el = document.getElementById(`chapter-${idx}`);
+  el?.classList.add('chapter-chip-active');
+  el?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  _activeChapter = idx;
 }
 
 function renderSummaryPanel() {
@@ -3769,7 +4323,7 @@ async function generateSummaryForActiveTab() {
   const chosenModel = document.getElementById('summary-llm-select')?.value || undefined;
   const prettyModel = formatModelName(chosenModel || 'Ollama');
   btn.disabled = true;
-  box.innerHTML = `<div class="py-12 flex items-center justify-center gap-2 text-xs text-apple-secondary animate-pulse"><span>${state.uiLang === 'en' ? 'Generating AI analysis' : 'Формируем ИИ-разбор'}</span><span class="px-2 py-0.5 rounded-md bg-white/10 text-white font-medium">${escapeHtml(prettyModel)}</span></div>`;
+  box.innerHTML = `<div class="py-12 flex items-center justify-center gap-2 text-xs text-apple-secondary animate-pulse"><span>${state.uiLang === 'en' ? 'Generating analysis' : 'Формирование анализа'}</span><span class="px-2 py-0.5 rounded-md bg-white/10 text-white font-medium">${escapeHtml(prettyModel)}</span></div>`;
 
   try {
     const res = await fetch(`/api/meetings/${state.activeMeeting.id}/summary`, {
@@ -3780,6 +4334,7 @@ async function generateSummaryForActiveTab() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Error');
     state.activeMeeting.summaries = data.summaries;
+    renderChaptersBar();
     renderSummaryPanel();
   } catch (e) {
     box.innerHTML = `<div class="py-6 text-xs text-apple-red">${escapeHtml(e.message)}</div>`;
@@ -3808,6 +4363,7 @@ async function runCustomQuestion() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Error');
     state.activeMeeting.summaries = data.summaries;
+    renderChaptersBar();
     state.activeSummaryTab = 'custom';
     renderSummaryPanel();
   } catch (e) {

@@ -385,7 +385,7 @@ def diarize_and_merge_segments(
         return speakers, merged
 
     if progress_callback:
-        progress_callback(68, "Подготовка сегментов речи для разделения спикеров...")
+        progress_callback(68, "Подготовка фрагментов речи для разделения участников...")
 
     fine_segments = _split_segments_by_word_pauses(raw_segments)
 
@@ -418,7 +418,7 @@ def diarize_and_merge_segments(
     unload_diarizer()
 
     if progress_callback:
-        progress_callback(86, "Кластеризация спикеров по голосам...")
+        progress_callback(86, "Разделение участников по голосам...")
 
     speaker_assignments = [0] * len(fine_segments)
 
@@ -443,6 +443,19 @@ def diarize_and_merge_segments(
             dur = float(fine_segments[i]["end"]) - float(fine_segments[i]["start"])
             if dur < 2.2 and speaker_assignments[i - 1] == speaker_assignments[i + 1]:
                 speaker_assignments[i] = speaker_assignments[i - 1]
+
+    # Voice print per speaker for voice profiles: duration-weighted mean of its embeddings
+    voice_prints: Dict[str, List[float]] = {}
+    if embeddings_list:
+        sums: Dict[int, np.ndarray] = {}
+        for valid_pos, seg_idx in enumerate(valid_indices):
+            num = speaker_assignments[seg_idx]
+            vec = np.asarray(embeddings_list[valid_pos], dtype=np.float32) * durations_list[valid_pos]
+            sums[num] = sums.get(num, 0) + vec
+        for num, vec in sums.items():
+            norm = float(np.linalg.norm(vec))
+            if norm > 1e-8:
+                voice_prints[f"SPEAKER_{num:02d}"] = [round(float(x), 5) for x in vec / norm]
 
     labeled_segments = []
     for seg, spk_num in zip(fine_segments, speaker_assignments):
@@ -472,6 +485,8 @@ def diarize_and_merge_segments(
             "sample_start": s_start,
             "sample_end": s_end,
         }
+        if spk_id in voice_prints:
+            speakers_meta[spk_id]["embedding"] = voice_prints[spk_id]
 
     return speakers_meta, merged_segments
 
