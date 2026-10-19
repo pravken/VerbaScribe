@@ -1,6 +1,7 @@
 # Virtual Environment
 .venv/
 .venv-dub/
+.python/
 venv/
 env/
 
