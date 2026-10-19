@@ -62,10 +62,13 @@ CancelFn = Callable[[], None]
 
 
 def dub_environment_status() -> Dict[str, Any]:
+    from app.dub_setup import is_installed, setup_status
+
     return {
-        "installed": DUB_PYTHON.exists(),
+        "installed": is_installed(),
         "python": str(DUB_PYTHON),
         "languages": list(DUB_LANGUAGES.keys()),
+        "setup": setup_status(),
     }
 
 
@@ -170,7 +173,7 @@ class DubWorker:
 
     def __init__(self, check_cancel: CancelFn):
         if not DUB_PYTHON.exists():
-            raise RuntimeError("Окружение дубляжа не установлено. Запустите setup_dub.bat")
+            raise RuntimeError("Окружение дубляжа не установлено. Установите его в окне «Дубляж».")
         env = {
             **__import__("os").environ,
             "HF_HOME": str(MODELS_DIR / "dub" / "hf"),

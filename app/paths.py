@@ -37,7 +37,31 @@ def _default_data_dir() -> Path:
     return Path(base) / "VerbaScribe"
 
 
-DATA_DIR = Path(os.environ.get("VERBASCRIBE_DATA_DIR") or _default_data_dir()).expanduser().resolve()
+def _is_packaged_python() -> bool:
+    r"""
+    True for Python from the Microsoft Store (an MSIX-packaged process). Windows silently redirects
+    such a process's writes to %LOCALAPPDATA% into its private package folder
+    (...\Packages\PythonSoftwareFoundation.Python.*\LocalCache), which other programs such as
+    FFmpeg and Explorer cannot see and which is deleted together with that Python.
+    """
+    if sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+
+        length = ctypes.c_uint32(0)
+        rc = ctypes.windll.kernel32.GetCurrentPackageFullName(ctypes.byref(length), None)
+        return rc != 15700  # APPMODEL_ERROR_NO_PACKAGE: a regular, unpackaged process
+    except Exception:
+        return "WindowsApps" in (getattr(sys, "_base_executable", "") or sys.executable)
+
+
+PACKAGED_PYTHON = _is_packaged_python()
+_ENV_DATA_DIR = os.environ.get("VERBASCRIBE_DATA_DIR")
+# Under a packaged (Store) Python, %LOCALAPPDATA% is virtualized, so data stays next to the program
+DATA_DIR = Path(
+    _ENV_DATA_DIR or (LEGACY_DATA_DIR if PACKAGED_PYTHON else _default_data_dir())
+).expanduser().resolve()
 MODELS_DIR = Path(os.environ.get("VERBASCRIBE_MODELS_DIR") or (APP_DIR / "models")).expanduser().resolve()
 
 
@@ -184,6 +208,19 @@ def migrate_legacy_data_dir(legacy: Optional[Path] = None, target: Optional[Path
 
 def _resolve_data_dir() -> Path:
     if os.environ.get("VERBASCRIBE_SKIP_MIGRATION") == "1":
+        return DATA_DIR
+    if PACKAGED_PYTHON and not _ENV_DATA_DIR:
+        # An earlier version moved the data into %LOCALAPPDATA%, which this Python only sees
+        # through its private virtualized copy: bring it back next to the program.
+        virtual_dir = _default_data_dir()
+        try:
+            if migrate_legacy_data_dir(legacy=virtual_dir, target=DATA_DIR):
+                (DATA_DIR / MOVED_NOTE_NAME).unlink(missing_ok=True)
+                _log("Data restored from the virtualized AppData folder of the Store Python")
+        except Exception as e:
+            _log(f"Restoring data from {virtual_dir} failed: {e}")
+            if (virtual_dir / "meetings.db").is_file() and not (DATA_DIR / "meetings.db").is_file():
+                return virtual_dir  # keep the library visible; the old folder is untouched
         return DATA_DIR
     try:
         migrate_legacy_data_dir()

@@ -12,6 +12,8 @@ s3tokenizer
 transformers==5.2.0
 diffusers==0.29.0
 resemble-perth>=1.0.0
+# perth imports pkg_resources (removed in setuptools 81); uv venvs ship without setuptools
+setuptools<81
 conformer==0.3.2
 safetensors==0.5.3
 spacy-pkuseg

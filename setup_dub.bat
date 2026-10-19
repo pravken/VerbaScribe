@@ -10,7 +10,7 @@ set "DUBPY=.venv-dub\Scripts\python.exe"
 set "TORCH_INDEX=https://download.pytorch.org/whl/cu124"
 
 if not exist "%DUBPY%" (
-    where uv >nul 2>nul && uv venv .venv-dub --python 3.10
+    where uv >nul 2>nul && (uv venv .venv-dub --python 3.10 --python-preference only-managed || uv venv .venv-dub --python 3.10)
 )
 if not exist "%DUBPY%" (
     py -3.10 -m venv .venv-dub

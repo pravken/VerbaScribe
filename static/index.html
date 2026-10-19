@@ -91,6 +91,16 @@
       </div>
     </div>
 
+    <!-- Processing queue (shown only while something is queued or running) -->
+    <div id="queue-panel" class="hidden mx-2.5 mt-1 mb-1 rounded-lg border apple-border bg-white/[0.03]">
+      <div class="px-2.5 pt-2 pb-1 flex items-center justify-between">
+        <span class="text-[11px] font-semibold text-apple-secondary uppercase tracking-wider">
+          <span data-i18n="queueTitle">Очередь</span> <span id="queue-count" class="font-mono text-apple-blue"></span>
+        </span>
+      </div>
+      <div id="queue-list" class="px-1.5 pb-1.5 space-y-1 max-h-48 overflow-y-auto"></div>
+    </div>
+
     <!-- Sidebar Section Header -->
     <div class="px-4 pt-2 pb-1 flex items-center justify-between">
       <span class="text-[11px] font-semibold text-apple-secondary uppercase tracking-wider" data-i18n="recordings">Записи</span>
@@ -267,8 +277,12 @@
       <div id="workspace-processing-banner" class="hidden bg-apple-card border-b apple-border px-6 py-2.5 shrink-0">
         <div class="max-w-3xl mx-auto">
           <div class="flex items-center justify-between text-xs mb-1.5">
-            <span id="workspace-stage-text" class="text-apple-label font-medium">Обработка…</span>
-            <span class="flex items-center gap-2.5">
+            <span class="flex items-center gap-2 min-w-0">
+              <span id="workspace-live-dot" class="live-dot hidden"></span>
+              <span id="workspace-stage-text" class="text-apple-label font-medium truncate">Обработка…</span>
+            </span>
+            <span class="flex items-center gap-2.5 shrink-0">
+              <span id="workspace-progress-time" class="font-mono text-[11px] text-apple-secondary"></span>
               <span id="workspace-progress-pct" class="font-mono text-apple-blue">0%</span>
               <button id="workspace-cancel-btn" onclick="cancelActiveProcessing()" data-i18n-title="tipCancelProcessing" title="Остановить обработку этой записи"
                 class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]" data-i18n="cancelProcessingBtn">Отменить</button>
@@ -446,9 +460,9 @@
       <footer class="border-t apple-border bg-apple-sidebar/95 apple-blur shrink-0 z-20 flex flex-col">
 
         <!-- Attached Video Frame (Directly connected to player controls below) -->
-        <div id="video-drawer" class="hidden border-b apple-border bg-black/95 py-3 px-6 transition-all">
-          <div class="max-w-xl mx-auto relative">
-            <video id="media-player" crossorigin="anonymous" onclick="togglePlayPause()"
+        <div id="video-drawer" class="hidden border-b apple-border bg-black/95 py-3 px-6">
+          <div id="video-expanded-slot" class="max-w-xl mx-auto relative">
+            <video id="media-player" crossorigin="anonymous" onclick="onVideoClick()"
               data-i18n-title="tipVideoCanvas"
               title="Нажмите на видео для воспроизведения / паузы"
               class="w-full max-h-56 rounded-xl bg-black mx-auto cursor-pointer shadow-2xl border border-white/10"></video>
@@ -463,14 +477,20 @@
 
             <!-- Left: Video Toggle, Studio Voice Enhancer & Playback Speed -->
             <div class="flex items-center gap-1.5 flex-1">
-              <button onclick="toggleVideoDrawer()" id="video-drawer-btn"
-                data-i18n-title="tipVideoBtn"
-                title="Показать или скрыть видеоокно над панелью управления"
-                class="ui-btn ui-btn-subtle">
+              <!-- Mini video preview: the video is moved here when collapsed, so it never just disappears -->
+              <div id="video-mini-slot" onclick="setVideoMode('expanded')"
+                data-i18n-title="tipVideoMini" title="Видео записи. Нажмите, чтобы развернуть"
+                class="hidden relative w-20 h-[45px] rounded-md overflow-hidden bg-black border border-white/15 cursor-pointer shrink-0 group mr-1">
+                <span class="absolute inset-0 flex items-center justify-center bg-black/45 text-white opacity-0 group-hover:opacity-100 transition pointer-events-none"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"/></svg></span>
+              </div>
+
+              <!-- Label and tooltip are set by applyVideoLayout() -->
+              <button onclick="toggleVideoDrawer()" id="video-drawer-btn" class="ui-btn ui-btn-subtle hidden"></button>
+              <button onclick="toggleVideoPip()" id="video-pip-btn" class="ui-btn ui-btn-subtle px-2 hidden"
+                title="Открыть видео в отдельном окне поверх других программ">
                 <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"/>
+                  <rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="11.5" width="7" height="5.5" rx="1" fill="currentColor" stroke="none"/>
                 </svg>
-                <span data-i18n="videoBtn">Видео</span>
               </button>
 
               <button onclick="toggleStudioVoiceEnhancer()" id="studio-voice-btn"
@@ -744,7 +764,26 @@
           <button onclick="closeModal('dub')" class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
         </div>
         <p class="text-xs text-apple-secondary leading-relaxed" data-i18n="dubIntro"></p>
-        <div id="dub-env-warning" class="hidden text-xs rounded-lg border apple-border bg-apple-amber/15 text-apple-amber px-3 py-2" data-i18n="dubNoEnv"></div>
+        <div id="dub-env-panel" class="hidden rounded-xl border apple-border bg-apple-amber/15 p-3 space-y-2">
+          <div class="text-xs text-apple-amber leading-relaxed" data-i18n="dubNoEnv"></div>
+          <div id="dub-setup-meta" class="text-[11px] text-apple-secondary"></div>
+          <div id="dub-setup-progress" class="hidden space-y-1.5">
+            <div class="flex items-center justify-between gap-2 text-[11px]">
+              <span id="dub-setup-step" class="text-apple-label truncate"></span>
+              <span id="dub-setup-pct" class="font-mono text-apple-blue shrink-0">0%</span>
+            </div>
+            <div class="w-full h-1 bg-white/10 rounded-full overflow-hidden">
+              <div id="dub-setup-bar" class="h-full bg-apple-blue transition-all duration-300" style="width: 0%"></div>
+            </div>
+            <div id="dub-setup-logs" class="hidden max-h-32 overflow-y-auto font-mono text-[10px] leading-snug text-apple-secondary bg-black/30 rounded-md p-2"></div>
+          </div>
+          <div id="dub-setup-error" class="hidden text-[11px] text-apple-red"></div>
+          <div class="flex items-center justify-end gap-2">
+            <button id="dub-setup-logs-btn" onclick="toggleDubSetupLogs()" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px] hidden" data-i18n="logsBtn">Логи</button>
+            <button id="dub-setup-cancel-btn" onclick="cancelDubSetup()" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px] hidden" data-i18n="cancel">Отмена</button>
+            <button id="dub-setup-btn" onclick="startDubSetup()" class="ui-btn ui-btn-primary h-7 px-3 text-[11px]">Установить</button>
+          </div>
+        </div>
         <div id="dub-last-error" class="hidden text-xs rounded-lg border border-apple-red/30 bg-apple-red/15 text-apple-red px-3 py-2"></div>
 
         <div>

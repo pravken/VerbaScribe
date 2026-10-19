@@ -15,7 +15,8 @@ if %ERRORLEVEL% NEQ 0 (
 where uv >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
     echo [1/2] Creating Python 3.10 virtual environment via uv...
-    uv venv .venv --python 3.10
+    rem Prefer a uv-managed Python: the Microsoft Store Python virtualizes AppData and hides files from other programs
+    uv venv .venv --python 3.10 --python-preference only-managed || uv venv .venv --python 3.10
     echo [2/2] Installing dependencies via uv...
     rem requirements.txt is an exact lock with SHA-256 hashes (see requirements.in)
     uv pip install --python ".venv\Scripts\python.exe" -r requirements.txt --require-hashes --index-strategy unsafe-best-match --extra-index-url https://download.pytorch.org/whl/cu124

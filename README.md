@@ -58,7 +58,7 @@ including Russian and English), keeps the music and ambience separated by [Demuc
 fits each phrase to the original timing and saves a new file to the `dubs` subfolder of the data folder (`%LOCALAPPDATA%\VerbaScribe\dubs`). It runs as a normal job in the
 processing queue, with progress and **Cancel**.
 
-- **Install once:** run `setup_dub.bat`. It creates a separate environment `.venv-dub` (~6 GB of packages); about
+- **Install once:** click **Install** in the Dub window (or run `setup_dub.bat`). It creates a separate environment `.venv-dub` (~6 GB of packages); about
   3 GB of model weights are downloaded into `models\dub\` on the first job. The separate environment is needed
   because Chatterbox pins library versions that conflict with the main app.
 - **Requirements:** NVIDIA GPU with ~4 GB free VRAM for the TTS (measured peak 3.5 GB) plus whatever your Ollama
@@ -85,7 +85,7 @@ VerbaScribe has no telemetry. It connects to the internet only for these actions
 | You download a Whisper or speaker model | Hugging Face (`huggingface.co`) |
 | You download an Ollama model | Ollama's model registry, via your local Ollama |
 | You confirm installing Ollama | winget (package `Ollama.Ollama`) |
-| You run `setup_dub.bat` (optional dubbing) | PyPI and download.pytorch.org |
+| You install the dubbing environment (optional) | PyPI and download.pytorch.org |
 | Your first dubbing job | Hugging Face (Chatterbox and Demucs weights) |
 
 | You click **Download FFmpeg** in Settings | github.com (release `9.0.2` of `GyanD/codexffmpeg`) |
@@ -182,7 +182,7 @@ start.bat
 и записывает новый файл в подпапку `dubs` папки данных (`%LOCALAPPDATA%\VerbaScribe\dubs`). Работает как обычная задача в очереди обработки, с прогрессом и кнопкой
 **Отменить**.
 
-- **Установка один раз:** запустите `setup_dub.bat`. Он создаёт отдельное окружение `.venv-dub` (~6 ГБ пакетов);
+- **Установка один раз:** нажмите **Установить** в окне «Дубляж» (или запустите `setup_dub.bat`). Создаётся отдельное окружение `.venv-dub` (~6 ГБ пакетов);
   ещё ~3 ГБ весов моделей скачиваются в `models\dub\` при первом дубляже. Отдельное окружение нужно, потому что
   Chatterbox жёстко фиксирует версии библиотек, несовместимые с основным приложением.
 - **Требования:** видеокарта NVIDIA, ~4 ГБ свободной видеопамяти под синтез (замеренный пик 3,5 ГБ) плюс память под
@@ -208,7 +208,7 @@ start.bat
 | Вы скачиваете модель Whisper или модель спикеров | Hugging Face (`huggingface.co`) |
 | Вы скачиваете модель Ollama | Реестр моделей Ollama, через вашу локальную Ollama |
 | Вы подтверждаете установку Ollama | winget (пакет `Ollama.Ollama`) |
-| Вы запускаете `setup_dub.bat` (дубляж, по желанию) | PyPI и download.pytorch.org |
+| Вы устанавливаете окружение дубляжа (по желанию) | PyPI и download.pytorch.org |
 | Первый запуск дубляжа | Hugging Face (веса Chatterbox и Demucs) |
 
 | Вы нажимаете **Скачать FFmpeg** в настройках | github.com (релиз `9.0.2` репозитория `GyanD/codexffmpeg`) |

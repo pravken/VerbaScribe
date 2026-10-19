@@ -794,6 +794,29 @@ def api_dub_status() -> Dict[str, Any]:
     return dub_environment_status()
 
 
+@app.get("/api/queue")
+def api_queue() -> List[Dict[str, Any]]:
+    """Processing queue: the running job first, then waiting jobs in order."""
+    from app.transcriber import queue_snapshot
+
+    return queue_snapshot()
+
+
+@app.post("/api/dub/setup")
+def api_dub_setup() -> Dict[str, Any]:
+    """Installs the optional dubbing environment (.venv-dub) after the user confirmed it in the UI."""
+    from app.dub_setup import start_setup
+
+    return start_setup()
+
+
+@app.post("/api/dub/setup/cancel")
+def api_dub_setup_cancel() -> Dict[str, Any]:
+    from app.dub_setup import cancel_setup
+
+    return cancel_setup()
+
+
 @app.post("/api/meetings/{meeting_id}/dub")
 def api_start_dub(meeting_id: int, payload: DubRequestPayload) -> Dict[str, Any]:
     from app.dubbing import DUB_LANGUAGES, dub_environment_status
@@ -813,7 +836,7 @@ def api_start_dub(meeting_id: int, payload: DubRequestPayload) -> Dict[str, Any]
     if payload.target_lang == (m.get("language") or ""):
         raise HTTPException(status_code=400, detail="Язык перевода совпадает с языком записи")
     if not dub_environment_status()["installed"]:
-        raise HTTPException(status_code=409, detail="Окружение дубляжа не установлено. Запустите setup_dub.bat в папке программы.")
+        raise HTTPException(status_code=409, detail="Окружение дубляжа не установлено. Установите его в окне «Дубляж».")
     if not enqueue_dub_job(meeting_id, payload.target_lang):
         raise HTTPException(status_code=409, detail="Запись уже обрабатывается")
     return get_meeting(meeting_id)

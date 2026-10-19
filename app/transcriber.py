@@ -1,4 +1,5 @@
 import threading
+import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -37,6 +38,9 @@ _executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="whisper_worker
 _jobs_lock = threading.Lock()
 _active_jobs: Set[int] = set()
 _cancel_requested: Set[int] = set()
+# Mirror of the executor's FIFO for the UI: which recording is running and which are waiting
+_queue: List[Dict[str, Any]] = []
+_running_id: Optional[int] = None
 
 
 class JobCancelled(Exception):
@@ -55,6 +59,69 @@ def request_cancel(meeting_id: int) -> bool:
             return False
         _cancel_requested.add(meeting_id)
         return True
+
+
+def _publish_queue_changed() -> None:
+    from app import events
+
+    events.publish({"type": "queue"})
+
+
+def _queue_add(meeting_id: int, kind: str, lang: Optional[str] = None) -> None:
+    """Call with _jobs_lock held."""
+    _queue.append({"id": meeting_id, "kind": kind, "lang": lang, "queued_at": time.time(), "started_at": None})
+
+
+def _queue_start(meeting_id: int) -> None:
+    global _running_id
+    with _jobs_lock:
+        _running_id = meeting_id
+        for q in _queue:
+            if q["id"] == meeting_id:
+                q["started_at"] = time.time()
+    _publish_queue_changed()
+
+
+def _queue_finish(meeting_id: int) -> None:
+    global _running_id
+    with _jobs_lock:
+        _queue[:] = [q for q in _queue if q["id"] != meeting_id]
+        if _running_id == meeting_id:
+            _running_id = None
+    _publish_queue_changed()
+
+
+def queue_snapshot() -> List[Dict[str, Any]]:
+    """Running job first, then waiting jobs in the order they will run."""
+    from app.database import list_meetings
+
+    with _jobs_lock:
+        items = [dict(q) for q in _queue]
+        running = _running_id
+        cancelling = set(_cancel_requested)
+    meetings = {m["id"]: m for m in list_meetings()}
+    items.sort(key=lambda q: 0 if q["id"] == running else 1)
+    out = []
+    waiting_pos = 0
+    for q in items:
+        m = meetings.get(q["id"])
+        if not m:
+            continue
+        is_running = q["id"] == running
+        if not is_running:
+            waiting_pos += 1
+        out.append(
+            {
+                **q,
+                "title": m.get("title") or "",
+                "state": "running" if is_running else "waiting",
+                "position": 0 if is_running else waiting_pos,
+                "cancelling": q["id"] in cancelling,
+                "progress": m.get("progress", 0),
+                "stage_text": m.get("stage_text", ""),
+            }
+        )
+    return out
 
 
 def _check_cancel(meeting_id: int) -> None:
@@ -83,14 +150,18 @@ def enqueue_meeting_job(meeting_id: int) -> bool:
             return False
         _active_jobs.add(meeting_id)
         _cancel_requested.discard(meeting_id)
+        _queue_add(meeting_id, "transcribe")
     _executor.submit(_run_job, meeting_id)
+    _publish_queue_changed()
     return True
 
 
 def _run_job(meeting_id: int) -> None:
+    _queue_start(meeting_id)
     try:
         _process_meeting_job(meeting_id)
     finally:
+        _queue_finish(meeting_id)
         with _jobs_lock:
             _active_jobs.discard(meeting_id)
             _cancel_requested.discard(meeting_id)
@@ -106,10 +177,12 @@ def enqueue_dub_job(meeting_id: int, target_lang: str) -> bool:
             return False
         _active_jobs.add(meeting_id)
         _cancel_requested.discard(meeting_id)
+        _queue_add(meeting_id, "dub", target_lang)
     update_meeting_progress(
         meeting_id, status="dubbing", progress=0, stage_text="Дубляж в очереди...", error_message=""
     )
     _executor.submit(_run_dub_job, meeting_id, target_lang)
+    _publish_queue_changed()
     return True
 
 
@@ -121,6 +194,7 @@ def _run_dub_job(meeting_id: int, target_lang: str) -> None:
 
     # The transcript stays valid whatever happens to the dub, so the recording always goes back to
     # "completed"; the dub result (or error) is reported in stage_text / error_message.
+    _queue_start(meeting_id)
     try:
         meeting = get_meeting(meeting_id)
         if not meeting:
@@ -148,6 +222,7 @@ def _run_dub_job(meeting_id: int, target_lang: str) -> None:
             error_message=f"{e}\n\n{tb[-800:]}",
         )
     finally:
+        _queue_finish(meeting_id)
         clear_vram()
         with _jobs_lock:
             _active_jobs.discard(meeting_id)

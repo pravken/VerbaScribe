@@ -216,3 +216,34 @@ input[type="range"].volume-slider::-webkit-slider-thumb:hover {
 .markdown-body li { margin-bottom: 0.3rem; line-height: 1.6; }
 .markdown-body strong { color: #FFFFFF; font-weight: 600; }
 .markdown-body code { background: #242426; padding: 0.12rem 0.35rem; border-radius: 5px; font-size: 0.84em; color: #64D2FF; font-family: 'JetBrains Mono', monospace; }
+
+/* Live progress: moving stripes on the running bar and a pulsing status dot */
+.progress-live {
+  background-image: linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.28) 25%, transparent 25%, transparent 50%,
+    rgba(255, 255, 255, 0.28) 50%, rgba(255, 255, 255, 0.28) 75%, transparent 75%, transparent
+  );
+  background-size: 14px 14px;
+  animation: progress-stripes 0.8s linear infinite;
+}
+@keyframes progress-stripes {
+  from { background-position: 0 0; }
+  to { background-position: 14px 0; }
+}
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  background: #0A84FF;
+  flex-shrink: 0;
+  animation: live-dot-pulse 1.4s ease-in-out infinite;
+}
+.live-dot.hidden { display: none; }
+@keyframes live-dot-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(10, 132, 255, 0.55); }
+  50% { opacity: 0.55; box-shadow: 0 0 0 4px rgba(10, 132, 255, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .progress-live, .live-dot { animation: none; }
+}

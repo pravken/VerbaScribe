@@ -9,7 +9,8 @@ let state = {
   activeWorkspaceTab: 'transcript',
   activeSummaryTab: 'protocol',
   speakerFilter: null,
-  videoOpen: false,
+  videoMode: (() => { try { return localStorage.getItem('verbascribe_video_mode') === 'mini' ? 'mini' : 'expanded'; } catch (e) { return 'expanded'; } })(),
+  hasVideo: false,
   studioVoiceActive: false,
   globalSearchQuery: '',
   globalSearchResults: null,
@@ -74,6 +75,7 @@ function setUILanguage(lang) {
     renderTranscript();
     renderSummaryPanel();
   }
+  applyVideoLayout();
 }
 
 function showToast(msg, action) {
@@ -969,6 +971,93 @@ function scheduleSidebarRender() {
   });
 }
 
+// --- Processing time: elapsed and a rough estimate of the remaining time ---
+function formatDurationShort(sec) {
+  sec = Math.max(0, Math.round(sec));
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  return h ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`;
+}
+
+// Progress jumps between stages, so the estimate is shown only once there is enough data
+function jobTiming(q, pct) {
+  if (!q || !q.started_at) return null;
+  const elapsed = Math.max(0, Date.now() / 1000 - q.started_at);
+  let remaining = null;
+  if (pct >= 5 && pct < 100 && elapsed >= 10) remaining = elapsed * (100 - pct) / pct;
+  return { elapsed, remaining };
+}
+
+function formatTiming(timing) {
+  if (!timing) return '';
+  let text = formatDurationShort(timing.elapsed);
+  if (timing.remaining != null) {
+    const mins = Math.round(timing.remaining / 60);
+    text += ' · ' + (mins < 1 ? t('etaUnderMinute') : t('etaMinutes').replace('{n}', mins));
+  }
+  return text;
+}
+
+// Re-render the elapsed time every second while something is running
+setInterval(() => {
+  if (!(state.queue || []).some(q => q.state === 'running')) return;
+  renderQueuePanel();
+  if (state.activeMeeting) updateProcessingBanner(state.activeMeeting);
+}, 1000);
+
+// --- Processing queue panel ---
+function scheduleQueueReload() {
+  clearTimeout(live.queueTimer);
+  live.queueTimer = setTimeout(() => loadQueue().catch(console.error), 120);
+}
+
+async function loadQueue() {
+  const res = await fetch('/api/queue');
+  if (!res.ok) return;
+  state.queue = await res.json();
+  renderQueuePanel();
+}
+
+function queueKindLabel(q) {
+  return q.kind === 'dub'
+    ? `${t('queueKindDub')} → ${(q.lang || '').toUpperCase()}`
+    : t('queueKindTranscribe');
+}
+
+function renderQueuePanel() {
+  const panel = document.getElementById('queue-panel');
+  if (!panel) return;
+  const items = state.queue || [];
+  panel.classList.toggle('hidden', items.length === 0);
+  document.getElementById('queue-count').textContent = items.length ? `(${items.length})` : '';
+  document.getElementById('queue-list').innerHTML = items.map(q => {
+    // Live progress comes from SSE updates of the library list
+    const m = state.meetings.find(x => x.id === q.id) || {};
+    const running = q.state === 'running';
+    const pct = running ? (m.progress ?? q.progress ?? 0) : 0;
+    const detail = q.cancelling
+      ? t('queueCancelling')
+      : running ? (m.stage_text || q.stage_text || '') : t('queueWaiting').replace('{n}', q.position);
+    const timing = running && !q.cancelling ? formatTiming(jobTiming(q, pct)) : '';
+    return `
+      <div onclick="selectMeeting(${q.id}, true)" title="${escapeHtml(detail)}"
+        class="group px-2 py-1.5 rounded-md cursor-pointer hover:bg-white/5 ${running ? 'bg-apple-blue/10' : ''}">
+        <div class="flex items-center justify-between gap-2">
+          <span class="flex items-center gap-1.5 min-w-0">
+            ${running && !q.cancelling ? '<span class="live-dot"></span>' : ''}
+            <span class="text-[12px] font-medium text-white truncate">${escapeHtml(q.title)}</span>
+          </span>
+          <button onclick="event.stopPropagation(); cancelProcessing(${q.id})" title="${escapeHtml(t('tipQueueCancel'))}"
+            class="shrink-0 text-apple-tertiary hover:text-apple-red opacity-60 group-hover:opacity-100 transition ${q.cancelling ? 'hidden' : ''}">${SVG_ICONS.closeX}</button>
+        </div>
+        <div class="flex items-center justify-between gap-2 text-[10.5px] mt-0.5">
+          <span class="${q.kind === 'dub' ? 'text-apple-amber' : 'text-apple-secondary'} shrink-0">${escapeHtml(queueKindLabel(q))}</span>
+          <span class="text-apple-tertiary truncate font-mono">${running && !q.cancelling ? `${escapeHtml(timing)}${timing ? ' · ' : ''}${pct}%` : escapeHtml(detail)}</span>
+        </div>
+        ${running ? `<div class="w-full h-1 bg-white/10 rounded-full overflow-hidden mt-1"><div class="h-full bg-apple-blue progress-live transition-all duration-300" style="width:${Math.max(3, pct)}%"></div></div>` : ''}
+      </div>`;
+  }).join('');
+}
+
 function handleLiveEvent(ev) {
   if (ev.type === 'hello') {
     // After a reconnect (e.g. server restart) changes may have been missed
@@ -977,11 +1066,13 @@ function handleLiveEvent(ev) {
     return;
   }
   if (ev.type === 'list') { scheduleListReload(); return; }
+  if (ev.type === 'queue') { scheduleQueueReload(); return; }
   if (ev.type !== 'progress') return;
 
   const m = state.meetings.find(x => x.id === ev.id);
   if (!m) { scheduleListReload(); return; }
   for (const f of LIVE_PROGRESS_FIELDS) if (f in ev) m[f] = ev[f];
+  if ((state.queue || []).some(q => q.id === ev.id)) renderQueuePanel();
   scheduleSidebarRender();
 
   const active = state.activeMeeting;
@@ -1001,6 +1092,7 @@ function handleLiveEvent(ev) {
 async function pollMeetingsLoop() {
   try {
     await loadMeetingsList();
+    await loadQueue();
   } catch (e) {
     console.error(e);
   }
@@ -1210,10 +1302,16 @@ function updateProcessingBanner(m) {
   const banner = document.getElementById('workspace-processing-banner');
   banner.classList.toggle('hidden', !isBusy && m.status !== 'failed' && m.status !== 'cancelled');
   document.getElementById('workspace-cancel-btn').classList.toggle('hidden', !isBusy);
+  const bar = document.getElementById('workspace-progress-bar');
+  const q = (state.queue || []).find(x => x.id === m.id);
+  const running = isBusy && q && q.state === 'running';
+  bar.classList.toggle('progress-live', !!running);
+  document.getElementById('workspace-live-dot').classList.toggle('hidden', !running);
+  document.getElementById('workspace-progress-time').textContent = running ? formatTiming(jobTiming(q, m.progress || 0)) : '';
   if (isBusy) {
     document.getElementById('workspace-stage-text').textContent = m.stage_text || 'Processing…';
     document.getElementById('workspace-progress-pct').textContent = `${m.progress}%`;
-    document.getElementById('workspace-progress-bar').style.width = `${m.progress}%`;
+    bar.style.width = `${Math.max(running ? 3 : 0, m.progress || 0)}%`;
   } else {
     document.getElementById('workspace-stage-text').textContent =
       m.stage_text || (m.status === 'cancelled' ? t('statusCancelled') : 'Failed');
@@ -1236,7 +1334,8 @@ async function openDubModal() {
   let env = { installed: false, languages: Object.keys(I18N.ru.dubLangNames) };
   try { env = await (await fetch('/api/dub/status')).json(); } catch (e) { console.error(e); }
   state.dubEnvInstalled = !!env.installed;
-  document.getElementById('dub-env-warning').classList.toggle('hidden', state.dubEnvInstalled);
+  renderDubSetup(env);
+  if (env.setup && env.setup.active) pollDubSetup();
 
   const srcLang = m.language || '';
   const preferred = srcLang === 'en' ? 'ru' : 'en';
@@ -1256,6 +1355,88 @@ async function openDubModal() {
   renderDubResults();
   updateDubStartButton();
   openModal('dub');
+}
+
+// Optional dubbing environment (.venv-dub): installed from this window on request
+function renderDubSetup(env) {
+  const panel = document.getElementById('dub-env-panel');
+  const st = env.setup || {};
+  state.dubSetup = st;
+  panel.classList.toggle('hidden', !!env.installed);
+  if (env.installed) return;
+
+  const meta = [t('dubSetupSize').replace('{gb}', st.download_gb ?? 6)];
+  if (st.free_gb != null) meta.push(t('dubSetupFree').replace('{gb}', st.free_gb));
+  document.getElementById('dub-setup-meta').textContent = meta.join(' · ');
+
+  const logs = st.logs || [];
+  document.getElementById('dub-setup-progress').classList.toggle('hidden', !st.active && !logs.length);
+  document.getElementById('dub-setup-step').textContent =
+    st.active ? (t('dubSetupStep_' + st.step) || '') : (st.error ? t('dubSetupFailed') : '');
+  document.getElementById('dub-setup-pct').textContent = `${st.progress || 0}%`;
+  document.getElementById('dub-setup-bar').style.width = `${st.progress || 0}%`;
+  const logsBox = document.getElementById('dub-setup-logs');
+  logsBox.innerHTML = logs.map(l => `<div>${escapeHtml(l)}</div>`).join('');
+  logsBox.scrollTop = logsBox.scrollHeight;
+
+  const errBox = document.getElementById('dub-setup-error');
+  errBox.textContent = st.error || '';
+  errBox.classList.toggle('hidden', !st.error);
+
+  const btn = document.getElementById('dub-setup-btn');
+  btn.textContent = st.error ? t('dubSetupRetry') : t('dubSetupBtn');
+  btn.classList.toggle('hidden', !!st.active);
+  document.getElementById('dub-setup-cancel-btn').classList.toggle('hidden', !st.active);
+  document.getElementById('dub-setup-logs-btn').classList.toggle('hidden', !logs.length);
+}
+
+function toggleDubSetupLogs() {
+  document.getElementById('dub-setup-logs').classList.toggle('hidden');
+}
+
+async function startDubSetup() {
+  const st = state.dubSetup || {};
+  const question = t('dubSetupConfirm')
+    .replace('{gb}', st.download_gb ?? 6)
+    .replace('{dir}', st.venv || '.venv-dub');
+  if (!confirm(question)) return;
+  let res = null;
+  try { res = await fetch('/api/dub/setup', { method: 'POST' }); } catch (e) { console.error(e); }
+  const setup = res ? await res.json().catch(() => ({})) : {};
+  if (!res || !res.ok) {
+    // e.g. an older server process is still running behind this window
+    const code = res ? res.status : 0;
+    renderDubSetup({ installed: false, setup: { ...st, active: false, error: t('dubSetupRequestFailed').replace('{code}', code || '—') } });
+    return;
+  }
+  renderDubSetup({ installed: false, setup });
+  if (setup.active) pollDubSetup();
+}
+
+async function cancelDubSetup() {
+  await fetch('/api/dub/setup/cancel', { method: 'POST' });
+}
+
+async function pollDubSetup() {
+  if (state.dubSetupPolling) return;
+  state.dubSetupPolling = true;
+  try {
+    for (;;) {
+      await new Promise(r => setTimeout(r, 1500));
+      const env = await (await fetch('/api/dub/status')).json();
+      state.dubEnvInstalled = !!env.installed;
+      renderDubSetup(env);
+      updateDubStartButton();
+      if (!env.setup || !env.setup.active) {
+        if (env.installed) showToast(t('dubSetupDone'));
+        break;
+      }
+    }
+  } catch (e) {
+    console.error(e);
+  } finally {
+    state.dubSetupPolling = false;
+  }
 }
 
 function updateDubStartButton() {
@@ -2456,12 +2637,70 @@ async function stopAndTranscribeRecording() {
   showToast(state.uiLang === 'en' ? 'Recording queued for transcription' : 'Запись отправлена на распознавание');
 }
 
+// --- Video: shown automatically for recordings with a video track; "collapsed" moves the same
+// <video> element into a small preview in the player bar instead of hiding it.
+const VIDEO_CLASS_EXPANDED = 'w-full max-h-56 rounded-xl bg-black mx-auto cursor-pointer shadow-2xl border border-white/10';
+const VIDEO_CLASS_MINI = 'w-full h-full object-cover pointer-events-none';
+const VIDEO_ICONS = {
+  collapse: '<svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25"/></svg>',
+  expand: '<svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"/></svg>',
+};
+
+function setVideoMode(mode) {
+  state.videoMode = mode === 'mini' ? 'mini' : 'expanded';
+  try { localStorage.setItem('verbascribe_video_mode', state.videoMode); } catch (e) {}
+  applyVideoLayout();
+}
+
 function toggleVideoDrawer() {
-  state.videoOpen = !state.videoOpen;
-  document.getElementById('video-drawer').classList.toggle('hidden', !state.videoOpen);
-  document.getElementById('video-drawer-btn').className = state.videoOpen
-    ? 'ui-btn ui-btn-active'
-    : 'ui-btn ui-btn-subtle';
+  setVideoMode(state.videoMode === 'expanded' ? 'mini' : 'expanded');
+}
+
+function onVideoClick() {
+  if (state.videoMode === 'mini') setVideoMode('expanded');
+  else togglePlayPause();
+}
+
+function applyVideoLayout() {
+  const player = document.getElementById('media-player');
+  const drawer = document.getElementById('video-drawer');
+  const expandedSlot = document.getElementById('video-expanded-slot');
+  const miniSlot = document.getElementById('video-mini-slot');
+  const btn = document.getElementById('video-drawer-btn');
+  const pipBtn = document.getElementById('video-pip-btn');
+  if (!player || !drawer) return;
+
+  const mode = state.hasVideo ? state.videoMode : 'none';
+  drawer.classList.toggle('hidden', mode !== 'expanded');
+  miniSlot.classList.toggle('hidden', mode !== 'mini');
+  // Moving the element synchronously keeps playback running
+  const target = mode === 'mini' ? miniSlot : expandedSlot;
+  if (player.parentElement !== target) target.prepend(player);
+  player.className = mode === 'mini' ? VIDEO_CLASS_MINI : VIDEO_CLASS_EXPANDED;
+
+  btn.classList.toggle('hidden', !state.hasVideo);
+  if (state.hasVideo) {
+    const expanded = mode === 'expanded';
+    btn.innerHTML = `${expanded ? VIDEO_ICONS.collapse : VIDEO_ICONS.expand}<span>${escapeHtml(t(expanded ? 'videoCollapse' : 'videoExpand'))}</span>`;
+    btn.title = t(expanded ? 'tipVideoCollapse' : 'tipVideoExpand');
+  }
+
+  const inPip = !!document.pictureInPictureElement && document.pictureInPictureElement === player;
+  pipBtn.classList.toggle('hidden', !state.hasVideo || !document.pictureInPictureEnabled);
+  pipBtn.classList.toggle('ui-btn-active', inPip);
+  pipBtn.classList.toggle('ui-btn-subtle', !inPip);
+  pipBtn.title = t(inPip ? 'tipVideoPipExit' : 'tipVideoPip');
+}
+
+async function toggleVideoPip() {
+  const player = document.getElementById('media-player');
+  try {
+    if (document.pictureInPictureElement) await document.exitPictureInPicture();
+    else await player.requestPictureInPicture();
+  } catch (e) {
+    console.error(e);
+    showToast(t('videoPipFailed'));
+  }
 }
 
 function toggleAutoScroll() {
@@ -2549,7 +2788,17 @@ document.addEventListener('DOMContentLoaded', () => {
     if (player.duration && isFinite(player.duration)) {
       document.getElementById('player-total-time').textContent = formatTime(player.duration);
     }
+    state.hasVideo = player.videoWidth > 0;
+    applyVideoLayout();
   });
+  player.addEventListener('loadstart', () => {
+    // A new recording: hide video controls until we know it has a video track
+    state.hasVideo = false;
+    if (document.pictureInPictureElement === player) document.exitPictureInPicture().catch(() => {});
+    applyVideoLayout();
+  });
+  player.addEventListener('enterpictureinpicture', applyVideoLayout);
+  player.addEventListener('leavepictureinpicture', applyVideoLayout);
   player.addEventListener('timeupdate', () => {
     const cur = player.currentTime;
     const dur = player.duration || (state.activeMeeting && state.activeMeeting.duration) || 1;
@@ -2572,6 +2821,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadSystemInfo();
   loadDictionary();
   startLiveUpdates();
+  loadQueue().catch(console.error);
   pollMeetingsLoop();
 });
 
