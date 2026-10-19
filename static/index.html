@@ -34,16 +34,17 @@
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2.5">
           <!-- Custom Minimalist Willow Branch (Verba) Botanical Logo -->
-          <div class="w-7 h-7 rounded-lg bg-gradient-to-b from-[#163850] to-[#0E2233] border border-white/10 flex items-center justify-center shadow-sm shrink-0"
+          <!-- The willow sways and sheds fluff on hover; five quick clicks release a whole cloud (initLogoEasterEgg) -->
+          <div id="app-logo" class="app-logo w-7 h-7 rounded-lg bg-gradient-to-b from-[#163850] to-[#0E2233] border border-white/10 flex items-center justify-center shadow-sm shrink-0"
                data-i18n-title="tipAppLogo" title="VerbaScribe — локальное распознавание речи и анализ расшифровок">
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none">
+            <svg class="w-4 h-4 app-logo-branch" viewBox="0 0 24 24" fill="none">
               <!-- Willow branch stem -->
               <path d="M5 20C8.5 15.5 13 10.5 18.5 4.5" stroke="#4ADE80" stroke-width="1.8" stroke-linecap="round"/>
               <!-- Fluffy willow catkins (buds) -->
-              <ellipse cx="8.2" cy="13.2" rx="2.1" ry="3.1" transform="rotate(-28 8.2 13.2)" fill="#F8FAFC"/>
-              <ellipse cx="14.2" cy="12.8" rx="2.0" ry="3.0" transform="rotate(32 14.2 12.8)" fill="#F8FAFC"/>
-              <ellipse cx="12.0" cy="7.5" rx="2.0" ry="3.0" transform="rotate(-22 12.0 7.5)" fill="#F8FAFC"/>
-              <ellipse cx="18.2" cy="5.2" rx="1.7" ry="2.5" transform="rotate(25 18.2 5.2)" fill="#F8FAFC"/>
+              <g class="catkin" style="--d: 0ms"><ellipse cx="8.2" cy="13.2" rx="2.1" ry="3.1" transform="rotate(-28 8.2 13.2)" fill="#F8FAFC"/></g>
+              <g class="catkin" style="--d: 90ms"><ellipse cx="14.2" cy="12.8" rx="2.0" ry="3.0" transform="rotate(32 14.2 12.8)" fill="#F8FAFC"/></g>
+              <g class="catkin" style="--d: 180ms"><ellipse cx="12.0" cy="7.5" rx="2.0" ry="3.0" transform="rotate(-22 12.0 7.5)" fill="#F8FAFC"/></g>
+              <g class="catkin" style="--d: 270ms"><ellipse cx="18.2" cy="5.2" rx="1.7" ry="2.5" transform="rotate(25 18.2 5.2)" fill="#F8FAFC"/></g>
             </svg>
           </div>
           <div>
@@ -51,7 +52,7 @@
           </div>
         </div>
 
-        <button onclick="openModal('settings')"
+        <button onclick="openModal('settings', 'recognition')"
           data-i18n-title="tipHwStatus"
           title="Открыть настройки оборудования и моделей ИИ"
           class="px-2 py-1 rounded-md bg-white/[0.04] hover:bg-white/[0.08] transition flex items-center gap-1.5 text-[10.5px] text-apple-secondary">
@@ -445,7 +446,7 @@
                 <option value="mistral:7b">Mistral 7B</option>
                 <option value="qwen2.5:1.5b">Qwen Lite</option>
               </select>
-              <button onclick="openModal('settings')"
+              <button onclick="openModal('settings', 'analysis')"
                 data-i18n-title="tipManageLlm"
                 title="Скачать или настроить модели ИИ в настройках"
                 class="ui-btn ui-btn-subtle">
@@ -531,10 +532,10 @@
         <div class="px-6 py-2.5 max-w-4xl w-full mx-auto space-y-2">
 
           <!-- Row 1: Controls Above Scrubber (Left: Modes | Center: Transport | Right: Volume) -->
-          <div class="flex items-center justify-between gap-4">
+          <div class="player-bar-row">
 
-            <!-- Left: Video Toggle, Studio Voice Enhancer & Playback Speed -->
-            <div class="flex items-center gap-1.5 flex-1">
+            <!-- Left: how the video is shown (preview, expand, theatre, separate window) -->
+            <div class="flex items-center gap-1.5 min-w-0">
               <!-- Mini video preview: the video is moved here when collapsed, so it never just disappears -->
               <div id="video-mini-slot" onclick="setVideoMode('expanded')"
                 data-i18n-title="tipVideoMini" title="Видео записи. Нажмите, чтобы развернуть"
@@ -557,25 +558,6 @@
                 </svg>
               </button>
 
-              <!-- Audio track (original / AI dubs); filled by renderAudioTrackSwitch() -->
-              <div id="audio-track-switch" class="hidden shrink-0"></div>
-
-              <button onclick="toggleStudioVoiceEnhancer()" id="studio-voice-btn"
-                data-i18n-title="tipStudioVoice"
-                title="Включить студийное улучшение голоса и выравнивание громкости в плеере"
-                class="ui-btn ui-btn-subtle">
-                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M9.348 14.651a3.75 3.75 0 010-5.303m5.304 0a3.75 3.75 0 010 5.303m-7.425 2.122a6.75 6.75 0 010-9.546m9.546 0a6.75 6.75 0 010 9.546M5.106 18.894c-3.808-3.808-3.808-9.98 0-13.789m13.788 0c3.808 3.808 3.808 9.981 0 13.79M12 12h.008v.007H12V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"/>
-                </svg>
-                <span class="player-btn-label" data-i18n="studioVoiceBtn">Шумоподавление</span>
-              </button>
-
-              <button onclick="cyclePlaybackSpeed()" id="speed-cycle-btn"
-                data-i18n-title="tipSpeedBtn"
-                title="Изменить скорость воспроизведения (1.0x – 2.0x)"
-                class="ui-btn ui-btn-subtle font-mono text-apple-label px-2.5">
-                1.0x
-              </button>
             </div>
 
             <!-- Center: Transport Controls (-15s, Play/Pause, +15s) Directly Above Timeline -->
@@ -611,8 +593,28 @@
               </button>
             </div>
 
-            <!-- Right: Volume Mute Button + Volume Slider -->
-            <div class="flex items-center justify-end gap-2 flex-1">
+            <!-- Right: everything about the sound (track, noise reduction, speed, volume) -->
+            <div class="flex items-center justify-end gap-1.5 min-w-0">
+              <!-- Audio track (original / AI dubs); filled by renderAudioTrackSwitch() -->
+              <div id="audio-track-switch" class="hidden shrink-0"></div>
+
+              <button onclick="toggleStudioVoiceEnhancer()" id="studio-voice-btn"
+                data-i18n-title="tipStudioVoice"
+                title="Включить студийное улучшение голоса и выравнивание громкости в плеере"
+                class="ui-btn ui-btn-subtle">
+                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9.348 14.651a3.75 3.75 0 010-5.303m5.304 0a3.75 3.75 0 010 5.303m-7.425 2.122a6.75 6.75 0 010-9.546m9.546 0a6.75 6.75 0 010 9.546M5.106 18.894c-3.808-3.808-3.808-9.98 0-13.789m13.788 0c3.808 3.808 3.808 9.981 0 13.79M12 12h.008v.007H12V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"/>
+                </svg>
+                <span class="player-btn-label" data-i18n="studioVoiceBtn">Шумоподавление</span>
+              </button>
+
+              <button onclick="cyclePlaybackSpeed()" id="speed-cycle-btn"
+                data-i18n-title="tipSpeedBtn"
+                title="Изменить скорость воспроизведения (1.0x – 2.0x)"
+                class="ui-btn ui-btn-subtle font-mono text-apple-label px-2.5">
+                1.0x
+              </button>
+              <span class="w-px h-5 bg-white/10 mx-1 shrink-0"></span>
               <button onclick="toggleMutePlayer()" id="mute-btn"
                 data-i18n-title="tipMuteBtn"
                 title="Включить или выключить звук"
@@ -1098,7 +1100,7 @@
        (Outer container is overflow-hidden so scrollbar never clips rounded corners)
        ========================================================================= -->
   <div id="modal-settings" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4" onclick="closeModalOnBackdrop(event, 'settings')">
-    <div class="w-full max-w-2xl bg-apple-card border apple-border rounded-2xl shadow-2xl overflow-hidden max-h-[88vh] flex flex-col modal-card">
+    <div class="w-full max-w-2xl bg-apple-card border apple-border rounded-2xl shadow-2xl overflow-hidden max-h-[88vh] flex flex-col modal-card" style="height: min(88vh, 820px);">
 
       <!-- Sticky Modal Header -->
       <div class="px-6 py-4 border-b apple-border flex items-center justify-between shrink-0 bg-apple-card">
@@ -1110,6 +1112,17 @@
         <button onclick="closeModal('settings')" data-i18n-title="tipCloseModal" title="Закрыть окно настроек" class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
       </div>
 
+      <!-- Settings sections as tabs (selectSettingsTab in app.js) -->
+      <div class="px-6 pt-3 pb-3 border-b apple-border shrink-0 bg-apple-card">
+        <div class="apple-segmented w-full settings-tabs">
+          <button onclick="selectSettingsTab('general')" id="stab-general" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabGeneral">Общие</button>
+          <button onclick="selectSettingsTab('record')" id="stab-record" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabRecord">Запись</button>
+          <button onclick="selectSettingsTab('recognition')" id="stab-recognition" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabRecognition">Распознавание</button>
+          <button onclick="selectSettingsTab('analysis')" id="stab-analysis" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabAnalysis">Анализ</button>
+          <button onclick="selectSettingsTab('dub')" id="stab-dub" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabDub">Дубляж</button>
+        </div>
+      </div>
+
       <!-- Scrollable Inner Content -->
       <div class="p-6 space-y-5 overflow-y-auto flex-1">
 
@@ -1119,6 +1132,13 @@
           <div id="legacy-conflict-text" class="text-[11px] text-apple-label/90 select-text break-all"></div>
         </div>
 
+        <!-- First-Run Welcome Banner -->
+        <div id="first-run-banner" class="hidden rounded-xl bg-apple-blue/15 border border-apple-blue/40 p-3.5 text-xs text-white space-y-1">
+          <div class="font-semibold text-apple-blue" data-i18n="firstRunTitle">Начальная настройка</div>
+          <p class="text-apple-label/90 text-[11.5px]" data-i18n="firstRunText">Модели распознавания не входят в установку, чтобы она занимала меньше места. Скачайте рекомендуемую модель Whisper ниже.</p>
+        </div>
+
+        <div data-stab="general" class="space-y-5 hidden">
         <!-- FFmpeg availability (download only on explicit click) -->
         <div id="ffmpeg-row" class="hidden rounded-xl bg-black/20 border apple-border px-3.5 py-2.5 flex items-center justify-between gap-3">
           <div class="min-w-0">
@@ -1128,16 +1148,27 @@
           <button id="ffmpeg-download-btn" onclick="installFfmpeg()" class="hidden ui-btn ui-btn-primary shrink-0" data-i18n="ffmpegDownloadBtn">Скачать FFmpeg</button>
         </div>
 
-        <!-- First-Run Welcome Banner -->
-        <div id="first-run-banner" class="hidden rounded-xl bg-apple-blue/15 border border-apple-blue/40 p-3.5 text-xs text-white space-y-1">
-          <div class="font-semibold text-apple-blue" data-i18n="firstRunTitle">Начальная настройка</div>
-          <p class="text-apple-label/90 text-[11.5px]" data-i18n="firstRunText">Модели распознавания не входят в установку, чтобы она занимала меньше места. Скачайте рекомендуемую модель Whisper ниже.</p>
+        <!-- Export Folder -->
+        <div class="space-y-2 pb-4 border-b apple-border">
+          <div>
+            <h4 class="text-xs font-semibold text-white" data-i18n="exportDirTitle">Папка для экспорта</h4>
+            <p class="text-[11px] text-apple-secondary leading-snug" data-i18n="exportDirDesc">При каждом экспорте открывается окно «Сохранить как». Эта папка предлагается первой и автоматически запоминается последняя выбранная.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <div id="set-export-dir" class="flex-1 min-w-0 h-8 leading-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono truncate"></div>
+            <button onclick="pickExportDir()" data-i18n-title="tipExportDirPick" title="Выбрать папку, которая предлагается по умолчанию при сохранении файлов"
+              class="ui-btn ui-btn-subtle h-8 px-3 text-[11px] shrink-0" data-i18n="exportDirPickBtn">Выбрать…</button>
+            <button onclick="openExportDir()" data-i18n-title="tipExportDirOpen" title="Открыть папку экспорта в проводнике"
+              class="ui-btn ui-btn-subtle h-8 px-3 text-[11px] shrink-0" data-i18n="exportDirOpenBtn">Открыть</button>
+          </div>
+        </div>
         </div>
 
+        <div data-stab="record" class="space-y-5 hidden">
         <!-- Section 1: Audio Recording & Input Source Settings -->
         <div class="space-y-3 pb-4 border-b apple-border">
           <div>
-            <h4 class="text-xs font-semibold text-white" data-i18n="recSettingsTitle">1. Источник звука</h4>
+            <h4 class="text-xs font-semibold text-white" data-i18n="recSettingsTitle">Источник звука</h4>
             <p class="text-[11px] text-apple-secondary" data-i18n="recSettingsDesc">Выберите источник (микрофон, системный звук или оба) и проверьте уровень сигнала</p>
           </div>
 
@@ -1189,27 +1220,14 @@
             <canvas id="settings-waveform-canvas" class="w-full h-11 block rounded-lg bg-black/30"></canvas>
           </div>
         </div>
-
-        <!-- Export Folder -->
-        <div class="space-y-2 pb-4 border-b apple-border">
-          <div>
-            <h4 class="text-xs font-semibold text-white" data-i18n="exportDirTitle">Папка для экспорта</h4>
-            <p class="text-[11px] text-apple-secondary leading-snug" data-i18n="exportDirDesc">При каждом экспорте открывается окно «Сохранить как». Эта папка предлагается первой и автоматически запоминается последняя выбранная.</p>
-          </div>
-          <div class="flex items-center gap-2">
-            <div id="set-export-dir" class="flex-1 min-w-0 h-8 leading-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono truncate"></div>
-            <button onclick="pickExportDir()" data-i18n-title="tipExportDirPick" title="Выбрать папку, которая предлагается по умолчанию при сохранении файлов"
-              class="ui-btn ui-btn-subtle h-8 px-3 text-[11px] shrink-0" data-i18n="exportDirPickBtn">Выбрать…</button>
-            <button onclick="openExportDir()" data-i18n-title="tipExportDirOpen" title="Открыть папку экспорта в проводнике"
-              class="ui-btn ui-btn-subtle h-8 px-3 text-[11px] shrink-0" data-i18n="exportDirOpenBtn">Открыть</button>
-          </div>
         </div>
 
+        <div data-stab="recognition" class="space-y-5 hidden">
         <!-- Section 2: Whisper Speech Recognition Models -->
         <div class="space-y-2.5">
           <div class="flex items-center justify-between gap-2">
             <div>
-              <h4 class="text-xs font-semibold text-white" data-i18n="whisperSectionTitle">2. Распознавание речи и участников</h4>
+              <h4 class="text-xs font-semibold text-white" data-i18n="whisperSectionTitle">Распознавание речи и участников</h4>
               <p class="text-[11px] text-apple-secondary" data-i18n="whisperSectionDesc">Выберите модель под вашу видеокарту или процессор</p>
             </div>
             <span id="diarizer-status-pill" class="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-white/5 text-apple-secondary shrink-0"></span>
@@ -1285,12 +1303,14 @@
             <span data-i18n="cleanFillersToggle">Удалять слова-паразиты и запинки</span>
           </label>
         </div>
+        </div>
 
+        <div data-stab="analysis" class="space-y-5 hidden">
         <!-- Section 3: Ollama Local AI Model Manager -->
         <div class="pt-4 border-t apple-border space-y-3">
           <div class="flex items-center justify-between gap-2">
             <div>
-              <h4 class="text-xs font-semibold text-white" data-i18n="ollamaSectionTitle">3. Языковые модели для анализа (Ollama)</h4>
+              <h4 class="text-xs font-semibold text-white" data-i18n="ollamaSectionTitle">Языковые модели для анализа (Ollama)</h4>
               <p class="text-[11px] text-apple-secondary" data-i18n="ollamaSectionDesc">Модели с открытыми весами работают локально; перед коммерческим использованием проверьте лицензию модели</p>
             </div>
             <span id="settings-ollama-pill" class="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-white/5 text-apple-secondary shrink-0"></span>
@@ -1343,12 +1363,14 @@
             <span data-i18n="autoSummaryToggle">Создавать обзор автоматически после расшифровки</span>
           </label>
         </div>
+        </div>
 
+        <div data-stab="dub" class="space-y-5 hidden">
         <!-- Section 4: Speech synthesis for the AI dub (optional .venv-dub environment) -->
         <div id="settings-dub-section" class="pt-4 border-t apple-border space-y-3">
           <div class="flex items-center justify-between gap-2">
             <div>
-              <h4 class="text-xs font-semibold text-white" data-i18n="sdubTitle">4. Синтез речи (дубляж)</h4>
+              <h4 class="text-xs font-semibold text-white" data-i18n="sdubTitle">Синтез речи (дубляж)</h4>
               <p class="text-[11px] text-apple-secondary" data-i18n="sdubDesc">Chatterbox Multilingual (голос) и Demucs (фон) · MIT · отдельное окружение .venv-dub</p>
             </div>
             <span id="sdub-env-pill" class="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-white/5 text-apple-secondary shrink-0"></span>
@@ -1452,6 +1474,7 @@
                 <span class="block text-[10.5px] text-apple-tertiary leading-snug mt-0.5" data-i18n="dubRoomToneHint">Фон остаётся как в оригинале. К синтезированному голосу добавляется шум помещения из пауз исходной записи, чтобы голос звучал естественно, а не наложенным поверх. Голос станет немного менее чистым. При включённом шумоподавлении не применяется.</span></span>
             </label>
           </div>
+        </div>
         </div>
 
       </div>

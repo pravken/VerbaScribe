@@ -112,9 +112,25 @@ function formatTime(sec) {
 }
 
 // --- Modals & Menus ---
-function openModal(name) {
+// Settings are split into tabs; the last one is remembered
+const SETTINGS_TABS = ['general', 'record', 'recognition', 'analysis', 'dub'];
+
+function selectSettingsTab(name) {
+  if (!SETTINGS_TABS.includes(name)) name = 'general';
+  document.querySelectorAll('#modal-settings [data-stab]').forEach(el => el.classList.toggle('hidden', el.dataset.stab !== name));
+  SETTINGS_TABS.forEach(k => {
+    const btn = document.getElementById(`stab-${k}`);
+    if (btn) btn.className = `apple-segment-btn ${k === name ? 'apple-segment-active' : 'text-apple-secondary hover:text-white'}`;
+  });
+  try { localStorage.setItem('verbascribe_settings_tab', name); } catch (e) {}
+}
+
+function openModal(name, tab) {
   document.getElementById(`modal-${name}`).classList.remove('hidden');
   if (name === 'settings') {
+    let last = null;
+    try { last = localStorage.getItem('verbascribe_settings_tab'); } catch (e) {}
+    selectSettingsTab(tab || last || 'general');
     loadVoiceProfiles();
     loadDubInfo();
     populateAudioInputDevices();
@@ -439,7 +455,7 @@ ${t('modelsFolder')}: ${data.paths.models}`;
       updateWhisperModelsUI(data.models);
       if (data.models.needs_first_run_setup && !window._firstRunShown) {
         window._firstRunShown = true;
-        openModal('settings');
+        openModal('settings', 'recognition');
       }
     }
     syncSidebarDownloadWidget();
@@ -485,6 +501,7 @@ function vramChipLabel(c) {
 
 function vramChipTitle(c) {
   if (c.kind === 'dub') return t('tipVramDub');
+  if (c.loading) return t('tipVramLoading').replace('{name}', vramChipLabel(c));
   if (c.loaded) return c.can_unload ? t('tipVramUnload').replace('{name}', vramChipLabel(c)) : t('tipVramInUse');
   return c.can_preload ? t('tipVramPreload').replace('{name}', vramChipLabel(c)) : t('tipVramNotLoaded');
 }
@@ -499,10 +516,12 @@ function renderVram(data) {
   document.getElementById('vram-bar').style.width = `${Math.min(100, (100 * gpu.used_gb) / Math.max(1, gpu.total_gb))}%`;
   row.firstElementChild.title = t('tipVramUsage').replace('{free}', gpu.free_gb);
 
-  const chips = (data.chips || []).filter(c => c.loaded || c.can_preload);
+  const chips = (data.chips || []).filter(c => c.loaded || c.loading || c.can_preload);
   const html = chips.map((c, i) => {
-    const actionable = vram.busy ? false : (c.loaded ? c.can_unload : c.can_preload);
-    const cls = c.loaded
+    const actionable = vram.busy || c.loading ? false : (c.loaded ? c.can_unload : c.can_preload);
+    const cls = c.loading
+      ? 'bg-apple-blue/10 text-apple-blue border-apple-blue/40 animate-pulse'
+      : c.loaded
       ? (c.kind === 'dub' ? 'bg-apple-amber/15 text-apple-amber border-apple-amber/30' : 'bg-apple-green/15 text-apple-green border-apple-green/30')
       : 'bg-transparent text-apple-tertiary border-white/15 border-dashed';
     const icon = c.loaded
@@ -511,7 +530,7 @@ function renderVram(data) {
     return `<button data-i="${i}" onclick="vramChipClick(this.dataset.i)" ${actionable || c.kind === 'dub' ? '' : 'disabled'}
       title="${escapeHtml(vramChipTitle(c))}"
       class="group max-w-full inline-flex items-center gap-1 px-1.5 h-5 rounded-full border text-[10px] font-medium transition ${cls} ${actionable ? 'hover:bg-white/10' : 'cursor-default'}">
-      <span class="w-1.5 h-1.5 rounded-full shrink-0 ${c.loaded ? 'bg-current' : 'border border-current'}"></span>
+      <span class="w-1.5 h-1.5 rounded-full shrink-0 ${c.loaded || c.loading ? 'bg-current' : 'border border-current'}"></span>
       <span class="truncate">${escapeHtml(vramChipLabel(c))}</span>${icon}</button>`;
   }).join('');
   // Unchanged chips are left alone, so a refresh never swallows a click
@@ -3001,7 +3020,14 @@ function seekPlayer(seconds) {
   const player = document.getElementById('media-player');
   if (!player) return;
   clearTimeout(state.voicePreviewTimer);
-  player.currentTime = Math.max(0, Number(seconds));
+  const target = Math.max(0, Number(seconds) || 0);
+  // Until the file's metadata is loaded (just opened, or the audio track was switched) a seek
+  // can be dropped and playback starts from 0: apply it once the player knows the duration
+  if (player.readyState < 1) {
+    player.addEventListener('loadedmetadata', () => { player.currentTime = target; player.play(); }, { once: true });
+    return;
+  }
+  player.currentTime = target;
   player.play();
 }
 
@@ -3143,6 +3169,10 @@ let _recStartTime = 0;
 let _recTimerInterval = null;
 let _recAnimFrame = null;
 let _recWaveHistory = [];
+// System audio recorded by the app itself (no screen-share prompt); see app/system_audio.py
+let _recCaptureId = null;
+let _recSysLevel = 0;
+let _recSysTimer = null;
 
 let _settingsTestStreams = [];
 let _settingsTestCtx = null;
@@ -3216,14 +3246,15 @@ function syncRecordModalToSettings() {
   });
 }
 
-async function buildCaptureStream(sourceMode, micDeviceId) {
+async function buildCaptureStream(sourceMode, micDeviceId, systemByApp = false) {
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
   const ctx = new AudioCtx();
   const dest = ctx.createMediaStreamDestination();
   const acquiredStreams = [];
 
   const needMic = sourceMode === 'mic' || sourceMode === 'both';
-  const needSystem = sourceMode === 'system' || sourceMode === 'both';
+  // When the app records system audio itself, the page does not ask for a screen share
+  const needSystem = !systemByApp && (sourceMode === 'system' || sourceMode === 'both');
 
   if (needMic) {
     const micConstraints = {
@@ -3506,6 +3537,7 @@ async function startLiveCaptions(ctx, stream) {
     body: JSON.stringify({
       lang: (state.system && state.system.settings && state.system.settings.language) || 'auto',
       translate_to: document.getElementById('live-translate-select').value || null,
+      capture_id: _recCaptureId,
     }),
   });
   const data = await res.json().catch(() => ({}));
@@ -3596,22 +3628,77 @@ function stopLiveCaptions() {
   }
 }
 
+// The tray icon shows "recording" while the page records (app/app_status.py)
+function reportRecordingState(active) {
+  fetch('/api/ui/state', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ recording: !!active }),
+  }).catch(() => {});
+}
+
+// Commands from the tray menu (run.py TrayController); the window is already shown
+window.trayCommand = function (cmd) {
+  if (cmd === 'record') {
+    if (_mediaRecorder && _mediaRecorder.state === 'recording') {
+      stopAndTranscribeRecording();
+      return;
+    }
+    // System audio is recorded by the app, so recording can start without a click in the window
+    openRecordModal().then(() => startLiveRecording());
+  } else if (cmd === 'import') {
+    openModal('import');
+  } else if (cmd === 'ask') {
+    openLibraryAsk('');
+  } else if (cmd === 'settings') {
+    openModal('settings');
+  }
+};
+
 async function startLiveRecording() {
   try {
     const sourceMode = document.getElementById('record-source-select').value || 'mic';
     const micId = document.getElementById('record-mic-select').value || '';
     syncRecordModalToSettings();
 
-    const { ctx, mixedStream, acquiredStreams } = await buildCaptureStream(sourceMode, micId);
+    // System audio: recorded by the app (no prompt); the browser's screen share is only a fallback
+    _recCaptureId = null;
+    _recSysLevel = 0;
+    if (sourceMode === 'system' || sourceMode === 'both') {
+      try {
+        const res = await fetch('/api/record/start', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ system: true }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.capture_id) _recCaptureId = data.capture_id;
+        else console.warn('System audio by the app is unavailable:', data.detail);
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+    const { ctx, mixedStream, acquiredStreams } = await buildCaptureStream(sourceMode, micId, !!_recCaptureId);
     _recAudioCtx = ctx;
     _recStreams = acquiredStreams;
     _recChunks = [];
 
-    _mediaRecorder = new MediaRecorder(mixedStream);
-    _mediaRecorder.ondataavailable = (e) => {
-      if (e.data && e.data.size > 0) _recChunks.push(e.data);
-    };
-    _mediaRecorder.start(250);
+    // With system audio from the app and no microphone there is nothing for the page to record
+    _mediaRecorder = null;
+    if (!(_recCaptureId && sourceMode === 'system')) {
+      _mediaRecorder = new MediaRecorder(mixedStream);
+      _mediaRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) _recChunks.push(e.data);
+      };
+      _mediaRecorder.start(250);
+    }
+    if (_recCaptureId) {
+      clearInterval(_recSysTimer);
+      _recSysTimer = setInterval(async () => {
+        try {
+          const r = await fetch(`/api/record/${_recCaptureId}/level`);
+          if (r.ok) _recSysLevel = (await r.json()).level || 0;
+        } catch (e) {}
+      }, 200);
+    }
     if (document.getElementById('live-captions-toggle').checked) {
       startLiveCaptions(ctx, mixedStream).catch(err => {
         console.error(err);
@@ -3628,7 +3715,15 @@ async function startLiveRecording() {
 
     function updateMeter() {
       if (!_recAudioCtx) return;
-      const { db, visualAmp } = computeRmsAndDb(analyser, timeBuf);
+      let { db, visualAmp } = computeRmsAndDb(analyser, timeBuf);
+      if (_recCaptureId && _recSysLevel > 0.0001) {
+        // The louder of the microphone (page) and the system audio (app)
+        const sysDb = Math.max(-60, Math.round(20 * Math.log10(_recSysLevel)));
+        if (sysDb > db) {
+          db = sysDb;
+          visualAmp = Math.min(1.0, Math.max(0.04, Math.pow(_recSysLevel * 4.2, 0.65)));
+        }
+      }
       _recWaveHistory.push(visualAmp);
       if (_recWaveHistory.length > 68) _recWaveHistory.shift();
 
@@ -3663,6 +3758,7 @@ async function startLiveRecording() {
       document.getElementById('record-timer-display').textContent = formatTime(elapsed);
     }, 400);
 
+    reportRecordingState(true);
     document.getElementById('btn-start-rec').classList.add('hidden');
     document.getElementById('btn-stop-rec').classList.remove('hidden');
     document.getElementById('rec-dot-indicator').classList.add('animate-ping');
@@ -3677,6 +3773,9 @@ async function startLiveRecording() {
 }
 
 function _cleanupRecordingResources() {
+  reportRecordingState(false);
+  clearInterval(_recSysTimer);
+  _recSysTimer = null;
   stopLiveCaptions();
   clearInterval(_recTimerInterval);
   if (_recAnimFrame) cancelAnimationFrame(_recAnimFrame);
@@ -3698,29 +3797,53 @@ function cancelLiveRecording() {
   if (_mediaRecorder && _mediaRecorder.state !== 'inactive') {
     _mediaRecorder.stop();
   }
+  if (_recCaptureId) {
+    fetch(`/api/record/${_recCaptureId}/cancel`, { method: 'POST' }).catch(() => {});
+    _recCaptureId = null;
+  }
   _cleanupRecordingResources();
   closeModal('record');
 }
 
 async function stopAndTranscribeRecording() {
-  if (!_mediaRecorder) return;
+  if (!_mediaRecorder && !_recCaptureId) return;
   document.getElementById('record-status-hint').textContent =
     state.uiLang === 'en' ? 'Saving and queuing transcription…' : 'Сохранение и отправка на расшифровку…';
 
-  await new Promise(resolve => {
-    _mediaRecorder.onstop = resolve;
-    _mediaRecorder.stop();
-  });
+  if (_mediaRecorder) {
+    await new Promise(resolve => {
+      _mediaRecorder.onstop = resolve;
+      _mediaRecorder.stop();
+    });
+  }
 
-  const blob = new Blob(_recChunks, { type: 'audio/webm' });
+  const blob = _mediaRecorder ? new Blob(_recChunks, { type: 'audio/webm' }) : null;
+  const captureId = _recCaptureId;
+  _recCaptureId = null;
   _cleanupRecordingResources();
   closeModal('record');
 
   const rawTitle = (document.getElementById('record-title-input').value || 'Запись').trim();
   const safeName = rawTitle.replace(/[\\/:*?"<>|]/g, '_') + '.webm';
-  const file = new File([blob], safeName, { type: 'audio/webm' });
 
-  const created = await handleFileSelect([file]);
+  let created;
+  if (captureId) {
+    // The app mixes its system-audio recording with the microphone and queues the result
+    const fd = new FormData();
+    fd.append('title', rawTitle);
+    if (blob) fd.append('file', new File([blob], safeName, { type: 'audio/webm' }));
+    const res = await fetch(`/api/record/${captureId}/finish`, { method: 'POST', body: fd });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      showToast(data.detail || 'Error');
+      return;
+    }
+    created = data.created;
+    await loadMeetingsList();
+    if (created && created[0]) await selectMeeting(created[0].id, true);
+  } else {
+    created = await handleFileSelect([new File([blob], safeName, { type: 'audio/webm' })]);
+  }
   const savedPath = created && created[0] && created[0].media_path;
   showToast(
     t('recordSavedQueued'),
@@ -4134,8 +4257,51 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+// --- Easter egg: willow fluff from the logo ---
+function releaseWillowFluff(count, spread) {
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const logo = document.getElementById('app-logo');
+  if (!logo) return;
+  const r = logo.getBoundingClientRect();
+  for (let i = 0; i < count; i++) {
+    const el = document.createElement('span');
+    el.className = 'willow-fluff';
+    el.style.left = `${r.left + r.width * (0.35 + Math.random() * 0.5)}px`;
+    el.style.top = `${r.top + r.height * (0.15 + Math.random() * 0.5)}px`;
+    // Drift right and up like fluff in a breeze, wider for the burst
+    el.style.setProperty('--x', `${(30 + Math.random() * 90) * spread}px`);
+    el.style.setProperty('--y', `${(-20 - Math.random() * 70) * spread + Math.random() * 40 * spread}px`);
+    el.style.setProperty('--r', `${Math.round(Math.random() * 360)}deg`);
+    el.style.setProperty('--t', `${(2.2 + Math.random() * 1.8) * (spread > 1 ? 1.4 : 1)}s`);
+    el.style.animationDelay = `${Math.random() * (spread > 1 ? 700 : 250)}ms`;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 6500);
+  }
+}
+
+function initLogoEasterEgg() {
+  const logo = document.getElementById('app-logo');
+  if (!logo) return;
+  let lastHover = 0;
+  logo.addEventListener('mouseenter', () => {
+    const now = Date.now();
+    if (now - lastHover > 1200) releaseWillowFluff(6, 1);
+    lastHover = now;
+  });
+  let clicks = [];
+  logo.addEventListener('click', () => {
+    const now = Date.now();
+    clicks = clicks.filter(t => now - t < 1600).concat(now);
+    if (clicks.length >= 5) {
+      clicks = [];
+      releaseWillowFluff(48, 3.2);
+    }
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   state.autoScroll = true;
+  initLogoEasterEgg();
   setUILanguage(state.uiLang);
   updateVolumeUI();
 

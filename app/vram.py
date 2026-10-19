@@ -24,6 +24,7 @@ class _NvmlMemory(ctypes.Structure):
 
 
 _nvml_lock = threading.Lock()
+_ollama_loading = threading.Event()  # set while the preload button loads the Ollama model
 _nvml: Dict[str, Any] = {"lib": None, "handle": None, "failed": False}
 
 
@@ -111,6 +112,8 @@ def vram_snapshot() -> Dict[str, Any]:
         "kind": "whisper",
         "name": format_whisper_model_name(key[0] if key else wanted_whisper),
         "loaded": bool(key),
+        # Loading for the preload button or for a transcription that just started
+        "loading": not key and (transcriber._preloading or busy == "transcribe"),
         "device": key[1] if key else None,
         # The transcription that uses it must finish first; preloading goes through the job queue
         "can_unload": bool(key) and busy != "transcribe",
@@ -129,7 +132,8 @@ def vram_snapshot() -> Dict[str, Any]:
     if not ollama:
         model = settings.get("ollama_model") or ""
         chips.append({"kind": "ollama", "name": model, "label": format_llm_model_name(model) if model else "LLM",
-                      "loaded": False, "can_unload": False, "can_preload": bool(model)})
+                      "loaded": False, "loading": _ollama_loading.is_set(),
+                      "can_unload": False, "can_preload": bool(model) and not _ollama_loading.is_set()})
 
     workers = [w for w in live_workers() if w["purpose"] == "dub"]
     if workers:
@@ -179,9 +183,13 @@ def preload(kind: str) -> Dict[str, Any]:
             raise ValueError("Модель Ollama не выбрана в настройках")
         base = _ollama_base()
         ensure_ollama_running(base)  # explicit user action: starting Ollama is expected here
-        with httpx.Client(timeout=120.0) as client:
-            # An empty prompt only loads the model; it stays for Ollama's usual keep-alive time
-            client.post(f"{base}/api/generate", json={"model": model, "keep_alive": "10m"}).raise_for_status()
+        _ollama_loading.set()
+        try:
+            with httpx.Client(timeout=120.0) as client:
+                # An empty prompt only loads the model; it stays for Ollama's usual keep-alive time
+                client.post(f"{base}/api/generate", json={"model": model, "keep_alive": "10m"}).raise_for_status()
+        finally:
+            _ollama_loading.clear()
     else:
         raise ValueError(f"Модель {kind!r} нельзя загрузить заранее")
     return vram_snapshot()

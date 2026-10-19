@@ -11,13 +11,21 @@ After recording stops the usual full transcription of the saved file runs; live 
 for following along, so they favour speed (greedy decoding, short window) over accuracy.
 """
 
+import json
+import os
+import subprocess
+import sys
 import threading
 import time
 import traceback
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+
+from app.paths import APP_DIR
+
+_NO_WINDOW = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
 
 SR = 16000
 LIVE_STEP_SEC = 1.2       # transcribe the window at most this often
@@ -25,34 +33,118 @@ LIVE_WINDOW_SEC = 20.0    # longest audio kept undecided (forced to final beyond
 FINAL_MARGIN_SEC = 1.6    # a phrase ending this long before the window end is final
 SESSION_IDLE_SEC = 120.0  # sessions without audio for this long are dropped
 
+WORKER_IDLE_SEC = 120.0   # the caption worker is closed (VRAM freed) after this long unused
+
 _sessions: Dict[str, "LiveSession"] = {}
 _sessions_lock = threading.Lock()
-_model_lock = threading.Lock()
 
 
-def _live_model():
-    """The Whisper model already in memory (whatever a job loaded), else the one from Settings."""
-    from app import transcriber
-    from app.database import get_all_settings
-    from app.hardware import get_hardware_info
+class _Seg:
+    __slots__ = ("start", "end", "text")
 
-    with _model_lock:
-        cached = transcriber._whisper_cache.get("model")
-        if cached is not None:
-            return cached
-        settings = get_all_settings()
-        hw = get_hardware_info()
-        model, _ = transcriber._get_whisper_model(
-            settings.get("whisper_model") or "large-v3-turbo",
-            settings.get("device") or hw["recommended_device"],
-            settings.get("compute_type") or hw["recommended_compute_type"],
+    def __init__(self, start: float, end: float, text: str):
+        self.start, self.end, self.text = start, end, text
+
+
+class _CaptionWorker:
+    """
+    The Whisper model for captions runs in app/live_worker.py: if it fails natively (CUDA out of
+    memory can abort a process) only captions stop, never the app or the recording.
+    """
+
+    def __init__(self) -> None:
+        self.proc: Optional[subprocess.Popen] = None
+        self.lock = threading.Lock()
+        self.last_used = 0.0
+        self.stderr_tail: List[str] = []
+        threading.Thread(target=self._reaper, daemon=True, name="live_worker_reaper").start()
+
+    def _start(self) -> None:
+        cmd = [sys.executable, "-m", "app.live_worker"]
+        self.proc = subprocess.Popen(
+            cmd, cwd=str(APP_DIR), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            creationflags=_NO_WINDOW, env={**os.environ, "PYTHONIOENCODING": "utf-8"},
         )
-        return model
+        threading.Thread(target=self._drain, args=(self.proc,), daemon=True).start()
+        line = self.proc.stdout.readline()
+        if not line:
+            raise RuntimeError("процесс распознавания не запустился: " + " | ".join(self.stderr_tail[-3:]))
+        json.loads(line)
+
+    def _drain(self, proc) -> None:
+        for raw in proc.stderr:
+            text = raw.decode("utf-8", "replace").rstrip()
+            self.stderr_tail = (self.stderr_tail + [text])[-20:]
+
+    def transcribe(self, audio: np.ndarray, lang: Optional[str]) -> Tuple[List[_Seg], Optional[str], float]:
+        pcm = (np.clip(audio, -1.0, 1.0) * 32767).astype("<i2").tobytes()
+        with self.lock:
+            for attempt in range(2):
+                try:
+                    if self.proc is None or self.proc.poll() is not None:
+                        self._start()
+                    self.proc.stdin.write((json.dumps({"lang": lang, "bytes": len(pcm)}) + "\n").encode())
+                    self.proc.stdin.write(pcm)
+                    self.proc.stdin.flush()
+                    line = self.proc.stdout.readline()
+                    if not line:
+                        raise RuntimeError("процесс распознавания завершился")
+                    res = json.loads(line)
+                    self.last_used = time.time()
+                    if not res.get("ok"):
+                        raise RuntimeError(res.get("error") or "ошибка распознавания")
+                    segs = [_Seg(float(a), float(b), str(t)) for a, b, t in res["segments"]]
+                    return segs, res.get("language"), float(res.get("prob") or 0.0)
+                except (OSError, ValueError, RuntimeError) as e:
+                    self._kill()
+                    if attempt:
+                        raise RuntimeError(f"Субтитры остановлены: {e}") from e
+        return [], None, 0.0
+
+    def preload(self) -> None:
+        with self.lock:
+            if self.proc is None or self.proc.poll() is not None:
+                try:
+                    self._start()
+                    self.last_used = time.time()
+                except Exception:
+                    traceback.print_exc()
+                    self._kill()
+
+    def _kill(self) -> None:
+        if self.proc is not None:
+            try:
+                self.proc.kill()
+            except OSError:
+                pass
+            self.proc = None
+
+    def _reaper(self) -> None:
+        while True:
+            time.sleep(15)
+            with _sessions_lock:
+                active = bool(_sessions)
+            if self.proc is not None and not active and time.time() - self.last_used > WORKER_IDLE_SEC:
+                with self.lock:
+                    self._kill()
+
+
+_worker: Optional[_CaptionWorker] = None
+_worker_lock = threading.Lock()
+
+
+def _caption_worker() -> _CaptionWorker:
+    global _worker
+    with _worker_lock:
+        if _worker is None:
+            _worker = _CaptionWorker()
+        return _worker
 
 
 class LiveSession:
-    def __init__(self, lang: Optional[str], translate_to: Optional[str]):
+    def __init__(self, lang: Optional[str], translate_to: Optional[str], capture_id: Optional[str] = None):
         self.id = uuid.uuid4().hex
+        self.capture_id = capture_id
         self.lang = lang if lang and lang != "auto" else None
         self.translate_to = translate_to or None
         self.audio = np.zeros(0, dtype=np.float32)
@@ -72,6 +164,15 @@ class LiveSession:
         if len(data) % 2:
             data = data[:-1]
         chunk = np.frombuffer(data, dtype="<i2").astype(np.float32) / 32768.0
+        if self.capture_id:
+            # System audio captured by the app (app/system_audio.py) joins the page's microphone
+            from app.system_audio import get_capture
+
+            cap = get_capture(self.capture_id)
+            if cap is not None:
+                sys_part = cap.take_live(chunk.size)
+                chunk = chunk.copy()
+                chunk[: sys_part.size] += sys_part
         self.audio = np.concatenate([self.audio, chunk])
         self.received += chunk.size / SR
         self.touched = time.time()
@@ -95,21 +196,10 @@ class LiveSession:
         win_sec = window.size / SR
         if win_sec < 0.8:
             return
-        model = _live_model()
-        segments, info = model.transcribe(
-            window,
-            language=self.lang,
-            beam_size=1,
-            best_of=1,
-            temperature=0.0,
-            condition_on_previous_text=False,
-            vad_filter=True,
-            vad_parameters={"min_silence_duration_ms": 400},
-            without_timestamps=False,
-        )
-        segs = [s for s in segments if (s.text or "").strip()]
-        if self.lang is None and getattr(info, "language", None) and getattr(info, "language_probability", 0) > 0.7:
-            self.lang = info.language  # keep the language once it is clear: detection per window flickers
+        segs, language, prob = _caption_worker().transcribe(window, self.lang)
+        if self.lang is None and language and prob > 0.7:
+            self.lang = language  # keep the language once it is clear: detection per window flickers
+        self.error = ""
         force = win_sec > LIVE_WINDOW_SEC
         final_until = 0.0
         new_lines = []
@@ -169,13 +259,13 @@ class LiveSession:
         }
 
 
-def start_session(lang: Optional[str], translate_to: Optional[str]) -> LiveSession:
+def start_session(lang: Optional[str], translate_to: Optional[str], capture_id: Optional[str] = None) -> LiveSession:
     _drop_idle()
-    s = LiveSession(lang, translate_to)
+    s = LiveSession(lang, translate_to, capture_id)
     with _sessions_lock:
         _sessions[s.id] = s
-    # Load the model now, so the first captions do not wait for it
-    threading.Thread(target=_live_model, daemon=True).start()
+    # Start the caption worker now, so the first captions do not wait for the model to load
+    threading.Thread(target=_caption_worker().preload, daemon=True).start()
     return s
 
 

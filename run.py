@@ -149,7 +149,55 @@ def acquire_single_instance() -> bool:
     kernel32 = ctypes.windll.kernel32
     kernel32.CreateMutexW.restype = ctypes.c_void_p
     _instance_mutex = kernel32.CreateMutexW(None, False, "Local\\VerbaScribe.Desktop.Window")
-    return bool(_instance_mutex) and kernel32.GetLastError() != ERROR_ALREADY_EXISTS
+    if _instance_mutex and kernel32.GetLastError() != ERROR_ALREADY_EXISTS:
+        return True
+    # Our handle would keep the other instance's lock alive even after it ends
+    if _instance_mutex:
+        kernel32.CloseHandle(ctypes.c_void_p(_instance_mutex))
+    _instance_mutex = None
+    return False
+
+
+def _pid_file() -> Path:
+    from app.paths import DATA_DIR
+
+    return DATA_DIR / "app.pid"
+
+
+def write_pid_file() -> None:
+    try:
+        _pid_file().write_text(str(os.getpid()), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def recover_stuck_instance() -> bool:
+    """
+    The other instance holds the single-instance lock but shows no window (its window crashed and
+    the process hangs). Offers to end it; True if it was ended and this launch may continue.
+    """
+    try:
+        pid = int(_pid_file().read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        pid = 0
+    MB_YESNO, MB_ICONWARNING, IDYES = 0x4, 0x30, 6
+    answer = ctypes.windll.user32.MessageBoxW(
+        None,
+        "VerbaScribe уже запущен, но его окно не отвечает.\n\n"
+        "Завершить зависший процесс и открыть программу заново? Незавершённая обработка будет прервана.",
+        "VerbaScribe", MB_YESNO | MB_ICONWARNING)
+    if answer != IDYES or not pid or pid == os.getpid():
+        return False
+    import subprocess
+
+    print(f"Ending the stuck VerbaScribe process {pid}")
+    subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True,
+                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    for _ in range(20):
+        time.sleep(0.25)
+        if acquire_single_instance():
+            return True
+    return False
 
 
 def activate_existing_window(timeout: float = 30.0) -> bool:
@@ -162,12 +210,143 @@ def activate_existing_window(timeout: float = 30.0) -> bool:
     while time.time() < deadline:
         hwnd = user32.FindWindowW(None, WINDOW_TITLE)
         if hwnd:
-            if user32.IsIconic(hwnd):
+            if user32.IsIconic(hwnd) or not user32.IsWindowVisible(hwnd):  # minimized or in the tray
                 user32.ShowWindow(hwnd, SW_RESTORE)
             user32.SetForegroundWindow(hwnd)
             return True
         time.sleep(0.25)
     return False
+
+
+class TrayController:
+    """
+    The tray icon of the desktop window (app/tray.py): status from app/app_status.py, a
+    notification when a job finishes while the window is not in front, menu commands passed to the
+    page (trayCommand in app.js), and closing the window while something runs keeps the app in the
+    tray instead of stopping the work.
+    """
+
+    def __init__(self, window) -> None:
+        from app.tray import MF_DEFAULT, MF_GRAYED, Tray
+
+        self.window = window
+        self.quitting = False
+        self._status = {"state": "idle", "text": "", "recording": False, "queue": []}
+        self._running: dict = {}
+        self._mf_default, self._mf_grayed = MF_DEFAULT, MF_GRAYED
+        self.tray = Tray(ICO_PATH, self.menu_items, self.on_command, self.show_window)
+        window.events.closing += self.on_closing
+
+    def start(self) -> None:
+        started = ICO_PATH.exists() and self.tray.start()
+        print(f"[tray] icon {'shown' if started and self.tray.hwnd else 'not shown'}")
+        if started:
+            threading.Thread(target=self._poll, daemon=True, name="tray_status").start()
+
+    # ---- status
+    def _poll(self) -> None:
+        from app.app_status import snapshot
+        from app.database import get_meeting
+
+        while not self.quitting:
+            try:
+                st = snapshot()
+                self._status = st
+                self.tray.set_status(st["state"], st["text"])
+                running = {(q["id"], q["kind"]): q for q in st["queue"] if q.get("state") == "running"}
+                for key, q in self._running.items():
+                    if key not in {(x["id"], x["kind"]) for x in st["queue"]}:
+                        self._job_finished(q, get_meeting(q["id"]))
+                self._running = running
+            except Exception as e:
+                print(f"[tray] status error: {e}", file=sys.stderr)
+            time.sleep(1.0)
+
+    def _job_finished(self, q: dict, m) -> None:
+        if not m or self._window_in_front():
+            return
+        from app.app_status import KIND_LABELS
+
+        label = KIND_LABELS.get(q.get("kind"), "Задача")
+        title = m.get("title") or ""
+        status = m.get("status")
+        if status == "failed":
+            self.tray.notify(f"{label}: ошибка", title, warning=True)
+        elif status == "cancelled":
+            return
+        else:
+            self.tray.notify(f"{label} завершено", title)
+
+    def _window_in_front(self) -> bool:
+        user32 = ctypes.windll.user32
+        hwnd = user32.FindWindowW(None, WINDOW_TITLE)
+        return bool(hwnd) and user32.GetForegroundWindow() == hwnd and bool(user32.IsWindowVisible(hwnd))
+
+    # ---- menu
+    def menu_items(self):
+        st = self._status
+        return [
+            ("Открыть VerbaScribe", "open", self._mf_default),
+            (None, None, 0),
+            (st.get("text") or "Готово к работе", None, self._mf_grayed),
+            ("Остановить запись" if st.get("recording") else "Начать запись…", "record", 0),
+            ("Импорт файлов…", "import", 0),
+            ("Вопрос по медиатеке…", "ask", 0),
+            (None, None, 0),
+            ("Настройки…", "settings", 0),
+            ("Открыть папку данных", "data", 0),
+            (None, None, 0),
+            ("Выход", "quit", 0),
+        ]
+
+    def on_command(self, cmd: str) -> None:
+        if cmd == "open":
+            self.show_window()
+        elif cmd in ("record", "import", "ask", "settings"):
+            self.show_window()
+            self.window.evaluate_js(f"window.trayCommand && window.trayCommand('{cmd}')")
+        elif cmd == "data":
+            from app.paths import DATA_DIR
+
+            os.startfile(str(DATA_DIR))
+        elif cmd == "quit":
+            self.quit()
+
+    def show_window(self) -> None:
+        try:
+            self.window.show()
+            self.window.restore()
+        except Exception:
+            pass
+        activate_existing_window(timeout=2)
+
+    def quit(self) -> None:
+        st = self._status
+        if st.get("state") != "idle":
+            MB_YESNO, MB_ICONWARNING, IDYES = 0x4, 0x30, 6
+            what = "Идёт запись" if st.get("recording") else "Идёт обработка"
+            answer = ctypes.windll.user32.MessageBoxW(
+                None, f"{what}. Выйти из VerbaScribe? Незавершённая работа будет прервана.", "VerbaScribe",
+                MB_YESNO | MB_ICONWARNING)
+            if answer != IDYES:
+                return
+        self.quitting = True
+        self.window.destroy()
+
+    def on_closing(self) -> bool:
+        if self.quitting or self._status.get("state") == "idle":
+            self.quitting = True
+            return True
+        # Something runs: keep working in the tray instead of stopping it
+        threading.Timer(0.05, self.window.hide).start()
+        self.tray.notify("VerbaScribe работает в фоне",
+                         "Запись или обработка продолжается. Значок в трее — открыть окно или выйти.")
+        return False
+
+    def stop(self) -> None:
+        self.quitting = True
+        self.tray.stop()
+        time.sleep(0.3)  # lets the tray thread remove the icon before the process ends
 
 
 def show_error_box(text: str) -> None:
@@ -211,8 +390,9 @@ def main() -> None:
         if not acquire_single_instance():
             # A second double-click shows the window that is already open instead of a second copy
             print("VerbaScribe is already open: bringing its window to the front")
-            activate_existing_window()
-            return
+            if activate_existing_window(timeout=12) or not recover_stuck_instance():
+                return
+        write_pid_file()
         try:
             import webview
 
@@ -223,7 +403,7 @@ def main() -> None:
 
             url = app_url(args.host, args.port)
             webview.settings["ALLOW_DOWNLOADS"] = True
-            webview.create_window(
+            window = webview.create_window(
                 title=WINDOW_TITLE,
                 url=url,
                 width=1460,
@@ -233,8 +413,16 @@ def main() -> None:
                 text_select=True,
                 js_api=WindowApi(),
             )
+            tray = None
+            try:
+                tray = TrayController(window)
+                tray.start()
+            except Exception as e:  # the app works without the tray icon
+                print(f"[tray] not available: {e}", file=sys.stderr)
             icon_arg = str(ICO_PATH) if ICO_PATH.exists() else None
             webview.start(func=apply_native_window_icon_and_hide_console, icon=icon_arg)
+            if tray is not None:
+                tray.stop()
             os._exit(0)
         except Exception as e:
             print(f"[!] Native window fallback to browser ({e})...")

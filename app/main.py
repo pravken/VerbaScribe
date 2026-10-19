@@ -6,6 +6,7 @@ import os
 import re
 import secrets
 import shutil
+import subprocess
 import sys
 import traceback
 import uuid
@@ -658,10 +659,119 @@ def api_update_speaker(meeting_id: int, payload: SpeakerUpdatePayload) -> Dict[s
     return get_meeting(meeting_id)
 
 
+# --- System audio recorded by the app itself (app/system_audio.py): no screen-share prompt ---
+class RecordStartPayload(BaseModel):
+    system: bool = True
+
+
+@app.post("/api/record/start")
+def api_record_start(payload: RecordStartPayload) -> Dict[str, Any]:
+    from app.system_audio import start_capture
+
+    if not payload.system:
+        return {"capture_id": None}
+    try:
+        cap = start_capture(UPLOADS_DIR / f"system_{uuid.uuid4().hex[:8]}.wav")
+    except Exception as e:  # the page falls back to the browser's screen-share capture
+        raise HTTPException(status_code=503, detail=str(e)[:300])
+    return {"capture_id": cap.id}
+
+
+@app.get("/api/record/{capture_id}/level")
+def api_record_level(capture_id: str) -> Dict[str, Any]:
+    from app.system_audio import get_capture
+
+    cap = get_capture(capture_id)
+    if not cap:
+        raise HTTPException(status_code=404, detail="Запись не найдена")
+    return {"level": cap.level, "error": cap.error}
+
+
+@app.post("/api/record/{capture_id}/cancel")
+def api_record_cancel(capture_id: str) -> Dict[str, Any]:
+    from app.system_audio import finish_capture
+
+    cap = finish_capture(capture_id)
+    if cap:
+        cap.path.unlink(missing_ok=True)
+    return {"ok": True}
+
+
+@app.post("/api/record/{capture_id}/finish")
+async def api_record_finish(
+    capture_id: str,
+    title: str = Form("Запись"),
+    file: Optional[UploadFile] = File(None),
+) -> Dict[str, Any]:
+    """Stops the system-audio capture, mixes it with the page's microphone recording (if any) and
+    queues the result for transcription like an imported file."""
+    from starlette.concurrency import run_in_threadpool
+
+    from app.ffmpeg_manager import tool_cmd
+    from app.system_audio import finish_capture
+
+    cap = finish_capture(capture_id)
+    if not cap or not cap.path.is_file():
+        raise HTTPException(status_code=404, detail="Запись системного звука не найдена")
+    safe_stem = re.sub(r'[\\/:*?"<>|]', "_", title.strip() or "Запись")[:100]
+    dest = UPLOADS_DIR / f"{uuid.uuid4().hex[:8]}_{safe_stem}.m4a"
+    mic_path = None
+    if file is not None:
+        mic_path = UPLOADS_DIR / f"mic_{uuid.uuid4().hex[:8]}{Path(file.filename or 'mic.webm').suffix or '.webm'}"
+        with mic_path.open("wb") as out_f:
+            shutil.copyfileobj(file.file, out_f)
+    if mic_path:
+        # normalize=0: each source keeps its level instead of both being halved
+        cmd = [tool_cmd("ffmpeg"), "-y", "-hide_banner", "-loglevel", "error", "-i", str(mic_path), "-i", str(cap.path),
+               "-filter_complex", "[0:a][1:a]amix=inputs=2:duration=longest:normalize=0[a]", "-map", "[a]",
+               "-c:a", "aac", "-b:a", "160k", str(dest)]
+    else:
+        cmd = [tool_cmd("ffmpeg"), "-y", "-hide_banner", "-loglevel", "error", "-i", str(cap.path),
+               "-c:a", "aac", "-b:a", "160k", str(dest)]
+
+    def _mix() -> subprocess.CompletedProcess:
+        return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+
+    res = await run_in_threadpool(_mix)
+    if res.returncode != 0 or not dest.is_file():
+        raise HTTPException(status_code=500, detail="Не удалось свести запись: " + (res.stderr or "")[-300:])
+    cap.path.unlink(missing_ok=True)
+    if mic_path:
+        mic_path.unlink(missing_ok=True)
+
+    settings = get_all_settings()
+    m = create_meeting(
+        title=safe_stem,
+        filename=dest.name,
+        media_path=str(dest),
+        language=settings.get("language", "auto"),
+        model_name=settings.get("whisper_model", "large-v3-turbo"),
+        num_speakers_hint=int(settings.get("num_speakers", 0)),
+    )
+    enqueue_meeting_job(m["id"])
+    return {"created": [m]}
+
+
+# --- What the page is doing, for the tray icon (see app/app_status.py) ---
+class UiStatePayload(BaseModel):
+    recording: bool = False
+
+
+@app.post("/api/ui/state")
+def api_ui_state(payload: UiStatePayload) -> Dict[str, Any]:
+    from app.app_status import set_recording, snapshot
+
+    set_recording(payload.recording)
+    st = snapshot()
+    return {"state": st["state"], "text": st["text"]}
+
+
 # --- Live captions while recording (see app/live.py) ---
 class LiveStartPayload(BaseModel):
     lang: Optional[str] = None
     translate_to: Optional[str] = None
+    capture_id: Optional[str] = None  # system audio recorded by the app is mixed into the captions
 
 
 @app.post("/api/live/start")
@@ -672,7 +782,7 @@ def api_live_start(payload: LiveStartPayload) -> Dict[str, Any]:
     target = (payload.translate_to or "").strip().lower() or None
     if target and target not in DUB_LANGUAGES:
         raise HTTPException(status_code=400, detail="Неподдерживаемый язык перевода")
-    return start_session(payload.lang, target).state()
+    return start_session(payload.lang, target, payload.capture_id).state()
 
 
 @app.post("/api/live/{session_id}/audio")

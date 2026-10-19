@@ -253,11 +253,17 @@ input[type="range"].volume-slider::-webkit-slider-thumb:hover {
 #theatre-text-slot #wview-transcript > div:first-child > div > div:last-child { flex-wrap: wrap; flex-shrink: 1; justify-content: flex-end; row-gap: 0.375rem; }
 #theatre-text-slot #transcript-container { padding-left: 1rem; padding-right: 1rem; }
 
-/* Narrow windows: the player bar keeps only the icons of its text buttons (titles explain them) */
-@media (max-width: 1279px) {
-  #player-footer .player-btn-label { display: none; }
-  #player-footer #player-volume-label { display: none; }
+/* Player bar: the transport is centred in its own column; the side groups show icons only
+   (their titles explain them), so the bar stays calm with a video and many controls */
+.player-bar-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
 }
+#player-footer .player-btn-label { display: none; }
+#player-footer #player-volume-label { display: none; }
+#player-footer #video-drawer-btn, #player-footer #studio-voice-btn { padding-left: 8px; padding-right: 8px; }
 
 /* Native dropdown lists: without an explicit colour Windows draws white text on a white list */
 select option, select optgroup {
@@ -358,3 +364,39 @@ select option, select optgroup {
   background: rgba(10, 132, 255, 0.18); color: #64B5FF; cursor: pointer;
 }
 .lib-cite:hover { background: rgba(10, 132, 255, 0.35); color: #fff; }
+
+/* Settings tabs fill the bar evenly */
+.settings-tabs { display: flex; }
+.settings-tabs .apple-segment-btn { flex: 1 1 0; justify-content: center; text-align: center; }
+
+/* Logo easter egg: the willow sways, its catkins puff up and fluff drifts away */
+.app-logo { position: relative; cursor: default; }
+.app-logo-branch { transform-origin: 20% 85%; }
+.app-logo:hover .app-logo-branch { animation: willow-sway 1.6s ease-in-out infinite; }
+.app-logo .catkin { transform-box: fill-box; transform-origin: center; }
+.app-logo:hover .catkin { animation: catkin-puff 1.6s ease-in-out infinite; animation-delay: var(--d); }
+@keyframes willow-sway {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-7deg); }
+  60% { transform: rotate(5deg); }
+}
+@keyframes catkin-puff {
+  0%, 100% { transform: scale(1); }
+  40% { transform: scale(1.18); }
+}
+.willow-fluff {
+  position: fixed; z-index: 80; pointer-events: none;
+  width: 5px; height: 5px; border-radius: 50%;
+  background: radial-gradient(circle, #ffffff 0%, rgba(248, 250, 252, 0.85) 45%, rgba(248, 250, 252, 0) 72%);
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.55);
+  animation: fluff-drift var(--t, 2.6s) cubic-bezier(.25, .6, .4, 1) forwards;
+}
+@keyframes fluff-drift {
+  0% { transform: translate(0, 0) scale(0.6); opacity: 0; }
+  12% { opacity: 1; }
+  100% { transform: translate(var(--x), var(--y)) scale(1.1) rotate(var(--r)); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-logo:hover .app-logo-branch, .app-logo:hover .catkin { animation: none; }
+  .willow-fluff { display: none; }
+}
