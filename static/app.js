@@ -2439,6 +2439,7 @@ function onTranscriptChunkVisibility(entries) {
       if (_playbackIndex.activeSeg && el.contains(_playbackIndex.activeSeg)) {
         _playbackIndex.activeSeg = null;
         _playbackIndex.activeWord = null;
+        _playbackIndex.activeTrWord = null;
       }
       el.innerHTML = '';
       delete el.dataset.rendered;
@@ -2528,15 +2529,18 @@ function translationHtml(seg, tr, query, secondary) {
   const staleBadge = tr.stale
     ? ` <span class="text-[10px] text-apple-amber align-middle" title="${escapeHtml(t('tipTranslationStale'))}">${escapeHtml(t('translationStale'))}</span>`
     : '';
-  const body = tr.text
-    ? highlightSearch(escapeHtml(tr.text), query)
-    : `<span class="italic text-apple-tertiary">${escapeHtml(t('translationMissing'))}</span>`;
+  // Without a search the words are separate spans, so playback can follow them (see updatePlaybackHighlight)
+  const body = !tr.text
+    ? `<span class="italic text-apple-tertiary">${escapeHtml(t('translationMissing'))}</span>`
+    : query
+      ? highlightSearch(escapeHtml(tr.text), query)
+      : tr.text.split(/(\s+)/).map(w => (w.trim() ? `<span class="tr-word">${escapeHtml(w)}</span>` : w)).join('');
   const cls = secondary ? 'block mt-1 text-[13px] text-apple-secondary' : '';
   return `<span class="tr-text cursor-pointer ${cls} ${tr.stale ? 'opacity-70' : ''}" onclick="seekPlayer(${seg.start})">${body}${staleBadge}</span>`;
 }
 
 // Sorted segment list for O(log n) lookup of the playing segment; words are looked up inside it.
-const _playbackIndex = { segments: [], activeSeg: null, activeWord: null };
+const _playbackIndex = { segments: [], activeSeg: null, activeWord: null, activeTrWord: null };
 
 function rebuildPlaybackIndex() {
   _playbackIndex.segments = tx.items
@@ -2544,6 +2548,7 @@ function rebuildPlaybackIndex() {
     .sort((a, b) => a.s - b.s);
   _playbackIndex.activeSeg = null;
   _playbackIndex.activeWord = null;
+  _playbackIndex.activeTrWord = null;
 }
 
 function findActiveItem(items, t, pad, startOf = x => x.s, endOf = x => x.e) {
@@ -2591,6 +2596,28 @@ function updatePlaybackHighlight(cur, followPlayback) {
     _playbackIndex.activeWord?.classList.remove('word-active');
     wordEl?.classList.add('word-active');
     _playbackIndex.activeWord = wordEl;
+  }
+
+  // A translation has no word timings: its words are followed in proportion to their length
+  // across the time of the phrase, which is close enough to read along
+  let trWordEl = null;
+  const trWords = segEl ? segEl.querySelectorAll('.tr-word') : [];
+  if (trWords.length) {
+    const seg = tx.items[segIdx];
+    const span = Math.max(0.001, Number(seg.end) - Number(seg.start));
+    const target = Math.min(1, Math.max(0, (cur - Number(seg.start)) / span));
+    const lens = Array.from(trWords, w => w.textContent.length + 1);
+    const total = lens.reduce((a, b) => a + b, 0);
+    let acc = 0;
+    for (let i = 0; i < lens.length; i++) {
+      acc += lens[i];
+      if (acc / total >= target) { trWordEl = trWords[i]; break; }
+    }
+  }
+  if (trWordEl !== _playbackIndex.activeTrWord) {
+    _playbackIndex.activeTrWord?.classList.remove('word-active');
+    trWordEl?.classList.add('word-active');
+    _playbackIndex.activeTrWord = trWordEl;
   }
   return segEl;
 }
