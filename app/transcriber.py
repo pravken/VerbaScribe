@@ -229,6 +229,106 @@ def _run_dub_job(meeting_id: int, target_lang: str) -> None:
             _cancel_requested.discard(meeting_id)
 
 
+def _enqueue_side_job(meeting_id: int, kind: str, lang: str, status: str, queued_text: str, runner, *args) -> bool:
+    """Queues a job that works on a finished transcript (translation, subtitle rendering)."""
+    with _jobs_lock:
+        if meeting_id in _active_jobs:
+            return False
+        _active_jobs.add(meeting_id)
+        _cancel_requested.discard(meeting_id)
+        _queue_add(meeting_id, kind, lang)
+    update_meeting_progress(meeting_id, status=status, progress=0, stage_text=queued_text, error_message="")
+    _executor.submit(_run_side_job, meeting_id, runner, *args)
+    _publish_queue_changed()
+    return True
+
+
+def _run_side_job(meeting_id: int, runner, *args) -> None:
+    # Like a dub, these jobs never invalidate the transcript: the recording always goes back to
+    # "completed" and the outcome (done, cancelled, error) is reported in stage_text / error_message.
+    _queue_start(meeting_id)
+    try:
+        done_text = runner(meeting_id, *args)
+        update_meeting_progress(meeting_id, status="completed", progress=100, stage_text=done_text, error_message="")
+    except JobCancelled:
+        update_meeting_progress(meeting_id, status="completed", progress=100, stage_text=_SIDE_JOB_NAMES[runner][1], error_message="")
+    except Exception as e:
+        tb = traceback.format_exc()
+        update_meeting_progress(
+            meeting_id,
+            status="completed",
+            progress=100,
+            stage_text=f"Ошибка ({_SIDE_JOB_NAMES[runner][0]}): {str(e)[:140]}",
+            error_message=f"{e}\n\n{tb[-800:]}",
+        )
+    finally:
+        _queue_finish(meeting_id)
+        with _jobs_lock:
+            _active_jobs.discard(meeting_id)
+            _cancel_requested.discard(meeting_id)
+
+
+def _translate_runner(meeting_id: int, target_lang: str, model: Optional[str], only_changed: bool) -> str:
+    from app.translation import run_translate_job
+
+    res = run_translate_job(
+        meeting_id,
+        target_lang,
+        model=model,
+        only_changed=only_changed,
+        progress=lambda pct, text: update_meeting_progress(meeting_id, progress=pct, stage_text=text),
+        check_cancel=lambda: _check_cancel(meeting_id),
+    )
+    if not res.get("translated"):
+        return f"Перевод ({target_lang.upper()}) уже актуален"
+    return f"Перевод ({target_lang.upper()}) готов: {res['translated']} реплик, модель {res.get('model')}"
+
+
+def _burn_runner(meeting_id: int, lang: str, srt_text: str, out_path: str) -> str:
+    from app.video_subtitles import burn_subtitles, probe_media
+
+    meeting = get_meeting(meeting_id)
+    if not meeting:
+        raise RuntimeError("Запись не найдена")
+    media = Path(meeting["media_path"])
+    if not media.exists():
+        raise RuntimeError(f"Исходный файл не найден: {media}")
+    # Whisper may still be cached; the encoder is CPU-bound, but free the VRAM anyway
+    release_whisper_model()
+    update_meeting_progress(meeting_id, progress=1, stage_text="Вшивание субтитров: подготовка...")
+    duration = probe_media(media)["duration"] or float(meeting.get("duration") or 0.0)
+    out = burn_subtitles(
+        media,
+        srt_text,
+        Path(out_path),
+        duration,
+        lambda pct, text: update_meeting_progress(meeting_id, progress=pct, stage_text=text),
+        lambda: _check_cancel(meeting_id),
+    )
+    return f"Видео с субтитрами ({lang.upper()}) готово: {out}"
+
+
+# runner -> (name for error messages, text after a cancel)
+_SIDE_JOB_NAMES = {
+    _translate_runner: ("перевод", "Перевод отменён"),
+    _burn_runner: ("вшивание субтитров", "Вшивание субтитров отменено"),
+}
+
+
+def enqueue_translate_job(meeting_id: int, target_lang: str, model: Optional[str] = None, only_changed: bool = False) -> bool:
+    return _enqueue_side_job(
+        meeting_id, "translate", target_lang, "translating", "Перевод в очереди...",
+        _translate_runner, target_lang, model, only_changed,
+    )
+
+
+def enqueue_burn_subtitles_job(meeting_id: int, lang: str, srt_text: str, out_path: str) -> bool:
+    return _enqueue_side_job(
+        meeting_id, "burn_subs", lang, "rendering", "Вшивание субтитров в очереди...",
+        _burn_runner, lang, srt_text, out_path,
+    )
+
+
 def _load_whisper_with_fallback(model_name: str, device: str, compute_type: str) -> WhisperModel:
     """
     Loads faster-whisper model with automatic fallback across compute_types and CPU

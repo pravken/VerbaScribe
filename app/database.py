@@ -67,6 +67,8 @@ def init_db() -> None:
             cur.execute("ALTER TABLE meetings ADD COLUMN segments_backup_json TEXT DEFAULT ''")
         if "dubs_json" not in existing_cols:
             cur.execute("ALTER TABLE meetings ADD COLUMN dubs_json TEXT DEFAULT '[]'")
+        if "translations_json" not in existing_cols:
+            cur.execute("ALTER TABLE meetings ADD COLUMN translations_json TEXT DEFAULT '{}'")
 
         cur.execute(
             """
@@ -463,6 +465,44 @@ def save_meeting_dub(meeting_id: int, entry: Dict[str, Any]) -> None:
                     pass
 
 
+def get_meeting_translations_raw(meeting_id: int) -> Dict[str, Any]:
+    """Stored translations as saved ({lang: entry}), see app/translation.py."""
+    with _db_lock:
+        conn = get_connection()
+        row = conn.execute("SELECT translations_json FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+        conn.close()
+    return _loads_dict(row["translations_json"] if row else None)
+
+
+def save_meeting_translation(meeting_id: int, lang: str, entry: Optional[Dict[str, Any]]) -> None:
+    """Writes (or with entry=None removes) the translation of one language."""
+    with _db_lock:
+        conn = get_connection()
+        row = conn.execute("SELECT translations_json FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+        if row is None:
+            conn.close()
+            return
+        data = _loads_dict(row["translations_json"])
+        if entry is None:
+            data.pop(lang, None)
+        else:
+            data[lang] = entry
+        conn.execute(
+            "UPDATE meetings SET translations_json = ? WHERE id = ?",
+            (json.dumps(data, ensure_ascii=False), meeting_id),
+        )
+        conn.commit()
+        conn.close()
+
+
+def _loads_dict(raw: Optional[str]) -> Dict[str, Any]:
+    try:
+        value = json.loads(raw or "{}")
+        return value if isinstance(value, dict) else {}
+    except Exception:
+        return {}
+
+
 def get_meeting(meeting_id: int) -> Optional[Dict[str, Any]]:
     with _db_lock:
         conn = get_connection()
@@ -540,6 +580,10 @@ def _deserialize_meeting(d: Dict[str, Any]) -> Dict[str, Any]:
         else:
             d[target] = default_val
     d["dubs"] = [_dub_paths_from_storage(x) for x in d.get("dubs") or [] if isinstance(x, dict)]
+    # Translations are matched to the current segments here, so every response carries their state
+    from app.translation import resolve_all
+
+    d["translations"] = resolve_all(d["segments"], _loads_dict(d.pop("translations_json", None)))
     return d
 
 

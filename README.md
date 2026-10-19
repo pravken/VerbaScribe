@@ -27,6 +27,7 @@ Recordings and transcripts are processed and stored locally (NVIDIA GPU via CUDA
 - **Custom vocabulary** (names, terms) passed to Whisper as hotwords.
 - **Export** to Word (`.docx`), Markdown, plain text, SRT subtitles and JSON.
 - **Translate & dub (prototype, optional)**: translates a finished recording with Ollama and re-voices it in each speaker's cloned voice over the original background. See [Translate & dub](#translate-dub).
+- **Translate text**: machine translation of a transcript with your local Ollama model, shown under or instead of the original, exported as translated or bilingual files and as video subtitles. See [Translate text](#translate-text).
 
 ### Requirements
 
@@ -48,6 +49,27 @@ start.bat
 ```
 
 On first launch `setup.bat` creates a Python virtual environment (`.venv`) and installs the exact package versions from `requirements.txt` (a lock file with SHA-256 hashes, generated from `requirements.in`). The app then opens a setup screen where you choose which Whisper model to download. To build the launcher yourself, run `python build_exe.py`; it uses the C# compiler bundled with the .NET Framework.
+
+<a name="translate-text"></a>
+### Translate text
+
+The **Translate** button in a recording's header translates every segment with the selected Ollama model on this
+computer (nothing is sent anywhere). It runs as a job in the processing queue, with progress, time estimate and **Cancel**;
+what was translated before a cancel is kept.
+
+- **Viewing:** the transcript toolbar gets an **Original / Translation / Both** switch. Playback highlighting and
+  click-to-seek work on translated text at segment level (a translation has no word timings).
+- **Edits:** a segment edited or merged after translation is marked *outdated* and keeps its old translation until you
+  click **Update** in the Translate window, which re-translates only changed and new segments.
+- **Export:** translated Word, Markdown, text and SRT, plus bilingual Word and SRT, from the **Export** menu.
+- **Video subtitles** (from the Translate window): a separate `.srt`; a copy of the video with a switchable subtitle track
+  (streams are copied, takes seconds; `mov_text` in MP4, SRT in MKV, with a language tag); or a copy with subtitles burned
+  into the picture (re-encoded with libx264 as a queue job). Files go to the `exports` subfolder of the data folder or
+  wherever you choose; the original file is never modified.
+- **Limitations:** quality depends on the model, so check names and terms; segments are translated in batches of 10
+  with only those lines as context; long segments are split into several subtitles with time shared in proportion to
+  text length, so timing inside a segment is approximate; burning in re-encodes the whole video and copies the audio
+  as is (an audio codec MP4 cannot hold makes the job fail).
 
 <a name="translate-dub"></a>
 ### Translate & dub (prototype)
@@ -151,6 +173,7 @@ To update Python dependencies, edit `requirements.in` and regenerate the lock (c
 - **Словарь** имён и терминов, который передаётся в Whisper как hotwords.
 - **Экспорт** в Word (`.docx`), Markdown, текст, субтитры SRT и JSON.
 - **Перевод и дубляж (прототип, по желанию)**: готовая запись переводится через Ollama и озвучивается клонами голосов участников поверх исходного фона. Подробнее — в разделе [Перевод и дубляж](#дубляж).
+- **Перевод текста**: машинный перевод расшифровки локальной моделью Ollama — под оригиналом или вместо него, экспорт переведённых и двуязычных файлов, субтитры для видео. Подробнее — в разделе [Перевод текста](#перевод-текста).
 
 ### Требования
 
@@ -174,6 +197,27 @@ start.bat
 При первом запуске `setup.bat` создаёт виртуальное окружение Python (`.venv`) и ставит точные версии пакетов из `requirements.txt` (lock-файл с хешами SHA-256, собирается из `requirements.in`). Затем открывается экран настройки, где вы выбираете модель Whisper для скачивания. Чтобы собрать лаунчер самостоятельно, выполните `python build_exe.py`; он использует компилятор C# из комплекта .NET Framework.
 
 <a name="дубляж"></a>
+<a name="перевод-текста"></a>
+### Перевод текста
+
+Кнопка **Перевод** в шапке записи переводит каждую реплику выбранной моделью Ollama на этом компьютере (текст никуда
+не отправляется). Работает как задача в очереди обработки, с прогрессом, оценкой времени и кнопкой **Отменить**;
+переведённое до отмены сохраняется.
+
+- **Просмотр:** в панели над текстом появляется переключатель **Оригинал / Перевод / Оба**. Подсветка при воспроизведении
+  и перемотка по клику работают и в переводе — на уровне реплики (у перевода нет таймкодов отдельных слов).
+- **Правки:** реплика, изменённая или объединённая после перевода, помечается как *устаревшая* и показывает старый
+  перевод, пока вы не нажмёте **Обновить** в окне «Перевод» — тогда переводятся только изменённые и новые реплики.
+- **Экспорт:** переведённые Word, Markdown, текст и SRT, а также двуязычные Word и SRT — в меню **Экспорт**.
+- **Субтитры для видео** (в окне «Перевод»): отдельный `.srt`; копия видео с отключаемой дорожкой субтитров (потоки
+  копируются, занимает секунды; `mov_text` в MP4, SRT в MKV, с меткой языка); или копия с субтитрами, вшитыми в изображение
+  (перекодирование libx264, задача в очереди). Файлы сохраняются в подпапку `exports` папки данных или туда, куда вы
+  укажете; исходный файл никогда не изменяется.
+- **Ограничения:** качество зависит от модели — имена и термины стоит проверить; реплики переводятся пачками по 10,
+  контекстом служат только они; длинные реплики делятся на несколько субтитров, время делится пропорционально длине
+  текста, поэтому тайминг внутри реплики приблизительный; вшивание перекодирует всё видео, а звук копирует как есть
+  (если кодек звука не подходит для MP4, задача завершится ошибкой).
+
 ### Перевод и дубляж (прототип)
 
 Кнопка **Дубляж** в шапке записи переводит каждую фразу локальной моделью Ollama, озвучивает её голосом участника

@@ -24,6 +24,8 @@ let state = {
   playerHoverRatio: -1,
   volume: Number(localStorage.getItem('verbascribe_volume') ?? 100),
   muted: false,
+  txView: (() => { try { return localStorage.getItem('verbascribe_tx_view') || 'orig'; } catch (e) { return 'orig'; } })(),
+  txLang: null,
 };
 
 // Minimalist SVG Icon Helpers (uniform stroke style)
@@ -1019,9 +1021,11 @@ async function loadQueue() {
 }
 
 function queueKindLabel(q) {
-  return q.kind === 'dub'
-    ? `${t('queueKindDub')} → ${(q.lang || '').toUpperCase()}`
-    : t('queueKindTranscribe');
+  const lang = (q.lang || '').toUpperCase();
+  if (q.kind === 'dub') return `${t('queueKindDub')} → ${lang}`;
+  if (q.kind === 'translate') return `${t('queueKindTranslate')} → ${lang}`;
+  if (q.kind === 'burn_subs') return `${t('queueKindBurnSubs')} (${lang})`;
+  return t('queueKindTranscribe');
 }
 
 function renderQueuePanel() {
@@ -1051,7 +1055,7 @@ function renderQueuePanel() {
             class="shrink-0 text-apple-tertiary hover:text-apple-red opacity-60 group-hover:opacity-100 transition ${q.cancelling ? 'hidden' : ''}">${SVG_ICONS.closeX}</button>
         </div>
         <div class="flex items-center justify-between gap-2 text-[10.5px] mt-0.5">
-          <span class="${q.kind === 'dub' ? 'text-apple-amber' : 'text-apple-secondary'} shrink-0">${escapeHtml(queueKindLabel(q))}</span>
+          <span class="${q.kind === 'transcribe' ? 'text-apple-secondary' : 'text-apple-amber'} shrink-0">${escapeHtml(queueKindLabel(q))}</span>
           <span class="text-apple-tertiary truncate font-mono">${running && !q.cancelling ? `${escapeHtml(timing)}${timing ? ' · ' : ''}${pct}%` : escapeHtml(detail)}</span>
         </div>
         ${running ? `<div class="w-full h-1 bg-white/10 rounded-full overflow-hidden mt-1"><div class="h-full bg-apple-blue progress-live transition-all duration-300" style="width:${Math.max(3, pct)}%"></div></div>` : ''}
@@ -1296,6 +1300,7 @@ async function selectMeeting(id, reloadPlayer = true) {
 
   renderSpeakerPillsBar();
   renderSpeakersPanel();
+  renderTranslationControls();
   renderTranscript();
   renderSummaryPanel();
   renderMeetingsSidebar();
@@ -1592,6 +1597,251 @@ async function revealDub(lang) {
   }
 }
 
+// --- Translate text ---
+const VIDEO_EXT_RE = /\.(mp4|m4v|mov|mkv|webm|avi)$/i;
+
+function langName(code) {
+  try {
+    const n = new Intl.DisplayNames([state.uiLang], { type: 'language' }).of(code);
+    return n ? n.charAt(0).toUpperCase() + n.slice(1) : String(code).toUpperCase();
+  } catch (e) {
+    return String(code).toUpperCase();
+  }
+}
+
+function meetingTranslations(m) {
+  return (m && m.translations) || {};
+}
+
+async function openTranslateModal() {
+  const m = state.activeMeeting;
+  if (!m) return;
+  // Show the window at once; languages and models are filled in when the server answers
+  renderTranslateResults();
+  renderSubsControls();
+  openModal('translate');
+  let langs = [];
+  let ollama = { running: false, models: [], active_model: '' };
+  try {
+    const [l, o] = await Promise.all([fetch('/api/translate/languages'), fetch('/api/ollama/status')]);
+    langs = (await l.json()).languages || [];
+    ollama = await o.json();
+  } catch (e) { console.error(e); }
+
+  const srcLang = m.language || '';
+  const have = Object.keys(meetingTranslations(m));
+  const preferred = srcLang === 'en' ? 'ru' : 'en';
+  document.getElementById('translate-lang').innerHTML = langs
+    .filter(c => c !== srcLang)
+    .map(c => ({ c, n: langName(c) }))
+    .sort((a, b) => (a.c === preferred ? -1 : b.c === preferred ? 1 : a.n.localeCompare(b.n)))
+    .map(({ c, n }) => `<option value="${c}">${escapeHtml(n)} (${c.toUpperCase()})${have.includes(c) ? ' ✓' : ''}</option>`).join('');
+
+  const models = ollama.models || [];
+  const active = (state.system && state.system.settings && state.system.settings.ollama_model) || ollama.active_model || '';
+  document.getElementById('translate-model').innerHTML = models.length
+    ? models.map(x => `<option value="${escapeHtml(x)}" ${x === active ? 'selected' : ''}>${escapeHtml(x)}</option>`).join('')
+    : `<option value="">${escapeHtml(active || '—')}</option>`;
+  // Ollama is started on demand by the job, so a stopped Ollama is only a hint, not a blocker
+  document.getElementById('translate-no-ollama').classList.toggle('hidden', !!(ollama.running && models.length));
+
+  const st = m.stage_text || '';
+  const isErr = m.status === 'completed' && st.startsWith('Ошибка (перевод)');
+  const errBox = document.getElementById('translate-last-error');
+  errBox.classList.toggle('hidden', !isErr);
+  errBox.textContent = isErr ? st : '';
+
+  const ok = m.status === 'completed' && (m.segments || []).length > 0;
+  const btn = document.getElementById('translate-start-btn');
+  btn.disabled = !ok;
+  btn.style.opacity = ok ? '' : '0.4';
+
+}
+
+function renderTranslateResults() {
+  const m = state.activeMeeting;
+  const box = document.getElementById('translate-results');
+  const trs = meetingTranslations(m);
+  const langs = Object.keys(trs);
+  if (!langs.length) {
+    box.innerHTML = `<div class="text-[11px] text-apple-tertiary">${escapeHtml(t('translateNone'))}</div>`;
+    return;
+  }
+  box.innerHTML = langs.map(lang => {
+    const r = trs[lang];
+    const outdated = (r.stale || 0) + (r.missing || 0);
+    const meta = [`${r.translated}/${r.count} ${t('translateSegments')}`, r.model, r.updated_at].filter(Boolean).join(' · ');
+    return `<div class="rounded-lg bg-white/[0.03] border apple-border p-2.5 space-y-1.5">
+      <div class="flex items-center justify-between gap-2">
+        <div class="min-w-0">
+          <div class="text-xs font-semibold text-white">${escapeHtml(langName(lang))} (${escapeHtml(lang.toUpperCase())})</div>
+          <div class="text-[10.5px] text-apple-tertiary truncate">${escapeHtml(meta)}</div>
+          ${outdated ? `<div class="text-[10.5px] text-apple-amber">${escapeHtml(t('translateOutdated').replace('{stale}', r.stale || 0).replace('{missing}', r.missing || 0))}</div>` : ''}
+        </div>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button onclick="showTranslation('${lang}')" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]">${escapeHtml(t('translateShow'))}</button>
+          ${outdated ? `<button onclick="startTranslation(true, '${lang}')" class="ui-btn ui-btn-primary h-6 px-2 text-[11px]" title="${escapeHtml(t('tipTranslateUpdate'))}">${escapeHtml(t('translateUpdate'))}</button>` : ''}
+          <button onclick="startTranslation(false, '${lang}')" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]" title="${escapeHtml(t('tipTranslateRedo'))}">${escapeHtml(t('translateRedo'))}</button>
+          <button onclick="deleteTranslation('${lang}')" class="ui-btn ui-btn-subtle h-6 px-1.5 text-[11px] hover:text-apple-red" title="${escapeHtml(t('tipTranslateDelete'))}">${SVG_ICONS.trash}</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderSubsControls() {
+  const m = state.activeMeeting;
+  const langs = Object.keys(meetingTranslations(m));
+  const sel = document.getElementById('subs-lang');
+  const prev = sel.value;
+  sel.innerHTML = langs.map(c => `<option value="${c}">${escapeHtml(t('subsLangTranslation').replace('{lang}', langName(c)))}</option>`).join('')
+    + `<option value="">${escapeHtml(t('subsLangOriginal'))}</option>`;
+  if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+  updateSubsControls();
+}
+
+function updateSubsControls() {
+  const m = state.activeMeeting;
+  const isVideo = !!m && VIDEO_EXT_RE.test(m.filename || m.media_path || '');
+  const lang = document.getElementById('subs-lang').value;
+  const variant = document.getElementById('subs-variant');
+  variant.disabled = !lang;
+  variant.style.opacity = lang ? '' : '0.4';
+  for (const id of ['subs-soft-btn', 'subs-burn-btn']) {
+    const b = document.getElementById(id);
+    b.disabled = !isVideo;
+    b.style.opacity = isVideo ? '' : '0.4';
+  }
+  document.getElementById('subs-no-video').classList.toggle('hidden', isVideo);
+}
+
+async function startTranslation(onlyChanged, lang) {
+  const m = state.activeMeeting;
+  if (!m) return;
+  const target = lang || document.getElementById('translate-lang').value;
+  const res = await fetch(`/api/meetings/${m.id}/translate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ target_lang: target, model: document.getElementById('translate-model').value || null, only_changed: !!onlyChanged }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    showToast(data.detail || 'Error');
+    return;
+  }
+  state.txLang = target;
+  closeModal('translate');
+  showToast(t('translateQueued'));
+  await loadMeetingsList();
+}
+
+async function deleteTranslation(lang) {
+  const m = state.activeMeeting;
+  if (!m || !confirm(t('translateDeleteConfirm').replace('{lang}', langName(lang)))) return;
+  const res = await fetch(`/api/meetings/${m.id}/translations/${encodeURIComponent(lang)}`, { method: 'DELETE' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    showToast(data.detail || 'Error');
+    return;
+  }
+  state.activeMeeting = data;
+  renderTranslateResults();
+  renderSubsControls();
+  renderTranslationControls();
+  renderTranscript();
+}
+
+function showTranslation(lang) {
+  state.txLang = lang;
+  closeModal('translate');
+  switchWorkspaceTab('transcript');
+  setTranscriptView(state.txView === 'orig' ? 'both' : state.txView);
+}
+
+async function makeSubtitles(mode) {
+  const m = state.activeMeeting;
+  if (!m) return;
+  const lang = document.getElementById('subs-lang').value;
+  const variant = lang ? document.getElementById('subs-variant').value : 'translated';
+  if (mode === 'srt') {
+    if (!lang) { await exportMeetingById(m.id, 'srt'); return; }
+    await exportMeetingById(m.id, 'srt', { lang, variant });
+    return;
+  }
+  if (mode === 'burn' && !confirm(t('subsBurnConfirm'))) return;
+  showToast(mode === 'soft' ? t('subsSoftWorking') : t('subsBurnWorking'));
+  const res = await fetch(`/api/meetings/${m.id}/subtitles`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lang: lang || null, variant, mode, ask_path: document.getElementById('subs-ask-path').checked }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    showToast(data.detail || 'Error');
+    return;
+  }
+  if (data.cancelled) return;
+  if (data.queued) {
+    closeModal('translate');
+    showToast(t('subsBurnQueued').replace('{name}', data.filename));
+    await loadMeetingsList();
+    return;
+  }
+  showToast(`${t('exportSavedTo')} ${data.filename}`, { label: t('dubReveal'), onClick: () => revealPath(data.path) });
+}
+
+// Transcript view: original / translation / both
+function renderTranslationControls() {
+  const langs = Object.keys(meetingTranslations(state.activeMeeting));
+  document.getElementById('tx-view-controls').classList.toggle('hidden', !langs.length);
+  if (langs.length && !langs.includes(state.txLang)) state.txLang = langs[0];
+  const sel = document.getElementById('tx-view-lang');
+  sel.classList.toggle('hidden', langs.length < 2);
+  sel.innerHTML = langs.map(c => `<option value="${c}" ${c === state.txLang ? 'selected' : ''}>${escapeHtml(c.toUpperCase())}</option>`).join('');
+  for (const v of ['orig', 'tr', 'both']) {
+    document.getElementById(`txview-${v}`).className = (state.txView || 'orig') === v
+      ? 'apple-segment-btn apple-segment-active'
+      : 'apple-segment-btn text-apple-secondary hover:text-white';
+  }
+  renderExportTranslatedMenu();
+}
+
+function setTranscriptView(view) {
+  state.txView = view;
+  try { localStorage.setItem('verbascribe_tx_view', view); } catch (e) {}
+  renderTranslationControls();
+  renderTranscript();
+}
+
+function setTranscriptViewLang(lang) {
+  state.txLang = lang;
+  renderTranslationControls();
+  renderTranscript();
+}
+
+// Translation of a segment for the current view, or null in "original" view
+function activeSegmentTranslation(seg) {
+  if (!state.txView || state.txView === 'orig') return null;
+  const tr = meetingTranslations(state.activeMeeting)[state.txLang];
+  if (!tr) return null;
+  return tr.segments[String(seg.id)] || { text: '', stale: false, missing: true };
+}
+
+function renderExportTranslatedMenu() {
+  const box = document.getElementById('export-menu-translated');
+  if (!box) return;
+  const langs = Object.keys(meetingTranslations(state.activeMeeting));
+  box.innerHTML = langs.map(lang => {
+    const L = escapeHtml(lang.toUpperCase());
+    const item = (fmt, variant, label) =>
+      `<button onclick="exportCurrentMeeting('${fmt}', {lang: '${lang}', variant: '${variant}'})" class="macos-menu-item"><span>${label}</span><span class="text-[11px] opacity-60">${fmt.toUpperCase()}</span></button>`;
+    return `<div class="my-1 border-t border-white/10"></div>
+      <div class="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-apple-secondary">${escapeHtml(t('exportTranslated').replace('{lang}', L))}</div>
+      ${item('docx', 'translated', 'Word (.docx)')}${item('md', 'translated', 'Markdown (.md)')}${item('txt', 'translated', 'Text (.txt)')}${item('srt', 'translated', 'Subtitles (.srt)')}
+      ${item('docx', 'bilingual', escapeHtml(t('exportBilingual')) + ' (.docx)')}${item('srt', 'bilingual', escapeHtml(t('exportBilingual')) + ' (.srt)')}`;
+  }).join('');
+}
+
 async function cancelActiveProcessing() {
   if (!state.activeMeeting) return;
   await cancelProcessing(state.activeMeeting.id);
@@ -1768,7 +2018,9 @@ function renderTranscript() {
     if (state.speakerFilter && seg.speaker !== state.speakerFilter) return false;
     if (query) {
       const spkName = (speakers[seg.speaker]?.name || seg.speaker || '').toLowerCase();
-      return seg.text.toLowerCase().includes(query) || spkName.includes(query);
+      const tr = activeSegmentTranslation(seg);
+      return seg.text.toLowerCase().includes(query) || spkName.includes(query)
+        || (!!tr && (tr.text || '').toLowerCase().includes(query));
     }
     return true;
   });
@@ -1810,6 +2062,7 @@ function estimateChunkHeight(k) {
   let h = 0;
   for (const seg of tx.items.slice(k * TX_CHUNK, (k + 1) * TX_CHUNK)) {
     h += 52 + 22 * Math.ceil((seg.text || '').length / 95) + 6;
+    if (state.txView === 'both') h += 20 * Math.ceil((seg.text || '').length / 95);
   }
   return h;
 }
@@ -1852,12 +2105,19 @@ function transcriptSegmentHtml(seg, idx) {
   const words = seg.words || [];
 
   let bodyHtml = '';
-  if (words.length > 0 && !query) {
-    bodyHtml = words.map(w =>
-      `<span class="word-token cursor-pointer" data-start="${w.start}" data-end="${w.end}" onclick="seekPlayer(${w.start})">${escapeHtml(w.word)}</span>`
-    ).join('');
+  const tr = activeSegmentTranslation(seg);
+  if (tr && state.txView === 'tr') {
+    // Translation has no word timings: the whole segment is highlighted and seeks to its start
+    bodyHtml = translationHtml(seg, tr, query, false);
   } else {
-    bodyHtml = `<span class="cursor-pointer" onclick="seekPlayer(${seg.start})">${highlightSearch(escapeHtml(seg.text), query)}</span>`;
+    if (words.length > 0 && !query) {
+      bodyHtml = words.map(w =>
+        `<span class="word-token cursor-pointer" data-start="${w.start}" data-end="${w.end}" onclick="seekPlayer(${w.start})">${escapeHtml(w.word)}</span>`
+      ).join('');
+    } else {
+      bodyHtml = `<span class="cursor-pointer" onclick="seekPlayer(${seg.start})">${highlightSearch(escapeHtml(seg.text), query)}</span>`;
+    }
+    if (tr) bodyHtml += translationHtml(seg, tr, query, true);
   }
 
   const mergeBtnHtml = idx > 0 ? `
@@ -1901,6 +2161,17 @@ function transcriptSegmentHtml(seg, idx) {
       </div>
     </div>
   `;
+}
+
+function translationHtml(seg, tr, query, secondary) {
+  const staleBadge = tr.stale
+    ? ` <span class="text-[10px] text-apple-amber align-middle" title="${escapeHtml(t('tipTranslationStale'))}">${escapeHtml(t('translationStale'))}</span>`
+    : '';
+  const body = tr.text
+    ? highlightSearch(escapeHtml(tr.text), query)
+    : `<span class="italic text-apple-tertiary">${escapeHtml(t('translationMissing'))}</span>`;
+  const cls = secondary ? 'block mt-1 text-[13px] text-apple-secondary' : '';
+  return `<span class="tr-text cursor-pointer ${cls} ${tr.stale ? 'opacity-70' : ''}" onclick="seekPlayer(${seg.start})">${body}${staleBadge}</span>`;
 }
 
 // Sorted segment list for O(log n) lookup of the playing segment; words are looked up inside it.
@@ -3008,10 +3279,11 @@ function copySummaryText() {
 }
 
 // --- Export ---
-async function exportMeetingById(id, fmt) {
+async function exportMeetingById(id, fmt, opts) {
   fmt = (fmt || 'txt').toLowerCase();
   try {
-    const res = await fetch(`/api/meetings/${id}/export/${fmt}`);
+    const qs = opts && opts.lang ? `?${new URLSearchParams({ lang: opts.lang, variant: opts.variant || 'translated' })}` : '';
+    const res = await fetch(`/api/meetings/${id}/export/${fmt}${qs}`);
     if (!res.ok) {
       showToast(t('exportFailed'));
       return;
@@ -3115,13 +3387,13 @@ function openExportDir() {
   if (el && el.textContent) revealPath(el.textContent);
 }
 
-async function exportCurrentMeeting(fmt) {
+async function exportCurrentMeeting(fmt, opts) {
   document.getElementById('export-menu')?.classList.add('hidden');
   if (!state.activeMeeting) {
     showToast(state.uiLang === 'en' ? 'Select a recording first' : 'Сначала выберите запись');
     return;
   }
-  await exportMeetingById(state.activeMeeting.id, fmt);
+  await exportMeetingById(state.activeMeeting.id, fmt, opts);
 }
 
 function escapeHtml(str) {

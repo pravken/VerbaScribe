@@ -69,6 +69,8 @@ def export_markdown(meeting: Dict[str, Any]) -> str:
         ts_end = format_timestamp(seg.get("end", 0.0))
         lines.append(f"**[{ts_start} – {ts_end}] {spk_name}:**")
         lines.append(f"{seg.get('text', '').strip()}")
+        if seg.get("secondary_text"):
+            lines.append(f"*{seg['secondary_text'].strip()}*")
         lines.append("")
 
     return "\n".join(lines)
@@ -85,9 +87,10 @@ def export_txt(meeting: Dict[str, Any]) -> str:
     lines = [
         f"ПРОТОКОЛ ВСТРЕЧИ: {title}",
         f"Дата: {created_at} | Длительность: {duration_str}",
-        "=" * 60,
-        "",
     ]
+    if meeting.get("translation_note"):
+        lines.append(f"Перевод: {meeting['translation_note']}")
+    lines += ["=" * 60, ""]
 
     if summaries.get("protocol"):
         lines.extend(
@@ -109,6 +112,8 @@ def export_txt(meeting: Dict[str, Any]) -> str:
         spk_name = speakers.get(spk_id, {}).get("name", spk_id)
         ts_start = format_timestamp(seg.get("start", 0.0))
         lines.append(f"[{ts_start}] {spk_name}: {seg.get('text', '').strip()}")
+        if seg.get("secondary_text"):
+            lines.append(f"    {seg['secondary_text'].strip()}")
 
     return "\n".join(lines)
 
@@ -124,6 +129,8 @@ def export_srt(meeting: Dict[str, Any]) -> str:
         start_srt = format_timestamp(seg.get("start", 0.0), srt=True)
         end_srt = format_timestamp(seg.get("end", 0.0), srt=True)
         text = seg.get("text", "").strip()
+        if seg.get("secondary_text"):
+            text += "\n" + seg["secondary_text"].strip()
         blocks.append(f"{idx}\n{start_srt} --> {end_srt}\n[{spk_name}] {text}")
 
     return "\n\n".join(blocks)
@@ -162,6 +169,8 @@ def export_docx(meeting: Dict[str, Any]) -> bytes:
     ).italic = True
     participant_names = ", ".join(s.get("name", k) for k, s in speakers.items())
     meta_p.add_run(f"Участники: {participant_names or '1'}").italic = True
+    if meeting.get("translation_note"):
+        meta_p.add_run(f"\nПеревод: {meeting['translation_note']}").italic = True
 
     if summaries.get("protocol"):
         doc.add_heading("AI-Саммари встречи", level=1)
@@ -198,6 +207,14 @@ def export_docx(meeting: Dict[str, Any]) -> bytes:
 
         txt_run = p.add_run(seg.get("text", "").strip())
         txt_run.font.size = Pt(11)
+
+        if seg.get("secondary_text"):
+            tr_p = doc.add_paragraph()
+            tr_p.paragraph_format.left_indent = Pt(18)
+            tr_run = tr_p.add_run(seg["secondary_text"].strip())
+            tr_run.italic = True
+            tr_run.font.size = Pt(10.5)
+            tr_run.font.color.rgb = RGBColor(90, 90, 110)
 
     buf = io.BytesIO()
     doc.save(buf)

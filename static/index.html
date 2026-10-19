@@ -243,6 +243,15 @@
         <div class="flex items-center justify-end gap-2 flex-1 shrink-0">
           <div id="audio-track-switch" class="hidden apple-segmented shrink-0" data-i18n-title="tipAudioTrack"
             title="Какую звуковую дорожку играть: оригинал или дубляж"></div>
+          <button onclick="openTranslateModal()" id="translate-open-btn"
+            data-i18n-title="tipTranslateOpen"
+            title="Перевести текст расшифровки через локальную Ollama, сделать субтитры"
+            class="ui-btn ui-btn-subtle text-apple-label shrink-0">
+            <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418"/>
+            </svg>
+            <span data-i18n="translateOpenBtn">Перевод</span>
+          </button>
           <button onclick="openDubModal()" id="dub-open-btn"
             data-i18n-title="tipDubOpen"
             title="Перевести запись и озвучить её голосами участников (прототип)"
@@ -272,6 +281,7 @@
               <button onclick="exportCurrentMeeting('json')" data-i18n-title="tipExportJson" title="Сохранить структурированные данные (.json)" class="macos-menu-item"><span>JSON (.json)</span><span class="text-[11px] opacity-60">JSON</span></button>
               <!-- Filled by renderDubExportMenu() when the recording has dubs -->
               <div id="export-dub-section"></div>
+              <div id="export-menu-translated"></div>
             </div>
           </div>
         </div>
@@ -311,6 +321,15 @@
 
             <!-- Right: Transcript Editing, Auto-Scroll & Search Tools -->
             <div class="flex items-center gap-1.5 shrink-0 ml-auto">
+              <div id="tx-view-controls" class="hidden flex items-center gap-1.5">
+                <div class="apple-segmented" data-i18n-title="tipTxView" title="Что показывать в тексте: оригинал, перевод или оба">
+                  <button onclick="setTranscriptView('orig')" id="txview-orig" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="txViewOrig">Оригинал</button>
+                  <button onclick="setTranscriptView('tr')" id="txview-tr" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="txViewTr">Перевод</button>
+                  <button onclick="setTranscriptView('both')" id="txview-both" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="txViewBoth">Оба</button>
+                </div>
+                <select id="tx-view-lang" onchange="setTranscriptViewLang(this.value)" data-i18n-title="tipTxViewLang" title="Язык перевода"
+                  class="hidden h-7 bg-white/5 border apple-border rounded-[7px] px-1.5 text-xs text-white focus:outline-none"></select>
+              </div>
               <button onclick="cleanActiveTranscriptFillers()" id="clean-fillers-btn"
                 data-i18n-title="tipCleanSpeech"
                 title="Удалить слова-паразиты («э-э», «ммм», «ну типа») и повторы слов"
@@ -752,6 +771,69 @@
         <div class="pt-2 flex justify-end gap-2">
           <button onclick="closeModal('reconfigure')" data-i18n-title="tipCancelBtn" title="Отменить изменения" class="ui-btn ui-btn-subtle px-3.5" data-i18n="cancel">Отмена</button>
           <button onclick="submitReconfigure()" data-i18n-title="tipRerunBtn" title="Запустить повторную расшифровку записи с новыми параметрами" class="ui-btn ui-btn-primary px-4" data-i18n="rerunBtn">Перезапустить</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MODAL: TRANSLATE TEXT + SUBTITLES
+       ========================================================================= -->
+  <div id="modal-translate" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4" onclick="closeModalOnBackdrop(event, 'translate')">
+    <div class="w-full max-w-lg bg-apple-card border apple-border rounded-2xl shadow-2xl overflow-hidden modal-card">
+      <div class="p-6 space-y-4 overflow-y-auto" style="max-height: 85vh">
+        <div class="flex items-center justify-between">
+          <h3 class="text-sm font-semibold text-white" data-i18n="translateTitle">Перевод текста</h3>
+          <button onclick="closeModal('translate')" class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
+        </div>
+        <p class="text-xs text-apple-secondary leading-relaxed" data-i18n="translateIntro"></p>
+        <div id="translate-last-error" class="hidden text-xs rounded-lg border border-apple-red/30 bg-apple-red/15 text-apple-red px-3 py-2"></div>
+        <div id="translate-no-ollama" class="hidden text-xs rounded-lg border apple-border bg-apple-amber/15 text-apple-amber px-3 py-2" data-i18n="translateNoOllama"></div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="translateLangLabel">Язык перевода</label>
+            <select id="translate-lang" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none"></select>
+          </div>
+          <div>
+            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="translateModelLabel">Модель Ollama</label>
+            <select id="translate-model" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none"></select>
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-2">
+          <button onclick="closeModal('translate')" class="ui-btn ui-btn-subtle px-3.5" data-i18n="cancel">Отмена</button>
+          <button onclick="startTranslation(false)" id="translate-start-btn" class="ui-btn ui-btn-primary px-4" data-i18n="translateStartBtn">Перевести</button>
+        </div>
+
+        <div id="translate-results" class="space-y-2 pt-2 border-t apple-border"></div>
+
+        <div id="translate-subs" class="space-y-2.5 pt-3 border-t apple-border">
+          <div class="text-xs font-semibold text-white" data-i18n="subsTitle">Субтитры для видео</div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="subsLangLabel">Текст субтитров</label>
+              <select id="subs-lang" onchange="updateSubsControls()" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none"></select>
+            </div>
+            <div>
+              <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="subsVariantLabel">Вариант</label>
+              <select id="subs-variant" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none">
+                <option value="translated" data-i18n="subsVariantTranslated">Только перевод</option>
+                <option value="bilingual" data-i18n="subsVariantBilingual">Оригинал + перевод</option>
+              </select>
+            </div>
+          </div>
+          <label class="flex items-center gap-2 text-[11.5px] text-apple-label cursor-pointer">
+            <input type="checkbox" id="subs-ask-path" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <span data-i18n="subsAskPath">Спросить, куда сохранить видео</span>
+          </label>
+          <div class="grid grid-cols-3 gap-2">
+            <button onclick="makeSubtitles('srt')" class="ui-btn ui-btn-subtle justify-center text-[11.5px]" data-i18n-title="tipSubsSrt" title="Отдельный файл субтитров .srt" data-i18n="subsSrtBtn">Файл .srt</button>
+            <button onclick="makeSubtitles('soft')" id="subs-soft-btn" class="ui-btn ui-btn-subtle justify-center text-[11.5px]" data-i18n-title="tipSubsSoft" title="Копия видео с отключаемой дорожкой субтитров, без перекодирования" data-i18n="subsSoftBtn">Дорожка в видео</button>
+            <button onclick="makeSubtitles('burn')" id="subs-burn-btn" class="ui-btn ui-btn-subtle justify-center text-[11.5px]" data-i18n-title="tipSubsBurn" title="Копия видео с субтитрами в изображении; видео перекодируется, задача идёт через очередь" data-i18n="subsBurnBtn">Вшить в видео</button>
+          </div>
+          <p id="subs-no-video" class="hidden text-[11px] text-apple-tertiary" data-i18n="subsNoVideo"></p>
+          <p class="text-[11px] text-apple-tertiary leading-relaxed" data-i18n="subsNote"></p>
         </div>
       </div>
     </div>

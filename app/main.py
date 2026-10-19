@@ -40,7 +40,14 @@ from app.ffmpeg_manager import ffmpeg_status, start_ffmpeg_download
 from app.hardware import get_hardware_info
 from app.ollama_client import generate_meeting_summary, get_ollama_status, start_model_pull
 from app.text_utils import realign_words
-from app.transcriber import enqueue_dub_job, enqueue_meeting_job, is_job_active, request_cancel
+from app.transcriber import (
+    enqueue_burn_subtitles_job,
+    enqueue_dub_job,
+    enqueue_meeting_job,
+    enqueue_translate_job,
+    is_job_active,
+    request_cancel,
+)
 
 _SPEAKER_ID_RE = re.compile(r"^[A-Za-z0-9_\-]{1,40}$")
 _COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -150,6 +157,9 @@ async def lifespan(_app: FastAPI):
         elif m.get("status") == "dubbing":
             # A dub interrupted by a restart is simply dropped; the transcript itself is complete
             update_meeting_progress(int(m["id"]), status="completed", progress=100, stage_text="Дубляж прерван перезапуском")
+        elif m.get("status") in ("translating", "rendering"):
+            # Partial translations are kept and can be completed with "Update translation"
+            update_meeting_progress(int(m["id"]), status="completed", progress=100, stage_text="Задача прервана перезапуском")
     yield
 
 
@@ -894,6 +904,124 @@ def api_dub_reveal(meeting_id: int, lang: str) -> Dict[str, Any]:
     return {"ok": True}
 
 
+# --- Translate text ---
+class TranslateRequestPayload(BaseModel):
+    target_lang: str
+    model: Optional[str] = None
+    only_changed: bool = False  # translate only stale/missing segments
+
+
+@app.get("/api/translate/languages")
+def api_translate_languages() -> Dict[str, Any]:
+    from app.translation import TEXT_LANGUAGES
+
+    return {"languages": list(TEXT_LANGUAGES.keys())}
+
+
+@app.post("/api/meetings/{meeting_id}/translate")
+def api_start_translation(meeting_id: int, payload: TranslateRequestPayload) -> Dict[str, Any]:
+    from app.translation import TEXT_LANGUAGES
+
+    m = get_meeting(meeting_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    if payload.target_lang not in TEXT_LANGUAGES:
+        raise HTTPException(status_code=400, detail="Этот язык не поддерживается")
+    if m.get("status") != "completed" or not m.get("segments"):
+        raise HTTPException(status_code=409, detail="Перевод доступен только для полностью обработанной записи")
+    if payload.target_lang == (m.get("language") or ""):
+        raise HTTPException(status_code=400, detail="Язык перевода совпадает с языком записи")
+    model = (payload.model or "").strip() or None
+    if not enqueue_translate_job(meeting_id, payload.target_lang, model, payload.only_changed):
+        raise HTTPException(status_code=409, detail="Запись уже обрабатывается")
+    return get_meeting(meeting_id)
+
+
+@app.delete("/api/meetings/{meeting_id}/translations/{lang}")
+def api_delete_translation(meeting_id: int, lang: str) -> Dict[str, Any]:
+    from app.database import save_meeting_translation
+
+    if not get_meeting(meeting_id):
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    _ensure_not_processing(meeting_id)
+    save_meeting_translation(meeting_id, lang, None)
+    return get_meeting(meeting_id)
+
+
+class SubtitlesRequestPayload(BaseModel):
+    lang: Optional[str] = None  # None/"" = subtitles in the original language
+    variant: str = "translated"  # "translated" | "bilingual"
+    mode: str = "soft"  # "soft" (copy streams + subtitle track) | "burn" (re-encode, queue job)
+    ask_path: bool = False  # True: native Save dialog, otherwise DATA_DIR/exports
+
+
+@app.post("/api/meetings/{meeting_id}/subtitles")
+def api_video_subtitles(meeting_id: int, payload: SubtitlesRequestPayload) -> Dict[str, Any]:
+    """Makes a copy of the recording's video with subtitles; the original file is never touched."""
+    from app.translation import build_cues, cues_to_srt
+    from app.video_subtitles import (
+        check_output_path,
+        default_output_path,
+        mux_soft_subtitles,
+        output_extension,
+        probe_media,
+    )
+
+    m = get_meeting(meeting_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    if payload.mode not in ("soft", "burn"):
+        raise HTTPException(status_code=400, detail="Неизвестный режим субтитров")
+    _ensure_not_processing(meeting_id)
+    lang = (payload.lang or "").strip()
+    variant = payload.variant if lang else "original"
+    if lang and variant not in _EXPORT_VARIANTS:
+        raise HTTPException(status_code=400, detail="Неизвестный вариант субтитров")
+    resolved = (m.get("translations") or {}).get(lang) if lang else None
+    if lang and not resolved:
+        raise HTTPException(status_code=404, detail=f"Перевода на язык {lang!r} нет")
+    media = Path(m.get("media_path") or "")
+    if not media.is_file():
+        raise HTTPException(status_code=404, detail="Исходный видеофайл не найден")
+    if not probe_media(media)["has_video"]:
+        raise HTTPException(status_code=400, detail="В исходном файле нет видеодорожки")
+
+    cues = build_cues(m.get("segments") or [], resolved, variant=variant, speakers=m.get("speakers"))
+    if not cues:
+        raise HTTPException(status_code=400, detail="Нет текста для субтитров")
+    srt_text = cues_to_srt(cues)
+    track_lang = lang or (m.get("language") or "")
+    out_path = default_output_path(m.get("title") or media.stem, media, track_lang or "orig", variant, payload.mode)
+    if payload.ask_path:
+        ext = output_extension(media)
+        chosen = _pick_path_native("save", _default_export_dir(), out_path.name, ext.lstrip("."))
+        if not chosen:
+            return {"ok": False, "cancelled": True}
+        out_path = Path(chosen)
+        if out_path.suffix.lower() != ext:
+            out_path = out_path.with_name(out_path.name + ext)
+        update_settings({"export_dir": str(out_path.parent)})
+    try:
+        check_output_path(media, out_path)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    title = (
+        f"{track_lang.upper()} + {(m.get('language') or '').upper()} (AI translation)" if variant == "bilingual"
+        else f"{track_lang.upper()} (AI translation)" if lang else (track_lang.upper() or "Subtitles")
+    )
+    if payload.mode == "soft":
+        try:
+            mux_soft_subtitles(media, srt_text, track_lang, title, out_path)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e)[:600])
+        return {"ok": True, "queued": False, "path": str(out_path), "filename": out_path.name, "folder": str(out_path.parent)}
+
+    if not enqueue_burn_subtitles_job(meeting_id, track_lang or "orig", srt_text, str(out_path)):
+        raise HTTPException(status_code=409, detail="Запись уже обрабатывается")
+    return {"ok": True, "queued": True, "path": str(out_path), "filename": out_path.name, "folder": str(out_path.parent)}
+
+
 @app.get("/api/meetings/{meeting_id}/peaks")
 def api_media_peaks(meeting_id: int, bars: int = 120) -> Dict[str, Any]:
     """Real loudness envelope of the extracted 16 kHz WAV for the player waveform."""
@@ -923,36 +1051,70 @@ def api_media_peaks(meeting_id: int, bars: int = 120) -> Dict[str, Any]:
 
 
 # --- Multi-format Export ---
-def _build_export_bytes(m: Dict[str, Any], fmt: str) -> tuple[bytes, str, str]:
+_EXPORT_VARIANTS = {"translated", "bilingual"}
+
+
+def _export_source(m: Dict[str, Any], lang: Optional[str], variant: str) -> tuple[Dict[str, Any], str]:
+    """The meeting to export (translated copy if `lang` is given) and a file name suffix."""
+    if not lang:
+        return m, ""
+    from app.translation import meeting_for_export
+
+    if variant not in _EXPORT_VARIANTS:
+        raise HTTPException(status_code=400, detail="Неизвестный вариант экспорта перевода")
+    try:
+        src = meeting_for_export(m, lang, variant)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return src, f".{lang}" if variant == "translated" else f".{lang}+orig"
+
+
+def _build_export_bytes(
+    m: Dict[str, Any], fmt: str, lang: Optional[str] = None, variant: str = "translated"
+) -> tuple[bytes, str, str]:
     safe_title = (
         "".join(c if c.isalnum() or c in " -_" else "_" for c in m.get("title", "meeting")).strip()
         or "meeting"
     )
     fmt = fmt.lower()
+    if lang and fmt == "json":
+        raise HTTPException(status_code=400, detail="Перевод экспортируется в DOCX, MD, TXT или SRT")
+    if lang and variant == "bilingual" and fmt not in ("srt", "docx"):
+        raise HTTPException(status_code=400, detail="Двуязычный экспорт доступен в SRT и DOCX")
+    src, suffix = _export_source(m, lang, variant)
+    base = f"{safe_title}{suffix}"
     if fmt == "md":
-        return export_markdown(m).encode("utf-8"), "text/markdown; charset=utf-8", f"{safe_title}.md"
+        return export_markdown(src).encode("utf-8"), "text/markdown; charset=utf-8", f"{base}.md"
     if fmt == "txt":
-        return export_txt(m).encode("utf-8"), "text/plain; charset=utf-8", f"{safe_title}.txt"
+        return export_txt(src).encode("utf-8"), "text/plain; charset=utf-8", f"{base}.txt"
     if fmt == "srt":
-        return export_srt(m).encode("utf-8"), "text/plain; charset=utf-8", f"{safe_title}.srt"
+        if lang:
+            from app.translation import build_cues, cues_to_srt
+
+            cues = build_cues(
+                m.get("segments") or [], (m.get("translations") or {}).get(lang), variant=variant,
+                speakers=m.get("speakers"), with_speaker=False,
+            )
+            return cues_to_srt(cues).encode("utf-8"), "text/plain; charset=utf-8", f"{base}.srt"
+        return export_srt(src).encode("utf-8"), "text/plain; charset=utf-8", f"{base}.srt"
     if fmt == "json":
-        return export_json(m).encode("utf-8"), "application/json; charset=utf-8", f"{safe_title}.json"
+        return export_json(src).encode("utf-8"), "application/json; charset=utf-8", f"{base}.json"
     if fmt == "docx":
         return (
-            export_docx(m),
+            export_docx(src),
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            f"{safe_title}.docx",
+            f"{base}.docx",
         )
     raise HTTPException(status_code=400, detail=f"Неизвестный формат экспорта: {fmt}")
 
 
 @app.get("/api/meetings/{meeting_id}/export/{fmt}")
-def api_export_meeting(meeting_id: int, fmt: str) -> Response:
+def api_export_meeting(meeting_id: int, fmt: str, lang: Optional[str] = None, variant: str = "translated") -> Response:
     m = get_meeting(meeting_id)
     if not m:
         raise HTTPException(status_code=404, detail="Встреча не найдена")
 
-    content, media_type, filename = _build_export_bytes(m, fmt)
+    content, media_type, filename = _build_export_bytes(m, fmt, lang, variant)
     encoded_filename = quote(filename)
     headers = {
         "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}",
@@ -1018,7 +1180,9 @@ def _pick_path_native(mode: str, directory: Path, filename: str = "", fmt: str =
 
 
 @app.post("/api/meetings/{meeting_id}/save-export/{fmt}")
-def api_save_export_to_disk(meeting_id: int, fmt: str) -> Dict[str, Any]:
+def api_save_export_to_disk(
+    meeting_id: int, fmt: str, lang: Optional[str] = None, variant: str = "translated"
+) -> Dict[str, Any]:
     """
     Asks the user where to save the export via a native Save dialog,
     writes the file there and remembers the chosen folder for next time.
@@ -1027,7 +1191,7 @@ def api_save_export_to_disk(meeting_id: int, fmt: str) -> Dict[str, Any]:
     if not m:
         raise HTTPException(status_code=404, detail="Встреча не найдена")
 
-    content, _, filename = _build_export_bytes(m, fmt)
+    content, _, filename = _build_export_bytes(m, fmt, lang, variant)
     chosen = _pick_path_native("save", _default_export_dir(), filename, fmt.lower())
     if not chosen:
         return {"ok": False, "cancelled": True}
