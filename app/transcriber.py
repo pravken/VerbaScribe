@@ -207,7 +207,8 @@ def _run_dub_job(meeting_id: int, target_lang: str) -> None:
             meeting_id,
             status="completed",
             progress=100,
-            stage_text=f"Дубляж ({target_lang.upper()}) готов: {Path(entry['path']).name}",
+            stage_text=f"Дубляж ({target_lang.upper()}) готов: {Path(entry['path']).name}"
+            + (f"; не удалось озвучить фраз: {failed}" if (failed := (entry.get("stats") or {}).get("failed_phrases")) else ""),
             error_message="",
         )
     except JobCancelled:

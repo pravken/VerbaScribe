@@ -397,6 +397,6 @@ def run_translate_job(
     translate_texts(
         [s["text"] for s in todo], src_name, tgt_name,
         base_url=base_url, model=model_name, style="text", check_cancel=check_cancel,
-        on_batch=_on_batch, batch_size=10,
+        on_batch=_on_batch, batch_size=10, tgt_code=target_lang,
     )
     return {"lang": target_lang, "translated": len(todo), "model": model_name}

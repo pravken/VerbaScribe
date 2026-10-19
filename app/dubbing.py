@@ -599,6 +599,10 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
                 by_id = res["results"]
                 for u in batch:
                     u["tts_path"] = by_id[u["id"]]["out"]
+                    if by_id[u["id"]].get("failed"):
+                        u["tts_failed"] = by_id[u["id"]]["failed"]
+                    else:
+                        u.pop("tts_failed", None)
                 stats["tts_peak_vram_gb"] = res.get("peak_vram_gb")
                 stats["tts_gen_sec"] = stats.get("tts_gen_sec", 0.0) + sum(r["gen_sec"] for r in by_id.values())
 
@@ -734,6 +738,7 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
             "max_tempo": round(float(np.max(tempos)), 3),
             "stretch": "rubberband" if use_rubberband else "atempo",
             "tails_cut": sum(1 for u in units if u.get("tail_cut")),
+            "failed_phrases": sum(1 for u in units if u.get("tts_failed")),
         })
         return {
             "lang": target_lang,

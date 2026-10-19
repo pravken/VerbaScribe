@@ -13,6 +13,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 import httpx
 
 from app.database import get_all_settings
+from app.dub_text import has_foreign_script
 from app.ollama_client import ensure_ollama_running, get_ollama_status
 
 _LINE_RE = re.compile(r"^\s*(\d+)\s*[.):]\s*(.+?)\s*$")
@@ -134,6 +135,7 @@ def translate_texts(
     check_cancel: Callable[[], None],
     on_batch: Optional[Callable[[int, Dict[int, str]], None]] = None,
     batch_size: int = 12,
+    tgt_code: str = "",
 ) -> List[str]:
     """
     Translates `texts` in batches. `on_batch(done_count, {index: translation})` is called after
@@ -146,7 +148,8 @@ def translate_texts(
         res = translate_batch(base_url, model, chunk, src, tgt, style, check_cancel)
         got: Dict[int, str] = {}
         for j, (src_text, tr) in enumerate(zip(chunk, res)):
-            if not tr:
+            # Retry lines the model skipped or mixed with CJK characters (Qwen sometimes does)
+            if not tr or (tgt_code and has_foreign_script(tr, tgt_code)):
                 check_cancel()
                 tr = translate_single(base_url, model, src_text, src, tgt, style, check_cancel)
             result[b + j] = tr

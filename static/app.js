@@ -177,7 +177,19 @@ function hideContextMenu() {
 document.addEventListener('click', () => {
   hideContextMenu();
   document.getElementById('export-menu')?.classList.add('hidden');
+  hideTranslateMenu();
 });
+
+function toggleTranslateMenu(e) {
+  e.stopPropagation();
+  hideContextMenu();
+  document.getElementById('export-menu')?.classList.add('hidden');
+  document.getElementById('translate-menu').classList.toggle('hidden');
+}
+
+function hideTranslateMenu() {
+  document.getElementById('translate-menu')?.classList.add('hidden');
+}
 
 async function ctxRenameRecording() {
   hideContextMenu();
@@ -370,7 +382,7 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     document.getElementById('set-ollama-model').value = s.ollama_model || 'qwen2.5:7b';
     document.getElementById('set-auto-summary').checked = s.auto_summary !== 'false';
 
-    const srcMode = s.record_source_mode || 'mic';
+    const srcMode = s.record_source_mode || 'both';
     if (document.getElementById('set-record-source')) {
       document.getElementById('set-record-source').value = srcMode;
     }
@@ -778,7 +790,7 @@ async function saveAllSettings() {
       clean_fillers: String(document.getElementById('set-clean-fillers')?.checked !== false),
       ollama_model: document.getElementById('set-ollama-model').value.trim(),
       auto_summary: String(document.getElementById('set-auto-summary').checked),
-      record_source_mode: document.getElementById('set-record-source')?.value || 'mic',
+      record_source_mode: document.getElementById('set-record-source')?.value || 'both',
       record_mic_device: document.getElementById('set-record-mic')?.value || '',
     }
   };
@@ -981,12 +993,29 @@ function formatDurationShort(sec) {
   return h ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`;
 }
 
-// Progress jumps between stages, so the estimate is shown only once there is enough data
+// Stages of a job run at very different speeds (e.g. translation vs. speech synthesis), so the
+// remaining time is estimated from the progress rate of the last few minutes, not since the start.
+const _progressHistory = {};
+const ETA_WINDOW_SEC = 240;
+
 function jobTiming(q, pct) {
   if (!q || !q.started_at) return null;
-  const elapsed = Math.max(0, Date.now() / 1000 - q.started_at);
+  const now = Date.now() / 1000;
+  const elapsed = Math.max(0, now - q.started_at);
+  let hist = _progressHistory[q.id];
+  if (!hist || hist.started !== q.started_at) hist = _progressHistory[q.id] = { started: q.started_at, samples: [] };
+  const samples = hist.samples;
+  if (!samples.length || samples[samples.length - 1].p !== pct) samples.push({ t: now, p: pct });
+  while (samples.length > 2 && now - samples[1].t > ETA_WINDOW_SEC) samples.shift();
+
   let remaining = null;
-  if (pct >= 5 && pct < 100 && elapsed >= 10) remaining = elapsed * (100 - pct) / pct;
+  const first = samples[0];
+  const span = now - first.t;  // includes time without progress, so a stall raises the estimate
+  if (samples.length >= 2 && pct > first.p && span >= 30 && pct < 100) {
+    remaining = (100 - pct) * span / (pct - first.p);
+  } else if (pct >= 5 && pct < 100 && elapsed >= 10) {
+    remaining = elapsed * (100 - pct) / pct;
+  }
   return { elapsed, remaining };
 }
 
@@ -1232,6 +1261,7 @@ async function handleFileSelect(fileList) {
     await loadMeetingsList();
     if (data.created && data.created.length > 0) {
       await selectMeeting(data.created[0].id, true);
+      return data.created;
     }
   } catch (err) {
     statusEl.textContent = 'Error: ' + err;
@@ -1342,23 +1372,17 @@ function renderAudioTrackSwitch() {
   if (state.audioTrack !== 'orig' && !dubs.some(d => d.lang === state.audioTrack)) state.audioTrack = 'orig';
   box.classList.toggle('hidden', !dubs.length);
   if (!dubs.length) { box.innerHTML = ''; renderDubExportMenu(); return; }
-  const btn = (key, label, title) => `
-    <button onclick="setAudioTrack('${key}')" title="${escapeHtml(title)}"
-      class="apple-segment-btn ${state.audioTrack === key ? 'apple-segment-active' : 'text-apple-secondary hover:text-white'}">${escapeHtml(label)}</button>`;
-  if (dubs.length === 1) {
-    const d = dubs[0];
-    box.innerHTML = btn('orig', t('trackOriginal'), t('tipTrackOriginal'))
-      + btn(d.lang, `${t('trackDub')} ${d.lang.toUpperCase()}`, t('tipTrackDub').replace('{lang}', dubLangName(d.lang)));
-  } else {
-    // Several dubs: keep the header compact with a language list instead of one button per dub
-    const onDub = state.audioTrack !== 'orig';
-    box.innerHTML = btn('orig', t('trackOriginal'), t('tipTrackOriginal')) + `
-      <select onchange="setAudioTrack(this.value)" title="${escapeHtml(t('tipAudioTrack'))}"
-        class="apple-segment-btn bg-transparent focus:outline-none cursor-pointer ${onDub ? 'apple-segment-active' : 'text-apple-secondary hover:text-white'}">
-        ${onDub ? '' : `<option value="" selected disabled>${escapeHtml(t('trackDub'))}…</option>`}
-        ${dubs.map(d => `<option value="${escapeHtml(d.lang)}" ${d.lang === state.audioTrack ? 'selected' : ''} class="bg-apple-card text-white">${escapeHtml(t('trackDub'))} ${escapeHtml(d.lang.toUpperCase())}</option>`).join('')}
-      </select>`;
-  }
+  const onDub = state.audioTrack !== 'orig';
+  const option = (key, label) =>
+    `<option value="${escapeHtml(key)}" ${state.audioTrack === key ? 'selected' : ''} class="bg-apple-card text-white">${escapeHtml(label)}</option>`;
+  box.innerHTML = `
+    <label class="ui-btn ${onDub ? 'ui-btn-active' : 'ui-btn-subtle'} pr-1 cursor-pointer" title="${escapeHtml(t('tipAudioTrack'))}">
+      <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z"/></svg>
+      <select onchange="setAudioTrack(this.value)" class="bg-transparent focus:outline-none cursor-pointer text-[11.5px]">
+        ${option('orig', t('trackOriginal'))}
+        ${dubs.map(d => option(d.lang, `${t('trackDub')} ${d.lang.toUpperCase()}`)).join('')}
+      </select>
+    </label>`;
   renderDubExportMenu();
 }
 
@@ -1792,16 +1816,25 @@ async function makeSubtitles(mode) {
 
 // Transcript view: original / translation / both
 function renderTranslationControls() {
-  const langs = Object.keys(meetingTranslations(state.activeMeeting));
-  document.getElementById('tx-view-controls').classList.toggle('hidden', !langs.length);
+  const m = state.activeMeeting;
+  const langs = Object.keys(meetingTranslations(m));
+  // Always offered for finished recordings: the language list also starts a new translation
+  const canTranslate = !!m && m.status === 'completed' && (m.segments || []).length > 0;
+  document.getElementById('tx-view-controls').classList.toggle('hidden', !canTranslate && !langs.length);
   if (langs.length && !langs.includes(state.txLang)) state.txLang = langs[0];
+  if (!langs.length && state.txView && state.txView !== 'orig') state.txView = 'orig';
   const sel = document.getElementById('tx-view-lang');
-  sel.classList.toggle('hidden', langs.length < 2);
-  sel.innerHTML = langs.map(c => `<option value="${c}" ${c === state.txLang ? 'selected' : ''}>${escapeHtml(c.toUpperCase())}</option>`).join('');
+  sel.classList.remove('hidden');
+  sel.innerHTML = (langs.length ? '' : `<option value="" selected disabled>${escapeHtml(t('txNoTranslation'))}</option>`)
+    + langs.map(c => `<option value="${c}" ${c === state.txLang ? 'selected' : ''}>${escapeHtml(c.toUpperCase())}</option>`).join('')
+    + (canTranslate ? `<option value="__new">${escapeHtml(t('txTranslateNew'))}</option>` : '');
   for (const v of ['orig', 'tr', 'both']) {
-    document.getElementById(`txview-${v}`).className = (state.txView || 'orig') === v
+    const btn = document.getElementById(`txview-${v}`);
+    btn.className = (state.txView || 'orig') === v
       ? 'apple-segment-btn apple-segment-active'
       : 'apple-segment-btn text-apple-secondary hover:text-white';
+    btn.disabled = v !== 'orig' && !langs.length;
+    btn.style.opacity = btn.disabled ? '0.4' : '';
   }
   renderExportTranslatedMenu();
 }
@@ -1814,6 +1847,11 @@ function setTranscriptView(view) {
 }
 
 function setTranscriptViewLang(lang) {
+  if (lang === '__new') {
+    renderTranslationControls();  // put the selection back
+    openTranslateModal();
+    return;
+  }
   state.txLang = lang;
   renderTranslationControls();
   renderTranscript();
@@ -2857,8 +2895,10 @@ async function openRecordModal() {
   openModal('record');
   await populateAudioInputDevices();
 
-  const savedSource = (state.system && state.system.settings && state.system.settings.record_source_mode) || 'mic';
+  const savedSource = (state.system && state.system.settings && state.system.settings.record_source_mode) || 'both';
   document.getElementById('record-source-select').value = savedSource;
+  const dataDir = state.system && state.system.paths && state.system.paths.data;
+  document.getElementById('record-save-hint').textContent = dataDir ? t('recordSaveHint').replace('{dir}', `${dataDir}\\uploads`) : '';
 
   const nowStr = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }).replace(':', '-');
   document.getElementById('record-title-input').value = `Запись ${nowStr}`;
@@ -2988,8 +3028,12 @@ async function stopAndTranscribeRecording() {
   const safeName = rawTitle.replace(/[\\/:*?"<>|]/g, '_') + '.webm';
   const file = new File([blob], safeName, { type: 'audio/webm' });
 
-  await handleFileSelect([file]);
-  showToast(state.uiLang === 'en' ? 'Recording queued for transcription' : 'Запись отправлена на распознавание');
+  const created = await handleFileSelect([file]);
+  const savedPath = created && created[0] && created[0].media_path;
+  showToast(
+    t('recordSavedQueued'),
+    savedPath ? { label: t('showInFolder'), title: savedPath, onClick: () => revealPath(savedPath) } : undefined
+  );
 }
 
 // --- Video: shown automatically for recordings with a video track; "collapsed" moves the same

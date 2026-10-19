@@ -104,7 +104,7 @@ def init_db() -> None:
             "vad_filter": "true",
             "audio_enhance": "true",
             "clean_fillers": "true",
-            "record_source_mode": "mic",
+            "record_source_mode": "both",
             "record_mic_device": "",
             "batched_inference": "true",  # faster-whisper BatchedInferencePipeline on GPU
             "keep_model_loaded": "true",  # reuse Whisper between queued recordings if VRAM allows
@@ -112,6 +112,11 @@ def init_db() -> None:
 
         for k, v in default_settings.items():
             cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, str(v)))
+
+        # One-time switch of the recording default from "microphone only" to "microphone + system"
+        if not cur.execute("SELECT 1 FROM settings WHERE key = 'record_default_v2'").fetchone():
+            cur.execute("UPDATE settings SET value = 'both' WHERE key = 'record_source_mode' AND value = 'mic'")
+            cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('record_default_v2', '1')")
 
         # Full-text index of transcript segments for the global search (SQLite FTS5).
         # Only `text` is indexed; the other columns are stored to build results without JSON parsing.

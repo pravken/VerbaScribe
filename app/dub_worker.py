@@ -91,6 +91,61 @@ def cmd_separate(req):
 
 # --- Chatterbox Multilingual: zero-shot voice cloning TTS (MIT, 23 languages incl. ru/en) ---
 _tts_model = None
+_CJK_LANGS = {"zh", "ja", "ko"}
+
+
+def _patch_alignment_analyzer() -> None:
+    """
+    Chatterbox's hallucination check slices off the last 5 text tokens of the alignment matrix and
+    crashes (IndexError on max()) for very short phrases such as "Ok." Skip that check for such a
+    step instead of failing the phrase.
+    """
+    try:
+        from chatterbox.models.t3.inference.alignment_stream_analyzer import AlignmentStreamAnalyzer
+    except Exception:
+        return
+    if getattr(AlignmentStreamAnalyzer, "_verbascribe_patched", False):
+        return
+    original_step = AlignmentStreamAnalyzer.step
+
+    def step(self, logits, next_token=None):
+        try:
+            return original_step(self, logits, next_token=next_token)
+        except IndexError:
+            return logits
+
+    AlignmentStreamAnalyzer.step = step
+    AlignmentStreamAnalyzer._verbascribe_patched = True
+
+
+def _generate(model, text: str, lang: str, cfg_weight: float):
+    """
+    Same as ChatterboxMultilingualTTS.generate (0.1.7), but the number of speech tokens is capped by
+    the text length instead of a fixed 1000 (~40 s), so a run-on generation stops early.
+    """
+    import torch
+    import torch.nn.functional as F
+    from chatterbox.mtl_tts import punc_norm
+    from chatterbox.models.s3tokenizer import drop_invalid_tokens
+
+    expected_sec = max(0.6, len(text.strip()) / (6.0 if lang in _CJK_LANGS else 14.0))
+    max_new_tokens = int(expected_sec * 25 * 2.5) + 60  # S3 speech tokens: 25 per second
+    text_tokens = model.tokenizer.text_to_tokens(punc_norm(text), language_id=lang.lower()).to(model.device)
+    text_tokens = torch.cat([text_tokens, text_tokens], dim=0)  # two sequences for CFG
+    text_tokens = F.pad(text_tokens, (1, 0), value=model.t3.hp.start_text_token)
+    text_tokens = F.pad(text_tokens, (0, 1), value=model.t3.hp.stop_text_token)
+    with torch.inference_mode():
+        speech_tokens = model.t3.inference(
+            t3_cond=model.conds.t3, text_tokens=text_tokens, max_new_tokens=max_new_tokens,
+            temperature=0.8, cfg_weight=cfg_weight, repetition_penalty=2.0, min_p=0.05, top_p=1.0,
+        )
+        speech_tokens = drop_invalid_tokens(speech_tokens[0]).to(model.device)
+        if speech_tokens.numel() == 0:
+            raise RuntimeError("no speech tokens generated")
+        wav, _ = model.s3gen.inference(speech_tokens=speech_tokens, ref_dict=model.conds.gen)
+        wav = wav.squeeze(0).detach().cpu().numpy()
+        wav = model.watermarker.apply_watermark(wav, sample_rate=model.sr)
+    return torch.from_numpy(wav).unsqueeze(0)
 
 
 def cmd_tts(req):
@@ -106,6 +161,8 @@ def cmd_tts(req):
     if _tts_model is None:
         from chatterbox.mtl_tts import ChatterboxMultilingualTTS
 
+        _patch_alignment_analyzer()
+
         t0 = time.time()
         _tts_model = ChatterboxMultilingualTTS.from_pretrained(device=dev)
         print(f"[dub_worker] Chatterbox loaded in {time.time() - t0:.1f}s on {dev}", file=sys.stderr)
@@ -120,17 +177,27 @@ def cmd_tts(req):
         if it["ref"] != current_ref:
             _tts_model.prepare_conditionals(it["ref"], exaggeration=exaggeration)
             current_ref = it["ref"]
-        wav = _tts_model.generate(
-            it["text"],
-            language_id=it["lang"],
-            exaggeration=exaggeration,
-            cfg_weight=float(req.get("cfg_weight", 0.5)),
-        )
+        # One phrase must never fail a whole dub: retry once, then leave it silent
+        wav, error = None, ""
+        for _attempt in range(2):
+            try:
+                wav = _generate(_tts_model, it["text"], it["lang"], float(req.get("cfg_weight", 0.5)))
+                break
+            except Exception as e:  # noqa: BLE001
+                error = f"{type(e).__name__}: {e}"[:300]
+                print(f"[dub_worker] phrase {it['id']} failed: {error}", file=sys.stderr)
+                if dev == "cuda":
+                    torch.cuda.empty_cache()
+        if wav is None:
+            wav = torch.zeros(1, int(0.3 * _tts_model.sr))
         out = Path(it["out"])
         out.parent.mkdir(parents=True, exist_ok=True)
         ta.save(str(out), wav.cpu(), _tts_model.sr)
         dur = wav.shape[-1] / _tts_model.sr
-        results.append({"id": it["id"], "out": str(out), "duration": round(dur, 3), "gen_sec": round(time.time() - t0, 2)})
+        res = {"id": it["id"], "out": str(out), "duration": round(dur, 3), "gen_sec": round(time.time() - t0, 2)}
+        if error and wav.abs().max() == 0:
+            res["failed"] = error
+        results.append(res)
         _reply({"ok": True, "event": "progress", "done": i + 1, "total": len(items)})
     vram = torch.cuda.max_memory_allocated() / 2**30 if dev == "cuda" else 0.0
     return {"ok": True, "results": results, "sr": _tts_model.sr, "peak_vram_gb": round(vram, 2)}
