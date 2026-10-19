@@ -128,7 +128,7 @@ Quality checks on the result:
 
 Prints per-stage timings and stores the result like a UI job.
 
-## Settings (no UI yet, set via `POST /api/settings`)
+## Settings (Settings → Speech synthesis; the noise options also in the Dub window)
 
 | Key | Default | Meaning |
 | :--- | :--- | :--- |
@@ -136,7 +136,10 @@ Prints per-stage timings and stores the result like a UI job.
 | `dub_exaggeration` | `0.5` | Chatterbox emotion exaggeration |
 | `dub_stretch` | `atempo` | `rubberband` uses FFmpeg's rubberband filter if available |
 | `dub_keep_original_track` | `true` | keep the original audio as a second track |
-| `dub_keep_workdir` | `false` | keep intermediate WAVs in `<data folder>/dubs/work_*` for debugging |
+| `dub_keep_workdir` | `false` | keep intermediate WAVs in `<data folder>/dubs/work_*` for debugging (no UI) |
+| `dub_tts_workers` | `auto` | parallel Chatterbox processes (`auto` = by free VRAM, or `1`–`3`) |
+| `dub_room_tone` | `true` | add the recording's own noise floor (from the separated voice between phrases) under the synthetic voice |
+| `dub_denoise` | `false` | "Remove noise": FFmpeg `afftdn` on the dub background and on the original track in the dub file; room tone is then off |
 
 ## Next steps
 
@@ -144,4 +147,3 @@ Prints per-stage timings and stores the result like a UI job.
 2. Per-phrase review/edit of the translation before synthesis (reuse the transcript editor).
 3. Duration-aware translation loop (ask for N syllables, measure with a cheap phoneme counter before TTS).
 4. Optional per-speaker reference picker in the "Speakers" tab.
-5. Settings UI for the keys above; disk-space check before installing `.venv-dub`.

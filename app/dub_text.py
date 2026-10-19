@@ -145,3 +145,21 @@ def speech_free_gaps(
     if float(total_dur) - cursor >= min_len:
         gaps.append((cursor, float(total_dur)))
     return gaps
+
+
+def extra_tts_workers(
+    setting: str, running: int, free_vram_gb: float, cpu_count: int, respect_vram: bool = False
+) -> int:
+    """
+    How many synthesis processes to add now, next to `running` ones (started or starting), given
+    the VRAM free at this moment. "auto" fills the free VRAM up to the limit. An explicit number is
+    reached once the translation model has left the GPU; while it is still loaded
+    (`respect_vram`) only what fits next to it is started.
+    """
+    value = (setting or "auto").strip().lower()
+    fit = int(max(0.0, free_vram_gb - 1.0) // TTS_WORKER_VRAM_GB)
+    if value.isdigit():
+        want = max(1, min(TTS_MAX_WORKERS, int(value))) - running
+        return max(0, min(want, fit) if respect_vram else want)
+    cap = max(1, min(TTS_MAX_WORKERS, (cpu_count or 1) // 4))
+    return max(0, min(cap - running, fit))

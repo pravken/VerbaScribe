@@ -100,7 +100,6 @@ _cancel = threading.Event()
 def weights_status() -> Dict[str, Any]:
     items = []
     for w in DUB_WEIGHTS:
-        d = _repo_dir(w["repo"])
         items.append({
             "id": w["id"], "name": w["name"], "repo": w["repo"], "license": w["license"],
             "installed": _weight_installed(w),

@@ -1,7 +1,7 @@
 import threading
 import unittest
 
-from app.dub_text import TTS_MAX_WORKERS, choose_tts_workers
+from app.dub_text import TTS_MAX_WORKERS, choose_tts_workers, extra_tts_workers
 
 try:
     from app.dubbing import TtsPool
@@ -23,6 +23,20 @@ class ChooseWorkersTest(unittest.TestCase):
         self.assertEqual(choose_tts_workers("2", 0.0, 1), 2)
         self.assertEqual(choose_tts_workers("9", 0.0, 1), TTS_MAX_WORKERS)
         self.assertEqual(choose_tts_workers("0", 0.0, 1), 1)
+
+
+class ExtraWorkersTest(unittest.TestCase):
+    def test_auto_fills_free_vram_up_to_the_limit(self):
+        self.assertEqual(extra_tts_workers("auto", 1, 20.0, 32), TTS_MAX_WORKERS - 1)
+        self.assertEqual(extra_tts_workers("auto", 1, 6.0, 32), 1)  # one more fits next to the LLM
+        self.assertEqual(extra_tts_workers("auto", 1, 4.0, 32), 0)
+        self.assertEqual(extra_tts_workers("auto", TTS_MAX_WORKERS, 20.0, 32), 0)
+        self.assertEqual(extra_tts_workers("auto", 1, 20.0, 4), 0)  # few cores
+
+    def test_explicit_number_waits_for_vram_only_while_the_llm_is_loaded(self):
+        self.assertEqual(extra_tts_workers("3", 1, 6.0, 32, respect_vram=True), 1)
+        self.assertEqual(extra_tts_workers("3", 2, 2.0, 32), 1)
+        self.assertEqual(extra_tts_workers("1", 1, 20.0, 32), 0)
 
 
 class _FakeWorker:
@@ -83,6 +97,24 @@ class TtsPoolTest(unittest.TestCase):
     def test_cancel_stops_the_job(self):
         with self.assertRaises(RuntimeError):
             _pool([_FakeWorker(cancelled=True), _FakeWorker()]).run(self.items, {}, lambda: None)
+
+
+@unittest.skipIf(TtsPool is None, "app dependencies not installed")
+class TtsStreamTest(unittest.TestCase):
+    def test_items_submitted_later_and_late_workers_are_used(self):
+        pool = _pool([_FakeWorker()])
+        stream = pool.stream({}, lambda: None)
+        stream.submit([{"id": i, "ref": "a"} for i in range(7)])
+        late = _FakeWorker()
+        pool.workers.append(late)
+        stream.attach(late)
+        stream.submit([{"id": i, "ref": "b"} for i in range(7, 30)])
+        res = stream.wait()
+        self.assertEqual(sorted(res["results"]), list(range(30)))
+
+    def test_wait_without_items_returns_at_once(self):
+        stream = _pool([_FakeWorker()]).stream({}, lambda: None)
+        self.assertEqual(stream.wait()["results"], {})
 
 
 if __name__ == "__main__":

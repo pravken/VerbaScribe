@@ -47,12 +47,20 @@ def main() -> None:
     ap.add_argument("--length", type=float, default=300.0)
     ap.add_argument("--lang", default="ru")
     ap.add_argument("--out", default="")
+    ap.add_argument("--threads", type=int, default=0, help="CPU threads per dub process (experiment)")
+    ap.add_argument("--max-workers", type=int, default=0, help="override the TTS process limit (experiment)")
     args = ap.parse_args()
+    if args.threads:
+        os.environ["VERBASCRIBE_DUB_THREADS"] = str(args.threads)
     if not os.environ.get("VERBASCRIBE_DATA_DIR"):
         sys.exit("Set VERBASCRIBE_DATA_DIR to a temp copy of the data folder first")
 
+    from app import dub_text
     from app.database import get_meeting
     from app.dubbing import run_dub_job
+
+    if args.max_workers:
+        dub_text.TTS_MAX_WORKERS = args.max_workers
 
     m = get_meeting(args.meeting)
     if not m:

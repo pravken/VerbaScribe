@@ -29,6 +29,11 @@ class RoomToneTest(unittest.TestCase):
         levels = np.sqrt((bed[: n // win * win].reshape(-1, win) ** 2).mean(axis=1))
         self.assertLess(levels.max() / levels.min(), 1.35)
 
+    def test_no_bed_when_the_gaps_hold_voice(self):
+        rng = np.random.default_rng(2)
+        vocals = (rng.standard_normal(12 * MIX_SR) * 0.1).astype(np.float32)  # "gaps" as loud as the speech
+        self.assertIsNone(_room_tone(vocals, [{"start": 2.0, "end": 5.0}], 12.0, MIX_SR))
+
     def test_no_bed_without_speech_free_audio_or_for_silence(self):
         vocals = self._vocals()
         self.assertIsNone(_room_tone(vocals, [{"start": 0.0, "end": 12.0}], 12.0, MIX_SR))

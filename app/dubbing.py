@@ -21,10 +21,10 @@ import queue
 import re
 import shutil
 import subprocess
-import sys
 import threading
 import time
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -37,9 +37,10 @@ from app.audio_utils import NOISE_REDUCTION_FILTER, format_timestamp, get_media_
 from app.database import get_all_settings
 from app.dub_text import (
     build_dub_units,
-    choose_tts_workers,
     expected_speech_sec,
+    TTS_WORKER_VRAM_GB,
     has_foreign_script,
+    extra_tts_workers,
     plan_placement,
     speech_free_gaps,
 )
@@ -65,6 +66,7 @@ REF_TARGET_SEC = 10.0    # length of the voice reference cut per speaker
 TEMPO_RETRANSLATE = 1.35 # clips needing more speed-up than this are re-translated shorter once
 TEMPO_MAX = 1.6          # hard cap for speed-up; whatever is left is trimmed with a fade
 BLOAT_RESYNTH = 1.7      # synthesized audio this much longer than the text needs: generate it again
+ROOM_TONE_MAX_RATIO = 0.1  # room tone must be at least 20 dB below the speech
 
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
 
@@ -100,11 +102,16 @@ def _ollama_chat(base_url: str, model: str, system: str, user: str, keep_alive: 
         return str((resp.json().get("message") or {}).get("content") or "").strip()
 
 
-def _unload_ollama(base_url: str, model: str) -> None:
-    """Frees the LLM's VRAM before the TTS model is loaded."""
+def _unload_ollama(base_url: str, model: str, wait: bool = False) -> None:
+    """Frees the LLM's VRAM for the TTS processes. With wait=True returns once Ollama lists no
+    loaded model (at most a few seconds), so the free VRAM measured next is accurate."""
     try:
         with httpx.Client(timeout=30.0) as client:
             client.post(f"{base_url}/api/generate", json={"model": model, "keep_alive": 0})
+            for _ in range(20 if wait else 0):
+                if not (client.get(f"{base_url}/api/ps").json().get("models")):
+                    break
+                time.sleep(0.25)
     except Exception:
         pass
 
@@ -156,6 +163,7 @@ def translate_units(
     progress: ProgressFn,
     check_cancel: CancelFn,
     batch_size: int = 12,
+    on_batch: Optional[Callable[[List[Dict[str, Any]]], None]] = None,
 ) -> None:
     settings = get_all_settings()
     base_url = (settings.get("ollama_url") or "http://127.0.0.1:11434").replace("localhost", "127.0.0.1").rstrip("/")
@@ -179,6 +187,8 @@ def translate_units(
             if has_foreign_script(t, tgt_code):
                 t = re.sub(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]+", "", t).strip()
             u["translation"] = t
+        if on_batch:
+            on_batch(chunk)
         progress(5 + int(10 * min(1.0, (b + batch_size) / max(1, len(units)))), f"Перевод: {min(len(units), b + batch_size)} из {len(units)} фраз")
 
 
@@ -196,7 +206,7 @@ def live_workers() -> List[Dict[str, Any]]:
 class DubWorker:
     """Talks to app/dub_worker.py in .venv-dub. Cancelling kills the process (and frees VRAM)."""
 
-    def __init__(self, check_cancel: CancelFn, purpose: str = "dub"):
+    def __init__(self, check_cancel: CancelFn, purpose: str = "dub", threads: Optional[int] = None):
         if not DUB_PYTHON.exists():
             raise RuntimeError("Окружение дубляжа не установлено. Установите его в окне «Дубляж».")
         env = {
@@ -206,6 +216,9 @@ class DubWorker:
             "HF_HUB_DISABLE_TELEMETRY": "1",
             "PYTHONIOENCODING": "utf-8",
         }
+        if threads:
+            # Several processes on one machine: each library thread pool would otherwise use all cores
+            env.update({k: str(threads) for k in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS")})
         self._check_cancel = check_cancel
         self._cancelled = False
         self._stderr: deque = deque(maxlen=60)
@@ -284,82 +297,202 @@ def _free_vram_gb() -> float:
     return float(mem["free_gb"]) if mem else 0.0
 
 
+def _free_vram_for_tts(pool: "TtsPool") -> float:
+    """Free VRAM minus what the processes that are still starting will take."""
+    return _free_vram_gb() - pool.starting() * TTS_WORKER_VRAM_GB
+
+
+def _worker_threads(cpu_count: int) -> Optional[int]:
+    """CPU threads per dub process; None leaves the library default (all cores)."""
+    value = os.environ.get("VERBASCRIBE_DUB_THREADS", "")
+    return int(value) if value.isdigit() and int(value) > 0 else None
+
+
+class TtsStream:
+    """
+    One synthesis run on a TtsPool. Items can be submitted while it runs (e.g. as the translation
+    produces them) and processes can join later; every process takes small batches from one queue,
+    so all of them finish at about the same time. A batch of a failing process (e.g. out of memory)
+    goes back to the queue for the others; cancelling stops everything.
+    """
+
+    def __init__(self, pool: "TtsPool", req: Dict[str, Any], on_item_done: Callable[[], None]):
+        self._pool = pool
+        self._req = req
+        self._on_item_done = on_item_done
+        self._pending: "queue.Queue[List[Dict[str, Any]]]" = queue.Queue()
+        self._cond = threading.Condition()
+        self._closed = False
+        self._in_flight = 0
+        self._expected = 0
+        self._threads: List[threading.Thread] = []
+        self.results: Dict[Any, Dict[str, Any]] = {}
+        self.peak = 0.0
+        self.fatal: List[BaseException] = []
+        self.failures: List[BaseException] = []
+
+    def submit(self, items: List[Dict[str, Any]]) -> None:
+        batch = self._pool.BATCH
+        with self._cond:
+            self._expected += len(items)
+            for i in range(0, len(items), batch):
+                self._pending.put(items[i: i + batch])
+            self._cond.notify_all()
+
+    def close(self) -> None:
+        """No more items will be submitted."""
+        with self._cond:
+            self._closed = True
+            self._cond.notify_all()
+
+    def attach(self, w: "DubWorker") -> None:
+        t = threading.Thread(target=self._loop, args=(w,), daemon=True)
+        self._threads.append(t)
+        t.start()
+
+    def _next(self) -> Optional[List[Dict[str, Any]]]:
+        with self._cond:
+            while True:
+                if self.fatal:
+                    return None
+                try:
+                    batch = self._pending.get_nowait()
+                    self._in_flight += 1
+                    return batch
+                except queue.Empty:
+                    pass
+                # Done only when nothing can come back: a failing process returns its batch
+                if self._closed and self._in_flight == 0:
+                    return None
+                self._cond.wait(0.5)
+
+    def _loop(self, w: "DubWorker") -> None:
+        while True:
+            batch = self._next()
+            if batch is None:
+                return
+            try:
+                res = w.call({**self._req, "cmd": "tts", "items": batch}, lambda _p: self._on_item_done())
+            except BaseException as e:  # noqa: BLE001 - re-raised in wait() or retried by others
+                with self._cond:
+                    self._in_flight -= 1
+                    if getattr(w, "_cancelled", False):
+                        self.fatal.append(e)
+                    else:
+                        self._pending.put(batch)  # another process takes it
+                        self.failures.append(e)
+                    self._cond.notify_all()
+                return
+            with self._cond:
+                self._in_flight -= 1
+                self.results.update({r["id"]: r for r in res["results"]})
+                self.peak = max(self.peak, float(res.get("peak_vram_gb") or 0.0))
+                self._cond.notify_all()
+
+    def wait(self) -> Dict[str, Any]:
+        """Waits until all submitted items are done; returns {"results": {id: result}, "peak_vram_gb"}."""
+        self.close()
+        with self._cond:
+            while not self.fatal and not (self._in_flight == 0 and self._pending.empty()):
+                alive = any(t.is_alive() for t in self._threads) or self._pool._spawning()
+                if not alive and self._in_flight == 0:
+                    break  # every process failed: nobody is left to take the queued batches
+                self._cond.wait(0.5)
+        if self.fatal:
+            raise self.fatal[0]
+        if not self._pending.empty() or len(self.results) < self._expected:
+            raise self.failures[0] if self.failures else RuntimeError("Синтез речи не завершён")
+        return {"results": self.results, "peak_vram_gb": round(self.peak, 2)}
+
+
 class TtsPool:
     """
-    Several DubWorker processes synthesizing phrases side by side. Phrases are handed out in small
-    batches from one queue, so all processes finish at about the same time. If a process fails
-    (e.g. out of memory) its batch goes back to the queue for the others; cancelling stops all.
+    Several DubWorker processes synthesizing phrases side by side (see TtsStream). Processes can be
+    added while a stream runs, e.g. when the translation model leaves the GPU.
     """
 
     BATCH = 6
 
-    def __init__(self, first: DubWorker, count: int, check_cancel: CancelFn):
+    def __init__(self, first: DubWorker, count: int, check_cancel: CancelFn, preload: bool = False,
+                 threads: Optional[int] = None):
         self.workers: List[DubWorker] = [first]
         self.errors: List[str] = []
-        lock = threading.Lock()
+        self._check_cancel = check_cancel
+        self._preload = preload
+        self._threads = threads
+        self._lock = threading.Lock()
+        self._stream: Optional[TtsStream] = None
+        self._spawn_threads: List[threading.Thread] = []
+        self._closed = False
+        if count > 1:
+            self.grow(count - 1)
+            for t in list(self._spawn_threads):
+                t.join()
+            check_cancel()
+
+    def _spawning(self) -> bool:
+        return any(t.is_alive() for t in getattr(self, "_spawn_threads", []))
+
+    def grow(self, n: int) -> None:
+        """Starts `n` more processes in the background; each joins the running stream when ready.
+        They start in parallel: each needs several seconds to load the model."""
 
         def _spawn() -> None:
             try:
-                w = DubWorker(check_cancel)
+                w = DubWorker(self._check_cancel, threads=self._threads)
+                if self._preload:
+                    w.call({"cmd": "load"})
             except Exception as e:  # fewer processes is fine; the job continues
-                with lock:
+                with self._lock:
                     self.errors.append(str(e)[:300])
                 return
-            with lock:
+            with self._lock:
+                if self._closed:
+                    w.close()
+                    return
                 self.workers.append(w)
+                stream = self._stream
+            if stream is not None:
+                stream.attach(w)
 
-        # Start the extra processes in parallel: each needs several seconds to load the model
-        threads = [threading.Thread(target=_spawn, daemon=True) for _ in range(max(0, count - 1))]
-        for t in threads:
+        for _ in range(max(0, n)):
+            t = threading.Thread(target=_spawn, daemon=True)
+            self._spawn_threads.append(t)
             t.start()
-        for t in threads:
-            t.join()
-        check_cancel()
+
+    def starting(self) -> int:
+        """Processes still starting (they will join the running stream)."""
+        return sum(1 for t in getattr(self, "_spawn_threads", []) if t.is_alive())
+
+    def size(self) -> int:
+        """Processes running or starting."""
+        with self._lock:
+            return len(self.workers) + sum(1 for t in self._spawn_threads if t.is_alive())
+
+    def stream(self, req: Dict[str, Any], on_item_done: Callable[[], None]) -> TtsStream:
+        s = TtsStream(self, req, on_item_done)
+        lock = getattr(self, "_lock", None) or threading.Lock()
+        with lock:
+            self._stream = s
+            workers = list(self.workers)
+        for w in workers:
+            s.attach(w)
+        return s
 
     def run(self, items: List[Dict[str, Any]], req: Dict[str, Any], on_item_done: Callable[[], None]) -> Dict[str, Any]:
         """Synthesizes all items; returns {"results": {id: result}, "peak_vram_gb": float}."""
-        pending: "queue.Queue[List[Dict[str, Any]]]" = queue.Queue()
-        for i in range(0, len(items), self.BATCH):
-            pending.put(items[i : i + self.BATCH])
-        results: Dict[Any, Dict[str, Any]] = {}
-        peak = 0.0
-        lock = threading.Lock()
-        fatal: List[BaseException] = []
-        failures: List[BaseException] = []
-
-        def _loop(w: DubWorker) -> None:
-            nonlocal peak
-            while not fatal:
-                try:
-                    batch = pending.get_nowait()
-                except queue.Empty:
-                    return
-                try:
-                    res = w.call({**req, "cmd": "tts", "items": batch}, lambda _p: on_item_done())
-                except BaseException as e:  # noqa: BLE001 - re-raised below or retried by others
-                    if w._cancelled:
-                        fatal.append(e)
-                    else:
-                        pending.put(batch)  # another process takes it
-                        failures.append(e)
-                    return
-                with lock:
-                    results.update({r["id"]: r for r in res["results"]})
-                    peak = max(peak, float(res.get("peak_vram_gb") or 0.0))
-
-        threads = [threading.Thread(target=_loop, args=(w,), daemon=True) for w in self.workers]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-        if fatal:
-            raise fatal[0]
-        if not pending.empty() or len(results) < len(items):
-            raise failures[0] if failures else RuntimeError("Синтез речи не завершён")
-        return {"results": results, "peak_vram_gb": round(peak, 2)}
+        s = self.stream(req, on_item_done)
+        s.submit(items)
+        try:
+            return s.wait()
+        finally:
+            self._stream = None
 
     def close(self) -> None:
-        for w in self.workers:
+        with getattr(self, "_lock", threading.Lock()):
+            self._closed = True
+            workers = list(self.workers)
+        for w in workers:
             w.close()
 
 
@@ -508,18 +641,25 @@ def _room_tone(vocals: np.ndarray, units: List[Dict[str, Any]], total_dur: float
     if not pieces:
         return None
     bed = np.concatenate(pieces)
-    # Drop breaths and leftover speech: 50 ms frames well above the typical floor
+    # Drop breaths and speech the transcript missed (crosstalk): keep 50 ms frames near the floor.
+    # The floor is a low percentile, so gaps that are mostly speech do not raise it.
     win = int(0.05 * sr)
     frames = bed[: bed.size // win * win].reshape(-1, win)
     if frames.shape[0] < 20:  # under a second
         return None
     rms = np.sqrt((frames ** 2).mean(axis=1)) + 1e-9
-    floor = np.median(rms)
+    floor = np.percentile(rms, 20)
     frames = frames[rms < floor * 2.0]
     if frames.shape[0] < 20:
         return None
     bed = frames.reshape(-1).astype(np.float32)
     if _rms(bed) < 1e-5:  # digital silence: nothing to add
+        return None
+    # Only a real noise floor qualifies: well below the speech. Otherwise the "gaps" hold voice the
+    # transcript does not cover (crosstalk, singing), which must not be layered under the dub.
+    speech = [vocals[int(float(u["start"]) * sr): int(float(u["end"]) * sr)] for u in units]
+    speech = [x for x in speech if x.size]
+    if speech and _rms(bed) > _rms(np.concatenate(speech)) * ROOM_TONE_MAX_RATIO:
         return None
 
     chunk = min(bed.size, int(4.0 * sr))
@@ -589,6 +729,9 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
     # recording's own noise floor (room tone) so it does not sound pasted onto the scene.
     denoise = settings.get("dub_denoise", "false").lower() == "true"
     room_tone = not denoise and settings.get("dub_room_tone", "true").lower() == "true"
+    tts_setting = settings.get("dub_tts_workers", "auto")
+    cpu_count = os.cpu_count() or 1
+    worker_threads = _worker_threads(cpu_count)
 
     work = DUBS_DIR / f"work_meeting_{meeting['id']}_{target_lang}"
     if work.exists():
@@ -618,64 +761,66 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
         total_dur = get_media_duration(orig_wav)
         _lap("prepare")
 
-        # 2. translation (LLM is unloaded right after, so it never shares VRAM with the TTS)
+        # 2-4. Translation (Ollama), voice/background separation (Demucs) and synthesis (Chatterbox)
+        # overlap: Demucs runs while the first phrases are translated, and every translated batch is
+        # voiced right away. The LLM and one or two TTS processes share the GPU until the translation
+        # ends; then the LLM is unloaded and more TTS processes join for the rest.
         check_cancel()
-        progress(5, f"Перевод {len(units)} фраз через Ollama...")
-        translate_units(units, src_lang, target_lang, progress, check_cancel)
-        # A phrase the LLM returned empty stays silent in the dub (the background still plays)
-        units = [u for u in units if (u.get("translation") or "").strip()]
-        if not units:
-            raise RuntimeError("Модель Ollama не вернула перевод ни для одной фразы")
+        progress(5, f"Перевод {len(units)} фраз (Ollama) и отделение голоса от фона (Demucs)...")
         settings_now = get_all_settings()
         ollama_url = (settings_now.get("ollama_url") or "http://127.0.0.1:11434").replace("localhost", "127.0.0.1").rstrip("/")
-        _unload_ollama(ollama_url, settings_now.get("ollama_model") or "")
-        _lap("translate")
+        n_units = len(units)
+        translated_q: "queue.Queue[Optional[List[Dict[str, Any]]]]" = queue.Queue()
+        tx_error: List[BaseException] = []
+        tx_count = [0]
+        tx_stop = threading.Event()  # set when the job ends early, so the translation stops too
+        t_phase = time.perf_counter()
 
-        # 3. voice / background separation
-        check_cancel()
-        progress(16, "Отделение голоса от фона (Demucs)...")
-        worker = DubWorker(check_cancel)
+        def _tx_check() -> None:
+            check_cancel()
+            if tx_stop.is_set():
+                raise RuntimeError("Дубляж прерван")
+
+        def _translate() -> None:
+            try:
+                translate_units(units, src_lang, target_lang, lambda *_a: None, _tx_check, on_batch=translated_q.put)
+            except BaseException as e:  # noqa: BLE001 - re-raised in the job thread
+                tx_error.append(e)
+            finally:
+                translated_q.put(None)
+                timing["translate"] = round(time.perf_counter() - t_phase, 2)
+
+        tx_thread = threading.Thread(target=_translate, daemon=True, name="dub_translate")
+        tx_thread.start()
+
+        worker = DubWorker(check_cancel, threads=worker_threads)
         pool: Optional[TtsPool] = None
         try:
             sep = worker.call({"cmd": "separate", "input": str(orig_wav), "out_dir": str(work)})
             vocals = _read_mono(Path(sep["vocals"]), MIX_SR)
-            bg_path = Path(sep["background"])
+            background, _ = sf.read(sep["background"], dtype="float32", always_2d=True)
+            # FFmpeg denoising of the background (~10 s per 5 min on the CPU) runs during synthesis
+            bg_denoise: Optional[threading.Thread] = None
             if denoise:
-                _denoise_file(bg_path, work / "background_dn.wav")
-                bg_path = work / "background_dn.wav"
-            background, _ = sf.read(str(bg_path), dtype="float32", always_2d=True)
-            _lap("separate")
+                bg_denoise = threading.Thread(
+                    target=_denoise_file, args=(Path(sep["background"]), work / "background_dn.wav"), daemon=True)
+                bg_denoise.start()
+            timing["separate"] = round(time.perf_counter() - t_phase, 2)
             refs = _build_speaker_refs(units, vocals, work)
             if not refs:
                 raise RuntimeError("Не удалось вырезать образец голоса ни для одного участника")
             fallback_ref = next(iter(refs.values()))
+            worker.call({"cmd": "load"})
+            timing["tts_load"] = round(time.perf_counter() - t_phase, 2)
 
-            # 4. synthesis, in several processes when there is enough free VRAM
-            n_workers = choose_tts_workers(settings.get("dub_tts_workers", "auto"), _free_vram_gb(), os.cpu_count() or 1)
-            if n_workers > 1:
-                progress(20, f"Запуск {n_workers} процессов синтеза речи...")
-            pool = TtsPool(worker, n_workers, check_cancel)
-            stats["tts_workers"] = len(pool.workers)
-            _lap("tts_spawn")
-
-            def _tts(batch: List[Dict[str, Any]], lo: int, hi: int, label: str) -> None:
+            def _items(batch: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 items = [{"id": u["id"], "text": u["translation"], "lang": target_lang,
                           "ref": str(refs.get(u["speaker"], fallback_ref)),
                           "out": str(work / "tts" / f"u{u['id']:04d}.wav")} for u in batch]
+                items.sort(key=lambda it: it["ref"])  # group by speaker: fewer conditioning switches
+                return items
 
-                done = [0]
-                done_lock = threading.Lock()
-
-                def _on() -> None:
-                    with done_lock:
-                        done[0] += 1
-                        n = done[0]
-                    progress(lo + int((hi - lo) * n / max(1, len(items))), f"{label}: {n} из {len(items)}")
-
-                items.sort(key=lambda it: it["ref"])  # group by speaker: conditioning is cached per reference
-                t_wall = datetime.now()
-                res = pool.run(items, {"cfg_weight": cfg_weight, "exaggeration": exaggeration}, _on)
-                stats["tts_wall_sec"] = round(stats.get("tts_wall_sec", 0.0) + (datetime.now() - t_wall).total_seconds(), 1)
+            def _apply(batch: List[Dict[str, Any]], res: Dict[str, Any]) -> None:
                 by_id = res["results"]
                 for u in batch:
                     u["tts_path"] = by_id[u["id"]]["out"]
@@ -683,13 +828,73 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
                         u["tts_failed"] = by_id[u["id"]]["failed"]
                     else:
                         u.pop("tts_failed", None)
-                stats["tts_peak_vram_gb"] = res.get("peak_vram_gb")
-                stats["tts_gen_sec"] = stats.get("tts_gen_sec", 0.0) + sum(r["gen_sec"] for r in by_id.values())
+                stats["tts_peak_vram_gb"] = max(float(stats.get("tts_peak_vram_gb") or 0.0), float(res.get("peak_vram_gb") or 0.0))
+                stats["tts_gen_sec"] = round(stats.get("tts_gen_sec", 0.0) + sum(by_id[u["id"]]["gen_sec"] for u in batch), 1)
 
-            check_cancel()
-            progress(22, "Загрузка Chatterbox и синтез речи голосом участника...")
-            _tts(units, 22, 84, "Синтез речи")
-            _lap("tts")
+            tts_req = {"cfg_weight": cfg_weight, "exaggeration": exaggeration}
+            pool = TtsPool(worker, 1, check_cancel, preload=True, threads=worker_threads)
+            voiced = [0]
+            voiced_lock = threading.Lock()
+
+            def _on_voiced() -> None:
+                with voiced_lock:
+                    voiced[0] += 1
+                    n = voiced[0]
+                pct = 16 + int(68 * n / max(1, n_units))
+                if tx_thread.is_alive():
+                    progress(pct, f"Перевод: {tx_count[0]} из {n_units} фраз · синтез речи: {n}")
+                else:
+                    progress(pct, f"Синтез речи: {n} из {len(units_ok)}")
+
+            units_ok: List[Dict[str, Any]] = []
+            stream = pool.stream(tts_req, _on_voiced)
+            grown_during_tx = False
+            while True:
+                try:
+                    batch = translated_q.get(timeout=0.3)
+                except queue.Empty:
+                    check_cancel()
+                    continue
+                if batch is None:
+                    break
+                tx_count[0] += len(batch)
+                # A phrase the LLM returned empty stays silent in the dub (the background still plays)
+                ok = [u for u in batch if (u.get("translation") or "").strip()]
+                units_ok += ok
+                if ok:
+                    stream.submit(_items(ok))
+                if not grown_during_tx:
+                    # The LLM is loaded by now: start as many extra processes as fit next to it
+                    grown_during_tx = True
+                    pool.grow(extra_tts_workers(tts_setting, pool.size(), _free_vram_for_tts(pool), cpu_count, respect_vram=True))
+                progress(16 + int(68 * voiced[0] / max(1, n_units)), f"Перевод: {tx_count[0]} из {n_units} фраз · синтез речи: {voiced[0]}")
+            if tx_error:
+                raise tx_error[0]
+            units = sorted(units_ok, key=lambda u: u["id"])
+            if not units:
+                raise RuntimeError("Модель Ollama не вернула перевод ни для одной фразы")
+            _unload_ollama(ollama_url, settings_now.get("ollama_model") or "", wait=True)
+            # Its VRAM is free now: more processes for the remaining phrases
+            pool.grow(extra_tts_workers(tts_setting, pool.size(), _free_vram_for_tts(pool), cpu_count))
+            res = stream.wait()
+            pool._stream = None
+            _apply(units, res)
+            stats["tts_workers"] = len(pool.workers)
+            timing["tts"] = round(time.perf_counter() - t_phase, 2)
+            lap[0] = time.perf_counter()
+
+            def _tts(batch: List[Dict[str, Any]], lo: int, hi: int, label: str) -> None:
+                done = [0]
+                done_lock = threading.Lock()
+                items = _items(batch)
+
+                def _on() -> None:
+                    with done_lock:
+                        done[0] += 1
+                        n = done[0]
+                    progress(lo + int((hi - lo) * n / max(1, len(items))), f"{label}: {n} из {len(items)}")
+
+                _apply(batch, pool.run(items, tts_req, _on))
 
             # 5a. measure, re-translate the clips that would need too much speed-up
             def _measure() -> None:
@@ -735,6 +940,7 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
                 _measure()
                 _lap("shorten")
         finally:
+            tx_stop.set()
             if pool is not None:
                 pool.close()
             else:
@@ -742,6 +948,11 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
 
         # 5b. time-fit + 6. mix
         check_cancel()
+        if bg_denoise is not None:
+            bg_denoise.join()
+            if not (work / "background_dn.wav").is_file():
+                raise RuntimeError("Не удалось убрать шум из фона (FFmpeg)")
+            background, _ = sf.read(str(work / "background_dn.wav"), dtype="float32", always_2d=True)
         progress(92, "Подгонка длительности и сведение...")
         n = background.shape[0]
         voice = np.zeros(n, dtype=np.float32)
@@ -750,14 +961,19 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
         plan = plan_placement(
             [{**u, "dur": u["_clip"].size / u["_sr"]} for u in units], total_dur, TEMPO_MAX
         )
-        for u, place in zip(units, plan):
+
+        def _fit(u: Dict[str, Any], place: Dict[str, float]) -> np.ndarray:
             tmp_src = work / "fit" / f"t{u['id']:04d}.wav"
             sf.write(str(tmp_src), u["_clip"], u["_sr"])
-            tempo = place["tempo"]
-            tempos.append(tempo)
             fit_path = work / "fit" / f"f{u['id']:04d}.wav"
-            _stretch_clip(tmp_src, fit_path, tempo, use_rubberband)
-            clip = _read_mono(fit_path, MIX_SR)
+            _stretch_clip(tmp_src, fit_path, place["tempo"], use_rubberband)
+            return _read_mono(fit_path, MIX_SR)
+
+        # One FFmpeg process per phrase: run them side by side, then mix in order
+        with ThreadPoolExecutor(max_workers=max(1, min(8, cpu_count // 2))) as ex:
+            fitted = list(ex.map(_fit, units, plan))
+        for u, place, clip in zip(units, plan, fitted):
+            tempos.append(place["tempo"])
             max_len = int(place["room"] * MIX_SR)
             # A few ms of overshoot after stretching is harmless (the slot ends 50 ms before the next phrase)
             if clip.size > max_len + int(0.12 * MIX_SR):  # still too long after the speed cap: fade out

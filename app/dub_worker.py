@@ -14,6 +14,8 @@ Commands:
       -> {"ok": true, "vocals": "...", "background": "...", "sr": 44100}
   {"cmd": "tts", "items": [{"id", "text", "lang", "ref", "out"}], "exaggeration", "cfg_weight"}
       -> progress per item, then {"ok": true, "results": [{"id", "out", "duration"}]}
+  {"cmd": "load"}
+      -> loads Chatterbox now (and drops Demucs), so the first "tts" batch starts at once
   {"cmd": "download", "models": ["chatterbox", "demucs"]}
       -> fetches the weights into HF_HOME without loading them on the GPU
   {"cmd": "quit"}
@@ -150,10 +152,9 @@ def _generate(model, text: str, lang: str, cfg_weight: float):
     return torch.from_numpy(wav).unsqueeze(0)
 
 
-def cmd_tts(req):
+def _ensure_tts():
     global _tts_model, _demucs_model
     import torch
-    import torchaudio as ta
 
     dev = _device()
     if _demucs_model is not None:
@@ -168,22 +169,42 @@ def cmd_tts(req):
         t0 = time.time()
         _tts_model = ChatterboxMultilingualTTS.from_pretrained(device=dev)
         print(f"[dub_worker] Chatterbox loaded in {time.time() - t0:.1f}s on {dev}", file=sys.stderr)
+    return _tts_model
 
+
+def cmd_load(req):
+    _ensure_tts()
+    return {"ok": True}
+
+
+# Speaker conditioning per (reference clip, exaggeration): computed once per process, not per batch
+_conds_cache = {}
+
+
+def cmd_tts(req):
+    import torch
+    import torchaudio as ta
+
+    dev = _device()
+    model = _ensure_tts()
     items = req["items"]
     exaggeration = float(req.get("exaggeration", 0.5))
     results = []
     current_ref = None
     for i, it in enumerate(items):
         t0 = time.time()
-        # Speaker conditioning is computed once per reference clip, not once per phrase
         if it["ref"] != current_ref:
-            _tts_model.prepare_conditionals(it["ref"], exaggeration=exaggeration)
+            key = (it["ref"], exaggeration)
+            if key not in _conds_cache:
+                model.prepare_conditionals(it["ref"], exaggeration=exaggeration)
+                _conds_cache[key] = model.conds
+            model.conds = _conds_cache[key]
             current_ref = it["ref"]
         # One phrase must never fail a whole dub: retry once, then leave it silent
         wav, error = None, ""
         for _attempt in range(2):
             try:
-                wav = _generate(_tts_model, it["text"], it["lang"], float(req.get("cfg_weight", 0.5)))
+                wav = _generate(model, it["text"], it["lang"], float(req.get("cfg_weight", 0.5)))
                 break
             except Exception as e:  # noqa: BLE001
                 error = f"{type(e).__name__}: {e}"[:300]
@@ -191,18 +212,18 @@ def cmd_tts(req):
                 if dev == "cuda":
                     torch.cuda.empty_cache()
         if wav is None:
-            wav = torch.zeros(1, int(0.3 * _tts_model.sr))
+            wav = torch.zeros(1, int(0.3 * model.sr))
         out = Path(it["out"])
         out.parent.mkdir(parents=True, exist_ok=True)
-        ta.save(str(out), wav.cpu(), _tts_model.sr)
-        dur = wav.shape[-1] / _tts_model.sr
+        ta.save(str(out), wav.cpu(), model.sr)
+        dur = wav.shape[-1] / model.sr
         res = {"id": it["id"], "out": str(out), "duration": round(dur, 3), "gen_sec": round(time.time() - t0, 2)}
         if error and wav.abs().max() == 0:
             res["failed"] = error
         results.append(res)
         _reply({"ok": True, "event": "progress", "done": i + 1, "total": len(items)})
     vram = torch.cuda.max_memory_allocated() / 2**30 if dev == "cuda" else 0.0
-    return {"ok": True, "results": results, "sr": _tts_model.sr, "peak_vram_gb": round(vram, 2)}
+    return {"ok": True, "results": results, "sr": model.sr, "peak_vram_gb": round(vram, 2)}
 
 
 # Same file list as ChatterboxMultilingualTTS.from_pretrained (0.1.7)
@@ -233,7 +254,7 @@ def cmd_download(req):
 
 
 def main() -> None:
-    handlers = {"separate": cmd_separate, "tts": cmd_tts, "download": cmd_download}
+    handlers = {"separate": cmd_separate, "tts": cmd_tts, "load": cmd_load, "download": cmd_download}
     _reply({"ok": True, "event": "ready", "pid": os.getpid()})
     for line in sys.stdin:
         line = line.strip()
