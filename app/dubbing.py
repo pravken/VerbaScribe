@@ -303,9 +303,13 @@ def _free_vram_for_tts(pool: "TtsPool") -> float:
 
 
 def _worker_threads(cpu_count: int) -> Optional[int]:
-    """CPU threads per dub process; None leaves the library default (all cores)."""
+    """CPU threads per dub process: by default each library thread pool would use every core, and
+    up to three TTS processes plus the main app then compete for them. VERBASCRIBE_DUB_THREADS
+    overrides (0 = library default)."""
     value = os.environ.get("VERBASCRIBE_DUB_THREADS", "")
-    return int(value) if value.isdigit() and int(value) > 0 else None
+    if value.isdigit():
+        return int(value) or None
+    return max(2, cpu_count // 4)
 
 
 class TtsStream:
@@ -331,8 +335,8 @@ class TtsStream:
         self.fatal: List[BaseException] = []
         self.failures: List[BaseException] = []
 
-    def submit(self, items: List[Dict[str, Any]]) -> None:
-        batch = self._pool.BATCH
+    def submit(self, items: List[Dict[str, Any]], batch: Optional[int] = None) -> None:
+        batch = batch or self._pool.BATCH
         with self._cond:
             self._expected += len(items)
             for i in range(0, len(items), batch):
@@ -465,6 +469,14 @@ class TtsPool:
             self._spawn_threads.append(t)
             t.start()
 
+    def shrink(self, keep: int) -> None:
+        """Closes all processes but the first `keep` (call between streams)."""
+        with self._lock:
+            extra = self.workers[keep:]
+            self.workers = self.workers[:keep]
+        for w in extra:
+            w.close()
+
     def starting(self) -> int:
         """Processes still starting (they will join the running stream)."""
         return sum(1 for t in getattr(self, "_spawn_threads", []) if t.is_alive())
@@ -487,7 +499,8 @@ class TtsPool:
     def run(self, items: List[Dict[str, Any]], req: Dict[str, Any], on_item_done: Callable[[], None]) -> Dict[str, Any]:
         """Synthesizes all items; returns {"results": {id: result}, "peak_vram_gb": float}."""
         s = self.stream(req, on_item_done)
-        s.submit(items)
+        # A few phrases (re-synthesis) are spread over all processes instead of one batch
+        s.submit(items, batch=max(1, min(self.BATCH, -(-len(items) // max(1, len(self.workers))))))
         try:
             return s.wait()
         finally:
@@ -937,11 +950,27 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
                 progress(88, f"Сокращение {len(too_long)} слишком длинных фраз...")
                 src_name, tgt_name = DUB_LANGUAGES.get(src_lang, src_lang), DUB_LANGUAGES[target_lang]
                 model = settings_now.get("ollama_model") or "qwen2.5:7b"
+                # The LLM is loaded again. Next to three TTS processes it may not fit in VRAM and then
+                # runs on the CPU, many times slower (measured: 203 s instead of 19 s for 7 phrases),
+                # so only one process stays. Each shortened phrase is voiced while the next is shortened.
+                pool.shrink(1)
+                done = [0]
+                done_lock = threading.Lock()
+
+                def _on_short() -> None:
+                    with done_lock:
+                        done[0] += 1
+                        n = done[0]
+                    progress(89 + int(2 * n / len(too_long)), f"Синтез сокращённых фраз: {n} из {len(too_long)}")
+
+                short_stream = pool.stream(tts_req, _on_short)
                 for u in too_long:
                     max_chars = max(8, int(len(u["translation"]) / u["tempo"] * 1.1))
                     u["translation"] = _shorten(ollama_url, model, u["text"], u["translation"], max_chars, src_name, tgt_name)
+                    short_stream.submit(_items([u]))
                 _unload_ollama(ollama_url, model)
-                _tts(too_long, 89, 91, "Синтез сокращённых фраз")
+                _apply(too_long, short_stream.wait())
+                pool._stream = None
                 _measure()
                 _lap("shorten")
         finally:
