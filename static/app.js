@@ -179,6 +179,7 @@ document.addEventListener('click', () => {
   hideContextMenu();
   document.getElementById('export-menu')?.classList.add('hidden');
   hideTranslateMenu();
+  hideTxViewMenu();
 });
 
 function toggleTranslateMenu(e) {
@@ -2116,20 +2117,49 @@ function renderTranslationControls() {
   document.getElementById('tx-view-controls').classList.toggle('hidden', !canTranslate && !langs.length);
   if (langs.length && !langs.includes(state.txLang)) state.txLang = langs[0];
   if (!langs.length && state.txView && state.txView !== 'orig') state.txView = 'orig';
-  const sel = document.getElementById('tx-view-lang');
-  sel.classList.remove('hidden');
-  sel.innerHTML = (langs.length ? '' : `<option value="" selected disabled>${escapeHtml(t('txNoTranslation'))}</option>`)
-    + langs.map(c => `<option value="${c}" ${c === state.txLang ? 'selected' : ''}>${escapeHtml(c.toUpperCase())}</option>`).join('')
-    + (canTranslate ? `<option value="__new">${escapeHtml(t('txTranslateNew'))}</option>` : '');
-  for (const v of ['orig', 'tr', 'both']) {
-    const btn = document.getElementById(`txview-${v}`);
-    btn.className = (state.txView || 'orig') === v
-      ? 'apple-segment-btn apple-segment-active'
-      : 'apple-segment-btn text-apple-secondary hover:text-white';
-    btn.disabled = v !== 'orig' && !langs.length;
-    btn.style.opacity = btn.disabled ? '0.4' : '';
+  const view = state.txView || 'orig';
+  const src = ((m && m.language) || '').toUpperCase();
+  const tr = (state.txLang || '').toUpperCase();
+  document.getElementById('tx-view-label').textContent =
+    view === 'tr' ? tr : view === 'both' ? `${src || t('txViewOrig')} + ${tr}` : t('txViewOrig');
+  document.getElementById('tx-view-btn').className = `ui-btn ${view === 'orig' ? 'ui-btn-subtle' : 'ui-btn-active'}`;
+
+  const item = (onclick, mark, label) =>
+    `<button onclick="${onclick}" class="macos-menu-item gap-2" style="justify-content:flex-start">`
+    + `<span class="w-3 shrink-0 text-center">${mark}</span><span class="truncate">${escapeHtml(label)}</span></button>`;
+  const sep = '<div class="h-px bg-white/10 my-1"></div>';
+  let html = item("setTxViewChoice('orig')", view === 'orig' ? '✓' : '', src ? `${t('txViewOrig')} (${src})` : t('txViewOrig'));
+  for (const c of langs) {
+    const on = c === state.txLang;
+    html += sep;
+    html += item(`setTxViewChoice('tr','${c}')`, view === 'tr' && on ? '✓' : '', `${t('txViewTr')}: ${langName(c)}`);
+    html += item(`setTxViewChoice('both','${c}')`, view === 'both' && on ? '✓' : '', `${t('txViewBothWith')} ${langName(c)}`);
   }
+  if (canTranslate) html += sep + item("setTxViewChoice('__new')", '＋', t('txTranslateNew').replace(/^＋\s*/, ''));
+  document.getElementById('tx-view-menu').innerHTML = html;
   renderExportTranslatedMenu();
+}
+
+function toggleTxViewMenu(e) {
+  e.stopPropagation();
+  hideContextMenu();
+  hideTranslateMenu();
+  document.getElementById('export-menu')?.classList.add('hidden');
+  document.getElementById('tx-view-menu').classList.toggle('hidden');
+}
+
+function hideTxViewMenu() {
+  document.getElementById('tx-view-menu')?.classList.add('hidden');
+}
+
+function setTxViewChoice(view, lang) {
+  hideTxViewMenu();
+  if (view === '__new') {
+    openTranslateModal();
+    return;
+  }
+  if (lang) state.txLang = lang;
+  setTranscriptView(view);
 }
 
 function setTranscriptView(view) {
@@ -3469,7 +3499,7 @@ function enterTheatre() {
 function exitTheatre() {
   if (!state.theatre) return;
   state.theatre = false;
-  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  if (isTheatreFullscreen()) setTheatreFullscreen(false);
   document.getElementById('theatre').classList.add('hidden');
   moveBackFromTheatre('footer', document.getElementById('player-footer'));
   moveBackFromTheatre('pane', document.getElementById('wview-transcript'));
@@ -3479,20 +3509,46 @@ function exitTheatre() {
   redrawAfterLayoutChange();
 }
 
-async function toggleTheatreFullscreen() {
+// The desktop window (pywebview) does not support the browser Fullscreen API: there the native
+// window is toggled through its JS bridge. In a regular browser the Fullscreen API is used.
+state.windowFullscreen = false;
+
+function nativeWindowApi() {
+  const api = window.pywebview && window.pywebview.api;
+  return api && api.toggle_fullscreen ? api : null;
+}
+
+function isTheatreFullscreen() {
+  return nativeWindowApi() ? state.windowFullscreen : !!document.fullscreenElement;
+}
+
+function updateTheatreFullscreenButton() {
+  const btn = document.getElementById('theatre-fs-btn');
+  if (btn) btn.textContent = t(isTheatreFullscreen() ? 'theatreFullscreenExit' : 'theatreFullscreen');
+  if (state.theatre) redrawAfterLayoutChange();
+}
+
+async function setTheatreFullscreen(on) {
+  const api = nativeWindowApi();
   try {
-    if (document.fullscreenElement) await document.exitFullscreen();
-    else await document.getElementById('theatre').requestFullscreen();
+    if (api) {
+      if (on !== state.windowFullscreen) state.windowFullscreen = !!(await api.toggle_fullscreen());
+    } else if (on && !document.fullscreenElement) {
+      await document.getElementById('theatre').requestFullscreen();
+    } else if (!on && document.fullscreenElement) {
+      await document.exitFullscreen();
+    }
   } catch (e) {
     console.error(e);
   }
+  updateTheatreFullscreenButton();
 }
 
-document.addEventListener('fullscreenchange', () => {
-  const btn = document.getElementById('theatre-fs-btn');
-  if (btn) btn.textContent = t(document.fullscreenElement ? 'theatreFullscreenExit' : 'theatreFullscreen');
-  if (state.theatre) redrawAfterLayoutChange();
-});
+function toggleTheatreFullscreen() {
+  return setTheatreFullscreen(!isTheatreFullscreen());
+}
+
+document.addEventListener('fullscreenchange', updateTheatreFullscreenButton);
 
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || !state.theatre) return;
@@ -3501,7 +3557,9 @@ document.addEventListener('keydown', (e) => {
   const editing = e.target && (e.target.tagName === 'TEXTAREA' || (e.target.tagName === 'INPUT' && e.target.value));
   if (modalOpen || editing || document.fullscreenElement) return;
   e.preventDefault();
-  exitTheatre();
+  // In the desktop window Esc first leaves full screen, then the theatre
+  if (nativeWindowApi() && state.windowFullscreen) setTheatreFullscreen(false);
+  else exitTheatre();
 });
 
 async function toggleVideoPip() {

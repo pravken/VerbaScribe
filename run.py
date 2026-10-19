@@ -118,6 +118,22 @@ def start_server_in_thread(host: str, port: int) -> threading.Thread:
     return t
 
 
+class WindowApi:
+    """Exposed to the page as window.pywebview.api: things the embedded browser cannot do itself."""
+
+    def __init__(self) -> None:
+        self._fullscreen = False
+
+    def toggle_fullscreen(self) -> bool:
+        """WebView2 inside pywebview ignores the Fullscreen API, so the native window is toggled."""
+        import webview
+
+        if webview.windows:
+            webview.windows[0].toggle_fullscreen()
+            self._fullscreen = not self._fullscreen
+        return self._fullscreen
+
+
 def main() -> None:
     set_app_user_model_id()
 
@@ -163,6 +179,7 @@ def main() -> None:
                 min_size=(1100, 700),
                 background_color="#141416",
                 text_select=True,
+                js_api=WindowApi(),
             )
             icon_arg = str(ICO_PATH) if ICO_PATH.exists() else None
             webview.start(func=apply_native_window_icon_and_hide_console, icon=icon_arg)

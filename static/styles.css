@@ -258,3 +258,9 @@ input[type="range"].volume-slider::-webkit-slider-thumb:hover {
   #player-footer .player-btn-label { display: none; }
   #player-footer #player-volume-label { display: none; }
 }
+
+/* Native dropdown lists: without an explicit colour Windows draws white text on a white list */
+select option, select optgroup {
+  background-color: #242426;
+  color: #f5f5f7;
+}
