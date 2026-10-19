@@ -3379,7 +3379,7 @@ function applyVideoLayout() {
   btn.classList.toggle('hidden', !state.hasVideo || !!state.theatre);
   if (state.hasVideo) {
     const expanded = mode === 'expanded';
-    btn.innerHTML = `${expanded ? VIDEO_ICONS.collapse : VIDEO_ICONS.expand}<span>${escapeHtml(t(expanded ? 'videoCollapse' : 'videoExpand'))}</span>`;
+    btn.innerHTML = `${expanded ? VIDEO_ICONS.collapse : VIDEO_ICONS.expand}<span class="player-btn-label">${escapeHtml(t(expanded ? 'videoCollapse' : 'videoExpand'))}</span>`;
     btn.title = t(expanded ? 'tipVideoCollapse' : 'tipVideoExpand');
   }
 

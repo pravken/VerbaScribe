@@ -433,6 +433,7 @@ class TtsPool:
         self._stream: Optional[TtsStream] = None
         self._spawn_threads: List[threading.Thread] = []
         self._closed = False
+        self._limit: Optional[int] = None  # set by shrink(): processes still starting then close
         if count > 1:
             self.grow(count - 1)
             for t in list(self._spawn_threads):
@@ -456,7 +457,7 @@ class TtsPool:
                     self.errors.append(str(e)[:300])
                 return
             with self._lock:
-                if self._closed:
+                if self._closed or (self._limit is not None and len(self.workers) >= self._limit):
                     w.close()
                     return
                 self.workers.append(w)
@@ -464,6 +465,7 @@ class TtsPool:
             if stream is not None:
                 stream.attach(w)
 
+        self._limit = None
         for _ in range(max(0, n)):
             t = threading.Thread(target=_spawn, daemon=True)
             self._spawn_threads.append(t)
@@ -472,6 +474,7 @@ class TtsPool:
     def shrink(self, keep: int) -> None:
         """Closes all processes but the first `keep` (call between streams)."""
         with self._lock:
+            self._limit = keep
             extra = self.workers[keep:]
             self.workers = self.workers[:keep]
         for w in extra:
