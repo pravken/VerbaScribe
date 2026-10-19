@@ -1222,6 +1222,111 @@ function updateProcessingBanner(m) {
   }
 }
 
+// --- Translate & Dub (prototype) ---
+function dubLangName(code) {
+  const names = t('dubLangNames');
+  return (names && names[code]) || String(code).toUpperCase();
+}
+
+async function openDubModal() {
+  const m = state.activeMeeting;
+  if (!m) return;
+  document.getElementById('dub-consent').checked = false;
+
+  let env = { installed: false, languages: Object.keys(I18N.ru.dubLangNames) };
+  try { env = await (await fetch('/api/dub/status')).json(); } catch (e) { console.error(e); }
+  state.dubEnvInstalled = !!env.installed;
+  document.getElementById('dub-env-warning').classList.toggle('hidden', state.dubEnvInstalled);
+
+  const srcLang = m.language || '';
+  const preferred = srcLang === 'en' ? 'ru' : 'en';
+  document.getElementById('dub-lang').innerHTML = env.languages
+    .filter(c => c !== srcLang)
+    .map(c => ({ c, n: dubLangName(c) }))
+    .sort((a, b) => (a.c === preferred ? -1 : b.c === preferred ? 1 : a.n.localeCompare(b.n)))
+    .map(({ c, n }) => `<option value="${c}">${escapeHtml(n)} (${c.toUpperCase()})</option>`).join('');
+
+  // The server reports a failed dub in stage_text and puts the recording back to "completed"
+  const st = m.stage_text || '';
+  const isDubError = m.status === 'completed' && st.startsWith('Ошибка дубляжа');
+  const errBox = document.getElementById('dub-last-error');
+  errBox.classList.toggle('hidden', !isDubError);
+  errBox.textContent = isDubError ? st : '';
+
+  renderDubResults();
+  updateDubStartButton();
+  openModal('dub');
+}
+
+function updateDubStartButton() {
+  const m = state.activeMeeting;
+  const ok = !!m && m.status === 'completed' && state.dubEnvInstalled && document.getElementById('dub-consent').checked;
+  const btn = document.getElementById('dub-start-btn');
+  btn.disabled = !ok;
+  btn.style.opacity = ok ? '' : '0.4';
+  btn.style.cursor = ok ? '' : 'not-allowed';
+}
+
+function renderDubResults() {
+  const m = state.activeMeeting;
+  const box = document.getElementById('dub-results');
+  const dubs = (m && m.dubs) || [];
+  if (!dubs.length) {
+    box.innerHTML = `<div class="text-[11px] text-apple-tertiary">${escapeHtml(t('dubNone'))}</div>`;
+    return;
+  }
+  box.innerHTML = dubs.map(d => {
+    const name = String(d.path || '').split(/[\\/]/).pop();
+    const isVideo = /\.(mp4|mkv)$/i.test(name);
+    const lang = encodeURIComponent(d.lang);
+    const src = `/api/meetings/${m.id}/dub/${lang}/file`;
+    const s = d.stats || {};
+    const meta = [d.created_at, s.units ? `${s.units} ${t('dubPhrases')}` : '', s.elapsed_sec ? `${Math.round(s.elapsed_sec)} ${t('dubSec')}` : '']
+      .filter(Boolean).join(' · ');
+    return `<div class="rounded-lg bg-white/[0.03] border apple-border p-2.5 space-y-2">
+      <div class="flex items-center justify-between gap-2">
+        <div class="min-w-0">
+          <div class="text-xs font-semibold text-white">${escapeHtml(dubLangName(d.lang))} · <span class="text-apple-amber">AI dub</span></div>
+          <div class="text-[10.5px] text-apple-secondary truncate" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
+          <div class="text-[10.5px] text-apple-tertiary">${escapeHtml(meta)}</div>
+        </div>
+        <button onclick="revealDub('${lang}')" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px] shrink-0">${escapeHtml(t('dubReveal'))}</button>
+      </div>
+      ${isVideo
+        ? `<video controls preload="none" class="w-full rounded-md bg-black max-h-56" src="${src}"></video>`
+        : `<audio controls preload="none" class="w-full" src="${src}"></audio>`}
+    </div>`;
+  }).join('');
+}
+
+async function startDub() {
+  const m = state.activeMeeting;
+  if (!m) return;
+  const res = await fetch(`/api/meetings/${m.id}/dub`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ target_lang: document.getElementById('dub-lang').value, consent: document.getElementById('dub-consent').checked }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    showToast(data.detail || 'Error');
+    return;
+  }
+  closeModal('dub');
+  showToast(t('dubQueued'));
+  await loadMeetingsList();
+}
+
+async function revealDub(lang) {
+  const m = state.activeMeeting;
+  if (!m) return;
+  const res = await fetch(`/api/meetings/${m.id}/dub/${lang}/reveal`, { method: 'POST' });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    showToast(data.detail || 'Error');
+  }
+}
+
 async function cancelActiveProcessing() {
   if (!state.activeMeeting) return;
   await cancelProcessing(state.activeMeeting.id);

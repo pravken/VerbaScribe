@@ -40,7 +40,7 @@ from app.ffmpeg_manager import ffmpeg_status, start_ffmpeg_download
 from app.hardware import get_hardware_info
 from app.ollama_client import generate_meeting_summary, get_ollama_status, start_model_pull
 from app.text_utils import realign_words
-from app.transcriber import enqueue_meeting_job, is_job_active, request_cancel
+from app.transcriber import enqueue_dub_job, enqueue_meeting_job, is_job_active, request_cancel
 
 _SPEAKER_ID_RE = re.compile(r"^[A-Za-z0-9_\-]{1,40}$")
 _COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -147,6 +147,9 @@ async def lifespan(_app: FastAPI):
     for m in list_meetings():
         if m.get("status") in active_states:
             enqueue_meeting_job(int(m["id"]))
+        elif m.get("status") == "dubbing":
+            # A dub interrupted by a restart is simply dropped; the transcript itself is complete
+            update_meeting_progress(int(m["id"]), status="completed", progress=100, stage_text="Дубляж прерван перезапуском")
     yield
 
 
@@ -776,6 +779,71 @@ def api_stream_media(meeting_id: int) -> FileResponse:
         media_type=mime_type or "application/octet-stream",
         filename=target.name,
     )
+
+
+# --- Translate & Dub (prototype) ---
+class DubRequestPayload(BaseModel):
+    target_lang: str
+    consent: bool = False
+
+
+@app.get("/api/dub/status")
+def api_dub_status() -> Dict[str, Any]:
+    from app.dubbing import dub_environment_status
+
+    return dub_environment_status()
+
+
+@app.post("/api/meetings/{meeting_id}/dub")
+def api_start_dub(meeting_id: int, payload: DubRequestPayload) -> Dict[str, Any]:
+    from app.dubbing import DUB_LANGUAGES, dub_environment_status
+
+    m = get_meeting(meeting_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    if not payload.consent:
+        raise HTTPException(
+            status_code=400,
+            detail="Подтвердите, что у вас есть согласие участников на клонирование их голосов.",
+        )
+    if payload.target_lang not in DUB_LANGUAGES:
+        raise HTTPException(status_code=400, detail="Этот язык не поддерживается для дубляжа")
+    if m.get("status") != "completed" or not m.get("segments"):
+        raise HTTPException(status_code=409, detail="Дубляж доступен только для полностью обработанной записи")
+    if payload.target_lang == (m.get("language") or ""):
+        raise HTTPException(status_code=400, detail="Язык перевода совпадает с языком записи")
+    if not dub_environment_status()["installed"]:
+        raise HTTPException(status_code=409, detail="Окружение дубляжа не установлено. Запустите setup_dub.bat в папке программы.")
+    if not enqueue_dub_job(meeting_id, payload.target_lang):
+        raise HTTPException(status_code=409, detail="Запись уже обрабатывается")
+    return get_meeting(meeting_id)
+
+
+def _find_dub(meeting_id: int, lang: str) -> Dict[str, Any]:
+    m = get_meeting(meeting_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    for d in m.get("dubs") or []:
+        if d.get("lang") == lang and Path(d.get("path") or "").exists():
+            return d
+    raise HTTPException(status_code=404, detail="Файл дубляжа не найден")
+
+
+@app.get("/api/meetings/{meeting_id}/dub/{lang}/file")
+def api_dub_file(meeting_id: int, lang: str) -> FileResponse:
+    d = _find_dub(meeting_id, lang)
+    target = Path(d["path"])
+    mime_type, _ = mimetypes.guess_type(str(target))
+    return FileResponse(path=str(target), media_type=mime_type or "application/octet-stream", filename=target.name)
+
+
+@app.post("/api/meetings/{meeting_id}/dub/{lang}/reveal")
+def api_dub_reveal(meeting_id: int, lang: str) -> Dict[str, Any]:
+    import subprocess
+
+    d = _find_dub(meeting_id, lang)
+    subprocess.Popen(["explorer.exe", f"/select,{Path(d['path']).resolve()}"])
+    return {"ok": True}
 
 
 @app.get("/api/meetings/{meeting_id}/peaks")

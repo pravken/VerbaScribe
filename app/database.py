@@ -65,6 +65,8 @@ def init_db() -> None:
         existing_cols = {r["name"] for r in cur.execute("PRAGMA table_info(meetings)").fetchall()}
         if "segments_backup_json" not in existing_cols:
             cur.execute("ALTER TABLE meetings ADD COLUMN segments_backup_json TEXT DEFAULT ''")
+        if "dubs_json" not in existing_cols:
+            cur.execute("ALTER TABLE meetings ADD COLUMN dubs_json TEXT DEFAULT '[]'")
 
         cur.execute(
             """
@@ -411,6 +413,56 @@ def update_meeting_fields(meeting_id: int, **fields: Any) -> None:
     events.publish({"type": "list"})
 
 
+_DUB_PATH_KEYS = ("path", "srt_path")
+
+
+def _dub_paths_to_storage(entry: Dict[str, Any]) -> Dict[str, Any]:
+    """Dub files live in the data folder; store them relative to it so moving the folder keeps them."""
+    out = dict(entry)
+    for key in _DUB_PATH_KEYS:
+        if out.get(key):
+            try:
+                out[key] = Path(out[key]).resolve().relative_to(DATA_DIR).as_posix()
+            except ValueError:
+                pass
+    return out
+
+
+def _dub_paths_from_storage(entry: Dict[str, Any]) -> Dict[str, Any]:
+    out = dict(entry)
+    for key in _DUB_PATH_KEYS:
+        if out.get(key) and not Path(out[key]).is_absolute():
+            out[key] = str(DATA_DIR / out[key])
+    return out
+
+
+def save_meeting_dub(meeting_id: int, entry: Dict[str, Any]) -> None:
+    """Stores the result of a dubbing job; a newer dub for the same language replaces the old entry."""
+    with _db_lock:
+        conn = get_connection()
+        row = conn.execute("SELECT dubs_json FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+        if row is None:
+            conn.close()
+            return
+        try:
+            dubs = json.loads(row["dubs_json"] or "[]")
+        except Exception:
+            dubs = []
+        replaced = [_dub_paths_from_storage(d) for d in dubs if d.get("lang") == entry.get("lang")]
+        dubs = [d for d in dubs if d.get("lang") != entry.get("lang")] + [_dub_paths_to_storage(entry)]
+        conn.execute("UPDATE meetings SET dubs_json = ? WHERE id = ?", (json.dumps(dubs, ensure_ascii=False), meeting_id))
+        conn.commit()
+        conn.close()
+    for old in replaced:
+        for key in ("path", "srt_path"):
+            p = Path(old.get(key) or "")
+            if p.name and p.exists() and DATA_DIR in p.resolve().parents and p.resolve() != Path(entry.get(key) or "").resolve():
+                try:
+                    p.unlink()
+                except Exception:
+                    pass
+
+
 def get_meeting(meeting_id: int) -> Optional[Dict[str, Any]]:
     with _db_lock:
         conn = get_connection()
@@ -450,8 +502,8 @@ def delete_meeting(meeting_id: int) -> bool:
     if not meeting:
         return False
 
-    for path_key in ("media_path", "audio_path"):
-        p_str = meeting.get(path_key)
+    dub_paths = [d.get(k) for d in meeting.get("dubs") or [] for k in ("path", "srt_path")]
+    for p_str in [meeting.get("media_path"), meeting.get("audio_path"), *dub_paths]:
         if p_str:
             p = Path(p_str)
             if p.exists() and DATA_DIR in p.resolve().parents:
@@ -476,9 +528,10 @@ def _deserialize_meeting(d: Dict[str, Any]) -> Dict[str, Any]:
         ("speakers_json", "speakers"),
         ("segments_json", "segments"),
         ("summaries_json", "summaries"),
+        ("dubs_json", "dubs"),
     ):
         raw = d.pop(key, None)
-        default_val = [] if target == "segments" else {}
+        default_val = [] if target in ("segments", "dubs") else {}
         if raw:
             try:
                 d[target] = json.loads(raw)
@@ -486,6 +539,7 @@ def _deserialize_meeting(d: Dict[str, Any]) -> Dict[str, Any]:
                 d[target] = default_val
         else:
             d[target] = default_val
+    d["dubs"] = [_dub_paths_from_storage(x) for x in d.get("dubs") or [] if isinstance(x, dict)]
     return d
 
 

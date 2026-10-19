@@ -26,6 +26,7 @@ Recordings and transcripts are processed and stored locally (NVIDIA GPU via CUDA
 - **Search** across all recordings.
 - **Custom vocabulary** (names, terms) passed to Whisper as hotwords.
 - **Export** to Word (`.docx`), Markdown, plain text, SRT subtitles and JSON.
+- **Translate & dub (prototype, optional)**: translates a finished recording with Ollama and re-voices it in each speaker's cloned voice over the original background. See [Translate & dub](#translate-dub).
 
 ### Requirements
 
@@ -48,6 +49,31 @@ start.bat
 
 On first launch `setup.bat` creates a Python virtual environment (`.venv`) and installs the exact package versions from `requirements.txt` (a lock file with SHA-256 hashes, generated from `requirements.in`). The app then opens a setup screen where you choose which Whisper model to download. To build the launcher yourself, run `python build_exe.py`; it uses the C# compiler bundled with the .NET Framework.
 
+<a name="translate-dub"></a>
+### Translate & dub (prototype)
+
+The **Dub** button in a recording's header translates every phrase with your local Ollama model, synthesizes it in the
+original speaker's voice with [Chatterbox Multilingual](https://github.com/resemble-ai/chatterbox) (23 languages,
+including Russian and English), keeps the music and ambience separated by [Demucs](https://github.com/adefossez/demucs),
+fits each phrase to the original timing and saves a new file to the `dubs` subfolder of the data folder (`%LOCALAPPDATA%\VerbaScribe\dubs`). It runs as a normal job in the
+processing queue, with progress and **Cancel**.
+
+- **Install once:** run `setup_dub.bat`. It creates a separate environment `.venv-dub` (~6 GB of packages); about
+  3 GB of model weights are downloaded into `models\dub\` on the first job. The separate environment is needed
+  because Chatterbox pins library versions that conflict with the main app.
+- **Requirements:** NVIDIA GPU with ~4 GB free VRAM for the TTS (measured peak 3.5 GB) plus whatever your Ollama
+  model needs during translation (the LLM is unloaded before synthesis). A 7B+ Ollama model is recommended for
+  translation quality.
+- **Speed (RTX 3090):** a 34-second clip took ~95 s on the first run (including model loading) and ~57 s warm;
+  expect roughly 1.3–1.5 minutes of processing per minute of speech. Details in [docs/dubbing.md](docs/dubbing.md).
+- **Consent and labelling:** the app asks you to confirm that the speakers agreed to having their voices cloned.
+  Output files carry `.AI-dub.<lang>.` in the name, an "AI-generated dub" notice in the file metadata, an
+  "AI dub … synthetic cloned voice" audio-track title and Chatterbox's inaudible Perth watermark. The original
+  audio is kept as a second track, and the translation is saved as `.srt` next to the file.
+- **Limitations:** no lip-sync; phrases are sped up (max 1.6×) or trimmed to fit; some accent of the source
+  language remains; overlapping speech and diarization errors are carried into the dub; translation can be
+  wrong, especially with small models.
+
 <a name="network-access"></a>
 ### Network access
 
@@ -59,6 +85,8 @@ VerbaScribe has no telemetry. It connects to the internet only for these actions
 | You download a Whisper or speaker model | Hugging Face (`huggingface.co`) |
 | You download an Ollama model | Ollama's model registry, via your local Ollama |
 | You confirm installing Ollama | winget (package `Ollama.Ollama`) |
+| You run `setup_dub.bat` (optional dubbing) | PyPI and download.pytorch.org |
+| Your first dubbing job | Hugging Face (Chatterbox and Demucs weights) |
 
 | You click **Download FFmpeg** in Settings | github.com (release `9.0.2` of `GyanD/codexffmpeg`) |
 
@@ -80,6 +108,8 @@ VerbaScribe's own code is released under the [MIT License](LICENSE). Models and 
 | Qwen 2.5 1.5B / 7B / 14B, Mistral 7B | Apache 2.0 |
 | Ollama, FastAPI, pywebview | MIT / BSD-3 |
 | FFmpeg (optional download, Gyan.dev essentials build) | GPL v3 |
+| Chatterbox Multilingual TTS (optional dubbing) | MIT |
+| Demucs `htdemucs` (optional dubbing) | MIT |
 | Inter, JetBrains Mono fonts | SIL Open Font License |
 
 Not every Qwen 2.5 size is Apache 2.0 (the 3B and 72B models use a different license). If you download other models through Ollama, check their terms.
@@ -120,6 +150,7 @@ To update Python dependencies, edit `requirements.in` and regenerate the lock (c
 - **Поиск** по всем записям.
 - **Словарь** имён и терминов, который передаётся в Whisper как hotwords.
 - **Экспорт** в Word (`.docx`), Markdown, текст, субтитры SRT и JSON.
+- **Перевод и дубляж (прототип, по желанию)**: готовая запись переводится через Ollama и озвучивается клонами голосов участников поверх исходного фона. Подробнее — в разделе [Перевод и дубляж](#дубляж).
 
 ### Требования
 
@@ -142,6 +173,30 @@ start.bat
 
 При первом запуске `setup.bat` создаёт виртуальное окружение Python (`.venv`) и ставит точные версии пакетов из `requirements.txt` (lock-файл с хешами SHA-256, собирается из `requirements.in`). Затем открывается экран настройки, где вы выбираете модель Whisper для скачивания. Чтобы собрать лаунчер самостоятельно, выполните `python build_exe.py`; он использует компилятор C# из комплекта .NET Framework.
 
+<a name="дубляж"></a>
+### Перевод и дубляж (прототип)
+
+Кнопка **Дубляж** в шапке записи переводит каждую фразу локальной моделью Ollama, озвучивает её голосом участника
+через [Chatterbox Multilingual](https://github.com/resemble-ai/chatterbox) (23 языка, в том числе русский и английский),
+сохраняет музыку и фон, отделённые [Demucs](https://github.com/adefossez/demucs), подгоняет фразы под исходный тайминг
+и записывает новый файл в подпапку `dubs` папки данных (`%LOCALAPPDATA%\VerbaScribe\dubs`). Работает как обычная задача в очереди обработки, с прогрессом и кнопкой
+**Отменить**.
+
+- **Установка один раз:** запустите `setup_dub.bat`. Он создаёт отдельное окружение `.venv-dub` (~6 ГБ пакетов);
+  ещё ~3 ГБ весов моделей скачиваются в `models\dub\` при первом дубляже. Отдельное окружение нужно, потому что
+  Chatterbox жёстко фиксирует версии библиотек, несовместимые с основным приложением.
+- **Требования:** видеокарта NVIDIA, ~4 ГБ свободной видеопамяти под синтез (замеренный пик 3,5 ГБ) плюс память под
+  модель Ollama на этапе перевода (перед синтезом LLM выгружается). Для качества перевода рекомендуется модель 7B+.
+- **Скорость (RTX 3090):** клип на 34 секунды — ~95 с при первом запуске (с загрузкой моделей) и ~57 с повторно;
+  ориентир — 1,3–1,5 минуты обработки на минуту речи. Подробности в [docs/dubbing.md](docs/dubbing.md).
+- **Согласие и маркировка:** приложение просит подтвердить, что участники согласны на клонирование голоса.
+  Итоговые файлы помечены: `.AI-dub.<язык>.` в имени, пометка «AI-generated dub» в метаданных, название аудиодорожки
+  «AI dub … synthetic cloned voice» и неслышимый водяной знак Perth от Chatterbox. Оригинальный звук сохраняется второй
+  дорожкой, перевод — рядом в `.srt`.
+- **Ограничения:** нет синхронизации губ; фразы ускоряются (до 1,6×) или обрезаются под тайминг; остаётся акцент
+  исходного языка; перебивания и ошибки диаризации переходят в дубляж; перевод может быть неточным, особенно на
+  маленьких моделях.
+
 <a name="сеть"></a>
 ### Сетевые подключения
 
@@ -153,6 +208,8 @@ start.bat
 | Вы скачиваете модель Whisper или модель спикеров | Hugging Face (`huggingface.co`) |
 | Вы скачиваете модель Ollama | Реестр моделей Ollama, через вашу локальную Ollama |
 | Вы подтверждаете установку Ollama | winget (пакет `Ollama.Ollama`) |
+| Вы запускаете `setup_dub.bat` (дубляж, по желанию) | PyPI и download.pytorch.org |
+| Первый запуск дубляжа | Hugging Face (веса Chatterbox и Demucs) |
 
 | Вы нажимаете **Скачать FFmpeg** в настройках | github.com (релиз `9.0.2` репозитория `GyanD/codexffmpeg`) |
 
