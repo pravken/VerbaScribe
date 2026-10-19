@@ -1,10 +1,14 @@
 import unittest
 
-from fastapi.testclient import TestClient
+try:
+    from fastapi.testclient import TestClient
 
-from app import main
+    from app import main
+except ImportError:  # app dependencies are not installed (e.g. in the release CI job)
+    main = None
 
 
+@unittest.skipIf(main is None, "fastapi and app dependencies not installed")
 class SessionAndSearchApiTest(unittest.TestCase):
     def _client(self, port):
         return TestClient(main.app, base_url=f"http://127.0.0.1:{port}")
@@ -30,6 +34,7 @@ class SessionAndSearchApiTest(unittest.TestCase):
             self.assertEqual(c.get("/static/app.js").headers.get("cache-control"), "no-cache")
 
 
+@unittest.skipIf(main is None, "fastapi and app dependencies not installed")
 class ConnectionResetFilterTest(unittest.TestCase):
     def test_only_proactor_connection_lost_resets_are_ignored(self):
         class Handle:
