@@ -777,11 +777,10 @@ def api_stream_media(meeting_id: int) -> FileResponse:
     if not m:
         raise HTTPException(status_code=404, detail="Встреча не найдена")
 
-    media_path = Path(m.get("media_path", ""))
-    audio_path = Path(m.get("audio_path", ""))
-
-    target = media_path if media_path.exists() else audio_path
-    if not target or not target.exists():
+    # An empty path is Path("."), the current folder: only real files count
+    candidates = [Path(p) for p in (m.get("media_path"), m.get("audio_path")) if p]
+    target = next((p for p in candidates if p.is_file()), None)
+    if target is None:
         raise HTTPException(status_code=404, detail="Медиафайл не найден")
 
     mime_type, _ = mimetypes.guess_type(str(target))

@@ -1,3 +1,4 @@
+import tests  # noqa: F401 - keeps the real user data out of reach (see tests/__init__.py)
 import unittest
 
 from app.text_utils import (
