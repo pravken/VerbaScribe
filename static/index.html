@@ -49,6 +49,18 @@
         </button>
       </div>
 
+      <!-- Models currently in video memory; click a chip to unload it (or to load it in advance) -->
+      <div id="vram-row" class="hidden space-y-1.5">
+        <div class="flex items-center gap-2" data-i18n-title="tipVramUsage" title="Видеопамять, занятая всеми программами">
+          <span class="text-[10px] font-mono text-apple-tertiary shrink-0">VRAM</span>
+          <div class="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
+            <div id="vram-bar" class="h-full bg-apple-blue/70 transition-all duration-500" style="width: 0%"></div>
+          </div>
+          <span id="vram-text" class="text-[10px] font-mono text-apple-secondary shrink-0"></span>
+        </div>
+        <div id="vram-chips" class="flex flex-wrap gap-1"></div>
+      </div>
+
       <!-- Sidebar Header Row 2: Symmetrical Record & Import Buttons -->
       <div class="grid grid-cols-2 gap-2">
         <button onclick="openRecordModal()"
@@ -481,7 +493,7 @@
            2. Top Control Row (Video Toggle, Studio Voice, Speed | Play/Skip | Volume Slider)
            3. Bottom Scrubber Row (SoundCloud Waveform Timeline)
            ===================================================================== -->
-      <footer class="border-t apple-border bg-apple-sidebar/95 apple-blur shrink-0 z-20 flex flex-col">
+      <footer id="player-footer" class="border-t apple-border bg-apple-sidebar/95 apple-blur shrink-0 z-20 flex flex-col">
 
         <!-- Attached Video Frame (Directly connected to player controls below) -->
         <div id="video-drawer" class="hidden border-b apple-border bg-black/95 py-3 px-6">
@@ -510,6 +522,12 @@
 
               <!-- Label and tooltip are set by applyVideoLayout() -->
               <button onclick="toggleVideoDrawer()" id="video-drawer-btn" class="ui-btn ui-btn-subtle hidden"></button>
+              <button onclick="toggleTheatre()" id="theatre-btn" class="ui-btn ui-btn-subtle px-2 hidden"
+                data-i18n-title="tipTheatre" title="Режим кинотеатра: большое видео и текст рядом (Esc — выход)">
+                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
+                  <rect x="2.5" y="4.5" width="19" height="15" rx="2"/><path stroke-linecap="round" d="M14.5 4.5v15"/><path stroke-linecap="round" d="M16.5 9h3M16.5 12h3M16.5 15h2"/>
+                </svg>
+              </button>
               <button onclick="toggleVideoPip()" id="video-pip-btn" class="ui-btn ui-btn-subtle px-2 hidden"
                 title="Открыть видео в отдельном окне поверх других программ">
                 <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
@@ -613,6 +631,32 @@
 
     </div>
   </main>
+
+  <!-- =========================================================================
+       THEATRE MODE: large video with the transcript beside or below it.
+       The existing <video>, the transcript pane and the player bar are moved in here
+       (like the mini preview), so playback, highlighting and click-to-seek keep working.
+       ========================================================================= -->
+  <div id="theatre" class="hidden fixed inset-0 z-40 bg-apple-bg flex flex-col">
+    <div class="h-10 px-4 flex items-center justify-between gap-3 border-b apple-border shrink-0 bg-apple-sidebar/95">
+      <div id="theatre-title" class="text-xs font-semibold text-white truncate min-w-0"></div>
+      <div class="flex items-center gap-1.5 shrink-0">
+        <div class="apple-segmented" style="height: 26px;">
+          <button onclick="setTheatreLayout('side')" id="theatre-layout-side" class="apple-segment-btn text-[11px]" data-i18n="theatreSide">Текст справа</button>
+          <button onclick="setTheatreLayout('below')" id="theatre-layout-below" class="apple-segment-btn text-[11px]" data-i18n="theatreBelow">Текст снизу</button>
+        </div>
+        <button onclick="toggleTheatreFullscreen()" id="theatre-fs-btn" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" data-i18n="theatreFullscreen">Во весь экран</button>
+        <button onclick="exitTheatre()" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" data-i18n-title="tipTheatreExit" title="Выйти из режима кинотеатра (Esc)">
+          <span data-i18n="theatreExit">Выйти</span> <kbd class="ml-1 text-[9.5px] font-mono text-apple-tertiary">Esc</kbd>
+        </button>
+      </div>
+    </div>
+    <div id="theatre-body" class="flex-1 min-h-0 flex">
+      <div id="theatre-video-slot" class="flex-1 min-w-0 min-h-0 bg-black flex items-center justify-center"></div>
+      <div id="theatre-text-slot" class="min-w-0 min-h-0 flex flex-col bg-apple-bg"></div>
+    </div>
+    <div id="theatre-footer-slot" class="shrink-0"></div>
+  </div>
 
   <!-- =========================================================================
        RIGHT-CLICK CONTEXT MENU (Sidebar Recording Items)
@@ -887,6 +931,20 @@
           <label class="flex items-start gap-2 text-[11.5px] text-white cursor-pointer">
             <input type="checkbox" id="dub-consent" onchange="updateDubStartButton()" class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
             <span data-i18n="dubConsentLabel"></span>
+          </label>
+        </div>
+
+        <!-- Noise handling for this dub (same settings as in Settings → Speech synthesis) -->
+        <div class="space-y-2">
+          <label class="flex items-start gap-2 cursor-pointer text-[11.5px] text-white">
+            <input type="checkbox" id="dub-denoise" onchange="syncDubNoiseControls('dub')" class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <span><span data-i18n="dubDenoiseLabel">Убрать шум</span>
+              <span class="block text-[10.5px] text-apple-tertiary leading-snug mt-0.5" data-i18n="dubDenoiseHint"></span></span>
+          </label>
+          <label class="flex items-start gap-2 cursor-pointer text-[11.5px] text-white">
+            <input type="checkbox" id="dub-roomtone" checked class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <span><span data-i18n="dubRoomToneLabel">Добавить к синтезированному голосу шум помещения</span>
+              <span class="block text-[10.5px] text-apple-tertiary leading-snug mt-0.5" data-i18n="dubRoomToneHint"></span></span>
           </label>
         </div>
 
@@ -1185,6 +1243,116 @@
             <input type="checkbox" id="set-auto-summary" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
             <span data-i18n="autoSummaryToggle">Автоматически создавать саммари после расшифровки</span>
           </label>
+        </div>
+
+        <!-- Section 4: Speech synthesis for the AI dub (optional .venv-dub environment) -->
+        <div id="settings-dub-section" class="pt-4 border-t apple-border space-y-3">
+          <div class="flex items-center justify-between gap-2">
+            <div>
+              <h4 class="text-xs font-semibold text-white" data-i18n="sdubTitle">4. Синтез речи (дубляж)</h4>
+              <p class="text-[11px] text-apple-secondary" data-i18n="sdubDesc">Chatterbox Multilingual (голос) и Demucs (фон) · MIT · отдельное окружение .venv-dub</p>
+            </div>
+            <span id="sdub-env-pill" class="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-white/5 text-apple-secondary shrink-0"></span>
+          </div>
+
+          <!-- Environment: status + install / repair with the same progress UI as the Dub window -->
+          <div class="rounded-xl bg-apple-sidebar border border-white/10 p-3 space-y-2">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <div class="text-xs font-semibold text-white" data-i18n="sdubEnvTitle">Окружение Python</div>
+                <div id="sdub-env-detail" class="text-[11px] text-apple-secondary mt-0.5 leading-snug break-all select-text"></div>
+              </div>
+              <div class="flex items-center gap-1.5 shrink-0">
+                <button id="sdub-verify-btn" onclick="verifyDubEnv()" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px] hidden" data-i18n="sdubVerifyBtn" data-i18n-title="tipSdubVerify" title="Проверить, что пакеты окружения загружаются">Проверить</button>
+              </div>
+            </div>
+            <div id="sdub-setup-meta" class="text-[11px] text-apple-tertiary"></div>
+            <div id="sdub-setup-progress" class="hidden space-y-1.5">
+              <div class="flex items-center justify-between gap-2 text-[11px]">
+                <span id="sdub-setup-step" class="text-apple-label truncate"></span>
+                <span id="sdub-setup-pct" class="font-mono text-apple-blue shrink-0">0%</span>
+              </div>
+              <div class="w-full h-1 bg-white/10 rounded-full overflow-hidden">
+                <div id="sdub-setup-bar" class="h-full bg-apple-blue transition-all duration-300" style="width: 0%"></div>
+              </div>
+              <div id="sdub-setup-logs" class="hidden max-h-32 overflow-y-auto font-mono text-[10px] leading-snug text-apple-secondary bg-black/30 rounded-md p-2"></div>
+            </div>
+            <div id="sdub-setup-error" class="hidden text-[11px] text-apple-red"></div>
+            <div class="flex items-center justify-end gap-2">
+              <button id="sdub-setup-logs-btn" onclick="toggleDubSetupLogs('sdub')" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px] hidden" data-i18n="logsBtn">Логи</button>
+              <button id="sdub-setup-cancel-btn" onclick="cancelDubSetup()" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px] hidden" data-i18n="cancel">Отмена</button>
+              <button id="sdub-setup-btn" onclick="startDubSetup()" class="ui-btn ui-btn-primary h-7 px-3 text-[11px]">Установить</button>
+            </div>
+          </div>
+
+          <!-- Model weights in models\dub -->
+          <div id="sdub-weights-list" class="space-y-2"></div>
+          <div id="sdub-weights-progress" class="hidden space-y-1.5">
+            <div class="flex items-center justify-between gap-2 text-[11px]">
+              <span id="sdub-weights-step" class="text-apple-label truncate"></span>
+              <div class="flex items-center gap-2 shrink-0">
+                <span id="sdub-weights-pct" class="font-mono text-apple-blue">0%</span>
+                <button onclick="cancelDubWeights()" class="ui-btn ui-btn-subtle h-6 px-2 text-[10.5px]" data-i18n="cancel">Отмена</button>
+              </div>
+            </div>
+            <div class="w-full h-1 bg-white/10 rounded-full overflow-hidden">
+              <div id="sdub-weights-bar" class="h-full bg-apple-blue transition-all duration-300" style="width: 0%"></div>
+            </div>
+          </div>
+          <div id="sdub-weights-error" class="hidden text-[11px] text-apple-red"></div>
+          <div id="sdub-disk" class="text-[11px] text-apple-tertiary leading-relaxed"></div>
+
+          <!-- Dub settings -->
+          <div class="grid grid-cols-2 gap-x-3.5 gap-y-3 pt-1">
+            <div>
+              <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="sdubWorkersLabel">Процессы синтеза</label>
+              <select id="set-dub-workers" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none">
+                <option value="auto" data-i18n="sdubWorkersAuto">Авто (по свободной VRAM)</option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+              </select>
+              <p class="text-[10.5px] text-apple-tertiary mt-1 leading-snug" data-i18n="sdubWorkersHint">Каждый процесс — ~4 ГБ VRAM. Несколько процессов озвучивают фразы параллельно: быстрее, но больше памяти.</p>
+            </div>
+            <div>
+              <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="sdubStretchLabel">Подгонка длительности</label>
+              <select id="set-dub-stretch" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none">
+                <option value="atempo">atempo (FFmpeg)</option>
+                <option value="rubberband">Rubber Band</option>
+              </select>
+              <p id="sdub-stretch-hint" class="text-[10.5px] text-apple-tertiary mt-1 leading-snug" data-i18n="sdubStretchHint">Как ускоряется фраза, не влезающая в исходный тайминг. Rubber Band звучит естественнее, но есть не во всех сборках FFmpeg.</p>
+            </div>
+            <div>
+              <label class="flex items-center justify-between text-[11px] text-apple-secondary mb-1">
+                <span data-i18n="sdubCfgLabel">Следование образцу (CFG)</span>
+                <span id="set-dub-cfg-val" class="font-mono text-apple-label">0.30</span>
+              </label>
+              <input id="set-dub-cfg" type="range" min="0" max="1" step="0.05" value="0.3" oninput="document.getElementById('set-dub-cfg-val').textContent = Number(this.value).toFixed(2)" class="volume-slider w-full" />
+              <p class="text-[10.5px] text-apple-tertiary mt-1 leading-snug" data-i18n="sdubCfgHint">Ниже — меньше акцента исходного языка и спокойнее темп; выше — точнее манера речи образца. По умолчанию 0,30.</p>
+            </div>
+            <div>
+              <label class="flex items-center justify-between text-[11px] text-apple-secondary mb-1">
+                <span data-i18n="sdubExagLabel">Выразительность</span>
+                <span id="set-dub-exag-val" class="font-mono text-apple-label">0.50</span>
+              </label>
+              <input id="set-dub-exag" type="range" min="0.25" max="1" step="0.05" value="0.5" oninput="document.getElementById('set-dub-exag-val').textContent = Number(this.value).toFixed(2)" class="volume-slider w-full" />
+              <p class="text-[10.5px] text-apple-tertiary mt-1 leading-snug" data-i18n="sdubExagHint">0,5 — нейтрально. Выше — эмоциональнее и быстрее, но чаще срывы и лишние звуки.</p>
+            </div>
+          </div>
+
+          <!-- Noise: kept or removed, for the original track and the dub -->
+          <div class="space-y-2 pt-1">
+            <label class="flex items-start gap-2 cursor-pointer text-xs text-apple-label">
+              <input type="checkbox" id="set-dub-denoise" onchange="syncDubNoiseControls('set')" class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+              <span><span data-i18n="dubDenoiseLabel">Убрать шум</span>
+                <span class="block text-[10.5px] text-apple-tertiary leading-snug mt-0.5" data-i18n="dubDenoiseHint"></span></span>
+            </label>
+            <label class="flex items-start gap-2 cursor-pointer text-xs text-apple-label">
+              <input type="checkbox" id="set-dub-roomtone" checked class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+              <span><span data-i18n="dubRoomToneLabel">Добавить к синтезированному голосу шум помещения</span>
+                <span class="block text-[10.5px] text-apple-tertiary leading-snug mt-0.5" data-i18n="dubRoomToneHint"></span></span>
+            </label>
+          </div>
         </div>
 
       </div>

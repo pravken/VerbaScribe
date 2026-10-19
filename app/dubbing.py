@@ -23,6 +23,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 from collections import deque
 from datetime import datetime
 from pathlib import Path
@@ -32,7 +33,7 @@ import httpx
 import numpy as np
 import soundfile as sf
 
-from app.audio_utils import format_timestamp, get_media_duration
+from app.audio_utils import NOISE_REDUCTION_FILTER, format_timestamp, get_media_duration
 from app.database import get_all_settings
 from app.dub_text import (
     build_dub_units,
@@ -40,6 +41,7 @@ from app.dub_text import (
     expected_speech_sec,
     has_foreign_script,
     plan_placement,
+    speech_free_gaps,
 )
 from app.ollama_client import ensure_ollama_running, get_ollama_status
 from app.paths import APP_DIR, DATA_DIR, MODELS_DIR
@@ -181,10 +183,20 @@ def translate_units(
 
 
 # ---------------------------------------------------------------- GPU worker process
+_live_lock = threading.Lock()
+_live_workers: Dict[int, str] = {}  # pid -> what the process is used for, shown in the VRAM chips
+
+
+def live_workers() -> List[Dict[str, Any]]:
+    with _live_lock:
+        items = list(_live_workers.items())
+    return [{"pid": pid, "purpose": purpose} for pid, purpose in items]
+
+
 class DubWorker:
     """Talks to app/dub_worker.py in .venv-dub. Cancelling kills the process (and frees VRAM)."""
 
-    def __init__(self, check_cancel: CancelFn):
+    def __init__(self, check_cancel: CancelFn, purpose: str = "dub"):
         if not DUB_PYTHON.exists():
             raise RuntimeError("Окружение дубляжа не установлено. Установите его в окне «Дубляж».")
         env = {
@@ -208,6 +220,8 @@ class DubWorker:
             env=env,
             creationflags=_NO_WINDOW,
         )
+        with _live_lock:
+            _live_workers[self.proc.pid] = purpose
         threading.Thread(target=self._drain_stderr, daemon=True).start()
         self._stop = threading.Event()
         threading.Thread(target=self._watch_cancel, daemon=True).start()
@@ -216,6 +230,9 @@ class DubWorker:
     def _drain_stderr(self) -> None:
         for line in self.proc.stderr:
             self._stderr.append(line.rstrip())
+        # stderr closes when the process exits, however it ended
+        with _live_lock:
+            _live_workers.pop(self.proc.pid, None)
 
     def _watch_cancel(self) -> None:
         while not self._stop.wait(0.3):
@@ -261,15 +278,10 @@ class DubWorker:
 
 
 def _free_vram_gb() -> float:
-    try:
-        import torch
+    from app.vram import gpu_memory
 
-        if torch.cuda.is_available():
-            free, _total = torch.cuda.mem_get_info(0)
-            return free / 2**30
-    except Exception:
-        pass
-    return 0.0
+    mem = gpu_memory()
+    return float(mem["free_gb"]) if mem else 0.0
 
 
 class TtsPool:
@@ -482,6 +494,52 @@ def _build_speaker_refs(units: List[Dict[str, Any]], vocals: np.ndarray, out_dir
     return refs
 
 
+def _room_tone(vocals: np.ndarray, units: List[Dict[str, Any]], total_dur: float, n: int,
+               seed: int = 0) -> Optional[np.ndarray]:
+    """
+    A noise bed of `n` samples made from the separated voice track between phrases: the mic hiss and
+    room sound that disappear when the voice is replaced by clean synthetic speech. Random pieces of
+    it are cross-faded with power-complementary windows, so the bed has no loop clicks or level dips.
+    Returns None when the recording has too little speech-free audio to learn from.
+    """
+    sr = MIX_SR
+    pieces = [vocals[int(a * sr): int(b * sr)] for a, b in speech_free_gaps(units, total_dur)]
+    pieces = [p for p in pieces if p.size]
+    if not pieces:
+        return None
+    bed = np.concatenate(pieces)
+    # Drop breaths and leftover speech: 50 ms frames well above the typical floor
+    win = int(0.05 * sr)
+    frames = bed[: bed.size // win * win].reshape(-1, win)
+    if frames.shape[0] < 20:  # under a second
+        return None
+    rms = np.sqrt((frames ** 2).mean(axis=1)) + 1e-9
+    floor = np.median(rms)
+    frames = frames[rms < floor * 2.0]
+    if frames.shape[0] < 20:
+        return None
+    bed = frames.reshape(-1).astype(np.float32)
+    if _rms(bed) < 1e-5:  # digital silence: nothing to add
+        return None
+
+    chunk = min(bed.size, int(4.0 * sr))
+    chunk -= chunk % 2
+    hop = chunk // 2
+    window = np.sqrt(np.hanning(chunk + 1)[:chunk]).astype(np.float32)  # sqrt-Hann: squares sum to 1 at 50 %
+    out = np.zeros(n + chunk, dtype=np.float32)
+    rng = np.random.default_rng(seed)
+    for pos in range(-hop, n, hop):
+        start = int(rng.integers(0, max(1, bed.size - chunk + 1)))
+        a = max(0, pos)
+        seg = bed[start: start + chunk] * window
+        out[a: pos + chunk] += seg[a - pos:]
+    return out[:n]
+
+
+def _denoise_file(src: Path, dst: Path) -> None:
+    _ffmpeg(["-i", str(src), "-af", NOISE_REDUCTION_FILTER, "-c:a", "pcm_f32le", str(dst)])
+
+
 # MP4/MKV store track languages as ISO 639-2 codes; two-letter codes are silently dropped
 _ISO639_2 = {
     "ar": "ara", "da": "dan", "de": "deu", "el": "ell", "en": "eng", "es": "spa", "fi": "fin", "fr": "fra",
@@ -526,6 +584,11 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
     # CFG weight reduces that at the cost of slightly less faithful pacing.
     cfg_weight = float(settings.get("dub_cfg_weight", "0.3"))
     exaggeration = float(settings.get("dub_exaggeration", "0.5"))
+    # "Убрать шум": steady noise is removed from the dub's background and from the original track.
+    # Otherwise the background stays as recorded and, optionally, the synthetic voice gets the
+    # recording's own noise floor (room tone) so it does not sound pasted onto the scene.
+    denoise = settings.get("dub_denoise", "false").lower() == "true"
+    room_tone = not denoise and settings.get("dub_room_tone", "true").lower() == "true"
 
     work = DUBS_DIR / f"work_meeting_{meeting['id']}_{target_lang}"
     if work.exists():
@@ -534,6 +597,15 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
     (work / "fit").mkdir(parents=True, exist_ok=True)
     stats: Dict[str, Any] = {"started": datetime.now().isoformat(timespec="seconds")}
     t_start = datetime.now()
+    # Wall time per stage, kept in the dub's stats (used to find where a long dub spends its time)
+    timing: Dict[str, float] = {}
+    stats["timing"] = timing
+    lap = [time.perf_counter()]
+
+    def _lap(name: str) -> None:
+        now = time.perf_counter()
+        timing[name] = round(timing.get(name, 0.0) + now - lap[0], 2)
+        lap[0] = now
 
     try:
         # 1. phrases + original audio
@@ -544,6 +616,7 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
         orig_wav = work / "original.wav"
         _ffmpeg(["-i", str(media), "-vn", "-ac", "2", "-ar", str(MIX_SR), "-c:a", "pcm_s16le", str(orig_wav)])
         total_dur = get_media_duration(orig_wav)
+        _lap("prepare")
 
         # 2. translation (LLM is unloaded right after, so it never shares VRAM with the TTS)
         check_cancel()
@@ -556,6 +629,7 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
         settings_now = get_all_settings()
         ollama_url = (settings_now.get("ollama_url") or "http://127.0.0.1:11434").replace("localhost", "127.0.0.1").rstrip("/")
         _unload_ollama(ollama_url, settings_now.get("ollama_model") or "")
+        _lap("translate")
 
         # 3. voice / background separation
         check_cancel()
@@ -565,7 +639,12 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
         try:
             sep = worker.call({"cmd": "separate", "input": str(orig_wav), "out_dir": str(work)})
             vocals = _read_mono(Path(sep["vocals"]), MIX_SR)
-            background, _ = sf.read(sep["background"], dtype="float32", always_2d=True)
+            bg_path = Path(sep["background"])
+            if denoise:
+                _denoise_file(bg_path, work / "background_dn.wav")
+                bg_path = work / "background_dn.wav"
+            background, _ = sf.read(str(bg_path), dtype="float32", always_2d=True)
+            _lap("separate")
             refs = _build_speaker_refs(units, vocals, work)
             if not refs:
                 raise RuntimeError("Не удалось вырезать образец голоса ни для одного участника")
@@ -577,6 +656,7 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
                 progress(20, f"Запуск {n_workers} процессов синтеза речи...")
             pool = TtsPool(worker, n_workers, check_cancel)
             stats["tts_workers"] = len(pool.workers)
+            _lap("tts_spawn")
 
             def _tts(batch: List[Dict[str, Any]], lo: int, hi: int, label: str) -> None:
                 items = [{"id": u["id"], "text": u["translation"], "lang": target_lang,
@@ -609,6 +689,7 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
             check_cancel()
             progress(22, "Загрузка Chatterbox и синтез речи голосом участника...")
             _tts(units, 22, 84, "Синтез речи")
+            _lap("tts")
 
             # 5a. measure, re-translate the clips that would need too much speed-up
             def _measure() -> None:
@@ -628,6 +709,7 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
                     u["tempo"] = (clip.size / sr) / u["room"]
 
             _measure()
+            _lap("measure")
             # Audio much longer than its text needs is a TTS glitch (rambling, long pauses):
             # generate the same text once more instead of shortening the translation
             bloated = [u for u in units if u["bloat"] > BLOAT_RESYNTH and u["tempo"] > 1.0]
@@ -637,6 +719,7 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
                 progress(85, f"Повторный синтез {len(bloated)} неудачных фраз...")
                 _tts(bloated, 85, 88, "Повторный синтез")
                 _measure()
+                _lap("resynth")
             too_long = [u for u in units if u["tempo"] > TEMPO_RETRANSLATE and u["bloat"] <= BLOAT_RESYNTH]
             stats["retranslated"] = len(too_long)
             if too_long:
@@ -650,6 +733,7 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
                 _unload_ollama(ollama_url, model)
                 _tts(too_long, 89, 91, "Синтез сокращённых фраз")
                 _measure()
+                _lap("shorten")
         finally:
             if pool is not None:
                 pool.close()
@@ -691,12 +775,19 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
             seg = clip[: max(0, n - a)] * g
             voice[a : a + seg.size] += seg
 
+        if room_tone:
+            bed = _room_tone(vocals, units, total_dur, n)
+            stats["room_tone_db"] = round(20 * np.log10(_rms(bed) + 1e-9), 1) if bed is not None else None
+            if bed is not None:
+                voice += bed
+        stats["denoise"] = denoise
         mix = background + voice[:, None]
         peak = float(np.abs(mix).max())
         if peak > 0.98:
             mix *= 0.98 / peak
         dub_wav = work / "dub_mix.wav"
         sf.write(str(dub_wav), mix.astype(np.float32), MIX_SR)
+        _lap("fit_mix")
 
         # 7. mux into a clearly labelled output file
         check_cancel()
@@ -723,12 +814,16 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
             "-disposition:a:0", "default",
         ]
         if keep_original:
-            args += [*_track_tags(1, src_lang, "Original"), "-disposition:a:1", "0"]
+            title = "Original (noise reduced)" if denoise else "Original"
+            args += [*_track_tags(1, src_lang, title), "-disposition:a:1", "0"]
+            if denoise:
+                args += ["-filter:a:1", NOISE_REDUCTION_FILTER]
         if ext == ".mp4":
             args += ["-movflags", "+faststart"]
         _ffmpeg(args + [str(out_path)])
         srt_path = out_path.with_suffix(".srt")
         _write_srt(units, srt_path)
+        _lap("mux")
 
         stats.update({
             "units": len(units),

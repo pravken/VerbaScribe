@@ -1,7 +1,7 @@
 """Splits diarized segments into short phrases for dubbing. Pure Python, so it is unit-testable in CI."""
 
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 UNIT_MAX_SEC = 12.0      # Chatterbox degrades on very long inputs; keep phrases short
 UNIT_PAUSE_SPLIT = 0.6   # a pause this long always starts a new phrase
@@ -124,3 +124,24 @@ def choose_tts_workers(setting: str, free_vram_gb: float, cpu_count: int) -> int
     by_vram = int(max(0.0, free_vram_gb - 1.0) // TTS_WORKER_VRAM_GB)
     by_cpu = max(1, (cpu_count or 1) // 4)
     return max(1, min(TTS_MAX_WORKERS, by_vram, by_cpu))
+
+
+# ---------------------------------------------------------------- room tone
+def speech_free_gaps(
+    units: List[Dict[str, Any]], total_dur: float, margin: float = 0.15, min_len: float = 0.25
+) -> List[Tuple[float, float]]:
+    """
+    Stretches of the recording with no phrase (with `margin` seconds kept clear around each phrase),
+    at least `min_len` long. The separated voice track there holds only the room tone and mic noise
+    that is lost when the voice is replaced, so it is used to give the synthetic voice the same floor.
+    """
+    spans = sorted((max(0.0, float(u["start"]) - margin), float(u["end"]) + margin) for u in units)
+    gaps: List[Tuple[float, float]] = []
+    cursor = 0.0
+    for a, b in spans:
+        if a - cursor >= min_len:
+            gaps.append((cursor, a))
+        cursor = max(cursor, b)
+    if float(total_dur) - cursor >= min_len:
+        gaps.append((cursor, float(total_dur)))
+    return gaps

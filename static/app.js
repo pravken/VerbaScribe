@@ -115,6 +115,7 @@ function formatTime(sec) {
 function openModal(name) {
   document.getElementById(`modal-${name}`).classList.remove('hidden');
   if (name === 'settings') {
+    loadDubInfo();
     populateAudioInputDevices();
     refreshExportDirLabel();
     setTimeout(() => drawIdleSoundCloudBars('settings-waveform-canvas'), 30);
@@ -381,6 +382,7 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     }
     document.getElementById('set-ollama-model').value = s.ollama_model || 'qwen2.5:7b';
     document.getElementById('set-auto-summary').checked = s.auto_summary !== 'false';
+    fillDubSettings(s);
 
     const srcMode = s.record_source_mode || 'both';
     if (document.getElementById('set-record-source')) {
@@ -409,6 +411,96 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     }
   } catch (e) {
     console.error(e);
+  }
+}
+
+// --- Models in VRAM: chips under the GPU badge (unload on click, or load in advance) ---
+const vram = { timer: null, busy: false, data: null };
+const VRAM_POLL_MS = 5000;
+
+function scheduleVramRefresh(delay = VRAM_POLL_MS) {
+  clearTimeout(vram.timer);
+  vram.timer = setTimeout(loadVram, delay);
+}
+
+async function loadVram() {
+  try {
+    const res = await fetch('/api/vram');
+    if (res.ok) renderVram(await res.json());
+  } catch (e) {
+    // the server may be restarting; try again later
+  } finally {
+    scheduleVramRefresh(document.hidden ? VRAM_POLL_MS * 4 : VRAM_POLL_MS);
+  }
+}
+
+function vramChipLabel(c) {
+  if (c.kind === 'dub') return `${t('vramChipDub')}${c.count > 1 ? ' ×' + c.count : ''}`;
+  if (c.kind === 'speakers') return t('vramChipSpeakers');
+  if (c.kind === 'ollama') return `${c.label || c.name}${c.size_gb ? ' · ' + c.size_gb + ' ' + t('unitGB') : ''}`;
+  return c.name;
+}
+
+function vramChipTitle(c) {
+  if (c.kind === 'dub') return t('tipVramDub');
+  if (c.loaded) return c.can_unload ? t('tipVramUnload').replace('{name}', vramChipLabel(c)) : t('tipVramInUse');
+  return c.can_preload ? t('tipVramPreload').replace('{name}', vramChipLabel(c)) : t('tipVramNotLoaded');
+}
+
+function renderVram(data) {
+  vram.data = data;
+  const row = document.getElementById('vram-row');
+  const gpu = data.gpu;
+  row.classList.toggle('hidden', !gpu);
+  if (!gpu) return;
+  document.getElementById('vram-text').textContent = `${gpu.used_gb} / ${gpu.total_gb} ${t('unitGB')}`;
+  document.getElementById('vram-bar').style.width = `${Math.min(100, (100 * gpu.used_gb) / Math.max(1, gpu.total_gb))}%`;
+  row.firstElementChild.title = t('tipVramUsage').replace('{free}', gpu.free_gb);
+
+  const chips = (data.chips || []).filter(c => c.loaded || c.can_preload);
+  const html = chips.map((c, i) => {
+    const actionable = vram.busy ? false : (c.loaded ? c.can_unload : c.can_preload);
+    const cls = c.loaded
+      ? (c.kind === 'dub' ? 'bg-apple-amber/15 text-apple-amber border-apple-amber/30' : 'bg-apple-green/15 text-apple-green border-apple-green/30')
+      : 'bg-transparent text-apple-tertiary border-white/15 border-dashed';
+    const icon = c.loaded
+      ? (actionable ? '<span class="opacity-60 group-hover:opacity-100">×</span>' : '')
+      : (actionable ? '<span class="opacity-70 group-hover:opacity-100">↑</span>' : '');
+    return `<button data-i="${i}" onclick="vramChipClick(this.dataset.i)" ${actionable || c.kind === 'dub' ? '' : 'disabled'}
+      title="${escapeHtml(vramChipTitle(c))}"
+      class="group max-w-full inline-flex items-center gap-1 px-1.5 h-5 rounded-full border text-[10px] font-medium transition ${cls} ${actionable ? 'hover:bg-white/10' : 'cursor-default'}">
+      <span class="w-1.5 h-1.5 rounded-full shrink-0 ${c.loaded ? 'bg-current' : 'border border-current'}"></span>
+      <span class="truncate">${escapeHtml(vramChipLabel(c))}</span>${icon}</button>`;
+  }).join('');
+  // Unchanged chips are left alone, so a refresh never swallows a click
+  const box = document.getElementById('vram-chips');
+  if (html !== vram.html) { box.innerHTML = html; vram.html = html; }
+  vram.chips = chips;
+}
+
+async function vramChipClick(index) {
+  const c = (vram.chips || [])[Number(index)];
+  if (!c || vram.busy) return;
+  if (c.kind === 'dub') { showToast(t('tipVramDub')); return; }
+  const action = c.loaded ? 'unload' : 'preload';
+  if (action === 'unload' && !c.can_unload) return;
+  if (action === 'preload' && !c.can_preload) return;
+  vram.busy = true;
+  renderVram(vram.data);
+  showToast(t(action === 'unload' ? 'vramUnloading' : 'vramPreloading').replace('{name}', vramChipLabel(c)));
+  try {
+    const res = await fetch(`/api/vram/${action}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: c.kind, name: c.name || '' }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) showToast(data.detail || 'Error');
+    else renderVram(data);
+  } catch (e) {
+    console.error(e);
+  } finally {
+    vram.busy = false;
+    // Whisper is loaded by the job worker in the background: look again shortly
+    scheduleVramRefresh(action === 'preload' ? 1500 : 300);
   }
 }
 
@@ -792,6 +884,7 @@ async function saveAllSettings() {
       auto_summary: String(document.getElementById('set-auto-summary').checked),
       record_source_mode: document.getElementById('set-record-source')?.value || 'both',
       record_mic_device: document.getElementById('set-record-mic')?.value || '',
+      ...dubSettingsPayload(),
     }
   };
   // Close the modal immediately so the user is never blocked by background downloads
@@ -1100,7 +1193,7 @@ function handleLiveEvent(ev) {
     return;
   }
   if (ev.type === 'list') { scheduleListReload(); return; }
-  if (ev.type === 'queue') { scheduleQueueReload(); return; }
+  if (ev.type === 'queue') { scheduleQueueReload(); scheduleVramRefresh(800); return; }
   if (ev.type !== 'progress') return;
 
   const m = state.meetings.find(x => x.id === ev.id);
@@ -1443,11 +1536,14 @@ async function openDubModal() {
   const m = state.activeMeeting;
   if (!m) return;
   document.getElementById('dub-consent').checked = false;
+  const ds = (state.system && state.system.settings) || {};
+  document.getElementById('dub-denoise').checked = ds.dub_denoise === 'true';
+  document.getElementById('dub-roomtone').checked = ds.dub_room_tone !== 'false';
+  syncDubNoiseControls('dub');
 
   let env = { installed: false, languages: Object.keys(I18N.ru.dubLangNames) };
   try { env = await (await fetch('/api/dub/status')).json(); } catch (e) { console.error(e); }
-  state.dubEnvInstalled = !!env.installed;
-  renderDubSetup(env);
+  renderDubSetup(env, 'dub');
   if (env.setup && env.setup.active) pollDubSetup();
 
   const srcLang = m.language || '';
@@ -1470,46 +1566,53 @@ async function openDubModal() {
   openModal('dub');
 }
 
-// Optional dubbing environment (.venv-dub): installed from this window on request
-function renderDubSetup(env) {
-  const panel = document.getElementById('dub-env-panel');
+// Optional dubbing environment (.venv-dub): installed on request from the Dub window ('dub') or
+// from Settings → Speech synthesis ('sdub'); both show the same setup state
+function renderDubSetup(env, prefix = 'dub') {
+  const el = (id) => document.getElementById(`${prefix}-${id}`);
+  if (!el('setup-btn')) return;
   const st = env.setup || {};
   state.dubSetup = st;
-  panel.classList.toggle('hidden', !!env.installed);
-  if (env.installed) return;
+  state.dubEnvInstalled = !!env.installed;
+  if (prefix === 'dub') {
+    document.getElementById('dub-env-panel').classList.toggle('hidden', !!env.installed);
+    if (env.installed) return;
+  }
 
   const meta = [t('dubSetupSize').replace('{gb}', st.download_gb ?? 6)];
   if (st.free_gb != null) meta.push(t('dubSetupFree').replace('{gb}', st.free_gb));
-  document.getElementById('dub-setup-meta').textContent = meta.join(' · ');
+  el('setup-meta').textContent = env.installed && !st.active ? '' : meta.join(' · ');
 
   const logs = st.logs || [];
-  document.getElementById('dub-setup-progress').classList.toggle('hidden', !st.active && !logs.length);
-  document.getElementById('dub-setup-step').textContent =
-    st.active ? (t('dubSetupStep_' + st.step) || '') : (st.error ? t('dubSetupFailed') : '');
-  document.getElementById('dub-setup-pct').textContent = `${st.progress || 0}%`;
-  document.getElementById('dub-setup-bar').style.width = `${st.progress || 0}%`;
-  const logsBox = document.getElementById('dub-setup-logs');
+  el('setup-progress').classList.toggle('hidden', !st.active && !logs.length);
+  el('setup-step').textContent =
+    st.active ? (t('dubSetupStep_' + st.step) || '') : (st.error ? t('dubSetupFailed') : (st.done ? t('dubSetupDone') : ''));
+  el('setup-pct').textContent = `${st.progress || 0}%`;
+  el('setup-bar').style.width = `${st.progress || 0}%`;
+  const logsBox = el('setup-logs');
   logsBox.innerHTML = logs.map(l => `<div>${escapeHtml(l)}</div>`).join('');
   logsBox.scrollTop = logsBox.scrollHeight;
 
-  const errBox = document.getElementById('dub-setup-error');
+  const errBox = el('setup-error');
   errBox.textContent = st.error || '';
   errBox.classList.toggle('hidden', !st.error);
 
-  const btn = document.getElementById('dub-setup-btn');
-  btn.textContent = st.error ? t('dubSetupRetry') : t('dubSetupBtn');
+  const btn = el('setup-btn');
+  btn.textContent = env.installed ? t('sdubRepairBtn') : (st.error ? t('dubSetupRetry') : t('dubSetupBtn'));
+  btn.title = env.installed ? t('tipSdubRepair') : '';
+  btn.className = `ui-btn ${env.installed ? 'ui-btn-subtle' : 'ui-btn-primary'} h-7 px-3 text-[11px]`;
   btn.classList.toggle('hidden', !!st.active);
-  document.getElementById('dub-setup-cancel-btn').classList.toggle('hidden', !st.active);
-  document.getElementById('dub-setup-logs-btn').classList.toggle('hidden', !logs.length);
+  el('setup-cancel-btn').classList.toggle('hidden', !st.active);
+  el('setup-logs-btn').classList.toggle('hidden', !logs.length);
 }
 
-function toggleDubSetupLogs() {
-  document.getElementById('dub-setup-logs').classList.toggle('hidden');
+function toggleDubSetupLogs(prefix = 'dub') {
+  document.getElementById(`${prefix}-setup-logs`).classList.toggle('hidden');
 }
 
 async function startDubSetup() {
   const st = state.dubSetup || {};
-  const question = t('dubSetupConfirm')
+  const question = (state.dubEnvInstalled ? t('sdubRepairConfirm') : t('dubSetupConfirm'))
     .replace('{gb}', st.download_gb ?? 6)
     .replace('{dir}', st.venv || '.venv-dub');
   if (!confirm(question)) return;
@@ -1519,10 +1622,14 @@ async function startDubSetup() {
   if (!res || !res.ok) {
     // e.g. an older server process is still running behind this window
     const code = res ? res.status : 0;
-    renderDubSetup({ installed: false, setup: { ...st, active: false, error: t('dubSetupRequestFailed').replace('{code}', code || '—') } });
+    const failed = { installed: false, setup: { ...st, active: false, error: t('dubSetupRequestFailed').replace('{code}', code || '—') } };
+    renderDubSetup(failed, 'dub');
+    renderDubSetup(failed, 'sdub');
     return;
   }
-  renderDubSetup({ installed: false, setup });
+  const env = { installed: false, setup };
+  renderDubSetup(env, 'dub');
+  renderDubSetup(env, 'sdub');
   if (setup.active) pollDubSetup();
 }
 
@@ -1537,11 +1644,12 @@ async function pollDubSetup() {
     for (;;) {
       await new Promise(r => setTimeout(r, 1500));
       const env = await (await fetch('/api/dub/status')).json();
-      state.dubEnvInstalled = !!env.installed;
-      renderDubSetup(env);
+      renderDubSetup(env, 'dub');
+      renderDubSetup(env, 'sdub');
       updateDubStartButton();
       if (!env.setup || !env.setup.active) {
         if (env.installed) showToast(t('dubSetupDone'));
+        loadDubInfo();
         break;
       }
     }
@@ -1550,6 +1658,181 @@ async function pollDubSetup() {
   } finally {
     state.dubSetupPolling = false;
   }
+}
+
+// --- Settings → Speech synthesis (dub): environment, weights, disk usage, options ---
+function formatBytes(n) {
+  if (n == null) return '…';
+  if (n >= 1e9) return `${(n / 1e9).toFixed(1)} ${t('unitGB')}`;
+  if (n >= 1e6) return `${Math.round(n / 1e6)} ${t('unitMB')}`;
+  return `${Math.round(n / 1e3)} ${t('unitKB')}`;
+}
+
+async function loadDubInfo() {
+  try {
+    const res = await fetch('/api/dub/info');
+    if (!res.ok) return;
+    renderDubInfo(await res.json());
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function renderDubInfo(info) {
+  state.dubInfo = info;
+  const st = info.setup || {};
+  const pill = document.getElementById('sdub-env-pill');
+  const [pillText, pillCls] = st.active ? [t('sdubPillInstalling'), 'bg-apple-blue/15 text-apple-blue']
+    : info.installed ? [t('sdubPillReady'), 'bg-apple-green/15 text-apple-green']
+    : info.venv_exists ? [t('sdubPillBroken'), 'bg-apple-amber/15 text-apple-amber']
+    : [t('sdubPillMissing'), 'bg-white/5 text-apple-secondary'];
+  pill.textContent = pillText;
+  pill.className = `text-[10px] font-mono px-2.5 py-0.5 rounded-full shrink-0 ${pillCls}`;
+
+  const detail = [info.venv];
+  if (info.verified) detail.push(info.verified.replace(/^Verified/, t('sdubVerifiedAt')));
+  else if (info.venv_exists) detail.push(t('sdubNotVerified'));
+  else detail.push(t('sdubNotInstalled'));
+  document.getElementById('sdub-env-detail').textContent = detail.join(' · ');
+  document.getElementById('sdub-verify-btn').classList.toggle('hidden', !info.venv_exists || !!st.active);
+  renderDubSetup(info, 'sdub');
+
+  // Model weights
+  const w = info.weights || { items: [], download: {} };
+  const dl = w.download || {};
+  const busy = !!dl.active || !!info.dub_running;
+  document.getElementById('sdub-weights-list').innerHTML = w.items.map(item => {
+    const downloading = dl.active && (dl.models || []).includes(item.id);
+    let action;
+    if (downloading) {
+      action = `<span class="ui-btn bg-apple-blue/20 text-apple-blue font-mono animate-pulse">${dl.progress || 1}%</span>`;
+    } else if (item.installed) {
+      action = `<span class="ui-btn bg-apple-green/20 text-apple-green">${SVG_ICONS.check}<span>${escapeHtml(t('sdubWeightsReady'))}</span></span>
+        <button data-id="${escapeHtml(item.id)}" onclick="deleteDubWeights(this.dataset.id)" ${busy ? 'disabled style="opacity:.4"' : ''}
+          title="${escapeHtml(t('tipDeleteModel'))}" class="ui-btn ui-btn-subtle px-2 hover:text-apple-red">${SVG_ICONS.trash}</button>`;
+    } else {
+      action = `<button data-id="${escapeHtml(item.id)}" onclick="downloadDubWeights([this.dataset.id])" ${busy || !info.installed ? 'disabled style="opacity:.4"' : ''}
+          title="${escapeHtml(info.installed ? t('tipDownloadModel') : t('sdubNeedEnv'))}" class="ui-btn ui-btn-primary">${SVG_ICONS.download}<span>${escapeHtml(t('downloadBtn'))} (${escapeHtml(formatBytes(item.expected_bytes))})</span></button>`;
+    }
+    const size = item.size_bytes ? formatBytes(item.size_bytes) : t('sdubNotDownloaded');
+    return `<div class="p-3 rounded-xl border bg-apple-sidebar border-white/10 flex items-center justify-between gap-3">
+      <div class="min-w-0">
+        <div class="flex items-center flex-wrap gap-2">
+          <span class="text-xs font-semibold text-white">${escapeHtml(item.name)}</span>
+          <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-apple-secondary">${escapeHtml(item.license)}</span>
+          <span class="text-[10px] text-apple-tertiary">${escapeHtml(size)}</span>
+        </div>
+        <p class="text-[11.5px] text-apple-secondary mt-1 leading-snug">${escapeHtml(t('sdubWeightDesc_' + item.id))}</p>
+      </div>
+      <div class="shrink-0 flex items-center gap-1.5">${action}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('sdub-weights-progress').classList.toggle('hidden', !dl.active);
+  if (dl.active) {
+    document.getElementById('sdub-weights-step').textContent = t('sdubWeightsDownloading');
+    document.getElementById('sdub-weights-pct').textContent = `${dl.progress || 0}%`;
+    document.getElementById('sdub-weights-bar').style.width = `${dl.progress || 0}%`;
+  }
+  const err = document.getElementById('sdub-weights-error');
+  err.textContent = info.error || dl.error || '';
+  err.classList.toggle('hidden', !(info.error || dl.error));
+
+  const d = info.disk || {};
+  document.getElementById('sdub-disk').textContent = t('sdubDisk')
+    .replace('{env}', formatBytes(d.env_bytes))
+    .replace('{weights}', formatBytes(d.weights_bytes))
+    .replace('{outputs}', formatBytes(d.outputs_bytes))
+    .replace('{free}', formatBytes(d.free_bytes));
+
+  // Rubber Band is only offered when this FFmpeg build has the filter
+  const rb = document.querySelector('#set-dub-stretch option[value="rubberband"]');
+  rb.disabled = !info.rubberband;
+  rb.textContent = info.rubberband ? 'Rubber Band' : `Rubber Band — ${t('sdubNoRubberband')}`;
+  clearTimeout(state.dubInfoTimer);
+  const modalOpen = !document.getElementById('modal-settings').classList.contains('hidden');
+  if (dl.active && modalOpen) state.dubInfoTimer = setTimeout(loadDubInfo, 1500);
+}
+
+async function downloadDubWeights(ids) {
+  const items = ((state.dubInfo && state.dubInfo.weights && state.dubInfo.weights.items) || [])
+    .filter(i => !i.installed && (!ids || ids.includes(i.id)));
+  if (!items.length) return;
+  const total = items.reduce((a, i) => a + (i.expected_bytes || 0), 0);
+  const question = t('sdubDownloadConfirm')
+    .replace('{names}', items.map(i => i.name).join(', '))
+    .replace('{size}', formatBytes(total))
+    .replace('{dir}', state.dubInfo.weights.dir);
+  if (!confirm(question)) return;
+  const res = await fetch('/api/dub/weights/download', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ models: items.map(i => i.id) }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (data.error) showToast(data.error);
+  loadDubInfo();
+}
+
+async function cancelDubWeights() {
+  await fetch('/api/dub/weights/cancel', { method: 'POST' });
+  loadDubInfo();
+}
+
+async function deleteDubWeights(id) {
+  const item = ((state.dubInfo && state.dubInfo.weights.items) || []).find(i => i.id === id);
+  if (!item || !confirm(t('sdubDeleteConfirm').replace('{name}', item.name).replace('{size}', formatBytes(item.size_bytes)))) return;
+  const res = await fetch(`/api/dub/weights/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  const data = await res.json().catch(() => ({}));
+  if (data.error) showToast(data.error);
+  loadDubInfo();
+}
+
+async function verifyDubEnv() {
+  const btn = document.getElementById('sdub-verify-btn');
+  btn.disabled = true;
+  btn.textContent = t('sdubVerifying');
+  try {
+    const res = await fetch('/api/dub/verify', { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    showToast(res.ok ? (data.ok ? t('sdubVerifyOk') : t('sdubVerifyFailed')) : (data.detail || 'Error'));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = t('sdubVerifyBtn');
+    loadDubInfo();
+  }
+}
+
+// "Remove noise" makes room tone pointless (it would add the noise back), so it is disabled then
+function syncDubNoiseControls(prefix) {
+  const denoise = document.getElementById(prefix === 'set' ? 'set-dub-denoise' : 'dub-denoise');
+  const room = document.getElementById(prefix === 'set' ? 'set-dub-roomtone' : 'dub-roomtone');
+  if (!denoise || !room) return;
+  room.disabled = denoise.checked;
+  room.closest('label').style.opacity = denoise.checked ? '0.45' : '';
+}
+
+function fillDubSettings(s) {
+  const val = (k, d) => (s[k] == null || s[k] === '' ? d : s[k]);
+  document.getElementById('set-dub-workers').value = val('dub_tts_workers', 'auto');
+  document.getElementById('set-dub-stretch').value = val('dub_stretch', 'atempo');
+  const cfg = Number(val('dub_cfg_weight', '0.3'));
+  const exag = Number(val('dub_exaggeration', '0.5'));
+  document.getElementById('set-dub-cfg').value = cfg;
+  document.getElementById('set-dub-cfg-val').textContent = cfg.toFixed(2);
+  document.getElementById('set-dub-exag').value = exag;
+  document.getElementById('set-dub-exag-val').textContent = exag.toFixed(2);
+  document.getElementById('set-dub-denoise').checked = val('dub_denoise', 'false') === 'true';
+  document.getElementById('set-dub-roomtone').checked = val('dub_room_tone', 'true') === 'true';
+  syncDubNoiseControls('set');
+}
+
+function dubSettingsPayload() {
+  return {
+    dub_tts_workers: document.getElementById('set-dub-workers').value,
+    dub_stretch: document.getElementById('set-dub-stretch').value,
+    dub_cfg_weight: String(document.getElementById('set-dub-cfg').value),
+    dub_exaggeration: String(document.getElementById('set-dub-exag').value),
+    dub_denoise: String(document.getElementById('set-dub-denoise').checked),
+    dub_room_tone: String(document.getElementById('set-dub-roomtone').checked),
+  };
 }
 
 function updateDubStartButton() {
@@ -1575,7 +1858,8 @@ function renderDubResults() {
     const lang = encodeURIComponent(d.lang);
     const src = `/api/meetings/${m.id}/dub/${lang}/file`;
     const s = d.stats || {};
-    const meta = [d.created_at, s.units ? `${s.units} ${t('dubPhrases')}` : '', s.elapsed_sec ? `${Math.round(s.elapsed_sec)} ${t('dubSec')}` : '']
+    const meta = [d.created_at, s.units ? `${s.units} ${t('dubPhrases')}` : '', s.elapsed_sec ? `${Math.round(s.elapsed_sec)} ${t('dubSec')}` : '',
+      s.denoise ? t('dubMetaDenoised') : (s.room_tone_db != null ? t('dubMetaRoomTone') : '')]
       .filter(Boolean).join(' · ');
     return `<div class="rounded-lg bg-white/[0.03] border apple-border p-2.5 space-y-2">
       <div class="flex items-center justify-between gap-2">
@@ -1596,6 +1880,15 @@ function renderDubResults() {
 async function startDub() {
   const m = state.activeMeeting;
   if (!m) return;
+  // The noise options are remembered as settings (also editable in Settings → Speech synthesis)
+  const noise = {
+    dub_denoise: String(document.getElementById('dub-denoise').checked),
+    dub_room_tone: String(document.getElementById('dub-roomtone').checked),
+  };
+  try {
+    await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: noise }) });
+    if (state.system && state.system.settings) Object.assign(state.system.settings, noise);
+  } catch (e) { console.error(e); }
   const res = await fetch(`/api/meetings/${m.id}/dub`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -3069,15 +3362,21 @@ function applyVideoLayout() {
   const pipBtn = document.getElementById('video-pip-btn');
   if (!player || !drawer) return;
 
-  const mode = state.hasVideo ? state.videoMode : 'none';
+  // In theatre mode the video stays in the theatre even while a new source (audio track) loads
+  const mode = state.theatre ? 'theatre' : (state.hasVideo ? state.videoMode : 'none');
   drawer.classList.toggle('hidden', mode !== 'expanded');
   miniSlot.classList.toggle('hidden', mode !== 'mini');
   // Moving the element synchronously keeps playback running
-  const target = mode === 'mini' ? miniSlot : expandedSlot;
+  const target = mode === 'mini' ? miniSlot : mode === 'theatre' ? document.getElementById('theatre-video-slot') : expandedSlot;
   if (player.parentElement !== target) target.prepend(player);
-  player.className = mode === 'mini' ? VIDEO_CLASS_MINI : VIDEO_CLASS_EXPANDED;
+  player.className = mode === 'mini' ? VIDEO_CLASS_MINI : mode === 'theatre' ? VIDEO_CLASS_THEATRE : VIDEO_CLASS_EXPANDED;
+  const theatreBtn = document.getElementById('theatre-btn');
+  theatreBtn.classList.toggle('hidden', !state.hasVideo && !state.theatre);
+  theatreBtn.classList.toggle('ui-btn-active', !!state.theatre);
+  theatreBtn.classList.toggle('ui-btn-subtle', !state.theatre);
+  theatreBtn.title = t(state.theatre ? 'tipTheatreExit' : 'tipTheatre');
 
-  btn.classList.toggle('hidden', !state.hasVideo);
+  btn.classList.toggle('hidden', !state.hasVideo || !!state.theatre);
   if (state.hasVideo) {
     const expanded = mode === 'expanded';
     btn.innerHTML = `${expanded ? VIDEO_ICONS.collapse : VIDEO_ICONS.expand}<span>${escapeHtml(t(expanded ? 'videoCollapse' : 'videoExpand'))}</span>`;
@@ -3090,6 +3389,120 @@ function applyVideoLayout() {
   pipBtn.classList.toggle('ui-btn-subtle', !inPip);
   pipBtn.title = t(inPip ? 'tipVideoPipExit' : 'tipVideoPip');
 }
+
+// --- Theatre mode: large video with the transcript beside or below it ---
+// The video element, the transcript pane and the player bar are moved into #theatre and back, so
+// playback, live highlighting and click-to-seek keep working unchanged.
+const VIDEO_CLASS_THEATRE = 'max-w-full max-h-full w-full h-full object-contain bg-black cursor-pointer';
+const theatre = { home: {} };
+
+function theatreLayout() {
+  try { return localStorage.getItem('verbascribe_theatre_layout') === 'below' ? 'below' : 'side'; } catch (e) { return 'side'; }
+}
+
+function setTheatreLayout(layout) {
+  try { localStorage.setItem('verbascribe_theatre_layout', layout === 'below' ? 'below' : 'side'); } catch (e) {}
+  applyTheatreLayout();
+}
+
+function applyTheatreLayout() {
+  const layout = theatreLayout();
+  const below = layout === 'below';
+  document.getElementById('theatre-body').className = `flex-1 min-h-0 flex ${below ? 'flex-col' : 'flex-row'}`;
+  document.getElementById('theatre-video-slot').className =
+    `${below ? 'h-[58%] w-full' : 'flex-1 min-w-0'} min-h-0 bg-black flex items-center justify-center shrink-0`;
+  document.getElementById('theatre-text-slot').className =
+    `${below ? 'flex-1 w-full border-t' : 'w-[38%] min-w-[320px] max-w-[640px] border-l'} apple-border min-h-0 flex flex-col bg-apple-bg`;
+  ['side', 'below'].forEach(k => {
+    document.getElementById(`theatre-layout-${k}`).className =
+      `apple-segment-btn text-[11px] ${k === layout ? 'apple-segment-active' : 'text-apple-secondary hover:text-white'}`;
+  });
+  redrawAfterLayoutChange();
+}
+
+function redrawAfterLayoutChange() {
+  requestAnimationFrame(() => {
+    const player = document.getElementById('media-player');
+    const dur = player.duration || (state.activeMeeting && state.activeMeeting.duration) || 1;
+    renderPlayerWaveform((player.currentTime || 0) / dur);
+    const active = _playbackIndex.activeSeg;
+    if (active) active.scrollIntoView({ block: 'center' });
+  });
+}
+
+// Moves `el` into `target`, leaving a placeholder so it can go back to exactly the same place
+function moveIntoTheatre(key, el, target) {
+  const marker = document.createComment(`theatre:${key}`);
+  el.parentNode.insertBefore(marker, el);
+  theatre.home[key] = { marker, wasHidden: el.classList.contains('hidden') };
+  target.appendChild(el);
+}
+
+function moveBackFromTheatre(key, el) {
+  const home = theatre.home[key];
+  if (!home) return;
+  home.marker.parentNode.insertBefore(el, home.marker);
+  home.marker.remove();
+  el.classList.toggle('hidden', home.wasHidden);
+  delete theatre.home[key];
+}
+
+function toggleTheatre() {
+  if (state.theatre) exitTheatre();
+  else enterTheatre();
+}
+
+function enterTheatre() {
+  if (state.theatre || !state.hasVideo || !state.activeMeeting) return;
+  state.theatre = true;
+  if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
+  document.getElementById('theatre-title').textContent = state.activeMeeting.title || '';
+  const pane = document.getElementById('wview-transcript');
+  moveIntoTheatre('pane', pane, document.getElementById('theatre-text-slot'));
+  pane.classList.remove('hidden');
+  moveIntoTheatre('footer', document.getElementById('player-footer'), document.getElementById('theatre-footer-slot'));
+  document.getElementById('theatre').classList.remove('hidden');
+  applyVideoLayout();
+  applyTheatreLayout();
+}
+
+function exitTheatre() {
+  if (!state.theatre) return;
+  state.theatre = false;
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  document.getElementById('theatre').classList.add('hidden');
+  moveBackFromTheatre('footer', document.getElementById('player-footer'));
+  moveBackFromTheatre('pane', document.getElementById('wview-transcript'));
+  // The workspace tab may have changed meanwhile; the pane follows the current tab
+  document.getElementById('wview-transcript').classList.toggle('hidden', state.activeWorkspaceTab !== 'transcript');
+  applyVideoLayout();
+  redrawAfterLayoutChange();
+}
+
+async function toggleTheatreFullscreen() {
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await document.getElementById('theatre').requestFullscreen();
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+document.addEventListener('fullscreenchange', () => {
+  const btn = document.getElementById('theatre-fs-btn');
+  if (btn) btn.textContent = t(document.fullscreenElement ? 'theatreFullscreenExit' : 'theatreFullscreen');
+  if (state.theatre) redrawAfterLayoutChange();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || !state.theatre) return;
+  // Esc first closes an open dialog, menu or inline editor; the browser handles its own fullscreen
+  const modalOpen = [...document.querySelectorAll('[id^="modal-"]')].some(m => !m.classList.contains('hidden'));
+  const editing = e.target && (e.target.tagName === 'TEXTAREA' || (e.target.tagName === 'INPUT' && e.target.value));
+  if (modalOpen || editing || document.fullscreenElement) return;
+  e.preventDefault();
+  exitTheatre();
+});
 
 async function toggleVideoPip() {
   const player = document.getElementById('media-player');
@@ -3188,6 +3601,7 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('player-total-time').textContent = formatTime(player.duration);
     }
     state.hasVideo = player.videoWidth > 0;
+    if (state.theatre && !state.hasVideo) exitTheatre();  // another recording without a picture
     applyVideoLayout();
   });
   player.addEventListener('loadstart', () => {
@@ -3219,6 +3633,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   loadSystemInfo();
   loadDictionary();
+  loadVram();
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) scheduleVramRefresh(100); });
   startLiveUpdates();
   loadQueue().catch(console.error);
   pollMeetingsLoop();

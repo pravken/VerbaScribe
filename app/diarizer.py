@@ -75,6 +75,11 @@ def _get_ecapa_encoder(device: str = "cpu"):
     return _ecapa_model
 
 
+def ecapa_loaded_on() -> Optional[str]:
+    """Device of the cached speaker-embedding model, or None when it is not loaded."""
+    return _ecapa_device if _ecapa_model is not None else None
+
+
 def unload_diarizer() -> None:
     global _ecapa_model, _ecapa_device
     _ecapa_model = None

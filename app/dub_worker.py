@@ -14,6 +14,8 @@ Commands:
       -> {"ok": true, "vocals": "...", "background": "...", "sr": 44100}
   {"cmd": "tts", "items": [{"id", "text", "lang", "ref", "out"}], "exaggeration", "cfg_weight"}
       -> progress per item, then {"ok": true, "results": [{"id", "out", "duration"}]}
+  {"cmd": "download", "models": ["chatterbox", "demucs"]}
+      -> fetches the weights into HF_HOME without loading them on the GPU
   {"cmd": "quit"}
 """
 
@@ -203,8 +205,35 @@ def cmd_tts(req):
     return {"ok": True, "results": results, "sr": _tts_model.sr, "peak_vram_gb": round(vram, 2)}
 
 
+# Same file list as ChatterboxMultilingualTTS.from_pretrained (0.1.7)
+_CHATTERBOX_FILES = ["ve.pt", "t3_mtl23ls_v2.safetensors", "s3gen.pt", "grapheme_mtl_merged_expanded_v1.json",
+                     "conds.pt", "Cangjie5_TC.json"]
+
+
+def cmd_download(req):
+    from huggingface_hub import hf_hub_download, snapshot_download
+
+    done = []
+    for name in req.get("models") or []:
+        if name == "chatterbox":
+            snapshot_download(repo_id="ResembleAI/chatterbox", repo_type="model", revision="main",
+                              allow_patterns=_CHATTERBOX_FILES, token=os.getenv("HF_TOKEN"))
+        elif name == "demucs":
+            import yaml
+
+            with open(hf_hub_download("adefossez/HTDemucs", "htdemucs.yaml")) as f:
+                bag = yaml.safe_load(f)
+            for sig in bag["models"]:
+                hf_hub_download("adefossez/HTDemucs", f"{sig}.safetensors")
+        else:
+            raise RuntimeError(f"unknown model {name!r}")
+        done.append(name)
+        _reply({"ok": True, "event": "progress", "done": len(done), "total": len(req.get("models") or [])})
+    return {"ok": True, "downloaded": done}
+
+
 def main() -> None:
-    handlers = {"separate": cmd_separate, "tts": cmd_tts}
+    handlers = {"separate": cmd_separate, "tts": cmd_tts, "download": cmd_download}
     _reply({"ok": True, "event": "ready", "pid": os.getpid()})
     for line in sys.stdin:
         line = line.strip()

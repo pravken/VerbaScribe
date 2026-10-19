@@ -409,6 +409,52 @@ def release_whisper_model() -> None:
         clear_vram()
 
 
+def whisper_cache_key() -> Optional[Tuple[str, str, str]]:
+    """(model, device, compute_type) of the Whisper model kept in memory, or None."""
+    return _whisper_cache["key"] if _whisper_cache["model"] is not None else None
+
+
+def running_job_kind() -> Optional[str]:
+    """Kind of the job the worker runs now ("transcribe", "dub", "translate", ...), or None."""
+    with _jobs_lock:
+        for q in _queue:
+            if q["id"] == _running_id:
+                return q["kind"]
+        return "other" if _preloading else None
+
+
+_preloading = False
+
+
+def _preload_whisper() -> None:
+    global _preloading
+    try:
+        settings = get_all_settings()
+        hw = get_hardware_info()
+        _get_whisper_model(
+            settings.get("whisper_model") or "large-v3-turbo",
+            settings.get("device") or hw["recommended_device"],
+            settings.get("compute_type") or hw["recommended_compute_type"],
+        )
+    except Exception:
+        traceback.print_exc()
+    finally:
+        with _jobs_lock:
+            _preloading = False
+
+
+def enqueue_whisper_preload() -> bool:
+    """Loads the Whisper model from the settings in the job worker, so it never races a job.
+    The next transcription with the same model reuses it. False when the queue is busy."""
+    global _preloading
+    with _jobs_lock:
+        if _queue or _preloading:
+            return False
+        _preloading = True
+    _executor.submit(_preload_whisper)
+    return True
+
+
 def _other_jobs_waiting(meeting_id: int) -> bool:
     with _jobs_lock:
         return bool(_active_jobs - {meeting_id})

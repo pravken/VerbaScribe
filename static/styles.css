@@ -247,3 +247,8 @@ input[type="range"].volume-slider::-webkit-slider-thumb:hover {
 @media (prefers-reduced-motion: reduce) {
   .progress-live, .live-dot { animation: none; }
 }
+
+/* Theatre mode: the transcript column is narrow, so its toolbar wraps instead of being cut off */
+#theatre-text-slot #wview-transcript > div:first-child { padding-left: 1rem; padding-right: 1rem; }
+#theatre-text-slot #wview-transcript > div:first-child > div > div:last-child { flex-wrap: wrap; flex-shrink: 1; justify-content: flex-end; row-gap: 0.375rem; }
+#theatre-text-slot #transcript-container { padding-left: 1rem; padding-right: 1rem; }

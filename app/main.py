@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
+import httpx
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -825,6 +826,112 @@ def api_dub_setup_cancel() -> Dict[str, Any]:
     from app.dub_setup import cancel_setup
 
     return cancel_setup()
+
+
+def _dub_job_running() -> bool:
+    from app.transcriber import running_job_kind
+
+    return running_job_kind() == "dub"
+
+
+@app.get("/api/dub/info")
+def api_dub_info() -> Dict[str, Any]:
+    """Everything the Settings section shows: environment, model weights, disk usage."""
+    from app.dub_models import disk_usage, weights_status
+    from app.dub_setup import DUB_READY_MARKER, DUB_VENV
+    from app.dubbing import DUBS_DIR, _ffmpeg_has_filter, dub_environment_status
+
+    env = dub_environment_status()
+    verified = ""
+    try:
+        if DUB_READY_MARKER.is_file():
+            verified = DUB_READY_MARKER.read_text(encoding="utf-8").strip()[:200]
+    except OSError:
+        pass
+    return {
+        **env,
+        "venv": str(DUB_VENV),
+        "venv_exists": DUB_VENV.is_dir(),
+        "verified": verified,
+        "weights": weights_status(),
+        "disk": disk_usage(DUB_VENV, DUBS_DIR),
+        "rubberband": _ffmpeg_has_filter("rubberband"),
+        "dub_running": _dub_job_running(),
+    }
+
+
+@app.post("/api/dub/verify")
+def api_dub_verify() -> Dict[str, Any]:
+    """Re-runs the import check of the dub environment (takes 10-30 s)."""
+    from app import dub_setup
+
+    if dub_setup.setup_status()["active"]:
+        raise HTTPException(status_code=409, detail="Идёт установка окружения")
+    ok = dub_setup._verify()
+    if not ok:
+        dub_setup.DUB_READY_MARKER.unlink(missing_ok=True)
+    return {"ok": ok, "setup": dub_setup.setup_status()}
+
+
+class DubWeightsPayload(BaseModel):
+    models: Optional[List[str]] = None
+
+
+@app.post("/api/dub/weights/download")
+def api_dub_weights_download(payload: DubWeightsPayload) -> Dict[str, Any]:
+    from app.dub_models import start_download
+
+    return start_download(payload.models, _dub_job_running())
+
+
+@app.post("/api/dub/weights/cancel")
+def api_dub_weights_cancel() -> Dict[str, Any]:
+    from app.dub_models import cancel_download
+
+    return cancel_download()
+
+
+@app.delete("/api/dub/weights/{model_id}")
+def api_dub_weights_delete(model_id: str) -> Dict[str, Any]:
+    from app.dub_models import delete_weights
+
+    try:
+        return delete_weights(model_id, _dub_job_running())
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+# --- Models in VRAM (chips next to the GPU badge) ---
+@app.get("/api/vram")
+def api_vram() -> Dict[str, Any]:
+    from app.vram import vram_snapshot
+
+    return vram_snapshot()
+
+
+class VramActionPayload(BaseModel):
+    kind: str
+    name: str = ""
+
+
+@app.post("/api/vram/unload")
+def api_vram_unload(payload: VramActionPayload) -> Dict[str, Any]:
+    from app.vram import unload
+
+    try:
+        return unload(payload.kind, payload.name)
+    except (RuntimeError, ValueError, httpx.HTTPError) as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@app.post("/api/vram/preload")
+def api_vram_preload(payload: VramActionPayload) -> Dict[str, Any]:
+    from app.vram import preload
+
+    try:
+        return preload(payload.kind)
+    except (RuntimeError, ValueError, httpx.HTTPError) as e:
+        raise HTTPException(status_code=409, detail=str(e))
 
 
 @app.post("/api/meetings/{meeting_id}/dub")

@@ -10,6 +10,10 @@ from app.ffmpeg_manager import find_tool, tool_cmd
 # 4. adeclick            -> removes keyboard clicks, mouse pops, and mouth clicks
 # 5. dynaudnorm          -> levels quiet and loud speakers on a call to uniform studio volume
 STUDIO_VOICE_FILTER = "highpass=f=80,lowpass=f=7600,afftdn=nf=-25:tn=1,adeclick,dynaudnorm=f=150:g=15:p=0.92"
+# Only the denoising steps of that chain (no band limit, no levelling), for full-range audio that is
+# listened to: the original track and the background of a dub. Removes steady hiss and hum, not
+# sudden noises; music and ambience get a little duller.
+NOISE_REDUCTION_FILTER = "highpass=f=70,afftdn=nf=-25:tn=1,adeclick"
 
 
 def extract_audio_16k_mono(

@@ -7,6 +7,7 @@ from app.dub_text import (
     expected_speech_sec,
     has_foreign_script,
     plan_placement,
+    speech_free_gaps,
 )
 
 
@@ -92,3 +93,16 @@ class TextChecksTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SpeechFreeGapsTest(unittest.TestCase):
+    def test_gaps_keep_a_margin_around_phrases(self):
+        units = [{"start": 1.0, "end": 2.0}, {"start": 2.2, "end": 3.0}, {"start": 5.0, "end": 6.0}]
+        gaps = speech_free_gaps(units, 8.0, margin=0.1, min_len=0.25)
+        self.assertEqual([(round(a, 2), round(b, 2)) for a, b in gaps], [(0.0, 0.9), (3.1, 4.9), (6.1, 8.0)])
+
+    def test_short_and_overlapping_spans(self):
+        units = [{"start": 0.05, "end": 2.0}, {"start": 1.5, "end": 4.0}]
+        # 0..0 before the first phrase is too short; overlapping phrases leave no gap between them
+        self.assertEqual(speech_free_gaps(units, 4.2, margin=0.1, min_len=0.25), [])
+        self.assertEqual(speech_free_gaps([], 3.0), [(0.0, 3.0)])
