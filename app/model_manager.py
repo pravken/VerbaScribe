@@ -64,6 +64,10 @@ def format_whisper_model_name(model_id: str) -> str:
     raw = (model_id or "").strip()
     if not raw:
         return "Whisper"
+    from app.asr_onnx import ONNX_MODELS
+
+    if raw in ONNX_MODELS:
+        return ONNX_MODELS[raw]["name"]
     return _WHISPER_DISPLAY_NAMES.get(raw.lower(), f"Whisper {raw.replace('-', ' ').title()}")
 
 
@@ -140,6 +144,11 @@ def get_models_status() -> Dict[str, Any]:
         if inst:
             any_whisper_installed = True
         whisper_list.append({**item, "installed": inst})
+    # GigaAM and Parakeet (app/asr_onnx.py) are chosen in the same list
+    from app.asr_onnx import catalog as onnx_catalog
+
+    for item in onnx_catalog():
+        whisper_list.append({**item, "badge": f"{round(item['size_mb'] / 1024, 1)} GB · {item['license']}", "vram": "CPU"})
 
     diarizer_ready = is_diarizer_installed()
 

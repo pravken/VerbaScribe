@@ -51,11 +51,14 @@ def ollama_chat(
         "keep_alive": keep_alive,
         "options": {"temperature": 0.2, "top_p": 0.9, "num_ctx": 8192},
     }
+    from app.llm_text import strip_think, thinking_off
+
+    payload.update(thinking_off(model))
     with httpx.Client(timeout=600.0) as client:
         if check_cancel is None:
             resp = client.post(f"{base_url}/api/chat", json=payload)
             resp.raise_for_status()
-            return str((resp.json().get("message") or {}).get("content") or "").strip()
+            return strip_think(str((resp.json().get("message") or {}).get("content") or ""))
         # Streamed, so a cancel request is noticed between tokens; closing the connection also
         # makes Ollama stop generating.
         parts: List[str] = []
@@ -71,7 +74,7 @@ def ollama_chat(
                 parts.append(str((chunk.get("message") or {}).get("content") or ""))
                 if chunk.get("done"):
                     break
-        return "".join(parts).strip()
+        return strip_think("".join(parts))
 
 
 def parse_numbered_lines(answer: str, count: int) -> List[Optional[str]]:

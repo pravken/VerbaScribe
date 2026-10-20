@@ -241,10 +241,13 @@ class LiveTranslator:
             "options": {"temperature": 0.0 if strict else 0.1, "num_ctx": NUM_CTX, "num_predict": 200,
                         "repeat_penalty": 1.15},
         }
+        from app.llm_text import strip_think, thinking_off
+
+        payload.update(thinking_off(payload["model"]))
         with httpx.Client(timeout=timeout) as c:
             r = c.post(f"{_base_url()}/api/chat", json=payload)
             r.raise_for_status()
-            return str((r.json().get("message") or {}).get("content") or "").strip().strip('"«»`')
+            return strip_think(str((r.json().get("message") or {}).get("content") or "")).strip('"«»`')
 
     def _translate_clean(self, text: str, src_lang: Optional[str], timeout: float = 30.0,
                          target: Optional[str] = None) -> str:

@@ -16,6 +16,36 @@ from app.database import get_all_settings, update_settings
 
 RECOMMENDED_LLM_MODELS: List[Dict[str, Any]] = [
     {
+        "id": "qwen3:8b",
+        "name": "Qwen3 8B",
+        "badge": "5.2 GB · Apache",
+        "size": "5.2 GB",
+        "vram": "8+ GB VRAM",
+        "license": "Apache",
+        "desc_ru": "Новое поколение Qwen: лучше русский, длинные тексты и точность, та же свободная лицензия",
+        "desc_en": "The new Qwen generation: better Russian, long texts and accuracy, same free license",
+    },
+    {
+        "id": "qwen3:14b",
+        "name": "Qwen3 14B",
+        "badge": "9.3 GB · Apache",
+        "size": "9.3 GB",
+        "vram": "12–24 GB VRAM",
+        "license": "Apache",
+        "desc_ru": "Самый глубокий анализ для видеокарт с 12 ГБ и больше",
+        "desc_en": "The deepest analysis for GPUs with 12 GB or more",
+    },
+    {
+        "id": "qwen3:4b",
+        "name": "Qwen3 4B",
+        "badge": "2.6 GB · Apache",
+        "size": "2.6 GB",
+        "vram": "4–6 GB / CPU",
+        "license": "Apache",
+        "desc_ru": "Лёгкая модель нового поколения для слабых видеокарт и ноутбуков",
+        "desc_en": "A light new-generation model for small GPUs and laptops",
+    },
+    {
         "id": "qwen2.5:7b",
         "name": "Qwen 7B Standard",
         "badge": "4.7 GB · Apache",
@@ -58,6 +88,9 @@ RECOMMENDED_LLM_MODELS: List[Dict[str, Any]] = [
 ]
 
 _LLM_DISPLAY_NAMES: Dict[str, str] = {
+    "qwen3:8b": "Qwen3 8B",
+    "qwen3:14b": "Qwen3 14B",
+    "qwen3:4b": "Qwen3 4B",
     "qwen2.5:7b": "Qwen 7B Standard",
     "qwen2.5:14b": "Qwen 14B Pro",
     "mistral:7b": "Mistral 7B",
@@ -549,12 +582,15 @@ def _ollama_chat(base_url: str, model: str, system: str, user: str) -> str:
     keep_alive = idle_unload.ollama_keep_alive()
     if keep_alive:
         payload["keep_alive"] = keep_alive  # Ollama frees the model after the same idle time
+    from app.llm_text import strip_think, thinking_off
+
+    payload.update(thinking_off(model))
     with httpx.Client(timeout=600.0) as client:
         resp = client.post(f"{base_url}/api/chat", json=payload)
         resp.raise_for_status()
         data = resp.json()
         msg = data.get("message") or {}
-        return str(msg.get("content") or data.get("response") or "").strip()
+        return strip_think(str(msg.get("content") or data.get("response") or ""))
 
 
 def generate_meeting_summary(

@@ -274,6 +274,26 @@ def api_ffmpeg_install() -> Dict[str, Any]:
     return start_ffmpeg_download()
 
 
+@app.post("/api/onnx-models/{model_id}/download")
+def api_onnx_download(model_id: str) -> Dict[str, Any]:
+    """GigaAM / Parakeet (app/asr_onnx.py): downloaded in the background."""
+    from app import asr_onnx
+
+    try:
+        return asr_onnx.start_download(model_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.delete("/api/onnx-models/{model_id}")
+def api_onnx_delete(model_id: str) -> Dict[str, Any]:
+    from app import asr_onnx
+
+    if not asr_onnx.is_onnx_model(model_id):
+        raise HTTPException(status_code=404, detail="Неизвестная модель")
+    return {"ok": asr_onnx.delete_model(model_id)}
+
+
 @app.get("/api/models/status")
 def api_models_status() -> Dict[str, Any]:
     from app.model_manager import get_models_status

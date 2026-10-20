@@ -147,8 +147,11 @@ VerbaScribe's own code is released under the [MIT License](LICENSE). Models and 
 | :--- | :--- |
 | Whisper models (OpenAI) / faster-whisper | MIT |
 | Silero VAD | MIT |
+| GigaAM v2 (Sber, ONNX export by istupakov) / onnx-asr | MIT |
+| NVIDIA Parakeet TDT 0.6B v3 (ONNX export by istupakov) | CC-BY-4.0: credit "Parakeet TDT 0.6B v3 by NVIDIA" |
+| BGE-M3 embeddings (BAAI) | MIT |
 | SpeechBrain ECAPA-TDNN (`spkrec-ecapa-voxceleb`) | Apache 2.0 |
-| Qwen 2.5 1.5B / 7B / 14B, Mistral 7B | Apache 2.0 |
+| Qwen3 4B / 8B / 14B, Qwen 2.5 1.5B / 7B / 14B, Mistral 7B | Apache 2.0 |
 | Ollama, FastAPI, pywebview | MIT / BSD-3 |
 | PyTorch, torchaudio | BSD-3 |
 | SoundCard (system audio recording) | BSD-3 |

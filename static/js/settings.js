@@ -270,15 +270,44 @@ async function vramChipClick(index) {
 }
 
 const MODEL_DISPLAY_NAMES = {
+  'gigaam-v2': 'GigaAM v2',
+  'parakeet-v3': 'Parakeet TDT v3',
   'large-v3-turbo': 'Whisper Turbo',
   'large-v3': 'Whisper Pro',
   'medium': 'Whisper Medium',
   'small': 'Whisper Light',
+  'qwen3:8b': 'Qwen3 8B',
+  'qwen3:14b': 'Qwen3 14B',
+  'qwen3:4b': 'Qwen3 4B',
   'qwen2.5:7b': 'Qwen 7B Standard',
   'qwen2.5:14b': 'Qwen 14B Pro',
   'mistral:7b': 'Mistral 7B',
   'qwen2.5:1.5b': 'Qwen Lite',
       };
+
+// GigaAM / Parakeet (app/asr_onnx.py): downloaded by the server, progress shown as a pulsing label
+async function startOnnxModelDownload(id) {
+  const res = await fetch(`/api/onnx-models/${encodeURIComponent(id)}/download`, { method: 'POST' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  showToast(t('onnxDownloading'));
+  const poll = async () => {
+    const models = await fetch('/api/models/status').then(r => r.json()).catch(() => null);
+    if (models) updateWhisperModelsUI(models);
+    const item = models && (models.whisper_catalog || []).find(x => x.id === id);
+    if (item && item.downloading) setTimeout(poll, 2000);
+    else if (item && item.error) showToast(item.error);
+    else if (item && item.installed) showToast(t('onnxReady'));
+  };
+  setTimeout(poll, 1500);
+}
+
+async function deleteOnnxModel(id) {
+  if (!confirm(t('onnxDeleteConfirm'))) return;
+  await fetch(`/api/onnx-models/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  const models = await fetch('/api/models/status').then(r => r.json()).catch(() => null);
+  if (models) updateWhisperModelsUI(models);
+}
 
 function formatModelName(modelId) {
   const raw = String(modelId || '').trim();
@@ -371,14 +400,14 @@ function updateWhisperModelsUI(models) {
   const activeModel = document.getElementById('set-whisper-model').value || models.active_whisper || 'large-v3-turbo';
   const catalogBox = document.getElementById('whisper-catalog-list');
   const whisperList = models.whisper_catalog || models.whisper || [];
-  state.whisperInstalled = whisperList.filter(i => i.installed).map(i => i.id);
+  state.whisperInstalled = whisperList.filter(i => i.installed && i.engine !== 'onnx').map(i => i.id);
   renderLiveModelSelect();
 
   if (catalogBox && whisperList.length > 0) {
     catalogBox.innerHTML = whisperList.map(item => {
       const isSelected = item.id === activeModel;
       const desc = state.uiLang === 'en' ? item.desc_en : item.desc_ru;
-      const isDownloadingThis = st.active && st.model_id === item.id;
+      const isDownloadingThis = (st.active && st.model_id === item.id) || (item.engine === 'onnx' && item.downloading);
       const sizeLabel = item.size || (item.size_mb >= 1000 ? (item.size_mb / 1024).toFixed(1) + ' GB' : (item.size_mb || '') + ' MB');
       const badgeLabel = item.badge || sizeLabel;
 
@@ -389,7 +418,7 @@ function updateWhisperModelsUI(models) {
         actionHtml = `
           <div class="flex items-center gap-1.5">
             <span class="ui-btn bg-apple-green/20 text-apple-green">${SVG_ICONS.check}<span>${state.uiLang === 'en' ? 'Active' : 'Активна'}</span></span>
-            <button data-id="${escapeHtml(item.id)}" onclick="deleteWhisperModel(this.dataset.id)" title="${escapeHtml(t('tipDeleteModel'))}"
+            <button data-id="${escapeHtml(item.id)}" onclick="${item.engine === 'onnx' ? 'deleteOnnxModel' : 'deleteWhisperModel'}(this.dataset.id)" title="${escapeHtml(t('tipDeleteModel'))}"
               class="ui-btn ui-btn-subtle px-2 hover:text-apple-red">${SVG_ICONS.trash}</button>
           </div>
         `;
@@ -400,13 +429,13 @@ function updateWhisperModelsUI(models) {
               class="ui-btn ui-btn-subtle text-white hover:bg-apple-blue">
               ${state.uiLang === 'en' ? 'Select' : 'Выбрать'}
             </button>
-            <button data-id="${escapeHtml(item.id)}" onclick="deleteWhisperModel(this.dataset.id)" title="${escapeHtml(t('tipDeleteModel'))}"
+            <button data-id="${escapeHtml(item.id)}" onclick="${item.engine === 'onnx' ? 'deleteOnnxModel' : 'deleteWhisperModel'}(this.dataset.id)" title="${escapeHtml(t('tipDeleteModel'))}"
               class="ui-btn ui-btn-subtle px-2 hover:text-apple-red">${SVG_ICONS.trash}</button>
           </div>
         `;
       } else {
         actionHtml = `
-          <button data-id="${escapeHtml(item.id)}" onclick="startWhisperModelDownload(this.dataset.id)" title="${escapeHtml(t('tipDownloadModel'))}"
+          <button data-id="${escapeHtml(item.id)}" onclick="${item.engine === 'onnx' ? 'startOnnxModelDownload' : 'startWhisperModelDownload'}(this.dataset.id)" title="${escapeHtml(item.error || t('tipDownloadModel'))}"
             class="ui-btn ui-btn-primary">
             ${SVG_ICONS.download}
             <span>${state.uiLang === 'en' ? 'Download' : 'Скачать'} (${escapeHtml(sizeLabel)})</span>

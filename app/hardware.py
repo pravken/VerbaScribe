@@ -84,7 +84,7 @@ def get_hardware_info() -> Dict[str, Any]:
         "recommended_device": "cpu",
         "recommended_compute_type": "int8",
         "recommended_whisper_model": "small",
-        "recommended_ollama_model": "qwen2.5:1.5b",
+        "recommended_ollama_model": "qwen3:4b",
         "tier": "cpu",
         "tier_description": "Работа на процессоре (рекомендуются модели small / medium / large-v3-turbo в режиме int8)",
     }
@@ -111,7 +111,7 @@ def get_hardware_info() -> Dict[str, Any]:
                 info["tier"] = "high_vram"
                 info["recommended_compute_type"] = "float16"
                 info["recommended_whisper_model"] = "large-v3-turbo"
-                info["recommended_ollama_model"] = "qwen2.5:7b"
+                info["recommended_ollama_model"] = "qwen3:8b"
                 info["tier_description"] = (
                     f"Максимальная производительность ({props.name}, {total_gb} ГБ VRAM). "
                     "Доступны самые точные модели large-v3 и large-v3-turbo в режиме float16."
@@ -120,7 +120,7 @@ def get_hardware_info() -> Dict[str, Any]:
                 info["tier"] = "mid_vram"
                 info["recommended_compute_type"] = "int8_float16"
                 info["recommended_whisper_model"] = "large-v3-turbo"
-                info["recommended_ollama_model"] = "qwen2.5:7b"
+                info["recommended_ollama_model"] = "qwen3:8b"
                 info["tier_description"] = (
                     f"Средний объём видеопамяти ({props.name}, {total_gb} ГБ VRAM). "
                     "Рекомендуется модель large-v3-turbo в гибридном режиме int8_float16."
@@ -129,7 +129,7 @@ def get_hardware_info() -> Dict[str, Any]:
                 info["tier"] = "low_vram"
                 info["recommended_compute_type"] = "int8"
                 info["recommended_whisper_model"] = "medium"
-                info["recommended_ollama_model"] = "qwen2.5:1.5b"
+                info["recommended_ollama_model"] = "qwen3:4b"
                 info["tier_description"] = (
                     f"Компактный режим видеопамяти ({props.name}, {total_gb} ГБ VRAM). "
                     "Модели загружаются по очереди в сжатом формате int8."

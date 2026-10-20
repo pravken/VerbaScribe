@@ -22,3 +22,5 @@ aiofiles>=24.1.0
 pywebview>=5.0.0
 # System audio for recordings without the screen-share prompt (WASAPI loopback, app/system_audio.py)
 soundcard>=0.4.6
+# GigaAM and Parakeet speech recognition on ONNX Runtime (already here for faster-whisper); onnx-asr is MIT
+onnx-asr>=0.12.0

@@ -87,6 +87,8 @@ def dub_environment_status() -> Dict[str, Any]:
 
 # ---------------------------------------------------------------- 2. translation (Ollama)
 def _ollama_chat(base_url: str, model: str, system: str, user: str, keep_alive: str = "5m") -> str:
+    from app.llm_text import strip_think, thinking_off
+
     with httpx.Client(timeout=600.0) as client:
         resp = client.post(
             f"{base_url}/api/chat",
@@ -96,10 +98,11 @@ def _ollama_chat(base_url: str, model: str, system: str, user: str, keep_alive: 
                 "stream": False,
                 "keep_alive": keep_alive,
                 "options": {"temperature": 0.2, "top_p": 0.9, "num_ctx": 8192},
+                **thinking_off(model),
             },
         )
         resp.raise_for_status()
-        return str((resp.json().get("message") or {}).get("content") or "").strip()
+        return strip_think(str((resp.json().get("message") or {}).get("content") or ""))
 
 
 def _unload_ollama(base_url: str, model: str, wait: bool = False) -> None:

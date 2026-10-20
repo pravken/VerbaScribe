@@ -225,3 +225,42 @@ class FileNamingTest(unittest.TestCase):
         self.assertTrue(new.exists() and not f.exists())
         self.assertEqual(db.get_meeting(mid)["media_path"], str(new))
         db.delete_meeting(mid)
+
+
+class OnnxAsrTest(unittest.TestCase):
+    def test_tokens_become_timed_words(self):
+        from app.asr_onnx import words_from_tokens
+
+        words = words_from_tokens([" При", "вет", ",", " мир", "▁ok"], [0.0, 0.2, 0.3, 0.6, 1.0], 10.0, 11.5)
+        self.assertEqual([w["word"] for w in words], [" Привет,", " мир", " ok"])
+        self.assertEqual([w["start"] for w in words], [10.0, 10.6, 11.0])
+        self.assertEqual(words[-1]["end"], 11.5)
+
+    def test_transcribe_shapes_segments_like_whisper(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from app import asr_onnx
+
+        res = [SimpleNamespace(start=1.0, end=3.0, text=" Добрый  день ", tokens=[" Добрый", " день"], timestamps=[0.0, 0.8]),
+               SimpleNamespace(start=4.0, end=5.0, text="", tokens=[], timestamps=[])]
+        fake = SimpleNamespace(recognize=lambda path: iter(res))
+        seen = []
+        with mock.patch.object(asr_onnx, "_load", return_value=fake):
+            segs = asr_onnx.transcribe("gigaam-v2", "a.wav", 10.0, seen.append, lambda: None)
+        self.assertEqual(segs, [{"start": 1.0, "end": 3.0, "text": "Добрый день",
+                                 "words": [{"word": " Добрый", "start": 1.0, "end": 1.8, "prob": 1.0},
+                                           {"word": " день", "start": 1.8, "end": 3.0, "prob": 1.0}]}])
+        self.assertEqual(seen, [0.3])
+        self.assertFalse(asr_onnx.supports_language("gigaam-v2", "en"))
+        self.assertTrue(asr_onnx.supports_language("parakeet-v3", "de"))
+
+
+class ThinkingModelTest(unittest.TestCase):
+    def test_qwen3_does_not_think_aloud(self):
+        from app.llm_text import strip_think, thinking_off
+
+        self.assertEqual(thinking_off("qwen3:8b"), {"think": False})
+        self.assertEqual(thinking_off("qwen2.5:7b"), {})
+        self.assertEqual(strip_think("<think>hmm, let me see</think>\nОтвет"), "Ответ")
+        self.assertEqual(strip_think("<think>cut off in the middle"), "")

@@ -722,47 +722,70 @@ def _process_meeting_job(meeting_id: int) -> None:
         vad_enabled = settings.get("vad_filter", "true").lower() == "true"
 
         _check_cancel(meeting_id)
-        if device == "cuda" and _whisper_cache["key"] != (model_name, device, compute_type):
-            _wait_for_vram_after_live(meeting_id, model_name)
-        whisper_model, reused = _get_whisper_model(model_name, device, compute_type)
+        from app import asr_onnx
 
-        # `hotwords` is applied to every 30s window; `initial_prompt` would only affect the first
-        # window because condition_on_previous_text is disabled.
-        hotwords = get_dictionary_hotwords()
-        batch_size = (
-            _batch_size_for(device, hw)
-            if settings.get("batched_inference", "true").lower() == "true"
-            else 0
-        )
-        update_meeting_progress(
-            meeting_id,
-            status="transcribing",
-            progress=15,
-            stage_text=f"Распознавание речи — {pretty_whisper}"
-            + (f", пакетами по {batch_size}" if batch_size else "")
-            + (" (модель уже загружена)" if reused else ""),
-        )
-        total_dur = max(1.0, float(duration or 1.0))
-        decode = dict(duration=total_dur, language=language, hotwords=hotwords, vad_enabled=vad_enabled)
+        onnx_engine = asr_onnx.is_onnx_model(model_name)
+        if onnx_engine:
+            # GigaAM / Parakeet on ONNX Runtime (app/asr_onnx.py): no Whisper, no GPU needed
+            if not asr_onnx.supports_language(model_name, language):
+                raise RuntimeError(f"{asr_onnx.ONNX_MODELS[model_name]['name']} не распознаёт язык «{language}». "
+                                   "Выберите Whisper или другую модель для этой записи.")
+            update_meeting_progress(meeting_id, status="transcribing", progress=15,
+                                    stage_text=f"Распознавание речи — {asr_onnx.ONNX_MODELS[model_name]['name']}")
+            total_dur = max(1.0, float(duration or 1.0))
 
-        try:
-            segments_iter, info = _start_transcription(whisper_model, wav_path, batch_size=batch_size, **decode)
-            raw_segments = _collect_segments(meeting_id, segments_iter, total_dur)
-        except JobCancelled:
-            raise
-        except Exception as batch_err:
-            if not batch_size:
-                raise
-            # e.g. out of GPU memory with a large batch: redo the file the classic way
-            print(f"[transcriber] Batched decoding failed ({batch_err}); retrying sequentially", flush=True)
-            clear_vram()
-            update_meeting_progress(
-                meeting_id, progress=16, stage_text=f"Распознавание речи — {pretty_whisper} (обычный режим)"
+            def _onnx_progress(ratio: float) -> None:
+                update_meeting_progress(meeting_id, progress=16 + int(49 * ratio),
+                                        stage_text=f"Транскрибация: {format_timestamp(ratio * total_dur)} из {format_timestamp(total_dur)}")
+
+            raw_segments = asr_onnx.transcribe(model_name, wav_path, total_dur, _onnx_progress, lambda: _check_cancel(meeting_id))
+            text_all = " ".join(s["text"] for s in raw_segments)
+            cyr = sum(1 for ch in text_all if "\u0400" <= ch <= "\u04ff")
+            detected_lang = language or ("ru" if cyr > len(text_all) * 0.3 else "en")
+            whisper_model = None
+            reused = False
+        else:
+            if device == "cuda" and _whisper_cache["key"] != (model_name, device, compute_type):
+                _wait_for_vram_after_live(meeting_id, model_name)
+            whisper_model, reused = _get_whisper_model(model_name, device, compute_type)
+
+            # `hotwords` is applied to every 30s window; `initial_prompt` would only affect the first
+            # window because condition_on_previous_text is disabled.
+            hotwords = get_dictionary_hotwords()
+            batch_size = (
+                _batch_size_for(device, hw)
+                if settings.get("batched_inference", "true").lower() == "true"
+                else 0
             )
-            segments_iter, info = _start_transcription(whisper_model, wav_path, batch_size=0, **decode)
-            raw_segments = _collect_segments(meeting_id, segments_iter, total_dur)
+            update_meeting_progress(
+                meeting_id,
+                status="transcribing",
+                progress=15,
+                stage_text=f"Распознавание речи — {pretty_whisper}"
+                + (f", пакетами по {batch_size}" if batch_size else "")
+                + (" (модель уже загружена)" if reused else ""),
+            )
+            total_dur = max(1.0, float(duration or 1.0))
+            decode = dict(duration=total_dur, language=language, hotwords=hotwords, vad_enabled=vad_enabled)
 
-        detected_lang = getattr(info, "language", None) or (language or "ru")
+            try:
+                segments_iter, info = _start_transcription(whisper_model, wav_path, batch_size=batch_size, **decode)
+                raw_segments = _collect_segments(meeting_id, segments_iter, total_dur)
+            except JobCancelled:
+                raise
+            except Exception as batch_err:
+                if not batch_size:
+                    raise
+                # e.g. out of GPU memory with a large batch: redo the file the classic way
+                print(f"[transcriber] Batched decoding failed ({batch_err}); retrying sequentially", flush=True)
+                clear_vram()
+                update_meeting_progress(
+                    meeting_id, progress=16, stage_text=f"Распознавание речи — {pretty_whisper} (обычный режим)"
+                )
+                segments_iter, info = _start_transcription(whisper_model, wav_path, batch_size=0, **decode)
+                raw_segments = _collect_segments(meeting_id, segments_iter, total_dur)
+
+            detected_lang = getattr(info, "language", None) or (language or "ru")
 
         # Free Whisper before diarization unless the next queued job can reuse it
         whisper_model = None

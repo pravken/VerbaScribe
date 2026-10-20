@@ -319,6 +319,11 @@ def caption_model(settings: Dict[str, str], hw: Dict[str, Any]) -> str:
     from app.model_manager import is_whisper_model_installed
 
     main = settings.get("whisper_model") or "large-v3-turbo"
+    from app.asr_onnx import is_onnx_model
+
+    if is_onnx_model(main):
+        # Captions stay on Whisper (they are decoded in short windows by app/live_worker.py)
+        main = next((m for m in ("large-v3-turbo", "medium", "small", "large-v3") if is_whisper_model_installed(m)), "small")
     chosen = (settings.get("live_whisper_model") or "auto").strip()
     if chosen != "auto":
         return chosen if is_whisper_model_installed(chosen) else main
