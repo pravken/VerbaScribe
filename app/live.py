@@ -153,6 +153,7 @@ class LiveSession:
         self.speech_lang = lang if lang and lang != "auto" else None
         self.lang = self.speech_lang
         self.onnx_model = caption_onnx_model(get_all_settings(), self.speech_lang)
+        self.draft = False  # the page shows the draft line: translate it too
         self.translate_to = translate_to or None
         self.pair = list(pair or ["ru", "en"])[:2]  # the two languages of translate_to="auto"
         self.audio = np.zeros(0, dtype=np.float32)
@@ -259,8 +260,9 @@ class LiveSession:
                 # must not be shown with it (the page keeps it on the final line until its own
                 # translation arrives)
                 self.translator.reset_draft()
-            # The page shows only final lines (the draft is revised several times while spoken),
-            # so the draft is not translated: the model is free for the final lines
+            # The draft (revised several times while spoken) is translated only when the page shows
+            # it; otherwise the model is left free for the final lines
+            self.translator.set_draft(self.partial if self.draft else "")
 
     def configure(self, translate_to: Optional[str], speed: Optional[str], speech_lang: Optional[str] = None,
                   pair: Optional[List[str]] = None) -> None:

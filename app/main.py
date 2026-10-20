@@ -1179,6 +1179,7 @@ class LiveStartPayload(BaseModel):
     capture_id: Optional[str] = None  # system audio recorded by the app is mixed into the captions
     speed: str = "quality"            # "quality": the configured model, "fast": a small installed one
     pair: Optional[List[str]] = None  # with translate_to="auto": the two languages, e.g. ["ru", "en"]
+    draft: bool = False               # translate the phrase still being spoken too
 
 
 def _live_target(translate_to: Optional[str], pair: Optional[List[str]]) -> tuple:
@@ -1200,7 +1201,9 @@ def api_live_start(payload: LiveStartPayload) -> Dict[str, Any]:
     from app.live import start_session
 
     target, pair = _live_target(payload.translate_to, payload.pair)
-    return start_session(payload.lang, target, payload.capture_id, payload.speed, pair).state()
+    s = start_session(payload.lang, target, payload.capture_id, payload.speed, pair)
+    s.draft = payload.draft
+    return s.state()
 
 
 @app.post("/api/live/{session_id}/audio")
@@ -1226,6 +1229,7 @@ class LiveConfigPayload(BaseModel):
     speed: Optional[str] = None
     speech_lang: Optional[str] = None  # "auto" or a language code; None keeps the current one
     pair: Optional[List[str]] = None
+    draft: Optional[bool] = None
 
 
 class LiveAskPayload(BaseModel):
@@ -1276,6 +1280,8 @@ def api_live_config(session_id: str, payload: LiveConfigPayload) -> Dict[str, An
     if not s:
         raise HTTPException(status_code=404, detail="Сеанс субтитров не найден")
     target, pair = _live_target(payload.translate_to, payload.pair)
+    if payload.draft is not None:
+        s.draft = payload.draft
     s.configure(target, payload.speed if payload.speed in ("quality", "fast") else None, payload.speech_lang, pair)
     return s.state(0)
 

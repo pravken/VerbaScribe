@@ -590,6 +590,10 @@ function liveCaptionPrefs() {
   try { return JSON.parse(localStorage.getItem('verbascribe_live_captions') || '{}'); } catch (e) { return {}; }
 }
 
+function liveDraftOn() {
+  return !!document.getElementById('live-draft-toggle')?.checked;
+}
+
 function saveLiveCaptionPrefs() {
   const prefs = {
     on: document.getElementById('live-captions-toggle').checked,
@@ -733,6 +737,7 @@ async function startLiveCaptions(ctx, stream) {
         pair: quickLangs(),
         capture_id: _recCaptureId,
         speed: studio.speed,
+        draft: liveDraftOn(),
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -948,7 +953,7 @@ async function studioConfigure(speechChanged) {
   try {
     await fetch(`/api/live/${liveCap.session}/config`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ translate_to: target, pair: quickLangs(), speed: studio.speed, speech_lang: speechChanged ? studio.speech : null }),
+      body: JSON.stringify({ translate_to: target, pair: quickLangs(), speed: studio.speed, speech_lang: speechChanged ? studio.speech : null, draft: liveDraftOn() }),
     });
   } catch (e) { console.error(e); }
   syncStudioCaptions();
@@ -1067,7 +1072,9 @@ function syncStudioCaptions() {
       row.el.classList.add('cap-draft');
     }
     // Optional: the phrase as it is spoken (otherwise only "…" until it is final)
-    row.orig.set(document.getElementById('live-draft-toggle')?.checked ? liveCap.partial : '');
+    row.orig.set(liveDraftOn() ? liveCap.partial : '');
+    row.tr.set(liveDraftOn() ? (liveCap.partialTranslation || '') : '');
+    row.el.classList.toggle('cap-draft-live', liveDraftOn());
     setCapTags(row, liveCap.lang, liveCap.partialTarget || (target === 'auto' ? '' : target));
   } else if (capView.draftKey) {
     // The draft ended without becoming a line (noise taken for speech)

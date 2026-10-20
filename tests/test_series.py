@@ -109,3 +109,20 @@ class LiveOnnxWindowTest(unittest.TestCase):
             s._transcribe_window()
         self.assertEqual([l["text"] for l in s.lines], ["Привет всем"])
         self.assertEqual(s.partial, "дальше")
+
+
+class LiveDraftTranslationTest(unittest.TestCase):
+    def test_draft_sent_to_translator_only_when_on(self):
+        from unittest import mock
+        import numpy as np
+        from app import asr_onnx, live
+
+        for on, expected in ((True, "дальше"), (False, "")):
+            with mock.patch.object(live, "caption_onnx_model", return_value="gigaam-v2"):
+                s = live.LiveSession("ru", None)
+            s.draft = on
+            s.translator = mock.Mock()
+            s.audio = np.zeros(live.SR * 6, dtype=np.float32)
+            with mock.patch.object(asr_onnx, "recognize_array", return_value=[(0.2, 1.5, "Привет"), (4.8, 5.9, "дальше")]):
+                s._transcribe_window()
+            s.translator.set_draft.assert_called_with(expected)

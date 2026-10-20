@@ -464,6 +464,7 @@ label.settings-toggle { display: flex; }
 /* The phrase being spoken is only a quiet "…": its text is shown once it is final */
 .cap-draft .cap-orig:empty::before { content: '…'; color: #636366; animation: cap-wait 1.4s ease-in-out infinite; }
 .cap-draft .cap-t { visibility: hidden; }
+.cap-draft.cap-draft-live .cap-t { visibility: visible; }
 .cap-view-tr .cap-draft .cap-t { visibility: visible; }
 .cap-in { animation: cap-in 0.35s ease-out; }
 @keyframes cap-in { from { opacity: 0; } to { opacity: 1; } }
