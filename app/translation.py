@@ -29,7 +29,7 @@ TEXT_LANGUAGES: Dict[str, str] = {
     "he": "Hebrew", "hi": "Hindi", "hu": "Hungarian", "hy": "Armenian", "id": "Indonesian", "it": "Italian",
     "ja": "Japanese", "ka": "Georgian", "kk": "Kazakh", "ko": "Korean", "lt": "Lithuanian", "lv": "Latvian",
     "ms": "Malay", "nl": "Dutch", "no": "Norwegian", "pl": "Polish", "pt": "Portuguese", "ro": "Romanian",
-    "ru": "Russian", "sk": "Slovak", "sr": "Serbian", "sv": "Swedish", "sw": "Swahili", "th": "Thai",
+    "ru": "Russian", "sk": "Slovak", "sr": "Serbian (Cyrillic script)", "sr-latn": "Serbian (Latin script)", "sv": "Swedish", "sw": "Swahili", "th": "Thai",
     "tr": "Turkish", "uk": "Ukrainian", "uz": "Uzbek", "vi": "Vietnamese", "zh": "Chinese",
 }
 
@@ -39,7 +39,7 @@ ISO639_2: Dict[str, str] = {
     "et": "est", "fa": "fas", "fi": "fin", "fr": "fra", "he": "heb", "hi": "hin", "hu": "hun", "hy": "hye",
     "id": "ind", "it": "ita", "ja": "jpn", "ka": "kat", "kk": "kaz", "ko": "kor", "lt": "lit", "lv": "lav",
     "ms": "msa", "nl": "nld", "no": "nor", "pl": "pol", "pt": "por", "ro": "ron", "ru": "rus", "sk": "slk",
-    "sr": "srp", "sv": "swe", "sw": "swa", "th": "tha", "tr": "tur", "uk": "ukr", "uz": "uzb", "vi": "vie",
+    "sr": "srp", "sr-latn": "srp", "sv": "swe", "sw": "swa", "th": "tha", "tr": "tur", "uk": "ukr", "uz": "uzb", "vi": "vie",
     "zh": "zho",
 }
 

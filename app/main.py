@@ -794,17 +794,18 @@ class LiveStartPayload(BaseModel):
     lang: Optional[str] = None
     translate_to: Optional[str] = None
     capture_id: Optional[str] = None  # system audio recorded by the app is mixed into the captions
+    speed: str = "quality"            # "quality": the configured model, "fast": a small installed one
 
 
 @app.post("/api/live/start")
 def api_live_start(payload: LiveStartPayload) -> Dict[str, Any]:
-    from app.dubbing import DUB_LANGUAGES
     from app.live import start_session
+    from app.translation import TEXT_LANGUAGES
 
     target = (payload.translate_to or "").strip().lower() or None
-    if target and target not in DUB_LANGUAGES:
+    if target and target not in TEXT_LANGUAGES:
         raise HTTPException(status_code=400, detail="Неподдерживаемый язык перевода")
-    return start_session(payload.lang, target, payload.capture_id).state()
+    return start_session(payload.lang, target, payload.capture_id, payload.speed).state()
 
 
 @app.post("/api/live/{session_id}/audio")
@@ -823,6 +824,35 @@ async def api_live_audio(session_id: str, request: Request, since: int = 0) -> D
     s.add_pcm16(data)
     await run_in_threadpool(s.step)
     return s.state(since)
+
+
+class LiveConfigPayload(BaseModel):
+    translate_to: Optional[str] = None
+    speed: Optional[str] = None
+    speech_lang: Optional[str] = None  # "auto" or a language code; None keeps the current one
+
+
+@app.post("/api/live/{session_id}/config")
+def api_live_config(session_id: str, payload: LiveConfigPayload) -> Dict[str, Any]:
+    """Changes the caption translation while recording (language, fast or quality model)."""
+    from app.live import get_session
+    from app.translation import TEXT_LANGUAGES
+
+    s = get_session(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Сеанс субтитров не найден")
+    target = (payload.translate_to or "").strip().lower() or None
+    if target and target not in TEXT_LANGUAGES:
+        raise HTTPException(status_code=400, detail="Неподдерживаемый язык перевода")
+    s.configure(target, payload.speed if payload.speed in ("quality", "fast") else None, payload.speech_lang)
+    return s.state(0)
+
+
+@app.get("/api/live/models")
+def api_live_models() -> Dict[str, Any]:
+    from app.live_translate import model_choices
+
+    return model_choices()
 
 
 @app.post("/api/live/{session_id}/stop")
@@ -1149,7 +1179,7 @@ def api_vram_preload(payload: VramActionPayload) -> Dict[str, Any]:
     from app.vram import preload
 
     try:
-        return preload(payload.kind)
+        return preload(payload.kind, payload.name)
     except (RuntimeError, ValueError, httpx.HTTPError) as e:
         raise HTTPException(status_code=409, detail=str(e))
 

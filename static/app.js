@@ -238,6 +238,7 @@ document.addEventListener('click', () => {
   document.getElementById('export-menu')?.classList.add('hidden');
   hideTranslateMenu();
   hideTxViewMenu();
+  hideRecordPresetMenu();
 });
 
 function toggleTranslateMenu(e) {
@@ -497,13 +498,15 @@ async function loadVram() {
 function vramChipLabel(c) {
   if (c.kind === 'dub') return `${t('vramChipDub')}${c.count > 1 ? ' ×' + c.count : ''}`;
   if (c.kind === 'speakers') return t('vramChipSpeakers');
+  if (c.kind === 'live') return `${t('vramChipLive')} · ${c.label || c.name}`;
   if (c.kind === 'ollama') return `${c.label || c.name}${c.size_gb ? ' · ' + c.size_gb + ' ' + t('unitGB') : ''}`;
-  return c.name;
+  return c.label || c.name;
 }
 
 function vramChipTitle(c) {
   if (c.kind === 'dub') return t('tipVramDub');
   if (c.loading) return t('tipVramLoading').replace('{name}', vramChipLabel(c));
+  if (c.kind === 'live') return c.can_unload ? t('tipVramUnload').replace('{name}', vramChipLabel(c)) : t('tipVramInUse');
   if (c.loaded) return c.can_unload ? t('tipVramUnload').replace('{name}', vramChipLabel(c)) : t('tipVramInUse');
   return c.can_preload ? t('tipVramPreload').replace('{name}', vramChipLabel(c)) : t('tipVramNotLoaded');
 }
@@ -518,7 +521,7 @@ function renderVram(data) {
   document.getElementById('vram-bar').style.width = `${Math.min(100, (100 * gpu.used_gb) / Math.max(1, gpu.total_gb))}%`;
   row.firstElementChild.title = t('tipVramUsage').replace('{free}', gpu.free_gb);
 
-  const chips = (data.chips || []).filter(c => c.loaded || c.loading || c.can_preload);
+  const chips = data.chips || [];  // every model: loaded, loading or ready to load
   const html = chips.map((c, i) => {
     const actionable = vram.busy || c.loading ? false : (c.loaded ? c.can_unload : c.can_preload);
     const cls = c.loading
@@ -533,11 +536,17 @@ function renderVram(data) {
       title="${escapeHtml(vramChipTitle(c))}"
       class="group max-w-full inline-flex items-center gap-1 px-1.5 h-5 rounded-full border text-[10px] font-medium transition ${cls} ${actionable ? 'hover:bg-white/10' : 'cursor-default'}">
       <span class="w-1.5 h-1.5 rounded-full shrink-0 ${c.loaded || c.loading ? 'bg-current' : 'border border-current'}"></span>
-      <span class="truncate">${escapeHtml(vramChipLabel(c))}</span>${icon}</button>`;
+      <span class="truncate">${c.default ? '★ ' : ''}${escapeHtml(vramChipLabel(c))}</span>${icon}</button>`;
   }).join('');
   // Unchanged chips are left alone, so a refresh never swallows a click
   const box = document.getElementById('vram-chips');
-  if (html !== vram.html) { box.innerHTML = html; vram.html = html; }
+  if (html !== vram.html) {
+    box.innerHTML = html;
+    // The recording studio covers the sidebar: it shows the same chips in its header
+    const studioBox = document.getElementById('studio-vram-chips');
+    if (studioBox) studioBox.innerHTML = html;
+    vram.html = html;
+  }
   vram.chips = chips;
 }
 
@@ -2120,7 +2129,32 @@ async function revealDub(lang) {
 // --- Translate text ---
 const VIDEO_EXT_RE = /\.(mp4|m4v|mov|mkv|webm|avi)$/i;
 
+// Languages for text and live translation (app/translation.py TEXT_LANGUAGES), loaded once
+const TEXT_LANG_FALLBACK = ['ar', 'bg', 'cs', 'da', 'de', 'el', 'en', 'es', 'et', 'fa', 'fi', 'fr', 'he', 'hi', 'hu',
+  'hy', 'id', 'it', 'ja', 'ka', 'kk', 'ko', 'lt', 'lv', 'ms', 'nl', 'no', 'pl', 'pt', 'ro', 'ru', 'sk', 'sr', 'sr-latn',
+  'sv', 'sw', 'th', 'tr', 'uk', 'uz', 'vi', 'zh'];
+let _textLangs = null;
+
+async function textLanguages() {
+  if (_textLangs) return _textLangs;
+  try {
+    const r = await fetch('/api/translate/languages');
+    if (r.ok) _textLangs = (await r.json()).languages;
+  } catch (e) {}
+  return _textLangs || TEXT_LANG_FALLBACK;
+}
+
+function textLangOptions(codes, excludeScripts) {
+  return codes.filter(c => !(excludeScripts && c.includes('-')))
+    .map(c => ({ c, n: langName(c) }))
+    .sort((a, b) => a.n.localeCompare(b.n))
+    .map(({ c, n }) => `<option value="${c}">${escapeHtml(n)}</option>`).join('');
+}
+
 function langName(code) {
+  // Serbian is written in two scripts: say which one
+  if (code === 'sr') code = 'sr-Cyrl';
+  if (code === 'sr-latn') code = 'sr-Latn';
   try {
     const n = new Intl.DisplayNames([state.uiLang], { type: 'language' }).of(code);
     return n ? n.charAt(0).toUpperCase() + n.slice(1) : String(code).toUpperCase();
@@ -3458,13 +3492,149 @@ function stopSettingsAudioTest() {
   if (dbEl) dbEl.textContent = '-60 dB';
 }
 
-async function openRecordModal() {
+// --- Recording presets (like scenes in OBS): one click records from the chosen sources ---
+// Built-in presets plus the user's own, kept in the settings (record_presets, record_default_preset)
+const BUILTIN_PRESETS = [
+  { id: 'call', builtin: true, source: 'both', mic: '', live: true, translate: '' },
+  { id: 'note', builtin: true, source: 'mic', mic: '', live: false, translate: '' },
+  { id: 'system', builtin: true, source: 'system', mic: '', live: false, translate: '' },
+];
+
+function recordPresets() {
+  let own = [];
+  try { own = JSON.parse((state.system && state.system.settings && state.system.settings.record_presets) || '[]'); } catch (e) {}
+  return BUILTIN_PRESETS.concat(Array.isArray(own) ? own : []);
+}
+
+function defaultRecordPresetId() {
+  const id = state.system && state.system.settings && state.system.settings.record_default_preset;
+  return recordPresets().some(p => p.id === id) ? id : 'call';
+}
+
+function presetLabel(p) {
+  return p.builtin ? t(`preset_${p.id}`) : p.name;
+}
+
+async function saveRecordPresetSettings(own, defaultId) {
+  const settings = { record_presets: JSON.stringify(own) };
+  if (defaultId) settings.record_default_preset = defaultId;
+  const res = await fetch('/api/settings', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (res.ok && data.settings && state.system) state.system.settings = data.settings;
+}
+
+function renderRecordPresetSelect(selectedId) {
+  const sel = document.getElementById('record-preset-select');
+  const def = defaultRecordPresetId();
+  sel.innerHTML = recordPresets().map(p =>
+    `<option value="${escapeHtml(p.id)}">${p.id === def ? '★ ' : ''}${escapeHtml(presetLabel(p))}</option>`).join('');
+  sel.value = selectedId || def;
+  const p = recordPresets().find(x => x.id === sel.value);
+  document.getElementById('rec-preset-update-btn').classList.toggle('hidden', !p || !!p.builtin);
+  document.getElementById('rec-preset-delete-btn').classList.toggle('hidden', !p || !!p.builtin);
+  document.getElementById('rec-preset-default-btn').classList.toggle('ui-btn-active', !!p && p.id === def);
+}
+
+function applyRecordPreset(id) {
+  const p = recordPresets().find(x => x.id === id) || recordPresets()[0];
+  state.recPresetId = p.id;
+  document.getElementById('record-source-select').value = p.source;
+  const micSel = document.getElementById('record-mic-select');
+  if (p.mic && [...micSel.options].some(o => o.value === p.mic)) micSel.value = p.mic;
+  document.getElementById('live-captions-toggle').checked = !!p.live;
+  document.getElementById('live-translate-select').value = p.translate || '';
+  saveLiveCaptionPrefs();
+  renderRecordPresetSelect(p.id);
+}
+
+function presetFromForm(base) {
+  return {
+    ...base,
+    source: document.getElementById('record-source-select').value,
+    mic: document.getElementById('record-mic-select').value || '',
+    live: document.getElementById('live-captions-toggle').checked,
+    translate: document.getElementById('live-translate-select').value || '',
+  };
+}
+
+async function saveRecordPresetAs() {
+  const name = (prompt(t('presetNamePrompt'), '') || '').trim();
+  if (!name) return;
+  const own = recordPresets().filter(p => !p.builtin);
+  const preset = presetFromForm({ id: `p${Date.now().toString(36)}`, name: name.slice(0, 60) });
+  own.push(preset);
+  await saveRecordPresetSettings(own);
+  state.recPresetId = preset.id;
+  renderRecordPresetSelect(preset.id);
+  showToast(t('presetSaved').replace('{name}', preset.name));
+}
+
+async function updateRecordPreset() {
+  const id = document.getElementById('record-preset-select').value;
+  const own = recordPresets().filter(p => !p.builtin).map(p => (p.id === id ? presetFromForm(p) : p));
+  await saveRecordPresetSettings(own);
+  renderRecordPresetSelect(id);
+  showToast(t('presetSaved').replace('{name}', presetLabel(own.find(p => p.id === id) || {})));
+}
+
+async function deleteRecordPreset() {
+  const id = document.getElementById('record-preset-select').value;
+  const p = recordPresets().find(x => x.id === id);
+  if (!p || p.builtin || !confirm(t('presetDeleteConfirm').replace('{name}', p.name))) return;
+  const own = recordPresets().filter(x => !x.builtin && x.id !== id);
+  await saveRecordPresetSettings(own, defaultRecordPresetId() === id ? 'call' : null);
+  applyRecordPreset(defaultRecordPresetId());
+}
+
+async function setDefaultRecordPreset() {
+  const id = document.getElementById('record-preset-select').value;
+  await saveRecordPresetSettings(recordPresets().filter(p => !p.builtin), id);
+  renderRecordPresetSelect(id);
+  showToast(t('presetDefaultSet').replace('{name}', presetLabel(recordPresets().find(p => p.id === id) || {})));
+}
+
+function toggleRecordPresetMenu(e) {
+  e.stopPropagation();
+  const menu = document.getElementById('record-preset-menu');
+  const def = defaultRecordPresetId();
+  const item = (onclick, mark, label, hint) =>
+    `<button onclick="${onclick}" class="macos-menu-item gap-2" style="justify-content:flex-start">`
+    + `<span class="w-3 shrink-0 text-center text-apple-amber">${mark}</span>`
+    + `<span class="min-w-0"><span class="block truncate">${escapeHtml(label)}</span>`
+    + (hint ? `<span class="block text-[10.5px] text-apple-tertiary truncate">${escapeHtml(hint)}</span>` : '') + `</span></button>`;
+  const sourceName = { mic: t('sourceMic'), system: t('sourceSystem'), both: t('sourceBoth') };
+  menu.innerHTML = recordPresets().map(p => item(
+    `hideRecordPresetMenu(); quickRecord('${p.id}')`, p.id === def ? '★' : '', presetLabel(p),
+    sourceName[p.source] + (p.live ? ` · ${t('presetWithCaptions')}` : ''))).join('')
+    + '<div class="h-px bg-white/10 my-1"></div>'
+    + item('hideRecordPresetMenu(); openRecordModal()', '', t('presetOpenSettings'), '');
+  menu.classList.toggle('hidden');
+}
+
+function hideRecordPresetMenu() {
+  document.getElementById('record-preset-menu')?.classList.add('hidden');
+}
+
+// Record at once with a preset (the default one without an argument)
+async function quickRecord(presetId) {
+  if (_mediaRecorder && _mediaRecorder.state === 'recording' || _recCaptureId) {
+    openStudio();  // already recording: back to the studio
+    return;
+  }
+  await openRecordModal(presetId || defaultRecordPresetId());
+  startLiveRecording();
+}
+
+async function openRecordModal(presetId) {
   openModal('record');
-  initLiveCaptionControls();
+  await initLiveCaptionControls();
   await populateAudioInputDevices();
 
   const savedSource = (state.system && state.system.settings && state.system.settings.record_source_mode) || 'both';
   document.getElementById('record-source-select').value = savedSource;
+  applyRecordPreset(presetId || state.recPresetId || defaultRecordPresetId());
   const dataDir = state.system && state.system.paths && state.system.paths.data;
   document.getElementById('record-save-hint').textContent = dataDir ? t('recordSaveHint').replace('{dir}', `${dataDir}\\uploads`) : '';
 
@@ -3497,13 +3667,13 @@ function saveLiveCaptionPrefs() {
   try { localStorage.setItem('verbascribe_live_captions', JSON.stringify(prefs)); } catch (e) {}
 }
 
-function initLiveCaptionControls() {
+async function initLiveCaptionControls() {
   const prefs = liveCaptionPrefs();
-  const names = t('dubLangNames') || {};
+  const codes = await textLanguages();
   const sel = document.getElementById('live-translate-select');
   sel.innerHTML = `<option value="">${escapeHtml(t('liveNoTranslation'))}</option>`
-    + Object.keys(names).sort((a, b) => names[a].localeCompare(names[b]))
-      .map(c => `<option value="${c}">${escapeHtml(t('liveTranslateTo').replace('{lang}', names[c]))}</option>`).join('');
+    + codes.map(c => ({ c, n: langName(c) })).sort((a, b) => a.n.localeCompare(b.n))
+      .map(({ c, n }) => `<option value="${c}">${escapeHtml(t('liveTranslateTo').replace('{lang}', n))}</option>`).join('');
   sel.value = prefs.translate || '';
   document.getElementById('live-captions-toggle').checked = !!prefs.on;
   const box = document.getElementById('live-captions');
@@ -3537,9 +3707,10 @@ async function startLiveCaptions(ctx, stream) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      lang: (state.system && state.system.settings && state.system.settings.language) || 'auto',
+      lang: studio.speech || 'auto',
       translate_to: document.getElementById('live-translate-select').value || null,
       capture_id: _recCaptureId,
+      speed: studio.speed,
     }),
   });
   const data = await res.json().catch(() => ({}));
@@ -3589,7 +3760,12 @@ async function sendLiveAudio() {
       if (ln) ln.translation = tr;
     }
     liveCap.partial = data.partial || '';
+    liveCap.partialTranslation = data.partial_translation || '';
+    liveCap.translationReady = !!data.translation_ready;
+    liveCap.lang = data.lang || liveCap.lang;
+    liveCap.error = data.error || '';
     renderLiveCaptions(data.error);
+    renderStudioCaptions();
   } catch (e) {
     renderLiveCaptionsError(e.message);
   } finally {
@@ -3640,14 +3816,14 @@ function reportRecordingState(active) {
 }
 
 // Commands from the tray menu (run.py TrayController); the window is already shown
-window.trayCommand = function (cmd) {
+window.trayCommand = function (cmd, arg) {
   if (cmd === 'record') {
     if (_mediaRecorder && _mediaRecorder.state === 'recording') {
       stopAndTranscribeRecording();
       return;
     }
     // System audio is recorded by the app, so recording can start without a click in the window
-    openRecordModal().then(() => startLiveRecording());
+    quickRecord(arg);
   } else if (cmd === 'import') {
     openModal('import');
   } else if (cmd === 'ask') {
@@ -3656,6 +3832,176 @@ window.trayCommand = function (cmd) {
     openModal('settings');
   }
 };
+
+// --- Recording studio: the whole window while recording, large captions and translation ---
+const studio = { open: false, view: 'under', speed: 'quality', font: 26, speech: 'auto' };
+try {
+  const saved = JSON.parse(localStorage.getItem('verbascribe_studio') || '{}');
+  Object.assign(studio, {
+    view: ['under', 'side', 'tr'].includes(saved.view) ? saved.view : 'under',
+    speed: saved.speed || 'quality', font: saved.font || 26, speech: saved.speech || 'auto',
+  });
+} catch (e) {}
+
+function saveStudioPrefs() {
+  try {
+    localStorage.setItem('verbascribe_studio', JSON.stringify({ view: studio.view, speed: studio.speed, font: studio.font, speech: studio.speech }));
+  } catch (e) {}
+}
+
+function langCode(code) {
+  return (code || '').toUpperCase();
+}
+
+function openStudio() {
+  studio.open = true;
+  closeModal('record');
+  document.getElementById('studio-vram-chips').innerHTML = (typeof vram !== 'undefined' && vram.html) || '';
+  scheduleVramRefresh(300);
+  const sourceName = { mic: t('sourceMic'), system: t('sourceSystem'), both: t('sourceBoth') };
+  const p = recordPresets().find(x => x.id === state.recPresetId);
+  document.getElementById('studio-source').textContent =
+    [p ? presetLabel(p) : '', sourceName[document.getElementById('record-source-select').value] || ''].filter(Boolean).join(' · ');
+  // The language list of the record window is reused
+  const sel = document.getElementById('studio-translate');
+  const codes = _textLangs || TEXT_LANG_FALLBACK;
+  sel.innerHTML = `<option value="">${escapeHtml(t('liveNoTranslation'))}</option>` + textLangOptions(codes, false);
+  sel.value = document.getElementById('live-translate-select').value;
+  // Speech: Whisper language codes (no script variants)
+  const speech = document.getElementById('studio-speech');
+  speech.innerHTML = `<option value="auto">${escapeHtml(t('studioSpeechAuto'))}</option>` + textLangOptions(codes, true);
+  speech.value = studio.speech;
+  document.getElementById('studio-captions-toggle').checked = !!liveCap.session || document.getElementById('live-captions-toggle').checked;
+  renderStudioControls();
+  document.getElementById('studio').classList.remove('hidden');
+  renderStudioCaptions();
+  updateRecordButtonState();
+}
+
+function minimizeStudio() {
+  studio.open = false;
+  document.getElementById('studio').classList.add('hidden');
+  updateRecordButtonState();
+}
+
+function closeStudio() {
+  studio.open = false;
+  document.getElementById('studio')?.classList.add('hidden');
+  updateRecordButtonState();
+}
+
+// While recording, the sidebar button shows the time and returns to the studio
+function updateRecordButtonState() {
+  const btn = document.getElementById('record-quick-btn');
+  if (!btn) return;
+  const recording = !!(_mediaRecorder && _mediaRecorder.state === 'recording') || !!_recCaptureId;
+  const label = btn.querySelector('[data-i18n="recordBtn"]');
+  if (recording && !studio.open) {
+    label.textContent = `${t('studioRecordingShort')} ${document.getElementById('studio-timer').textContent}`;
+    btn.classList.add('animate-pulse');
+  } else {
+    label.textContent = t('recordBtn');
+    btn.classList.remove('animate-pulse');
+  }
+}
+
+function renderStudioControls() {
+  document.getElementById('studio-fast').checked = studio.speed === 'fast';
+  document.getElementById('studio-tr-options').classList.toggle('hidden', !document.getElementById('studio-translate').value);
+  // "Auto" shows the language heard last
+  const autoOpt = document.querySelector('#studio-speech option[value="auto"]');
+  if (autoOpt) autoOpt.textContent = t('studioSpeechAuto') + (liveCap.lang && studio.speech === 'auto' ? ` · ${langCode(liveCap.lang)}` : '');
+  ['under', 'side', 'tr'].forEach(k => {
+    document.getElementById(`studio-view-${k}`).className = `apple-segment-btn text-[11px] ${studio.view === k ? 'apple-segment-active' : 'text-apple-secondary hover:text-white'}`;
+  });
+  document.getElementById('studio-captions-inner').style.setProperty('--cap-size', `${studio.font}px`);
+}
+
+function studioSetView(v) { studio.view = v; saveStudioPrefs(); renderStudioControls(); renderStudioCaptions(); }
+function studioFont(d) { studio.font = Math.max(16, Math.min(56, studio.font + d)); saveStudioPrefs(); renderStudioControls(); }
+function studioSetSpeed(s) { studio.speed = s; saveStudioPrefs(); renderStudioControls(); studioConfigure(); }
+
+// Language or model changed while recording: the session translates the last lines again
+async function studioConfigure(speechChanged) {
+  const target = document.getElementById('studio-translate').value || null;
+  document.getElementById('live-translate-select').value = target || '';
+  studio.speech = document.getElementById('studio-speech').value || 'auto';
+  saveStudioPrefs();
+  saveLiveCaptionPrefs();
+  renderStudioControls();
+  if (!liveCap.session) return;
+  try {
+    await fetch(`/api/live/${liveCap.session}/config`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ translate_to: target, speed: studio.speed, speech_lang: speechChanged ? studio.speech : null }),
+    });
+  } catch (e) { console.error(e); }
+  renderStudioCaptions();
+}
+
+async function studioToggleCaptions(on) {
+  document.getElementById('live-captions-toggle').checked = on;
+  saveLiveCaptionPrefs();
+  if (on && !liveCap.session && _recAudioCtx && window._recMixedStream) {
+    try { await startLiveCaptions(_recAudioCtx, window._recMixedStream); } catch (e) { renderLiveCaptionsError(e.message); }
+  } else if (!on) {
+    stopLiveCaptions();
+  }
+  renderStudioCaptions();
+}
+
+function renderStudioCaptions() {
+  if (!studio.open) return;
+  const box = document.getElementById('studio-captions');
+  const inner = document.getElementById('studio-captions-inner');
+  const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+  const target = document.getElementById('studio-translate').value;
+  const view = target ? studio.view : 'orig';
+  const names = t('dubLangNames') || {};
+  const tag = (code) => (code ? `<span class="lang-tag">${escapeHtml(langCode(code))}</span>` : '');
+  const big = 'font-size: var(--cap-size); line-height: 1.35';
+  const small = 'font-size: calc(var(--cap-size) * 0.82); line-height: 1.35';
+  const trText = (tr, draft) => (tr ? escapeHtml(tr) : `<span class="text-apple-tertiary">…</span>`);
+
+  const row = (ln, draft) => {
+    const same = !!ln.translation && ln.translation === ln.text;  // already in the target language
+    const origCls = draft ? 'text-apple-secondary italic' : 'text-white';
+    const trCls = draft ? 'text-apple-blue/60 italic' : 'text-apple-blue';
+    const orig = `<div class="${origCls}" style="${big}">${tag(ln.lang)}${escapeHtml(ln.text)}</div>`;
+    if (view === 'orig') return `<div>${orig}</div>`;
+    if (view === 'tr') {
+      return `<div class="${trCls}" style="${big}">${same ? escapeHtml(ln.text) : trText(ln.translation, draft)}</div>`;
+    }
+    if (view === 'side') {
+      return `<div class="grid grid-cols-2 gap-8"><div class="${origCls}" style="${big}">${escapeHtml(ln.text)}</div>`
+        + `<div class="${trCls}" style="${big}">${same ? '<span class="text-apple-tertiary">—</span>' : trText(ln.translation, draft)}</div></div>`;
+    }
+    // under: the translation in smaller blue type right below its phrase
+    return `<div>${orig}${same ? '' : `<div class="${trCls} mt-0.5" style="${small}">${tag(target)}${trText(ln.translation, draft)}</div>`}</div>`;
+  };
+
+  const lines = [...liveCap.lines.values()].sort((a, b) => a.id - b.id).slice(-80);
+  let html = '';
+  if (view === 'side' && (lines.length || liveCap.partial)) {
+    html += `<div class="grid grid-cols-2 gap-8 text-[11px] uppercase tracking-wider text-apple-tertiary sticky top-0 bg-apple-bg/95 py-1">`
+      + `<div>${escapeHtml(t('studioOriginalCol'))}${liveCap.lang ? ` · ${escapeHtml(langName(liveCap.lang))}` : ''}</div>`
+      + `<div>${escapeHtml(langName(target))}</div></div>`;
+  }
+  html += lines.map(ln => row(ln, false)).join('');
+  if (liveCap.partial) {
+    html += row({ text: liveCap.partial, translation: liveCap.partialTranslation || '', lang: liveCap.lang }, true);
+  }
+  if (!lines.length && !liveCap.partial) {
+    html = `<div class="text-center text-apple-tertiary text-sm pt-16">${escapeHtml(liveCap.session ? t('liveListening') : t('studioCaptionsOff'))}</div>`;
+  }
+  inner.innerHTML = html;
+  if (nearBottom) box.scrollTop = box.scrollHeight;
+  renderStudioControls();
+  const status = document.getElementById('studio-status');
+  status.textContent = liveCap.error ? liveCap.error
+    : target && liveCap.session && !liveCap.translationReady ? t('studioLoadingTranslator') : '';
+  status.className = `text-[11px] ml-auto ${liveCap.error ? 'text-apple-amber' : 'text-apple-tertiary'}`;
+}
 
 async function startLiveRecording() {
   try {
@@ -3739,6 +4085,11 @@ async function startLiveRecording() {
         : (db > -42 ? 'h-full bg-apple-green transition-all duration-75' : 'h-full bg-apple-secondary transition-all duration-75');
 
       document.getElementById('record-db-display').textContent = `${db} dB`;
+      if (studio.open) {
+        document.getElementById('studio-level').style.width = `${pct}%`;
+        document.getElementById('studio-level').className = levelBar.className;
+        document.getElementById('studio-db').textContent = `${db} dB`;
+      }
 
       const badge = document.getElementById('record-signal-badge');
       if (db > -44) {
@@ -3758,9 +4109,13 @@ async function startLiveRecording() {
     _recTimerInterval = setInterval(() => {
       const elapsed = Math.floor((Date.now() - _recStartTime) / 1000);
       document.getElementById('record-timer-display').textContent = formatTime(elapsed);
+      document.getElementById('studio-timer').textContent = formatTime(elapsed);
+      updateRecordButtonState();
     }, 400);
 
     reportRecordingState(true);
+    window._recMixedStream = mixedStream;
+    openStudio();
     document.getElementById('btn-start-rec').classList.add('hidden');
     document.getElementById('btn-stop-rec').classList.remove('hidden');
     document.getElementById('rec-dot-indicator').classList.add('animate-ping');
@@ -3776,6 +4131,8 @@ async function startLiveRecording() {
 
 function _cleanupRecordingResources() {
   reportRecordingState(false);
+  window._recMixedStream = null;
+  setTimeout(closeStudio, 0);
   clearInterval(_recSysTimer);
   _recSysTimer = null;
   stopLiveCaptions();
@@ -4242,7 +4599,7 @@ document.addEventListener('keydown', (e) => {
     toggleTheatre();
   } else if (e.code === 'KeyR' && !e.shiftKey) {
     e.preventDefault();
-    openRecordModal();
+    quickRecord();
   }
 });
 

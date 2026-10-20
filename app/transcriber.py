@@ -426,13 +426,16 @@ def running_job_kind() -> Optional[str]:
 _preloading = False
 
 
-def _preload_whisper() -> None:
-    global _preloading
+_preloading_name: Optional[str] = None
+
+
+def _preload_whisper(model_name: Optional[str] = None) -> None:
+    global _preloading, _preloading_name
     try:
         settings = get_all_settings()
         hw = get_hardware_info()
         _get_whisper_model(
-            settings.get("whisper_model") or "large-v3-turbo",
+            model_name or settings.get("whisper_model") or "large-v3-turbo",
             settings.get("device") or hw["recommended_device"],
             settings.get("compute_type") or hw["recommended_compute_type"],
         )
@@ -441,17 +444,19 @@ def _preload_whisper() -> None:
     finally:
         with _jobs_lock:
             _preloading = False
+            _preloading_name = None
 
 
-def enqueue_whisper_preload() -> bool:
-    """Loads the Whisper model from the settings in the job worker, so it never races a job.
-    The next transcription with the same model reuses it. False when the queue is busy."""
-    global _preloading
+def enqueue_whisper_preload(model_name: Optional[str] = None) -> bool:
+    """Loads a Whisper model (the one from the settings by default) in the job worker, so it never
+    races a job. A transcription with the same model reuses it. False when the queue is busy."""
+    global _preloading, _preloading_name
     with _jobs_lock:
         if _queue or _preloading:
             return False
         _preloading = True
-    _executor.submit(_preload_whisper)
+        _preloading_name = model_name or get_all_settings().get("whisper_model") or "large-v3-turbo"
+    _executor.submit(_preload_whisper, model_name)
     return True
 
 

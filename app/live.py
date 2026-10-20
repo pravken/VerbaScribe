@@ -142,10 +142,14 @@ def _caption_worker() -> _CaptionWorker:
 
 
 class LiveSession:
-    def __init__(self, lang: Optional[str], translate_to: Optional[str], capture_id: Optional[str] = None):
+    def __init__(self, lang: Optional[str], translate_to: Optional[str], capture_id: Optional[str] = None,
+                 speed: str = "quality"):
         self.id = uuid.uuid4().hex
         self.capture_id = capture_id
-        self.lang = lang if lang and lang != "auto" else None
+        # The language chosen for speech (None: detected in every window, so a meeting may switch
+        # between languages); self.lang is the language heard last, for translation and the UI
+        self.speech_lang = lang if lang and lang != "auto" else None
+        self.lang = self.speech_lang
         self.translate_to = translate_to or None
         self.audio = np.zeros(0, dtype=np.float32)
         self.offset = 0.0           # recording time (s) of self.audio[0]
@@ -156,7 +160,12 @@ class LiveSession:
         self.error = ""
         self.touched = time.time()
         self._busy = threading.Lock()
-        self._tx_lock = threading.Lock()
+        self.translator = None
+        if translate_to:
+            from app.live_translate import LiveTranslator
+
+            # Starts loading the translation model now, while the first phrase is being spoken
+            self.translator = LiveTranslator(lambda: self.lang, translate_to, speed)
         self._next_id = 1
 
     # -------------------------------------------------------------- audio in
@@ -196,9 +205,11 @@ class LiveSession:
         win_sec = window.size / SR
         if win_sec < 0.8:
             return
-        segs, language, prob = _caption_worker().transcribe(window, self.lang)
-        if self.lang is None and language and prob > 0.7:
-            self.lang = language  # keep the language once it is clear: detection per window flickers
+        segs, language, prob = _caption_worker().transcribe(window, self.speech_lang)
+        if self.speech_lang:
+            self.lang = self.speech_lang
+        elif language and prob > 0.5:
+            self.lang = language
         self.error = ""
         force = win_sec > LIVE_WINDOW_SEC
         final_until = 0.0
@@ -206,7 +217,7 @@ class LiveSession:
         for s in segs:
             if s.end <= win_sec - FINAL_MARGIN_SEC or (force and s.end <= win_sec - 0.3):
                 new_lines.append({
-                    "id": self._next_id, "text": s.text.strip(),
+                    "id": self._next_id, "text": s.text.strip(), "lang": self.lang,
                     "start": round(self.offset + s.start, 2), "end": round(self.offset + s.end, 2),
                     "translation": None,
                 })
@@ -226,42 +237,53 @@ class LiveSession:
         self.lines.extend(new_lines)
         # Everything after the final phrases is the draft line
         self.partial = " ".join(s.text.strip() for s in segs[len(new_lines):]).strip()
-        if new_lines and self.translate_to:
-            threading.Thread(target=self._translate, args=(new_lines,), daemon=True).start()
+        if self.translator:
+            if new_lines:
+                self.translator.add_lines(new_lines)
+            self.translator.set_draft(self.partial)
 
-    def _translate(self, lines: List[Dict[str, Any]]) -> None:
-        from app.dubbing import DUB_LANGUAGES
-        from app.llm_translate import resolve_ollama, translate_texts
+    def configure(self, translate_to: Optional[str], speed: Optional[str], speech_lang: Optional[str] = None) -> None:
+        """Changes the translation (and the speech language) while recording; the last lines are
+        translated again."""
+        from app.live_translate import LiveTranslator
 
-        with self._tx_lock:  # in order, one request at a time
-            try:
-                texts = [ln["text"] for ln in lines]
-                src = DUB_LANGUAGES.get(self.lang or "", "the source language")
-                dst = DUB_LANGUAGES.get(self.translate_to, self.translate_to)
-                base_url, model = resolve_ollama()
-                out = translate_texts(texts, src, dst, base_url=base_url, model=model, style="text",
-                                      check_cancel=lambda: None, tgt_code=self.translate_to)
-                for ln, tr in zip(lines, out):
-                    ln["translation"] = tr
-            except Exception as e:
-                traceback.print_exc()
-                self.error = f"Перевод: {str(e)[:160]}"
+        if speech_lang is not None:
+            self.speech_lang = None if speech_lang in ("", "auto") else speech_lang
+            if self.speech_lang:
+                self.lang = self.speech_lang
+        if not translate_to:
+            if self.translator:
+                self.translator.stop()
+            self.translator, self.translate_to = None, None
+            return
+        changed = translate_to != self.translate_to
+        self.translate_to = translate_to
+        if self.translator is None:
+            self.translator = LiveTranslator(lambda: self.lang, translate_to, speed or "quality")
+            self.translator.add_lines([ln for ln in self.lines[-20:]])
+        else:
+            self.translator.configure(translate_to, speed, retranslate=self.lines[-20:] if changed else None)
+        self.translator.set_draft(self.partial)
 
     # -------------------------------------------------------------- out
     def state(self, since_id: int = 0) -> Dict[str, Any]:
         return {
             "session": self.id,
             "lang": self.lang,
+            "speech_lang": self.speech_lang or "auto",
             "lines": [ln for ln in self.lines if ln["id"] > since_id or ln["translation"] is None],
             "translations": {ln["id"]: ln["translation"] for ln in self.lines if ln["translation"]},
             "partial": self.partial,
-            "error": self.error,
+            "partial_translation": self.translator.draft_translation if self.translator else "",
+            "translation_ready": bool(self.translator and self.translator.ready),
+            "error": self.error or (self.translator.error if self.translator else ""),
         }
 
 
-def start_session(lang: Optional[str], translate_to: Optional[str], capture_id: Optional[str] = None) -> LiveSession:
+def start_session(lang: Optional[str], translate_to: Optional[str], capture_id: Optional[str] = None,
+                  speed: str = "quality") -> LiveSession:
     _drop_idle()
-    s = LiveSession(lang, translate_to, capture_id)
+    s = LiveSession(lang, translate_to, capture_id, speed)
     with _sessions_lock:
         _sessions[s.id] = s
     # Start the caption worker now, so the first captions do not wait for the model to load
@@ -276,7 +298,9 @@ def get_session(session_id: str) -> Optional[LiveSession]:
 
 def stop_session(session_id: str) -> None:
     with _sessions_lock:
-        _sessions.pop(session_id, None)
+        s = _sessions.pop(session_id, None)
+    if s and s.translator:
+        s.translator.stop()
 
 
 def _drop_idle() -> None:

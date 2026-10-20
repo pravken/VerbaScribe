@@ -24,7 +24,8 @@ class _NvmlMemory(ctypes.Structure):
 
 
 _nvml_lock = threading.Lock()
-_ollama_loading = threading.Event()  # set while the preload button loads the Ollama model
+_ollama_loading = threading.Event()  # set while the preload button loads an Ollama model
+_ollama_loading_name: List[Optional[str]] = [None]
 _nvml: Dict[str, Any] = {"lib": None, "handle": None, "failed": False}
 
 
@@ -95,45 +96,87 @@ def ollama_loaded() -> List[Dict[str, Any]]:
     ]
 
 
+def ollama_installed() -> List[str]:
+    """Models downloaded into Ollama (whether loaded or not). Never starts Ollama."""
+    from app.ollama_client import _is_ollama_port_open
+
+    if not _is_ollama_port_open():
+        return []
+    try:
+        with httpx.Client(timeout=0.8) as client:
+            return [m.get("name") for m in client.get(f"{_ollama_base()}/api/tags").json().get("models") or []]
+    except Exception:
+        return []
+
+
 def vram_snapshot() -> Dict[str, Any]:
+    """
+    Every model the app can use, loaded (in memory) or ready to load (downloaded): all Whisper
+    models on disk, the speaker model, every Ollama model, the live-caption worker and the dub
+    workers. A click on a chip unloads or loads that model.
+    """
     from app import transcriber
     from app.diarizer import ecapa_loaded_on
     from app.dubbing import live_workers
-    from app.model_manager import format_whisper_model_name
+    from app.model_manager import WHISPER_CATALOG, format_whisper_model_name, is_whisper_model_installed
     from app.ollama_client import format_llm_model_name
 
     settings = get_all_settings()
     busy = transcriber.running_job_kind()
+    on_gpu = (settings.get("device") or "cuda") == "cuda"
     chips: List[Dict[str, Any]] = []
 
     key = transcriber.whisper_cache_key()
     wanted_whisper = settings.get("whisper_model") or "large-v3-turbo"
-    chips.append({
-        "kind": "whisper",
-        "name": format_whisper_model_name(key[0] if key else wanted_whisper),
-        "loaded": bool(key),
-        # Loading for the preload button or for a transcription that just started
-        "loading": not key and (transcriber._preloading or busy == "transcribe"),
-        "device": key[1] if key else None,
-        # The transcription that uses it must finish first; preloading goes through the job queue
-        "can_unload": bool(key) and busy != "transcribe",
-        "can_preload": not key and settings.get("device", "cuda") == "cuda" and busy is None,
-    })
+    loading_whisper = transcriber._preloading_name if transcriber._preloading else (
+        wanted_whisper if busy == "transcribe" and not key else None)
+    whisper_ids = [m["id"] for m in WHISPER_CATALOG if is_whisper_model_installed(m["id"])]
+    if key and key[0] not in whisper_ids:
+        whisper_ids.insert(0, key[0])
+    for mid in whisper_ids or [wanted_whisper]:
+        loaded = bool(key) and key[0] == mid
+        chips.append({
+            "kind": "whisper", "name": mid, "label": format_whisper_model_name(mid),
+            "default": mid == wanted_whisper,
+            "loaded": loaded, "loading": not loaded and loading_whisper == mid,
+            "device": key[1] if loaded else None,
+            # The transcription that uses it must finish first; loading goes through the job queue
+            "can_unload": loaded and busy != "transcribe",
+            "can_preload": not loaded and on_gpu and busy is None and not transcriber._preloading,
+        })
+
     ecapa = ecapa_loaded_on()
     if ecapa and ecapa.startswith("cuda"):
         chips.append({"kind": "speakers", "name": "ECAPA", "loaded": True,
                       "can_unload": busy != "transcribe", "can_preload": False})
 
-    ollama = ollama_loaded()
-    for m in ollama:
-        chips.append({"kind": "ollama", "name": m["name"], "label": format_llm_model_name(m["name"]),
-                      "loaded": True, "size_gb": m["size_vram_gb"],
-                      "can_unload": busy not in ("dub", "translate", "summary"), "can_preload": False})
-    if not ollama:
-        model = settings.get("ollama_model") or ""
-        chips.append({"kind": "ollama", "name": model, "label": format_llm_model_name(model) if model else "LLM",
-                      "loaded": False, "loading": _ollama_loading.is_set(),
-                      "can_unload": False, "can_preload": bool(model) and not _ollama_loading.is_set()})
+    # Live captions run their own Whisper in a worker process (app/live.py)
+    try:
+        from app import live
+
+        worker = live._worker
+        if worker is not None and worker.proc is not None and worker.proc.poll() is None:
+            with live._sessions_lock:
+                active = bool(live._sessions)
+            chips.append({"kind": "live", "name": wanted_whisper, "label": format_whisper_model_name(wanted_whisper),
+                          "loaded": True, "can_unload": not active, "can_preload": False})
+    except Exception:
+        pass
+
+    loaded_ollama = {m["name"]: m for m in ollama_loaded()}
+    installed = ollama_installed()
+    wanted_llm = settings.get("ollama_model") or ""
+    names = list(dict.fromkeys(list(loaded_ollama) + installed)) or ([wanted_llm] if wanted_llm else [])
+    loading_llm = _ollama_loading_name[0] if _ollama_loading.is_set() else None
+    for name in names:
+        m = loaded_ollama.get(name)
+        chips.append({
+            "kind": "ollama", "name": name, "label": format_llm_model_name(name), "default": name == wanted_llm,
+            "loaded": bool(m), "size_gb": m["size_vram_gb"] if m else None,
+            "loading": not m and loading_llm == name,
+            "can_unload": bool(m) and busy not in ("dub", "translate", "summary"),
+            "can_preload": not m and not _ollama_loading.is_set(),
+        })
 
     workers = [w for w in live_workers() if w["purpose"] == "dub"]
     if workers:
@@ -162,6 +205,15 @@ def unload(kind: str, name: str = "") -> Dict[str, Any]:
             raise ValueError("Не указана модель Ollama")
         with httpx.Client(timeout=30.0) as client:
             client.post(f"{_ollama_base()}/api/generate", json={"model": name, "keep_alive": 0}).raise_for_status()
+    elif kind == "live":
+        from app import live
+
+        with live._sessions_lock:
+            if live._sessions:
+                raise RuntimeError("Модель субтитров сейчас используется записью")
+        if live._worker is not None:
+            with live._worker.lock:
+                live._worker._kill()
     elif kind == "dub":
         raise RuntimeError("Процессы дубляжа завершаются вместе с задачей — отмените её в очереди")
     else:
@@ -169,20 +221,25 @@ def unload(kind: str, name: str = "") -> Dict[str, Any]:
     return vram_snapshot()
 
 
-def preload(kind: str) -> Dict[str, Any]:
+def preload(kind: str, name: str = "") -> Dict[str, Any]:
     from app import transcriber
 
     if kind == "whisper":
-        if not transcriber.enqueue_whisper_preload():
+        from app.model_manager import is_whisper_model_installed
+
+        if name and not is_whisper_model_installed(name):
+            raise ValueError("Эта модель Whisper не скачана")
+        if not transcriber.enqueue_whisper_preload(name or None):
             raise RuntimeError("Очередь занята — модель загрузится вместе со следующей задачей")
     elif kind == "ollama":
         from app.ollama_client import ensure_ollama_running
 
-        model = get_all_settings().get("ollama_model") or ""
+        model = name or get_all_settings().get("ollama_model") or ""
         if not model:
             raise ValueError("Модель Ollama не выбрана в настройках")
         base = _ollama_base()
         ensure_ollama_running(base)  # explicit user action: starting Ollama is expected here
+        _ollama_loading_name[0] = model
         _ollama_loading.set()
         try:
             with httpx.Client(timeout=120.0) as client:

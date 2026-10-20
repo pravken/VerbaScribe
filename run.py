@@ -325,7 +325,7 @@ class TrayController:
             ("Открыть VerbaScribe", "open", self._mf_default),
             (None, None, 0),
             (st.get("text") or "Готово к работе", None, self._mf_grayed),
-            ("Остановить запись" if st.get("recording") else "Начать запись…", "record", 0),
+            *self._record_items(st),
             ("Импорт файлов…", "import", 0),
             ("Вопрос по медиатеке…", "ask", 0),
             (None, None, 0),
@@ -335,7 +335,33 @@ class TrayController:
             ("Выход", "quit", 0),
         ]
 
+    def _record_items(self, st):
+        """One entry per recording preset (app.js BUILTIN_PRESETS + the user's own)."""
+        if st.get("recording"):
+            return [("Остановить запись", "record", 0)]
+        import json
+
+        from app.database import get_all_settings
+
+        settings = get_all_settings()
+        presets = [("call", "Созвон"), ("note", "Голосовая заметка"), ("system", "Звук компьютера")]
+        try:
+            presets += [(p["id"], p["name"]) for p in json.loads(settings.get("record_presets") or "[]")
+                        if isinstance(p, dict) and p.get("id") and p.get("name")]
+        except ValueError:
+            pass
+        default = settings.get("record_default_preset") or "call"
+        return [(f"Запись: {name}" + ("  ★" if pid == default else ""), f"record:{pid}", 0)
+                for pid, name in presets[:12]]
+
     def on_command(self, cmd: str) -> None:
+        if cmd.startswith("record:"):
+            self.show_window()
+            import json
+
+            preset = json.dumps(cmd.split(":", 1)[1])
+            self.window.evaluate_js(f"window.trayCommand && window.trayCommand('record', {preset})")
+            return
         if cmd == "open":
             self.show_window()
         elif cmd in ("record", "import", "ask", "settings"):
@@ -383,6 +409,43 @@ class TrayController:
         self.quitting = True
         self.tray.stop()
         time.sleep(0.3)  # lets the tray thread remove the icon before the process ends
+
+
+def grant_media_to_app(window, host: str, port: int) -> None:
+    """
+    The app's own page may use the microphone (and screen capture as a fallback) without asking
+    every time: WebView2's prompt shows a bare "http://127.0.0.1:8765 wants to use your
+    microphones". Only this origin is granted; anything else still gets the normal prompt.
+    """
+    origin = f"http://{host}:{port}/"
+    done = {"ok": False}
+
+    def _attach() -> None:
+        from Microsoft.Web.WebView2.Core import CoreWebView2PermissionState
+
+        def _on_permission(sender, args) -> None:
+            try:
+                if str(args.Uri).startswith(origin):
+                    args.State = CoreWebView2PermissionState.Allow
+            except Exception as e:
+                print(f"[permissions] {e}", file=sys.stderr)
+
+        core = window.native.browser.webview.CoreWebView2
+        core.PermissionRequested += _on_permission
+        done["handler"] = _on_permission  # keeps the delegate alive
+        done["ok"] = True
+
+    def _on_loaded() -> None:
+        if done["ok"]:
+            return
+        try:
+            from System import Action
+
+            window.native.Invoke(Action(_attach))  # WebView2 is used on its UI thread only
+        except Exception as e:
+            print(f"[permissions] not set: {e}", file=sys.stderr)
+
+    window.events.loaded += _on_loaded
 
 
 def show_error_box(text: str) -> None:
@@ -477,8 +540,14 @@ def main() -> None:
                 threading.Thread(target=_hard_exit, daemon=True).start()
 
             window.events.closed += _exit_soon
+            grant_media_to_app(window, args.host, args.port)
             icon_arg = str(ICO_PATH) if ICO_PATH.exists() else None
-            webview.start(func=apply_native_window_icon_and_hide_console, icon=icon_arg)
+            # A persistent profile in the data folder: the page's own saved preferences (volume,
+            # last tabs, ...) survive a restart; private mode (pywebview's default) forgets them
+            from app.paths import DATA_DIR
+
+            webview.start(func=apply_native_window_icon_and_hide_console, icon=icon_arg,
+                          private_mode=False, storage_path=str(DATA_DIR / "webview"))
             if tray is not None:
                 tray.stop()
             os._exit(0)
