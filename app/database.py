@@ -136,7 +136,10 @@ def init_db() -> None:
             "idle_unload_minutes": "10",  # free models from memory after this long unused; 0 = never
             "recordings_dir": "",  # where recordings made in the app are saved; "" = <data>/recordings
             "live_whisper_model": "auto",
-            "record_hotkey": "Ctrl+Alt+R",  # system-wide start/stop of a recording (app/tray.py); "" = off
+            "record_hotkey": "Ctrl+Alt+R",
+            "call_auto_record": "false",  # record calls by themselves (app/call_watch.py)
+            "call_apps": "zoom,teams,telegram",
+            "call_preset": "call",  # system-wide start/stop of a recording (app/tray.py); "" = off
             "semantic_search": "false",  # search by meaning with a local embedding model (app/semantic.py)
             "semantic_model": "bge-m3",  # captions while recording (app/live.py caption_model)
             "auto_title": "true",  # name recordings by their content (LLM) when the title is generic

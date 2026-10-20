@@ -168,6 +168,9 @@ async def lifespan(_app: FastAPI):
     from app import semantic
 
     semantic.start_indexer()
+    from app import call_watch
+
+    call_watch.start()
     # Resume recordings that were interrupted mid-processing
     active_states = {"queued", "extracting_audio", "transcribing", "diarizing", "summarizing"}
     for m in list_meetings():
@@ -542,6 +545,13 @@ def disk_state() -> Dict[str, Any]:
     low = min(free) if free else -1
     return {"free_bytes": low, "recordings_dir": str(rec), "warn_bytes": DISK_WARN_BYTES,
             "stop_bytes": DISK_STOP_BYTES, "low": 0 <= low < DISK_WARN_BYTES, "critical": 0 <= low < DISK_STOP_BYTES}
+
+
+@app.get("/api/calls/status")
+def api_calls_status() -> Dict[str, Any]:
+    from app import call_watch
+
+    return call_watch.status()
 
 
 @app.get("/api/hotkey")

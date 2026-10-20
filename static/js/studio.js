@@ -465,6 +465,25 @@ async function startAppScreenCapture(target) {
   _recScreenId = data.screen_id;
 }
 
+// --- Calls recorded by themselves (app/call_watch.py): a watched app took or let go of the microphone ---
+state.callRecording = null;
+
+async function handleCallEvent(ev) {
+  if (ev.state === 'started') {
+    if (isRecording()) return;  // already recording by hand: that recording is left alone
+    const s = (state.system && state.system.settings) || {};
+    state.callRecording = ev.app;
+    showToast(t('callRecordStarted').replace('{app}', ev.name || ev.app));
+    await quickRecord(s.call_preset || defaultRecordPresetId());
+    if (!isRecording()) state.callRecording = null;
+  } else if (ev.state === 'ended' && state.callRecording) {
+    state.callRecording = null;
+    if (!isRecording()) return;
+    showToast(t('callRecordEnded').replace('{app}', ev.name || ev.app));
+    stopAndTranscribeRecording();
+  }
+}
+
 async function quickRecord(presetId) {
   if (isRecording()) {
     switchAppView('studio');  // already recording: back to the studio
@@ -1346,6 +1365,7 @@ function cancelLiveRecording() {
 }
 
 async function stopAndTranscribeRecording() {
+  state.callRecording = null;
   if (!_mediaRecorder && !_recCaptureId && !_recScreenId) return;
   document.getElementById('record-status-hint').textContent = t('recStatusSaving');
 

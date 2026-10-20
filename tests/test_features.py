@@ -49,5 +49,37 @@ class HotkeyTest(unittest.TestCase):
             self.assertIsNone(parse_hotkey(bad), bad)
 
 
+class CallWatchTest(unittest.TestCase):
+    def test_matching(self):
+        from app.call_watch import matching_app
+
+        self.assertEqual(matching_app(["msedgewebview2.exe", "zoom.exe"], ["teams", "zoom"]), "zoom")
+        self.assertEqual(matching_app(["msteams_8wekyb3d8bbwe"], ["zoom", "teams"]), "teams")
+        self.assertEqual(matching_app(["telegrammessengerllp.telegramdesktop_t4vj0pshhgkwm"], ["telegram"]), "telegram")
+        self.assertIsNone(matching_app(["zoom.exe"], ["teams"]))  # not watched
+
+    def test_start_after_delay_stop_after_grace(self):
+        from app.call_watch import START_DELAY_SEC, STOP_GRACE_SEC, CallWatcher
+
+        sent = []
+        w = CallWatcher(publish=sent.append)
+        w.tick("telegram", 0)
+        w.tick(None, 2)  # a short voice message: no call
+        w.tick("zoom", 10)
+        w.tick("zoom", 10 + START_DELAY_SEC - 1)
+        self.assertEqual(sent, [])
+        w.tick("zoom", 10 + START_DELAY_SEC)
+        self.assertEqual([(e["state"], e["app"]) for e in sent], [("started", "zoom")])
+        t = 20.0
+        w.tick(None, t)                          # muted or switching devices for a moment
+        w.tick("zoom", t + STOP_GRACE_SEC - 1)   # back: the call goes on
+        w.tick(None, t + STOP_GRACE_SEC)
+        w.tick(None, t + 2 * STOP_GRACE_SEC - 0.5)
+        self.assertEqual(len(sent), 1)
+        w.tick(None, t + 2 * STOP_GRACE_SEC + 1)
+        self.assertEqual([(e["state"], e["app"]) for e in sent], [("started", "zoom"), ("ended", "zoom")])
+        self.assertIsNone(w.active)
+
+
 if __name__ == "__main__":
     unittest.main()

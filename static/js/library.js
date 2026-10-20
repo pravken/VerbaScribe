@@ -182,6 +182,7 @@ function handleLiveEvent(ev) {
   if (ev.type === 'list') { scheduleListReload(); return; }
   if (ev.type === 'queue') { scheduleQueueReload(); scheduleVramRefresh(800); return; }
   if (ev.type === 'exported') { onExportedEvent(ev); scheduleListReload(); return; }
+  if (ev.type === 'call') { handleCallEvent(ev); return; }
   if (ev.type !== 'progress') return;
 
   const m = state.meetings.find(x => x.id === ev.id);

@@ -96,6 +96,7 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     renderRecordSaveHint();
     state.liveModelSetting = s.live_whisper_model || 'auto';
     document.getElementById('set-record-hotkey').value = s.record_hotkey ?? 'Ctrl+Alt+R';
+    fillCallSettings(s);
     loadHotkeyStatus();
     renderLiveModelSelect();
 
@@ -640,6 +641,36 @@ async function renderAnalysisEstimate() {
 
 const ICON_LOCK = '<svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/></svg>';
 
+// --- Calls recorded by themselves (app/call_watch.py) ---
+const CALL_APP_NAMES = { zoom: 'Zoom', teams: 'Microsoft Teams', telegram: 'Telegram', discord: 'Discord', skype: 'Skype', whatsapp: 'WhatsApp' };
+
+async function fillCallSettings(s) {
+  const st = await fetch('/api/calls/status').then(r => r.json()).catch(() => ({ supported: false }));
+  document.getElementById('call-record-block').classList.toggle('hidden', !st.supported);
+  document.getElementById('set-call-record').checked = s.call_auto_record === 'true';
+  const chosen = new Set((s.call_apps || 'zoom,teams,telegram').split(','));
+  document.getElementById('call-apps').innerHTML = Object.entries(CALL_APP_NAMES).map(([id, name]) =>
+    `<label class="flex items-center gap-1.5 text-[11.5px] text-apple-label cursor-pointer"><input type="checkbox" data-call-app="${id}" ${chosen.has(id) ? 'checked' : ''} class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />${escapeHtml(name)}</label>`).join('');
+  const sel = document.getElementById('set-call-preset');
+  sel.innerHTML = recordPresets().map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(presetLabel(p))}</option>`).join('');
+  sel.value = [...sel.options].some(o => o.value === s.call_preset) ? s.call_preset : (sel.options[0] || {}).value || '';
+  renderCallSettings();
+}
+
+function renderCallSettings() {
+  document.getElementById('call-record-options').classList.toggle('opacity-50', !document.getElementById('set-call-record').checked);
+}
+
+function callSettingsPayload() {
+  const box = document.getElementById('call-apps');
+  if (!box || !box.children.length) return {};
+  return {
+    call_auto_record: String(document.getElementById('set-call-record').checked),
+    call_apps: [...box.querySelectorAll('input[data-call-app]:checked')].map(i => i.dataset.callApp).join(','),
+    call_preset: document.getElementById('set-call-preset').value || 'call',
+  };
+}
+
 // --- Recording hotkey: pressed in the field, registered system-wide by the tray (app/tray.py) ---
 function captureHotkey(e) {
   e.preventDefault();
@@ -1044,6 +1075,7 @@ async function saveAllSettings() {
       record_mic_device: document.getElementById('set-record-mic')?.value || '',
       live_whisper_model: document.getElementById('set-live-model')?.value || 'auto',
       record_hotkey: document.getElementById('set-record-hotkey')?.value.trim() || '',
+      ...callSettingsPayload(),
       ...dubSettingsPayload(),
     }
   };

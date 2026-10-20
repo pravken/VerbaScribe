@@ -1522,6 +1522,21 @@
             </div>
           </div>
 
+          <div id="call-record-block" class="space-y-2">
+            <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
+              <input type="checkbox" id="set-call-record" onchange="renderCallSettings()" class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+              <span><span data-i18n="callRecordToggle">Записывать звонки автоматически</span>
+                <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="callRecordHint">Запись начинается, когда выбранная программа держит микрофон дольше 5 секунд, и останавливается через 15 секунд после того, как она его отпустит. Запись, начатую вручную, автоматика не трогает.</span></span>
+            </label>
+            <div id="call-record-options" class="pl-6 space-y-2">
+              <div id="call-apps" class="flex flex-wrap gap-x-4 gap-y-1.5"></div>
+              <div class="flex items-center gap-2">
+                <span class="text-[11px] text-apple-secondary" data-i18n="callPresetLabel">Пресет записи</span>
+                <select id="set-call-preset" class="h-7 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none"></select>
+              </div>
+            </div>
+          </div>
+
           <div>
             <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="liveModelLabel">Модель для субтитров во время записи</label>
             <select id="set-live-model" data-i18n-title="tipLiveModel"
