@@ -479,6 +479,8 @@ async function handleCallEvent(ev) {
     } catch (e) {
       showToast(`${t('callRecordFailed')}: ${e.message || e}`);
     }
+    // The recording starts asynchronously: wait for it before deciding it did not start
+    for (let i = 0; i < 40 && !isRecording(); i++) await new Promise(r => setTimeout(r, 250));
     if (!isRecording()) state.callRecording = null;
   } else if (ev.state === 'ended' && state.callRecording) {
     state.callRecording = null;
@@ -494,7 +496,7 @@ async function quickRecord(presetId) {
     return;
   }
   await openRecordModal(presetId || defaultRecordPresetId());
-  startLiveRecording();
+  await startLiveRecording();
 }
 
 // The recording controls live in the studio tab (they used to be a separate window)
