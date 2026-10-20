@@ -50,6 +50,12 @@ class ConnectionResetFilterTest(unittest.TestCase):
 @unittest.skipIf(main is None, "fastapi and app dependencies not installed")
 class LibraryApiTest(unittest.TestCase):
     def _client(self):
+        from unittest import mock
+
+        # The app resumes queued recordings at start: other tests' recordings must not be processed
+        patcher = mock.patch.object(main, "enqueue_meeting_job")
+        patcher.start()
+        self.addCleanup(patcher.stop)
         c = TestClient(main.app, base_url="http://127.0.0.1:8791")
         c.__enter__()
         c.get(f"/?token={main.SESSION_TOKEN}")
@@ -57,16 +63,13 @@ class LibraryApiTest(unittest.TestCase):
         return c
 
     def test_recording_upload_goes_to_the_recordings_folder(self):
-        from unittest import mock
-
         c = self._client()
-        with mock.patch.object(main, "enqueue_meeting_job"):
-            r = c.post("/api/meetings/upload", files={"files": ("Запись 10-15.webm", b"webm", "audio/webm")},
-                       data={"source": "recording", "title": "Созвон с командой"})
-            self.assertEqual(r.status_code, 200, r.text)
-            m = r.json()["created"][0]
-            imp = c.post("/api/meetings/upload", files={"files": ("talk.mp4", b"mp4", "video/mp4")},
-                         data={"last_modified": "1715504400000"}).json()["created"][0]
+        r = c.post("/api/meetings/upload", files={"files": ("Запись 10-15.webm", b"webm", "audio/webm")},
+                   data={"source": "recording", "title": "Созвон с командой"})
+        self.assertEqual(r.status_code, 200, r.text)
+        m = r.json()["created"][0]
+        imp = c.post("/api/meetings/upload", files={"files": ("talk.mp4", b"mp4", "video/mp4")},
+                     data={"last_modified": "1715504400000"}).json()["created"][0]
         self.assertEqual(m["title"], "Созвон с командой")
         self.assertEqual(m["source"], "recording")
         self.assertTrue(m["media_path"].startswith(str(main._recordings_dir())))

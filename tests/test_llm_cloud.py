@@ -123,7 +123,8 @@ class CloudApiTest(unittest.TestCase):
             self.skipTest("fastapi not installed")
         init_db()
         update_settings({"llm_cloud_consent": "false", "llm_provider": "ollama"})
-        with TestClient(main.app, base_url="http://127.0.0.1:8792") as c:
+        # The app resumes queued recordings at start: other tests' recordings must not be processed
+        with mock.patch.object(main, "enqueue_meeting_job"), TestClient(main.app, base_url="http://127.0.0.1:8792") as c:
             c.get(f"/?token={main.SESSION_TOKEN}")
             r = c.post("/api/settings", json={"settings": {"llm_provider": "cloud"}})
             self.assertEqual(r.status_code, 400)
