@@ -47,10 +47,21 @@ _lock = threading.Lock()
 
 
 # ------------------------------------------------------------------ versions
+_PRE_RANK = {"alpha": 0, "a": 0, "beta": 1, "b": 1, "rc": 2}
+
+
 def parse_version(text: str) -> tuple:
-    """'v1.10.2' -> (1, 10, 2); anything unparsable sorts lowest."""
-    nums = re.findall(r"\d+", str(text or ""))[:3]
-    return tuple(int(n) for n in nums) + (0,) * (3 - len(nums)) if nums else (0, 0, 0)
+    """'v1.10.2' -> (1, 10, 2, 1, 0, 0); '0.2.0-beta.1' -> (0, 2, 0, 0, 1, 1): a pre-release sorts
+    below its release (alpha < beta < rc), so a beta tester is offered the final version.
+    Anything unparsable sorts lowest."""
+    m = re.match(r"^\s*v?(\d+(?:\.\d+)*)(?:[-.]?(alpha|beta|rc|a|b)\.?(\d*))?", str(text or ""), re.IGNORECASE)
+    if not m:
+        return (0, 0, 0, 0, 0, 0)
+    nums = [int(n) for n in m.group(1).split(".")[:3]]
+    nums += [0] * (3 - len(nums))
+    if m.group(2):
+        return (*nums, 0, _PRE_RANK[m.group(2).lower()], int(m.group(3) or 0))
+    return (*nums, 1, 0, 0)
 
 
 def is_newer(latest: str, current: str) -> bool:

@@ -21,6 +21,14 @@ class VersionTest(unittest.TestCase):
         self.assertFalse(updater.is_newer("v1.0.0", "1.0.0"))
         self.assertFalse(updater.is_newer("garbage", "0.1.0"))
 
+    def test_pre_releases_sort_below_their_release(self):
+        self.assertTrue(updater.is_newer("0.2.0-beta.1", "0.1.0"))
+        self.assertTrue(updater.is_newer("v0.2.0", "0.2.0-beta.1"))  # beta testers get the final version
+        self.assertTrue(updater.is_newer("0.2.0-beta.2", "0.2.0-beta.1"))
+        self.assertTrue(updater.is_newer("0.2.0-rc.1", "0.2.0-beta.3"))
+        self.assertFalse(updater.is_newer("0.1.0", "0.2.0-beta.1"))  # no downgrade from a beta
+        self.assertEqual(updater.parse_version("v1.10.2"), (1, 10, 2, 1, 0, 0))
+
 
 class ApplyUpdateTest(unittest.TestCase):
     def setUp(self):
