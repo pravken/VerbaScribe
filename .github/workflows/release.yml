@@ -46,10 +46,11 @@ jobs:
       - name: Run unit tests
         shell: pwsh
         run: |
-          $out = python -m unittest discover -s tests -t . 2>&1 | Out-String
+          $out = python -m unittest discover -v -s tests -t . 2>&1 | Out-String
           Write-Output $out
           if ($LASTEXITCODE -ne 0) { throw "Unit tests failed" }
-          if ($out -match 'skipped=') { throw "Some tests were skipped: a dependency is missing from requirements-test.txt" }
+          # A test may skip itself for a missing tool (FFmpeg), never for a missing Python package
+          if ($out -match "skipped '[^']*not installed") { throw "Tests were skipped: a package is missing from requirements-test.txt" }
 
       - name: Build launcher (csc.exe from .NET Framework)
         run: python build_exe.py

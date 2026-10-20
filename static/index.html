@@ -302,7 +302,11 @@
           class="w-full h-8 bg-apple-card border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
           <option value="" data-i18n="recVideoNone">Без видео — только звук</option>
           <option value="screen" data-i18n="recVideoScreen">Экран, окно или программа…</option>
+          <option value="app_desktop" class="rec-app-video hidden" data-i18n="recVideoAppDesktop">Весь экран (запись приложением)</option>
+          <option value="app_window" class="rec-app-video hidden" data-i18n="recVideoAppWindow">Окно программы (запись приложением)</option>
         </select>
+        <select id="record-window-select" data-i18n-title="tipRecordWindow" title="Окно, которое записывается"
+          class="hidden mt-1.5 w-full h-8 bg-apple-card border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none"></select>
         <video id="record-video-preview" muted autoplay playsinline class="hidden mt-2 w-full rounded-lg bg-black border border-white/10 max-h-40 object-contain"></video>
       </div>
 

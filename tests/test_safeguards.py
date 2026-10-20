@@ -130,6 +130,43 @@ class GpuSharingTest(unittest.TestCase):
         sleep.assert_not_called()
 
 
+class ScreenCaptureTest(unittest.TestCase):
+    def test_capture_command(self):
+        from pathlib import Path
+
+        from app.screen_capture import capture_command
+
+        cmd = capture_command("ffmpeg", "desktop", Path("out.mkv"))
+        self.assertEqual(cmd[cmd.index("-i") + 1], "desktop")
+        self.assertIn("gdigrab", cmd)
+        cmd = capture_command("ffmpeg", "Zoom Meeting", Path("out.mkv"))
+        self.assertEqual(cmd[cmd.index("-i") + 1], "title=Zoom Meeting")
+
+    @unittest.skipUnless(__import__("shutil").which("ffmpeg"), "no ffmpeg on PATH")
+    def test_screen_is_joined_with_both_sounds(self):
+        import json
+        import subprocess
+        import tempfile
+        from pathlib import Path
+
+        try:
+            from app.main import screen_mix_command
+        except ImportError:
+            self.skipTest("fastapi not installed")
+        d = Path(tempfile.mkdtemp())
+        run = lambda *a: subprocess.run(["ffmpeg", "-y", "-loglevel", "error", *a], check=True)
+        run("-f", "lavfi", "-i", "testsrc=size=320x240:rate=10", "-t", "2", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(d / "s.mkv"))
+        run("-f", "lavfi", "-i", "sine=frequency=440", "-t", "2", str(d / "mic.webm"))
+        run("-f", "lavfi", "-i", "sine=frequency=880", "-t", "2", str(d / "sys.wav"))
+        for audio in ([], [d / "sys.wav"], [d / "mic.webm", d / "sys.wav"]):
+            dest = d / f"out{len(audio)}.mp4"
+            subprocess.run(screen_mix_command("ffmpeg", d / "s.mkv", audio, dest), check=True)
+            probe = subprocess.run(["ffprobe", "-v", "error", "-show_streams", "-of", "json", str(dest)],
+                                   capture_output=True, text=True, check=True)
+            kinds = sorted(st["codec_type"] for st in json.loads(probe.stdout)["streams"])
+            self.assertEqual(kinds, ["audio", "video"] if audio else ["video"])
+
+
 @needs_deps
 class UpdateSourceTest(unittest.TestCase):
     def test_only_this_repository_and_digests_must_agree(self):

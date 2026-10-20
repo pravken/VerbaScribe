@@ -4891,7 +4891,41 @@ function hideRecordPresetMenu() {
 
 // Record at once with a preset (the default one without an argument)
 function isRecording() {
-  return !!(_mediaRecorder && _mediaRecorder.state === 'recording') || !!_recCaptureId;
+  return !!(_mediaRecorder && _mediaRecorder.state === 'recording') || !!_recCaptureId || !!_recScreenId;
+}
+
+// --- The screen or a window recorded by the app (FFmpeg), when the window's picker cannot be used ---
+let _recScreenId = null;
+state.screenCapture = { supported: false, windows: [] };
+
+async function loadScreenWindows() {
+  try {
+    const data = await fetch('/api/record/screen/windows').then(r => r.json());
+    state.screenCapture = { supported: !!data.supported, windows: data.windows || [] };
+  } catch (e) {}
+  document.querySelectorAll('.rec-app-video').forEach(o => o.classList.toggle('hidden', !state.screenCapture.supported));
+  const sel = document.getElementById('record-window-select');
+  const keep = sel.value;
+  sel.innerHTML = state.screenCapture.windows.length
+    ? state.screenCapture.windows.map(w => `<option value="${escapeHtml(w.title)}">${escapeHtml(w.title)}${w.minimized ? ' · ' + escapeHtml(t('recWindowMinimized')) : ''}</option>`).join('')
+    : `<option value="">${escapeHtml(t('recNoWindows'))}</option>`;
+  if ([...sel.options].some(o => o.value === keep)) sel.value = keep;
+}
+
+function syncRecordWindowSelect() {
+  const v = document.getElementById('record-video-select').value;
+  const sel = document.getElementById('record-window-select');
+  sel.classList.toggle('hidden', v !== 'app_window');
+  if (v === 'app_window') loadScreenWindows();
+}
+
+async function startAppScreenCapture(target) {
+  const res = await fetch('/api/record/screen/start', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || t('recVideoFailed'));
+  _recScreenId = data.screen_id;
 }
 
 async function quickRecord(presetId) {
@@ -4921,6 +4955,8 @@ async function prepareStudio(presetId) {
   }
   if (!_studioPrepared) {
     try { document.getElementById('record-video-select').value = localStorage.getItem('verbascribe_record_video') || ''; } catch (e) {}
+    if (!document.getElementById('record-video-select').value) document.getElementById('record-video-select').value = '';
+    loadScreenWindows().then(syncRecordWindowSelect);
   }
   if (!_studioPrepared || presetId) applyRecordPreset(presetId || state.recPresetId || defaultRecordPresetId());
   else renderRecordPresetSelect(state.recPresetId || defaultRecordPresetId());
@@ -4942,6 +4978,7 @@ async function prepareStudio(presetId) {
 
 function saveRecordVideoPref() {
   try { localStorage.setItem('verbascribe_record_video', document.getElementById('record-video-select').value); } catch (e) {}
+  syncRecordWindowSelect();
   renderStudioState();
 }
 
@@ -5240,7 +5277,7 @@ function renderStudioState() {
   const rec = isRecording();
   const sourceName = { mic: t('sourceMic'), system: t('sourceSystem'), both: t('sourceBoth') };
   const p = recordPresets().find(x => x.id === state.recPresetId);
-  const withVideo = document.getElementById('record-video-select').value === 'screen';
+  const withVideo = !!document.getElementById('record-video-select').value;
   document.getElementById('studio-source').textContent =
     [p ? presetLabel(p) : '', sourceName[document.getElementById('record-source-select').value] || '', withVideo ? t('recVideoShort') : '']
       .filter(Boolean).join(' · ');
@@ -5249,7 +5286,7 @@ function renderStudioState() {
   for (const id of ['studio-start-btn', 'btn-start-rec']) document.getElementById(id).classList.toggle('hidden', rec);
   for (const id of ['studio-stop-btn', 'studio-cancel-btn', 'btn-stop-rec', 'btn-cancel-rec']) document.getElementById(id).classList.toggle('hidden', !rec);
   // What is recorded cannot change mid-recording; how captions look can
-  for (const id of ['record-preset-select', 'record-source-select', 'record-mic-select', 'record-video-select', 'record-title-input']) {
+  for (const id of ['record-preset-select', 'record-source-select', 'record-mic-select', 'record-video-select', 'record-window-select', 'record-title-input']) {
     document.getElementById(id).disabled = rec;
   }
   document.getElementById('rec-dot-indicator').classList.toggle('animate-ping', rec);
@@ -5481,16 +5518,27 @@ async function startLiveRecording() {
 
     // Video first: the screen picker must open right after the click, before anything is awaited
     _recVideoStream = null;
-    if (document.getElementById('record-video-select').value === 'screen') {
+    _recScreenId = null;
+    const videoMode = document.getElementById('record-video-select').value;
+    // The screen recorded by the app: chosen, or when the window cannot show its own picker
+    let appTarget = videoMode === 'app_desktop' ? 'desktop'
+      : videoMode === 'app_window' ? document.getElementById('record-window-select').value : null;
+    if (videoMode === 'app_window' && !appTarget) throw new Error(t('recNoWindows'));
+    if (videoMode === 'screen') {
       try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) throw new Error('getDisplayMedia');
         _recVideoStream = await navigator.mediaDevices.getDisplayMedia({
           video: { frameRate: { ideal: 30, max: 30 }, width: { max: 1920 }, height: { max: 1080 } },
           audio: false,
         });
       } catch (e) {
         if (e && e.name === 'NotAllowedError') return;  // the picker was closed: nothing starts
-        throw new Error(t('recVideoFailed') + (e && e.message ? `: ${e.message}` : ''));
+        if (!state.screenCapture.supported) throw new Error(t('recVideoFailed') + (e && e.message ? `: ${e.message}` : ''));
+        appTarget = 'desktop';
+        showToast(t('recVideoFallback'));
       }
+    }
+    if (_recVideoStream) {
       const preview = document.getElementById('record-video-preview');
       preview.srcObject = _recVideoStream;
       preview.classList.remove('hidden');
@@ -5509,12 +5557,13 @@ async function startLiveRecording() {
     }
     if (disk && disk.low && !confirm(t('diskLowConfirm')
       .replace('{free}', formatSize(disk.free_bytes))
-      .replace('{min}', recMinutesLeft(disk.free_bytes, !!_recVideoStream)))) {
+      .replace('{min}', recMinutesLeft(disk.free_bytes, !!_recVideoStream || !!appTarget)))) {
       _recVideoStream?.getTracks().forEach(tr => tr.stop());
       document.getElementById('record-video-preview').classList.add('hidden');
       return;
     }
     _recDiskWarned = false;
+    if (appTarget) await startAppScreenCapture(appTarget);
 
     // System audio: recorded by the app (no prompt); the browser's screen share is only a fallback
     _recCaptureId = null;
@@ -5693,6 +5742,10 @@ async function checkRecordingDisk() {
 }
 
 function _cleanupRecordingResources() {
+  if (_recScreenId) {  // a start that failed half way: the screen capture must not keep running
+    fetch(`/api/record/screen/${_recScreenId}/cancel`, { method: 'POST' }).catch(() => {});
+    _recScreenId = null;
+  }
   clearInterval(_recDiskTimer);
   _recDiskTimer = null;
   reportRecordingState(false);
@@ -5747,12 +5800,16 @@ function cancelLiveRecording() {
     fetch(`/api/record/${_recCaptureId}/cancel`, { method: 'POST' }).catch(() => {});
     _recCaptureId = null;
   }
+  if (_recScreenId) {
+    fetch(`/api/record/screen/${_recScreenId}/cancel`, { method: 'POST' }).catch(() => {});
+    _recScreenId = null;
+  }
   _cleanupRecordingResources();
   prepareStudio();
 }
 
 async function stopAndTranscribeRecording() {
-  if (!_mediaRecorder && !_recCaptureId) return;
+  if (!_mediaRecorder && !_recCaptureId && !_recScreenId) return;
   document.getElementById('record-status-hint').textContent = t('recStatusSaving');
 
   const recorder = _mediaRecorder;
@@ -5766,6 +5823,8 @@ async function stopAndTranscribeRecording() {
   _recPage = null;
   const captureId = _recCaptureId;
   _recCaptureId = null;
+  const screenId = _recScreenId;
+  _recScreenId = null;
   const rawTitle = (document.getElementById('record-title-input').value || t('recordDefaultTitle')).trim();
   _cleanupRecordingResources();
 
@@ -5775,7 +5834,7 @@ async function stopAndTranscribeRecording() {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      title: rawTitle, page_id: page ? page.id : null, capture_id: captureId,
+      title: rawTitle, page_id: page ? page.id : null, capture_id: captureId, screen_id: screenId,
       has_video: !!(page && page.hasVideo), has_mic: !!(page && page.hasMic),
     }),
   });

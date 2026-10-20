@@ -879,10 +879,68 @@ def api_record_page_cancel(page_id: str) -> Dict[str, Any]:
     return {"ok": True}
 
 
+# --- The screen or a window recorded by the app (app/screen_capture.py), when the window's own
+# screen picker is not available ---
+class ScreenStartPayload(BaseModel):
+    target: str = "desktop"  # "desktop" or the exact title of a window
+
+
+@app.get("/api/record/screen/windows")
+def api_screen_windows() -> Dict[str, Any]:
+    from app import screen_capture
+
+    return {"supported": screen_capture.supported(), "windows": screen_capture.list_windows()}
+
+
+@app.post("/api/record/screen/start")
+def api_screen_start(payload: ScreenStartPayload) -> Dict[str, Any]:
+    from app import screen_capture
+    from app.ffmpeg_manager import find_tool
+
+    ffmpeg = find_tool("ffmpeg")
+    if not ffmpeg:
+        raise HTTPException(status_code=503, detail="Для записи экрана нужен FFmpeg (Настройки → Общие)")
+    if disk_state()["critical"]:
+        raise HTTPException(status_code=507, detail="Недостаточно места на диске для записи")
+    path = _recordings_dir() / f".screen_{uuid.uuid4().hex[:12]}.mkv.part"
+    try:
+        cap = screen_capture.start_capture(ffmpeg, path, payload.target.strip()[:300] or "desktop")
+    except RuntimeError as e:
+        path.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail=f"Не удалось начать запись экрана: {e}")
+    return {"screen_id": cap.id}
+
+
+@app.post("/api/record/screen/{screen_id}/cancel")
+def api_screen_cancel(screen_id: str) -> Dict[str, Any]:
+    from app import screen_capture
+
+    cap = screen_capture.finish_capture(screen_id)
+    if cap:
+        cap.path.unlink(missing_ok=True)
+    return {"ok": True}
+
+
+def screen_mix_command(ffmpeg: str, screen: Path, audio: List[Path], dest: Path) -> List[str]:
+    """The picture recorded by the app with the sound of the page (microphone) and/or the system:
+    the video is copied as recorded, the sound sources are mixed into one AAC track."""
+    cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-i", str(screen)]
+    for a in audio:
+        cmd += ["-i", str(a)]
+    if not audio:
+        maps = ["-map", "0:v"]
+    elif len(audio) == 1:
+        maps = ["-map", "0:v", "-map", "1:a"]
+    else:
+        maps = ["-filter_complex", "[1:a][2:a]amix=inputs=2:duration=longest:normalize=0[a]", "-map", "0:v", "-map", "[a]"]
+    return cmd + maps + ["-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(dest)]
+
+
 class RecordFinishPayload(BaseModel):
     title: str = "Запись"
     page_id: Optional[str] = None     # what the page recorded (microphone and/or video)
     capture_id: Optional[str] = None  # system audio recorded by the app
+    screen_id: Optional[str] = None   # the screen or a window recorded by the app
     has_video: bool = False           # the page recording has a video track (screen, window, tab)
     has_mic: bool = False             # the page recording has an audio track
 
@@ -931,10 +989,28 @@ async def api_record_finish(payload: RecordFinishPayload) -> Dict[str, Any]:
             page = None
     cap = finish_capture(payload.capture_id) if payload.capture_id else None
     system = cap.path if cap and cap.path.is_file() else None
-    if not page and not system:
+    screen: Optional[Path] = None
+    if payload.screen_id:
+        from app import screen_capture
+
+        scap = await run_in_threadpool(screen_capture.finish_capture, payload.screen_id)
+        if scap and scap.path.is_file() and scap.path.stat().st_size > 0:
+            screen = scap.path
+    if not page and not system and not screen:
         raise HTTPException(status_code=404, detail="Запись пуста: звук не был получен")
 
     safe_stem = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", payload.title.strip() or "Запись")[:100]
+    if screen:
+        audio = [p for p in (page if payload.has_mic else None, system) if p]
+        dest = _recordings_dir() / f"{uuid.uuid4().hex[:8]}_{safe_stem}.mp4"
+        res = await run_in_threadpool(_run_ffmpeg, screen_mix_command(tool_cmd("ffmpeg"), screen, audio, dest))
+        if res.returncode != 0 or not dest.is_file():
+            raise HTTPException(status_code=500, detail="Не удалось свести запись: " + (res.stderr or "")[-300:])
+        for p in (screen, page, system):
+            if p:
+                p.unlink(missing_ok=True)
+        return _queue_recording(payload, dest, safe_stem, has_video=True)
+
     has_video = bool(payload.has_video and page)
     ext = ".webm" if page and (has_video or not system) else ".m4a"
     dest = _recordings_dir() / f"{uuid.uuid4().hex[:8]}_{safe_stem}{ext}"
@@ -953,7 +1029,10 @@ async def api_record_finish(payload: RecordFinishPayload) -> Dict[str, Any]:
             page.unlink(missing_ok=True)
     if system:
         system.unlink(missing_ok=True)
+    return _queue_recording(payload, dest, safe_stem, has_video=has_video)
 
+
+def _queue_recording(payload: RecordFinishPayload, dest: Path, safe_stem: str, has_video: bool) -> Dict[str, Any]:
     settings = get_all_settings()
     m = create_meeting(
         title=payload.title.strip()[:300] or safe_stem,
