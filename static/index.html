@@ -395,6 +395,11 @@
           <input type="checkbox" id="live-captions-toggle" onchange="studioToggleCaptions(this.checked)" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
           <span data-i18n="liveCaptionsToggle">Субтитры в реальном времени</span>
         </label>
+        <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-secondary" data-i18n-title="tipLiveDraft"
+          title="Показывать фразу по мере произнесения, не дожидаясь паузы. Черновик может поправляться, пока фраза не закончится">
+          <input type="checkbox" id="live-draft-toggle" onchange="saveLiveCaptionPrefs(); syncStudioCaptions()" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <span data-i18n="liveDraftToggle">Текст по ходу речи</span>
+        </label>
         <label class="flex items-center gap-1.5 text-xs text-apple-secondary">
           <span data-i18n="studioSpeechLang">Речь</span>
           <select id="studio-speech" onchange="studioConfigure(true)" data-i18n-title="tipStudioSpeech" title="Язык речи; «Авто» определяет его по каждой фразе"

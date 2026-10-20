@@ -594,6 +594,7 @@ function saveLiveCaptionPrefs() {
   const prefs = {
     on: document.getElementById('live-captions-toggle').checked,
     translate: document.getElementById('live-translate-select').value,
+    draft: document.getElementById('live-draft-toggle').checked,
   };
   try { localStorage.setItem('verbascribe_live_captions', JSON.stringify(prefs)); } catch (e) {}
 }
@@ -608,6 +609,7 @@ async function initLiveCaptionControls() {
   speech.innerHTML = `<option value="auto">${escapeHtml(t('studioSpeechAuto'))}</option>` + textLangOptions(codes, true);
   speech.value = studio.speech;
   document.getElementById('live-captions-toggle').checked = !!prefs.on;
+  document.getElementById('live-draft-toggle').checked = !!prefs.draft;
   renderStudioControls();
 }
 
@@ -1064,6 +1066,8 @@ function syncStudioCaptions() {
       row = createCapRow(capView.draftKey);
       row.el.classList.add('cap-draft');
     }
+    // Optional: the phrase as it is spoken (otherwise only "…" until it is final)
+    row.orig.set(document.getElementById('live-draft-toggle')?.checked ? liveCap.partial : '');
     setCapTags(row, liveCap.lang, liveCap.partialTarget || (target === 'auto' ? '' : target));
   } else if (capView.draftKey) {
     // The draft ended without becoming a line (noise taken for speech)
