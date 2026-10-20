@@ -414,7 +414,7 @@ function updateWhisperModelsUI(models) {
 
       let actionHtml = '';
       if (isDownloadingThis) {
-        actionHtml = `<span class="ui-btn bg-apple-blue/20 text-apple-blue font-mono animate-pulse">${st.progress || 1}%</span>`;
+        actionHtml = `<span class="ui-btn bg-apple-blue/20 text-apple-blue font-mono animate-pulse">${(item.engine === 'onnx' ? item.progress : st.progress) || 1}%</span>`;
       } else if (item.installed && isSelected) {
         actionHtml = `
           <div class="flex items-center gap-1.5">

@@ -68,13 +68,26 @@ def supports_language(model_id: str, lang: Optional[str]) -> bool:
     return not lang or lang == "auto" or lang[:2] in ONNX_MODELS[model_id]["languages"]
 
 
+def _dir_mb(d: Path) -> float:
+    """Size of a folder, including the partial files Hugging Face writes while downloading."""
+    try:
+        return sum(f.stat().st_size for f in d.rglob("*") if f.is_file()) / (1024 * 1024)
+    except OSError:
+        return 0.0
+
+
+def download_progress(model_id: str) -> int:
+    return max(1, min(99, int(_dir_mb(model_dir(model_id)) * 100 / ONNX_MODELS[model_id]["size_mb"])))
+
+
 def catalog() -> List[Dict[str, Any]]:
     out = []
     for mid, m in ONNX_MODELS.items():
         dl = _downloads.get(mid) or {}
         out.append({"id": mid, "engine": "onnx", "name": m["name"], "size_mb": m["size_mb"], "license": m["license"],
                     "languages": m["languages"], "desc_ru": m["desc_ru"], "desc_en": m["desc_en"],
-                    "installed": is_installed(mid), "downloading": bool(dl.get("active")), "error": dl.get("error", "")})
+                    "installed": is_installed(mid), "downloading": bool(dl.get("active")),
+                    "progress": download_progress(mid) if dl.get("active") else 0, "error": dl.get("error", "")})
     return out
 
 
