@@ -3890,6 +3890,59 @@ function transcriptSegmentHtml(seg, idx) {
   `;
 }
 
+// A translation has no word timings of its own. Each translated word gets an estimated time: the
+// sentences of the translation are matched to the sentences of the original (whose words are
+// timed), and inside a sentence the time runs in proportion to the length of the words. When the
+// sentence counts differ, the whole phrase is spread the same way over the spoken time.
+const _SENT_END = /[.!?…]["»”)]*$/;
+
+function translationWordTimes(seg, words) {
+  const start = Number(seg.start) || 0;
+  const end = Math.max(start + 0.01, Number(seg.end) || start);
+  const timed = (seg.words || []).filter(w => String(w.word || '').trim());
+  const spread = (list, from, to) => {
+    const lens = list.map(w => w.length + 1);
+    const total = lens.reduce((a, b) => a + b, 0) || 1;
+    let acc = 0;
+    return lens.map(l => { const t0 = from + (to - from) * (acc / total); acc += l; return t0; });
+  };
+  const sentences = (list, text) => {
+    const out = [[]];
+    list.forEach((w, i) => {
+      out[out.length - 1].push(i);
+      if (_SENT_END.test(text(w).trim()) && i < list.length - 1) out.push([]);
+    });
+    return out;
+  };
+  if (timed.length) {
+    const src = sentences(timed, w => String(w.word));
+    const dst = sentences(words, w => w);
+    if (src.length === dst.length && src.length > 1) {
+      const times = new Array(words.length);
+      dst.forEach((idx, k) => {
+        const from = Number(timed[src[k][0]].start);
+        const last = timed[src[k][src[k].length - 1]];
+        spread(idx.map(i => words[i]), from, Math.max(from + 0.01, Number(last.end))).forEach((t0, j) => { times[idx[j]] = t0; });
+      });
+      return times;
+    }
+    return spread(words, Number(timed[0].start), Number(timed[timed.length - 1].end));
+  }
+  return spread(words, start, end);
+}
+
+function translationWordsHtml(seg, text) {
+  const parts = text.split(/(\s+)/);
+  const words = parts.filter(w => w.trim());
+  const times = translationWordTimes(seg, words);
+  let i = 0;
+  return parts.map(w => {
+    if (!w.trim()) return w;
+    const t0 = Math.round(times[i++] * 100) / 100;
+    return `<span class="tr-word" data-start="${t0}" onclick="event.stopPropagation(); seekPlayer(${t0})">${escapeHtml(w)}</span>`;
+  }).join('');
+}
+
 function translationHtml(seg, tr, query, secondary) {
   const staleBadge = tr.stale
     ? ` <span class="text-[10px] text-apple-amber align-middle" title="${escapeHtml(t('tipTranslationStale'))}">${escapeHtml(t('translationStale'))}</span>`
@@ -3899,7 +3952,7 @@ function translationHtml(seg, tr, query, secondary) {
     ? `<span class="italic text-apple-tertiary">${escapeHtml(t('translationMissing'))}</span>`
     : query
       ? highlightSearch(escapeHtml(tr.text), query)
-      : tr.text.split(/(\s+)/).map(w => (w.trim() ? `<span class="tr-word">${escapeHtml(w)}</span>` : w)).join('');
+      : translationWordsHtml(seg, tr.text);
   const cls = secondary ? 'block mt-1 text-[13px] text-apple-secondary' : '';
   return `<span class="tr-text cursor-pointer ${cls} ${tr.stale ? 'opacity-70' : ''}" onclick="seekPlayer(${seg.start})">${body}${staleBadge}</span>`;
 }
@@ -3963,21 +4016,12 @@ function updatePlaybackHighlight(cur, followPlayback) {
     _playbackIndex.activeWord = wordEl;
   }
 
-  // A translation has no word timings: its words are followed in proportion to their length
-  // across the time of the phrase, which is close enough to read along
+  // Translated words carry estimated times (see translationWordTimes): the last one started is lit
   let trWordEl = null;
   const trWords = segEl ? segEl.querySelectorAll('.tr-word') : [];
-  if (trWords.length) {
-    const seg = tx.items[segIdx];
-    const span = Math.max(0.001, Number(seg.end) - Number(seg.start));
-    const target = Math.min(1, Math.max(0, (cur - Number(seg.start)) / span));
-    const lens = Array.from(trWords, w => w.textContent.length + 1);
-    const total = lens.reduce((a, b) => a + b, 0);
-    let acc = 0;
-    for (let i = 0; i < lens.length; i++) {
-      acc += lens[i];
-      if (acc / total >= target) { trWordEl = trWords[i]; break; }
-    }
+  for (const w of trWords) {
+    if (Number(w.dataset.start) > cur + 0.05) break;
+    trWordEl = w;
   }
   if (trWordEl !== _playbackIndex.activeTrWord) {
     _playbackIndex.activeTrWord?.classList.remove('word-active');
