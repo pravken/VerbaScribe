@@ -135,7 +135,9 @@ def init_db() -> None:
             "update_check": "true",  # look for a new release on GitHub at start (app/updater.py)
             "idle_unload_minutes": "10",  # free models from memory after this long unused; 0 = never
             "recordings_dir": "",  # where recordings made in the app are saved; "" = <data>/recordings
-            "live_whisper_model": "auto",  # captions while recording (app/live.py caption_model)
+            "live_whisper_model": "auto",
+            "semantic_search": "false",  # search by meaning with a local embedding model (app/semantic.py)
+            "semantic_model": "bge-m3",  # captions while recording (app/live.py caption_model)
             "auto_title": "true",  # name recordings by their content (LLM) when the title is generic
             "obsidian_auto": "false",  # save a note to the Obsidian vault after processing
             "obsidian_vault": "",
@@ -158,6 +160,25 @@ def init_db() -> None:
         if not cur.execute("SELECT 1 FROM settings WHERE key = 'record_default_v2'").fetchone():
             cur.execute("UPDATE settings SET value = 'both' WHERE key = 'record_source_mode' AND value = 'mic'")
             cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('record_default_v2', '1')")
+
+        # Search by meaning (app/semantic.py): transcript chunks with their embedding vectors, and
+        # which recordings are indexed with which model. A changed transcript drops its meta row.
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS semantic_chunks (
+                meeting_id INTEGER NOT NULL,
+                chunk INTEGER NOT NULL,
+                start REAL NOT NULL,
+                speaker TEXT DEFAULT '',
+                text TEXT NOT NULL,
+                vec BLOB NOT NULL,
+                PRIMARY KEY (meeting_id, chunk)
+            )
+            """
+        )
+        cur.execute(
+            "CREATE TABLE IF NOT EXISTS semantic_meta (meeting_id INTEGER PRIMARY KEY, model TEXT NOT NULL, updated_at TEXT NOT NULL)"
+        )
 
         # Full-text index of transcript segments for the global search (SQLite FTS5).
         # Only `text` is indexed; the other columns are stored to build results without JSON parsing.
@@ -257,6 +278,8 @@ def _loads_list(raw: Optional[str]) -> List[Dict[str, Any]]:
 def _reindex_segments(conn: sqlite3.Connection, meeting_id: int, segments: List[Dict[str, Any]]) -> None:
     """Replaces the search index rows of one recording. Call inside the caller's transaction."""
     conn.execute("DELETE FROM segments_fts WHERE meeting_id = ?", (meeting_id,))
+    # The meaning index of this recording is out of date: app/semantic.py indexes it again
+    conn.execute("DELETE FROM semantic_meta WHERE meeting_id = ?", (meeting_id,))
     conn.executemany(
         "INSERT INTO segments_fts (text, meeting_id, segment_id, start, speaker) VALUES (?, ?, ?, ?, ?)",
         [
@@ -730,6 +753,8 @@ def delete_meeting(meeting_id: int) -> bool:
         conn = get_connection()
         conn.execute("DELETE FROM meetings WHERE id = ?", (meeting_id,))
         conn.execute("DELETE FROM segments_fts WHERE meeting_id = ?", (meeting_id,))
+        conn.execute("DELETE FROM semantic_chunks WHERE meeting_id = ?", (meeting_id,))
+        conn.execute("DELETE FROM semantic_meta WHERE meeting_id = ?", (meeting_id,))
         conn.commit()
         conn.close()
     events.publish({"type": "list"})

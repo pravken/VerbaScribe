@@ -671,6 +671,9 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     document.getElementById('set-ollama-model').value = s.ollama_model || 'qwen2.5:7b';
     document.getElementById('set-auto-summary').checked = s.auto_summary !== 'false';
     document.getElementById('set-auto-title').checked = s.auto_title !== 'false';
+    document.getElementById('set-semantic').checked = s.semantic_search === 'true';
+    document.getElementById('set-semantic-model').value = s.semantic_model || 'bge-m3';
+    loadSemanticStatus();
     const idleSel = document.getElementById('set-idle-unload');
     idleSel.value = [...idleSel.options].some(o => o.value === String(s.idle_unload_minutes)) ? String(s.idle_unload_minutes) : '10';
     fillObsidianSettings(s);
@@ -1232,6 +1235,44 @@ function renderLiveModelSelect() {
   sel.onchange = () => { sel.dataset.touched = '1'; };
 }
 
+// --- Search by meaning: status of the index, model download, building the index ---
+async function loadSemanticStatus() {
+  const box = document.getElementById('semantic-status');
+  if (!box) return;
+  const st = await fetch('/api/semantic/status').then(r => r.json()).catch(() => null);
+  if (!st) return;
+  const parts = [t('semanticIndexed').replace('{n}', st.indexed).replace('{total}', st.total)];
+  if (st.running) parts.push(t('semanticRunning'));
+  box.textContent = parts.join(' · ');
+  box.className = 'pl-6 text-[11px] ' + (st.error ? 'text-apple-amber' : 'text-apple-secondary');
+  if (st.error) box.textContent += ` · ${st.error}`;
+  clearTimeout(window._semanticTimer);
+  const modal = document.getElementById('modal-settings');
+  if (st.running && modal && !modal.classList.contains('hidden')) window._semanticTimer = setTimeout(loadSemanticStatus, 3000);
+}
+
+async function pullSemanticModel() {
+  const model = document.getElementById('set-semantic-model').value.trim() || 'bge-m3';
+  const res = await fetch('/api/ollama/pull', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, allow_install: false }),
+  });
+  const data = await res.json().catch(() => ({}));
+  showToast(res.ok ? t('semanticPulling').replace('{model}', model) : (data.detail || 'Error'));
+}
+
+async function buildSemanticIndex() {
+  const enabled = document.getElementById('set-semantic');
+  if (!enabled.checked) enabled.checked = true;
+  await fetch('/api/settings', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ settings: { semantic_search: 'true', semantic_model: document.getElementById('set-semantic-model').value.trim() || 'bge-m3' } }),
+  });
+  const res = await fetch('/api/semantic/index', { method: 'POST' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) showToast(data.detail || 'Error');
+  setTimeout(loadSemanticStatus, 800);
+}
+
 function renderSummaryModelSelect() {
   const summarySelect = document.getElementById('summary-llm-select');
   const ollama = state.lastOllama;
@@ -1545,6 +1586,8 @@ async function saveAllSettings() {
       ollama_model: document.getElementById('set-ollama-model').value.trim(),
       auto_summary: String(document.getElementById('set-auto-summary').checked),
       auto_title: String(document.getElementById('set-auto-title').checked),
+      semantic_search: String(document.getElementById('set-semantic').checked),
+      semantic_model: document.getElementById('set-semantic-model').value.trim() || 'bge-m3',
       idle_unload_minutes: document.getElementById('set-idle-unload').value,
       ...obsidianSettingsPayload(),
       ...llmSettingsPayload(),
@@ -2624,7 +2667,7 @@ function renderMeetingsSidebar() {
                title="${escapeHtml(t('tipSeekTimestamp'))}"
                class="px-2 py-1 rounded bg-black/30 hover:bg-apple-blue/20 cursor-pointer text-[11px] transition">
             <div class="flex items-center justify-between text-[10px] text-apple-blue font-mono">
-              <span>${escapeHtml(h.speaker)}</span>
+              <span>${escapeHtml(h.speaker)}${h.semantic ? ` <span class="text-apple-tertiary" title="${escapeHtml(t('tipSemanticHit'))}">· ${escapeHtml(t('semanticHit'))}</span>` : ''}</span>
               <span>${formatTime(h.start)}</span>
             </div>
             <div class="text-apple-label/90 line-clamp-2 mt-0.5">${highlightSearch(escapeHtml(h.text), state.globalSearchQuery)}</div>

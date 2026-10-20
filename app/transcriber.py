@@ -855,6 +855,9 @@ def _process_meeting_job(meeting_id: int) -> None:
 
         # 5. A title from the content instead of a file name, and the note in Obsidian
         notes = _after_transcription(meeting_id, merged_segments, speakers_meta, detected_lang, settings)
+        from app import semantic
+
+        semantic.kick()  # indexed for search by meaning once the queue is free
 
         update_meeting_progress(
             meeting_id,

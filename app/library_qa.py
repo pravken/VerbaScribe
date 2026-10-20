@@ -15,6 +15,7 @@ usual, and the overviews of its recordings are added when the search finds littl
 
 import re
 import sqlite3
+from itertools import zip_longest
 from typing import Any, Dict, List, Optional
 
 from app.audio_utils import format_timestamp
@@ -53,6 +54,42 @@ def _terms(question: str) -> List[str]:
 
 
 def retrieve(question: str, meeting_ids: Optional[List[int]] = None, limit: int = MAX_FRAGMENTS) -> List[Dict[str, Any]]:
+    """Fragments for the question: keyword hits and, with search by meaning on (app/semantic.py),
+    the chunks closest in meaning, taken in turn from both lists so each kind gets its best in."""
+    keyword = keyword_fragments(question, meeting_ids, limit)
+    meaning = semantic_fragments(question, meeting_ids, limit)
+    if not meaning:
+        return keyword
+    out: List[Dict[str, Any]] = []
+    for pair in zip_longest(keyword, meaning):
+        for f in pair:
+            if f is None or any(o["meeting_id"] == f["meeting_id"] and abs(o["start"] - f["start"]) < 20 for o in out):
+                continue
+            out.append(f)
+    return out[:limit]
+
+
+def semantic_fragments(question: str, meeting_ids: Optional[List[int]] = None, limit: int = MAX_FRAGMENTS) -> List[Dict[str, Any]]:
+    from app import semantic
+
+    meetings: Dict[int, Optional[Dict[str, Any]]] = {}
+    out = []
+    for hit in semantic.search(question, meeting_ids, limit):
+        mid = hit["meeting_id"]
+        if mid not in meetings:
+            meetings[mid] = get_meeting(mid)
+        m = meetings[mid]
+        if not m:
+            continue
+        first = hit["text"].split("\n", 1)[0]
+        out.append({
+            "meeting_id": mid, "title": m.get("title") or "", "date": _meeting_date(m), "start": hit["start"],
+            "speaker": hit["speaker"], "text": first.split(": ", 1)[-1][:300], "context": hit["text"],
+        })
+    return out
+
+
+def keyword_fragments(question: str, meeting_ids: Optional[List[int]] = None, limit: int = MAX_FRAGMENTS) -> List[Dict[str, Any]]:
     terms = _terms(question)
     if not terms or meeting_ids == []:
         return []

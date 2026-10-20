@@ -1763,6 +1763,22 @@
               <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="autoTitleHint">Если у записи безликое название («Запись 14-05», «zoom_0», «VID_2024…»), после расшифровки модель придумает его по тексту. Названия, которые вы ввели сами, не меняются.</span></span>
           </label>
         </div>
+
+        <!-- Search by meaning (app/semantic.py) -->
+        <div class="space-y-2.5 pt-4 border-t apple-border">
+          <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
+            <input type="checkbox" id="set-semantic" class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <span><span data-i18n="semanticToggle">Поиск по смыслу</span>
+              <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="semanticHint">Ассистент и поиск находят фрагменты, близкие по смыслу, а не только по словам: «о чём договорились по срокам» найдёт «давайте перенесём на пятницу». Работает локально через Ollama, текст никуда не отправляется.</span></span>
+          </label>
+          <div class="flex items-center gap-2 pl-6">
+            <input id="set-semantic-model" type="text" spellcheck="false" placeholder="bge-m3"
+              class="w-40 h-7 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono focus:outline-none focus:border-apple-blue" />
+            <button onclick="pullSemanticModel()" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" data-i18n="semanticPull">Скачать модель</button>
+            <button onclick="buildSemanticIndex()" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" data-i18n="semanticBuild">Построить индекс</button>
+          </div>
+          <div id="semantic-status" class="pl-6 text-[11px] text-apple-secondary"></div>
+        </div>
         </div>
 
         <div data-stab="export" class="space-y-5 hidden">

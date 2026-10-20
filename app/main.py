@@ -165,6 +165,9 @@ async def lifespan(_app: FastAPI):
     from app import idle_unload
 
     idle_unload.start()
+    from app import semantic
+
+    semantic.start_indexer()
     # Resume recordings that were interrupted mid-processing
     active_states = {"queued", "extracting_audio", "transcribing", "diarizing", "summarizing"}
     for m in list_meetings():
@@ -309,6 +312,10 @@ def api_update_settings(payload: SettingsUpdatePayload) -> Dict[str, Any]:
             and str(payload.settings.get("llm_cloud_consent")) != "true":
         raise HTTPException(status_code=400, detail="Подтвердите отправку текста в облачный сервис в «Настройки → Анализ»")
     updated = update_settings({k: v for k, v in payload.settings.items() if not str(k).startswith("llm_key_")})
+    if "semantic_search" in payload.settings or "semantic_model" in payload.settings:
+        from app import semantic
+
+        semantic.kick()
     return {"settings": updated, "ollama": get_ollama_status()}
 
 
@@ -425,9 +432,48 @@ def api_list_meetings() -> List[Dict[str, Any]]:
 
 @app.get("/api/meetings/search")
 def api_search_meetings(q: str = "") -> List[Dict[str, Any]]:
+    from app import semantic
     from app.database import search_all_meetings
 
-    return search_all_meetings(q)
+    results = search_all_meetings(q)
+    # A phrase is also looked up by meaning: its hits come after the keyword ones, marked
+    if len(q.split()) >= 2 and semantic.enabled():
+        by_id = {r["meeting_id"]: r for r in results}
+        for hit in semantic.search(q, limit=8):
+            r = by_id.get(hit["meeting_id"])
+            if r is None:
+                m = get_meeting(hit["meeting_id"])
+                if not m:
+                    continue
+                r = by_id[hit["meeting_id"]] = {"meeting_id": m["id"], "title": m["title"], "duration": m.get("duration") or 0.0,
+                                                "status": m.get("status") or "completed", "hits": []}
+                results.append(r)
+            if any(abs(h["start"] - hit["start"]) < 20 for h in r["hits"]):
+                continue
+            first = hit["text"].split("\n", 1)[0]
+            r["hits"].append({"segment_id": None, "start": hit["start"], "speaker": hit["speaker"],
+                              "text": first.split(": ", 1)[-1], "semantic": True})
+    return results
+
+
+@app.get("/api/semantic/status")
+def api_semantic_status() -> Dict[str, Any]:
+    from app import semantic
+
+    return semantic.status()
+
+
+@app.post("/api/semantic/index")
+def api_semantic_index() -> Dict[str, Any]:
+    """Builds the meaning index now (an explicit action: Ollama may be started for it)."""
+    from app import semantic
+    from app.ollama_client import ensure_ollama_running
+
+    settings = get_all_settings()
+    if not ensure_ollama_running((settings.get("ollama_url") or "http://127.0.0.1:11434").replace("localhost", "127.0.0.1")):
+        raise HTTPException(status_code=503, detail="Ollama не запущена: установите её в «Настройки → Анализ»")
+    semantic.start_indexer()
+    return semantic.status()
 
 
 @app.get("/api/meetings/{meeting_id}")
