@@ -3,12 +3,35 @@ import json
 import unittest
 from unittest import mock
 
-import httpx
-
-from app import llm, secret_store
+from app import secret_store
 from app.database import get_all_settings, init_db, update_settings
 
-_RealClient = httpx.Client
+# The release CI runs the tests without the app's packages: what needs them is skipped there
+try:
+    import httpx
+
+    from app import llm
+
+    _RealClient = httpx.Client
+except ImportError:
+    httpx = llm = None
+needs_deps = unittest.skipIf(llm is None, "app dependencies not installed")
+
+
+class SecretStoreTest(unittest.TestCase):
+    """Runs everywhere: on the Windows CI runner it checks the real DPAPI round trip."""
+
+    def test_round_trip_and_hint(self):
+        init_db()
+        secret_store.set_secret("test_key", "sk-secret-value-5678")
+        self.assertEqual(secret_store.get_secret("test_key"), "sk-secret-value-5678")
+        self.assertEqual(secret_store.hint("test_key")["last4"], "…5678")
+        stored = secret_store.protect("abc")
+        self.assertNotIn("abc", stored if stored.startswith("dpapi:") else "")
+        self.assertEqual(secret_store.unprotect(stored), "abc")
+        self.assertIsNone(secret_store.unprotect("dpapi:bm90LWEtYmxvYg=="))  # foreign or broken data
+        secret_store.delete_secret("test_key")
+        self.assertIsNone(secret_store.get_secret("test_key"))
 
 
 class _Fake:
@@ -18,7 +41,7 @@ class _Fake:
         self.responses = list(responses)
         self.requests = []
 
-    def handler(self, request: httpx.Request) -> httpx.Response:
+    def handler(self, request):
         self.requests.append(request)
         status, body = self.responses.pop(0) if len(self.responses) > 1 else self.responses[0]
         return httpx.Response(status, json=body)
@@ -33,6 +56,7 @@ def _use(provider, model="m-1", **extra):
     secret_store.set_secret(llm.key_name(provider), "sk-test-1234567890")
 
 
+@needs_deps
 class CloudLlmTest(unittest.TestCase):
     def setUp(self):
         init_db()
@@ -113,6 +137,7 @@ class CloudLlmTest(unittest.TestCase):
         self.assertEqual(len(fake.requests), 1)  # Ollama would summarise ~48k characters in parts
 
 
+@needs_deps
 class CloudApiTest(unittest.TestCase):
     def test_consent_and_key_endpoints(self):
         try:

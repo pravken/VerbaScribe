@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from app import database, idle_unload, obsidian, pending_exports, sysinfo
+from app import database, sysinfo
 from app.database import (
     create_folder,
     create_meeting,
@@ -23,7 +23,14 @@ from app.database import (
     update_meeting_progress,
     update_settings,
 )
-from app.ollama_client import clean_title, is_generic_title
+
+# The release CI runs the tests without the app's packages: what needs them is skipped there
+try:
+    from app import idle_unload, obsidian, pending_exports
+    from app.ollama_client import clean_title, is_generic_title
+except ImportError:  # httpx, python-docx … are not installed
+    idle_unload = obsidian = pending_exports = None
+needs_deps = unittest.skipIf(obsidian is None, "app dependencies not installed")
 
 SEGMENTS = [
     {"id": 1, "start": 0.0, "end": 4.0, "speaker": "SPEAKER_00", "text": "Обсудим релиз на следующей неделе."},
@@ -116,6 +123,7 @@ class FolderTest(unittest.TestCase):
             shutil.rmtree(outside, ignore_errors=True)
 
 
+@needs_deps
 class TitleTest(unittest.TestCase):
     def test_generic_titles(self):
         for title in ("Запись 14-05", "zoom_0", "VID_20240512_130245", "Recording (3)", "Голосовая заметка", "audio", "123"):
@@ -127,6 +135,7 @@ class TitleTest(unittest.TestCase):
         self.assertEqual(clean_title('Название: «Планирование релиза».\nВторое'), "Планирование релиза")
 
 
+@needs_deps
 class ObsidianTest(unittest.TestCase):
     def setUp(self):
         init_db()
@@ -165,6 +174,7 @@ class ObsidianTest(unittest.TestCase):
         self.assertEqual(obsidian._tasks_as_checklist("- сделать\n- [x] готово"), "- [ ] сделать\n- [x] готово")
 
 
+@needs_deps
 class PendingExportTest(unittest.TestCase):
     def setUp(self):
         init_db()
@@ -207,6 +217,7 @@ class PendingExportTest(unittest.TestCase):
         self.assertEqual(pending_exports.request(m["id"], {"kind": "dub_media", "lang": "en"})["status"], "needs_dub")
 
 
+@needs_deps
 class LibraryScopeTest(unittest.TestCase):
     def setUp(self):
         init_db()
@@ -237,6 +248,7 @@ class SystemTest(unittest.TestCase):
         cpu = sysinfo.cpu_percent()
         self.assertTrue(cpu is None or 0 <= cpu <= 100)
 
+    @needs_deps
     def test_idle_keep_alive_follows_the_setting(self):
         init_db()
         update_settings({"idle_unload_minutes": "15"})
