@@ -1235,6 +1235,8 @@ class LiveConfigPayload(BaseModel):
     speech_lang: Optional[str] = None  # "auto" or a language code; None keeps the current one
     pair: Optional[List[str]] = None
     draft: Optional[bool] = None
+    caption_model: Optional[str] = None    # "auto" or a model id; None keeps the current one
+    translate_model: Optional[str] = None  # "" for auto (by speed) or an Ollama model; None keeps it
 
 
 class LiveAskPayload(BaseModel):
@@ -1287,6 +1289,10 @@ def api_live_config(session_id: str, payload: LiveConfigPayload) -> Dict[str, An
     target, pair = _live_target(payload.translate_to, payload.pair)
     if payload.draft is not None:
         s.draft = payload.draft
+    if payload.caption_model is not None:
+        s.set_caption_model(payload.caption_model)
+    if payload.translate_model is not None:
+        s.set_translate_model(payload.translate_model)
     s.configure(target, payload.speed if payload.speed in ("quality", "fast") else None, payload.speech_lang, pair)
     return s.state(0)
 

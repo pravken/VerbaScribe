@@ -433,7 +433,20 @@
           <button onclick="studioFont(-2)" class="ui-btn ui-btn-subtle h-7 !px-2 text-[11px]" data-i18n-title="tipStudioFontSmaller" title="Мельче">A−</button>
           <button onclick="studioFont(2)" class="ui-btn ui-btn-subtle h-7 !px-2 text-[13px]" data-i18n-title="tipStudioFontLarger" title="Крупнее">A+</button>
         </div>
-        <span id="studio-status" class="text-[11px] text-apple-tertiary ml-auto"></span>
+        <!-- The models writing the captions and the translation now; can be changed by hand -->
+        <div id="studio-models" class="hidden flex items-center gap-2 ml-auto">
+          <label class="flex items-center gap-1 text-[11px] text-apple-tertiary">
+            <span data-i18n="studioModelCaptions">Субтитры</span>
+            <select id="studio-cap-model" onchange="studioSetModels({ caption_model: this.value })" data-i18n-title="tipStudioCapModel" title="Модель, которая пишет субтитры. «Авто» выбирает по языку речи"
+              class="h-6 max-w-[170px] bg-apple-sidebar border apple-border rounded-md px-1.5 text-[11px] text-white focus:outline-none"></select>
+          </label>
+          <label id="studio-tr-model-wrap" class="flex items-center gap-1 text-[11px] text-apple-tertiary">
+            <span data-i18n="studioModelTranslation">Перевод</span>
+            <select id="studio-tr-model" onchange="studioSetModels({ translate_model: this.value })" data-i18n-title="tipStudioTrModel" title="Модель перевода. «Авто» — по переключателю «Качество / Скорость»"
+              class="h-6 max-w-[170px] bg-apple-sidebar border apple-border rounded-md px-1.5 text-[11px] text-white focus:outline-none"></select>
+          </label>
+        </div>
+        <span id="studio-status" class="text-[11px] text-apple-tertiary"></span>
       </div>
 
       <!-- Models in memory: shown here when the studio covers the whole window -->

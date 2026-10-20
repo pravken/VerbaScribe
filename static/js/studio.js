@@ -590,6 +590,51 @@ function liveCaptionPrefs() {
   try { return JSON.parse(localStorage.getItem('verbascribe_live_captions') || '{}'); } catch (e) { return {}; }
 }
 
+// The model pickers above the captions: "Auto · <model in use>" and the downloaded models
+function fillModelSelect(sel, options, value) {
+  const html = options.map(([v, label]) => `<option value="${escapeHtml(v)}">${escapeHtml(label)}</option>`).join('');
+  if (sel.dataset.html !== html) { sel.innerHTML = html; sel.dataset.html = html; }
+  if (document.activeElement !== sel) sel.value = options.some(o => o[0] === value) ? value : options[0][0];
+}
+
+function renderStudioModels(target) {
+  const box = document.getElementById('studio-models');
+  box.classList.toggle('hidden', !liveCap.session);
+  if (!liveCap.session) return;
+  const auto = t('liveModelAuto');
+  const capChoice = liveCap.captionChoice || 'auto';
+  fillModelSelect(document.getElementById('studio-cap-model'), [
+    ['auto', capChoice === 'auto' && liveCap.captionModel ? `${auto} · ${liveCap.captionModel}` : auto],
+    ...(state.onnxInstalled || []).map(id => [id, formatModelName(id)]),
+    ...(state.whisperInstalled || []).map(id => [id, formatModelName(id)]),
+  ], capChoice);
+  document.getElementById('studio-tr-model-wrap').classList.toggle('hidden', !target);
+  if (!target) return;
+  const trChoice = liveCap.translateChoice || '';
+  fillModelSelect(document.getElementById('studio-tr-model'), [
+    ['', !trChoice && liveCap.translateModel ? `${auto} · ${liveCap.translateModel}` : auto],
+    ...(studio.llmModels || []).map(m => [m, formatModelName(m)]),
+  ], trChoice);
+  if (!studio.llmModels) {
+    studio.llmModels = [];
+    fetch('/api/live/models').then(r => r.json()).then(d => { studio.llmModels = d.installed || []; syncStudioCaptions(); }).catch(() => {});
+  }
+}
+
+async function studioSetModels(change) {
+  if (!liveCap.session) return;
+  if ('caption_model' in change) { liveCap.captionChoice = change.caption_model; state.liveModelSetting = change.caption_model; }
+  if ('translate_model' in change) liveCap.translateChoice = change.translate_model;
+  try {
+    const res = await fetch(`/api/live/${liveCap.session}/config`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ translate_to: document.getElementById('live-translate-select').value || null, pair: quickLangs(), ...change }),
+    });
+    if (!res.ok) showToast((await res.json().catch(() => ({}))).detail || 'Error');
+  } catch (e) { console.error(e); }
+  syncStudioCaptions();
+}
+
 function liveDraftOn() {
   return !!document.getElementById('live-draft-toggle')?.checked;
 }
@@ -805,6 +850,8 @@ async function sendLiveAudio() {
     liveCap.partialTranslation = data.partial_translation || '';
     liveCap.captionModel = data.caption_model || '';
     liveCap.translateModel = data.translate_model || '';
+    liveCap.captionChoice = data.caption_choice || 'auto';
+    liveCap.translateChoice = data.translate_choice || '';
     liveCap.translationReady = !!data.translation_ready;
     liveCap.lang = data.lang || liveCap.lang;
     liveCap.error = data.error || '';
@@ -1119,16 +1166,10 @@ function syncStudioCaptions() {
   capFollowBottom();
   renderStudioControls();
   const status = document.getElementById('studio-status');
-  // Which models write the captions and the translation now (the chips on the left may show
-  // several loaded at once)
-  const models = liveCap.session ? [
-    liveCap.captionModel ? `${t('studioModelCaptions')}: ${liveCap.captionModel}` : '',
-    target && liveCap.translateModel ? `${t('studioModelTranslation')}: ${liveCap.translateModel}` : '',
-  ].filter(Boolean).join(' · ') : '';
+  renderStudioModels(target);
   status.textContent = liveCap.error ? liveCap.error
-    : target && liveCap.session && !liveCap.translationReady ? [t('studioLoadingTranslator'), models].filter(Boolean).join(' · ')
-    : models;
-  status.className = `text-[11px] ml-auto ${liveCap.error ? 'text-apple-amber' : 'text-apple-tertiary'}`;
+    : target && liveCap.session && !liveCap.translationReady ? t('studioLoadingTranslator') : '';
+  status.className = `text-[11px] ${liveCap.error ? 'text-apple-amber' : 'text-apple-tertiary'}`;
 }
 
 async function startLiveRecording() {

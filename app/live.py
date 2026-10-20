@@ -154,6 +154,7 @@ class LiveSession:
         self.lang = self.speech_lang
         self.onnx_model = caption_onnx_model(get_all_settings(), self.speech_lang)
         self.draft = False  # the page shows the draft line: translate it too
+        self.translate_model: Optional[str] = None  # chosen by hand in the studio
         self.translate_to = translate_to or None
         self.pair = list(pair or ["ru", "en"])[:2]  # the two languages of translate_to="auto"
         self.audio = np.zeros(0, dtype=np.float32)
@@ -294,6 +295,7 @@ class LiveSession:
         self.pair = new_pair
         if self.translator is None:
             self.translator = LiveTranslator(lambda: self.lang, translate_to, speed or "quality", self.pair)
+            self.translator.set_model(self.translate_model)
             self.translator.add_lines([ln for ln in self.lines[-20:]])
         else:
             self.translator.configure(translate_to, speed, retranslate=self.lines[-20:] if changed else None, pair=self.pair)
@@ -314,8 +316,34 @@ class LiveSession:
             "translation_ready": bool(self.translator and self.translator.ready),
             "error": self.error or (self.translator.error if self.translator else ""),
             "caption_model": self.caption_label(),
+            "caption_choice": get_all_settings().get("live_whisper_model") or "auto",
+            "translate_choice": self.translate_model or "",
             "translate_model": self.translate_label(),
         }
+
+    def set_caption_model(self, value: str) -> None:
+        """The caption model chosen in the studio ("auto", GigaAM / Parakeet or a Whisper model); it is
+        the same setting as in Settings, so the next recording keeps it."""
+        from app.database import update_settings
+
+        update_settings({"live_whisper_model": value or "auto"})
+        settings = get_all_settings()
+        self.onnx_model = caption_onnx_model(settings, self.speech_lang)
+        if self.onnx_model:
+            from app import asr_onnx
+
+            threading.Thread(target=asr_onnx.preload, args=(self.onnx_model,), daemon=True).start()
+        elif _worker is not None and _worker.proc is not None:
+            from app.hardware import get_hardware_info
+
+            if _worker.model_name != caption_model(settings, get_hardware_info()):
+                with _worker.lock:
+                    _worker._kill()  # started again with the new model on the next window
+
+    def set_translate_model(self, model: Optional[str]) -> None:
+        self.translate_model = model or None
+        if self.translator:
+            self.translator.set_model(self.translate_model)
 
     def caption_label(self) -> str:
         """The model writing the captions now, for the studio."""

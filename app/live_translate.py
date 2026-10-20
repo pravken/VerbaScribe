@@ -99,7 +99,7 @@ def installed_models() -> List[str]:
         return []
 
 
-def model_choices() -> Dict[str, Optional[str]]:
+def model_choices() -> Dict[str, Any]:
     """{"quality": configured model, "fast": a small installed model or None}."""
     from app.database import get_all_settings
 
@@ -109,7 +109,7 @@ def model_choices() -> Dict[str, Optional[str]]:
         same = [m for m in models if m.startswith(quality.split(":")[0])]
         quality = same[0] if same else models[0]
     fast = next((m for m in FAST_MODEL_HINTS if m in models), None)
-    return {"quality": quality, "fast": fast}
+    return {"quality": quality, "fast": fast, "installed": models}
 
 
 AUTO = "auto"  # target "auto": a pair of languages, each line goes into the other one (RU ⇄ EN)
@@ -137,6 +137,7 @@ class LiveTranslator:
         self._cond = threading.Condition()
         self._stop = False
         self._model: Optional[str] = None
+        self.model_override: Optional[str] = None  # chosen by hand in the studio; None: by speed
         self._context: List[str] = []  # last final lines, given to the model as context
         threading.Thread(target=self._run, daemon=True, name="live_translate").start()
 
@@ -188,6 +189,14 @@ class LiveTranslator:
                 self._pending = list(retranslate) + [p for p in self._pending if p not in retranslate]
             self._cond.notify()
 
+    def set_model(self, model: Optional[str]) -> None:
+        with self._cond:
+            if (model or None) != self.model_override:
+                self.model_override = model or None
+                self._model = None  # loaded on the next request
+                self.ready = False
+            self._cond.notify()
+
     def stop(self) -> None:
         with self._cond:
             self._stop = True
@@ -200,6 +209,8 @@ class LiveTranslator:
         base = _base_url()
         ensure_ollama_running(base)
         # Ollama may have just been started: wait for it instead of failing the first lines
+        if self.model_override:
+            return self.model_override
         for _ in range(60):
             choices = model_choices()
             model = choices["fast"] if self.speed == "fast" and choices["fast"] else choices["quality"]

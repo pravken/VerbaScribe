@@ -208,3 +208,22 @@ class LiveSentenceLinesTest(unittest.TestCase):
         st = s.state()
         self.assertEqual(st["caption_model"], "GigaAM v3")
         self.assertEqual(st["translate_model"], "")
+
+    def test_pick_models_by_hand(self):
+        from unittest import mock
+        from app import asr_onnx, live
+        from app.database import get_all_settings, init_db, update_settings
+
+        init_db()
+        with mock.patch.object(live, "caption_onnx_model", return_value=None):
+            s = live.LiveSession("ru", None)
+        with mock.patch.object(asr_onnx, "is_installed", return_value=True), \
+             mock.patch.object(asr_onnx, "preload"):
+            s.set_caption_model("parakeet-v3")
+        self.assertEqual(s.onnx_model, "parakeet-v3")
+        self.assertEqual(get_all_settings()["live_whisper_model"], "parakeet-v3")
+        s.translator = mock.Mock()
+        s.set_translate_model("qwen3:4b")
+        s.translator.set_model.assert_called_with("qwen3:4b")
+        self.assertEqual(s.state()["translate_choice"], "qwen3:4b")
+        update_settings({"live_whisper_model": "auto"})
