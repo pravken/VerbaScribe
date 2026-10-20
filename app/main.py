@@ -1407,6 +1407,16 @@ def api_clean_fillers(meeting_id: int) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail=str(e))
 
 
+@app.get("/api/meetings/{meeting_id}/analytics")
+def api_meeting_analytics(meeting_id: int) -> Dict[str, Any]:
+    from app.analytics import conversation_analytics
+
+    m = get_meeting(meeting_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    return conversation_analytics(m)
+
+
 @app.get("/api/meetings/{meeting_id}/fillers")
 def api_filler_stats(meeting_id: int) -> Dict[str, Any]:
     from app.database import filler_stats

@@ -925,7 +925,32 @@ function renderSpeakerPillsBar() {
   container.innerHTML = html;
 }
 
+async function renderTalkAnalytics() {
+  const box = document.getElementById('talk-analytics');
+  const m = state.activeMeeting;
+  if (!box || !m || !(m.segments || []).length) { if (box) box.innerHTML = ''; return; }
+  const a = await fetch(`/api/meetings/${m.id}/analytics`).then(r => r.ok ? r.json() : null).catch(() => null);
+  if (!a || state.activeMeeting !== m) return;
+  const min = s => s >= 60 ? `${Math.floor(s / 60)} ${t('unitMin')} ${Math.round(s % 60)} ${t('unitSec')}` : `${Math.round(s)} ${t('unitSec')}`;
+  const stat = (label, value) => `<div class="rounded-lg bg-white/[0.03] border apple-border px-3 py-2"><div class="text-[10.5px] text-apple-tertiary">${escapeHtml(label)}</div><div class="text-sm font-semibold text-white mt-0.5">${escapeHtml(value)}</div></div>`;
+  box.innerHTML = `
+    <h3 class="text-sm font-semibold text-white">${escapeHtml(t('analyticsTitle'))}</h3>
+    <div class="grid grid-cols-3 gap-2">${stat(t('analyticsTalk'), min(a.talk_seconds))}${stat(t('analyticsSilence'), `${a.silence_share}%`)}${stat(t('analyticsTurns'), `${a.turns} · ${t('analyticsAvg')} ${min(a.avg_turn)}`)}</div>
+    <div class="space-y-2.5 border apple-border rounded-xl bg-apple-sidebar p-3">
+      ${a.speakers.map(r => `<div>
+        <div class="flex items-center justify-between text-xs"><span class="font-medium" style="color:${r.color}">${escapeHtml(r.name)}</span><span class="font-mono text-apple-secondary">${r.share}% · ${min(r.seconds)}</span></div>
+        <div class="h-1.5 rounded-full bg-white/5 mt-1 overflow-hidden"><div class="h-full rounded-full" style="width:${r.share}%;background:${r.color}"></div></div>
+        <div class="text-[10.5px] text-apple-tertiary mt-1">${escapeHtml([
+          `${r.turns} ${t('turns')}`, r.wpm ? `${r.wpm} ${t('analyticsWpm')}` : '', `${t('analyticsLongest')} ${min(r.longest)}`,
+          r.questions ? `${r.questions} ${t('analyticsQuestions')}` : '', r.interruptions ? `${t('analyticsInterruptions')}: ${r.interruptions}` : '',
+        ].filter(Boolean).join(' · '))}</div></div>`).join('')}
+    </div>
+    ${a.longest_monologues.length ? `<div class="text-[11px] text-apple-secondary">${escapeHtml(t('analyticsMonologues'))}: ${a.longest_monologues.map(x =>
+      `<button onclick="seekPlayer(${x.start})" class="text-apple-blue hover:underline font-mono">${formatTime(x.start)}</button> ${escapeHtml(x.name)} (${min(x.seconds)})`).join(' · ')}</div>` : ''}`;
+}
+
 function renderSpeakersPanel() {
+  renderTalkAnalytics();
   const box = document.getElementById('speakers-list');
   const speakers = (state.activeMeeting && state.activeMeeting.speakers) || {};
   const keys = Object.keys(speakers);

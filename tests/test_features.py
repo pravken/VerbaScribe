@@ -264,3 +264,20 @@ class ThinkingModelTest(unittest.TestCase):
         self.assertEqual(thinking_off("qwen2.5:7b"), {})
         self.assertEqual(strip_think("<think>hmm, let me see</think>\nОтвет"), "Ответ")
         self.assertEqual(strip_think("<think>cut off in the middle"), "")
+
+
+class AnalyticsTest(unittest.TestCase):
+    def test_talk_time_turns_interruptions(self):
+        from app.analytics import conversation_analytics
+
+        seg = lambda s, e, spk, text: {"start": s, "end": e, "speaker": spk, "text": text}
+        m = {"duration": 100, "speakers": {"A": {"name": "Анна"}, "B": {"name": "Борис"}},
+             "segments": [seg(0, 30, "A", "Начнём. Всё готово?"), seg(31, 40, "A", "Да."), seg(39, 50, "B", "Нет, подожди"),
+                          seg(60, 70, "A", "Ладно")]}
+        a = conversation_analytics(m)
+        anna, boris = a["speakers"]
+        self.assertEqual((anna["name"], anna["seconds"], anna["turns"], anna["questions"]), ("Анна", 49.0, 2, 1))
+        self.assertEqual((boris["interruptions"], boris["turns"]), (1, 1))
+        self.assertEqual(a["turns"], 3)
+        self.assertEqual(anna["longest"], 40.0)  # 0-40: one turn across a 1 s pause
+        self.assertEqual(a["silence_share"], 40.0)
