@@ -4,8 +4,8 @@ microphone, a recording starts; when the app lets the microphone go, the recordi
 transcribed.
 
 Windows keeps, per app, when it last started and stopped using the microphone (the privacy
-"recently used" list: CapabilityAccessManager\\ConsentStore\\microphone in the registry; a stop time
-of 0 means "using it now"). Reading it needs no permission and catches calls in any of these apps,
+"recently used" list: CapabilityAccessManager\\ConsentStore\\microphone in the registry; a start
+newer than the last stop, or a stop time of 0, means "using it now"). Reading it needs no permission and catches calls in any of these apps,
 whether they are classic programs or Store apps. The watcher polls it, and the page, which does the
 recording, gets "call" events (app/events.py) to start and stop.
 
@@ -56,7 +56,9 @@ def apps_using_microphone() -> List[str]:
             stop = winreg.QueryValueEx(key, "LastUsedTimeStop")[0]
         except OSError:
             return False
-        return bool(start) and not stop
+        # In use: started and not stopped since. Older builds write 0 as the stop time while in
+        # use; newer ones keep the previous stop time, which is then older than the start
+        return bool(start) and (not stop or stop < start)
 
     def walk(path: str, name_of: Callable[[str], str]) -> None:
         try:
