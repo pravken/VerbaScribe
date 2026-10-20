@@ -186,6 +186,27 @@ def write_pid_file() -> None:
         pass
 
 
+# MB_TOPMOST | MB_SETFOREGROUND: the launcher's splash stays on top, a question must not hide under it
+MB_ON_TOP = 0x40000 | 0x10000
+
+
+def wait_for_other_instance(timeout: float = 15.0) -> str:
+    """
+    Another VerbaScribe holds the single-instance lock. Returns "activated" when its window was
+    brought to the front, "acquired" when it ended meanwhile (e.g. it was just closed and is still
+    shutting down) and this launch now owns the lock, or "timeout" when it neither shows a window
+    nor ends.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if activate_existing_window(timeout=0.3):
+            return "activated"
+        if acquire_single_instance():
+            return "acquired"
+        time.sleep(0.2)
+    return "timeout"
+
+
 def recover_stuck_instance() -> bool:
     """
     The other instance holds the single-instance lock but shows no window (its window crashed and
@@ -200,7 +221,7 @@ def recover_stuck_instance() -> bool:
         None,
         "VerbaScribe уже запущен, но его окно не отвечает.\n\n"
         "Завершить зависший процесс и открыть программу заново? Незавершённая обработка будет прервана.",
-        "VerbaScribe", MB_YESNO | MB_ICONWARNING)
+        "VerbaScribe", MB_YESNO | MB_ICONWARNING | MB_ON_TOP)
     if answer != IDYES or not pid or pid == os.getpid():
         return False
     import subprocess
@@ -342,7 +363,7 @@ class TrayController:
             what = "Идёт запись" if st.get("recording") else "Идёт обработка"
             answer = ctypes.windll.user32.MessageBoxW(
                 None, f"{what}. Выйти из VerbaScribe? Незавершённая работа будет прервана.", "VerbaScribe",
-                MB_YESNO | MB_ICONWARNING)
+                MB_YESNO | MB_ICONWARNING | MB_ON_TOP)
             if answer != IDYES:
                 return
         self.quitting = True
@@ -368,7 +389,7 @@ def show_error_box(text: str) -> None:
     if sys.platform == "win32":
         try:
             MB_ICONERROR = 0x10
-            ctypes.windll.user32.MessageBoxW(None, text, "VerbaScribe", MB_ICONERROR)
+            ctypes.windll.user32.MessageBoxW(None, text, "VerbaScribe", MB_ICONERROR | MB_ON_TOP)
             return
         except Exception:
             pass
@@ -403,11 +424,19 @@ def main() -> None:
 
     if not args.browser:
         if not acquire_single_instance():
-            # A second double-click shows the window that is already open instead of a second copy
-            print("VerbaScribe is already open: bringing its window to the front")
-            if activate_existing_window(timeout=12) or not recover_stuck_instance():
+            # A second double-click shows the window that is already open instead of a second copy;
+            # an instance that is just closing is waited for
+            outcome = wait_for_other_instance()
+            print(f"Another VerbaScribe instance: {outcome}")
+            if outcome == "activated" or (outcome == "timeout" and not recover_stuck_instance()):
                 return
         write_pid_file()
+        # A previous instance may still be releasing the port for a moment
+        for _ in range(50):
+            if not is_port_in_use(args.host, args.port):
+                break
+            time.sleep(0.2)
+        already_running = is_port_in_use(args.host, args.port)
         try:
             import webview
 
@@ -434,6 +463,20 @@ def main() -> None:
                 tray.start()
             except Exception as e:  # the app works without the tray icon
                 print(f"[tray] not available: {e}", file=sys.stderr)
+
+            def _exit_soon() -> None:
+                # Closing the window while WebView2 is still loading can leave webview.start()
+                # hanging: the process would keep the single-instance lock without a window
+                def _hard_exit() -> None:
+                    time.sleep(2.0)
+                    print("Window closed: ending the process")
+                    if tray is not None:
+                        tray.stop()
+                    os._exit(0)
+
+                threading.Thread(target=_hard_exit, daemon=True).start()
+
+            window.events.closed += _exit_soon
             icon_arg = str(ICO_PATH) if ICO_PATH.exists() else None
             webview.start(func=apply_native_window_icon_and_hide_console, icon=icon_arg)
             if tray is not None:
