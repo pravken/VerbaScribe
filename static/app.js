@@ -142,6 +142,9 @@ function openModal(name, tab) {
     refreshExportDirLabel();
     refreshRecordingsDirLabel();
     refreshObsidianStatus();
+    state.llmProviderEdited = false;
+    state.llmShowCloud = false;
+    loadLlmStatus();
     setTimeout(() => drawIdleSoundCloudBars('settings-waveform-canvas'), 30);
   }
 }
@@ -1071,14 +1074,8 @@ function updateOllamaUI(ollama) {
     pill.className = 'text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-apple-amber/15 text-apple-amber shrink-0';
   }
 
-  const summarySelect = document.getElementById('summary-llm-select');
-  if (summarySelect && ollama.catalog) {
-    summarySelect.innerHTML = ollama.catalog.map(item => {
-      const pretty = formatModelName(item.id);
-      const mark = item.installed ? (state.uiLang === 'en' ? '● ' : '● ') : '';
-      return `<option value="${escapeHtml(item.id)}" ${item.id === activeModel ? 'selected' : ''}>${mark}${escapeHtml(pretty)}</option>`;
-    }).join('');
-  }
+  state.lastOllama = ollama;
+  renderSummaryModelSelect();
 
   if (catalogBox && ollama.catalog) {
     catalogBox.innerHTML = ollama.catalog.map(item => {
@@ -1146,7 +1143,184 @@ function updateOllamaUI(ollama) {
   syncSidebarDownloadWidget();
 }
 
+// The model choice above the analysis: the cloud model (when set up) and the Ollama models
+function renderSummaryModelSelect() {
+  const summarySelect = document.getElementById('summary-llm-select');
+  const ollama = state.lastOllama;
+  if (!summarySelect || !ollama || !ollama.catalog) return;
+  const activeModel = document.getElementById('set-ollama-model').value || ollama.active_model || 'qwen2.5:7b';
+  const cloud = cloudLlmChoice();
+  const onCloud = !!cloud && state.llm.mode === 'cloud';
+  summarySelect.innerHTML = (cloud
+    ? `<option value="__cloud" ${onCloud ? 'selected' : ''}>☁ ${escapeHtml(cloud.label)}</option>` : '')
+    + ollama.catalog.map(item => {
+      const pretty = formatModelName(item.id);
+      const mark = item.installed ? '● ' : '';
+      return `<option value="${escapeHtml(item.id)}" ${!onCloud && item.id === activeModel ? 'selected' : ''}>${mark}${escapeHtml(pretty)}</option>`;
+    }).join('');
+  summarySelect.title = onCloud ? t('tipSummaryCloud') : t('tipSelectLlm');
+}
+
+// The configured cloud model, if it can be used (a key is saved and sending was agreed to)
+function cloudLlmChoice() {
+  const st = state.llm;
+  if (!st || !st.consent) return null;
+  const p = st.providers[st.provider];
+  if (!p || (!p.key.saved && st.mode !== 'cloud')) return null;
+  const name = p.name.replace(/ \(.*\)$/, '');
+  // Chosen but not set up yet: still offered, so the request explains what is missing
+  return { provider: st.provider, model: p.model, label: p.key.saved && p.model ? `${name} · ${p.model}` : `${name} · ${t('llmNotConfigured')}` };
+}
+
+async function loadLlmStatus() {
+  try {
+    const res = await fetch('/api/llm/status');
+    if (res.ok) state.llm = await res.json();
+  } catch (e) {
+    console.error(e);
+  }
+  renderSummaryModelSelect();
+  renderLlmSettings();
+}
+
+function renderLlmSettings() {
+  const st = state.llm;
+  if (!st || !document.getElementById('llm-cloud-panel')) return;
+  const cloud = st.mode === 'cloud';
+  for (const k of ['ollama', 'cloud']) {
+    document.getElementById(`llm-mode-${k}`).className =
+      `apple-segment-btn ${(k === 'cloud') === cloud ? 'apple-segment-active' : 'text-apple-secondary hover:text-white'}`;
+  }
+  document.getElementById('llm-cloud-panel').classList.toggle('hidden', !cloud && !state.llmShowCloud);
+  const sel = document.getElementById('set-llm-provider');
+  if (!state.llmProviderEdited) sel.value = st.provider;
+  renderLlmProvider(true);
+}
+
+function renderLlmProvider(keepModel) {
+  const st = state.llm;
+  if (!st) return;
+  const prov = document.getElementById('set-llm-provider').value;
+  if (keepModel !== true) state.llmProviderEdited = true;
+  const p = st.providers[prov];
+  const modelInput = document.getElementById('set-llm-model');
+  if (keepModel !== true || !modelInput.dataset.prov || modelInput.dataset.prov !== prov) {
+    modelInput.value = p.model || '';
+    modelInput.dataset.prov = prov;
+  }
+  modelInput.placeholder = p.default_model || 'model-name';
+  document.getElementById('llm-model-list').innerHTML = (state.llmModels && state.llmModels[prov] || p.suggested || [])
+    .map(m => `<option value="${escapeHtml(m)}"></option>`).join('');
+  document.getElementById('llm-base-url-row').classList.toggle('hidden', prov !== 'openai_compat');
+  document.getElementById('set-llm-base-url').value = prov === 'openai_compat' ? (p.base_url || '') : '';
+  const hint = document.getElementById('llm-key-hint');
+  const keyInput = document.getElementById('set-llm-key');
+  keyInput.placeholder = p.key.saved ? t('llmKeySavedPh').replace('{last4}', p.key.last4) : t('llmKeyPh');
+  hint.textContent = p.key.saved
+    ? (p.key.readable ? t('llmKeySaved') : t('llmKeyUnreadable'))
+    : (p.keys_url ? t('llmKeyWhere').replace('{url}', p.keys_url) : t('llmKeyCompat'));
+  hint.className = `mt-1 text-[11px] leading-snug break-words ${p.key.saved && !p.key.readable ? 'text-apple-red' : 'text-apple-tertiary'}`;
+  document.getElementById('llm-key-delete').classList.toggle('hidden', !p.key.saved);
+  document.getElementById('llm-test-result').textContent = '';
+}
+
+function llmSettingsPayload() {
+  const prov = document.getElementById('set-llm-provider').value;
+  const out = { llm_cloud_provider: prov, [`llm_model_${prov}`]: document.getElementById('set-llm-model').value.trim() };
+  if (prov === 'openai_compat') out.llm_base_url_openai_compat = document.getElementById('set-llm-base-url').value.trim();
+  return out;
+}
+
+async function saveLlmSettingsNow(extra = {}) {
+  const res = await fetch('/api/settings', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ settings: { ...llmSettingsPayload(), ...extra } }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { showToast(data.detail || 'Error'); return false; }
+  if (state.system) state.system.settings = data.settings;
+  state.llmProviderEdited = false;
+  await loadLlmStatus();
+  return true;
+}
+
+async function setLlmMode(mode) {
+  const st = state.llm || {};
+  const extra = { llm_provider: mode };
+  if (mode === 'cloud' && !st.consent) {
+    if (!confirm(t('llmConsentConfirm'))) return;
+    extra.llm_cloud_consent = 'true';
+  }
+  if (mode === 'cloud') state.llmShowCloud = true;
+  if (await saveLlmSettingsNow(extra)) {
+    showToast(mode === 'cloud' ? t('llmModeCloudOn') : t('llmModeLocalOn'));
+  }
+}
+
+async function saveLlmKey() {
+  const input = document.getElementById('set-llm-key');
+  const key = input.value.trim();
+  if (!key) { input.focus(); return; }
+  const provider = document.getElementById('set-llm-provider').value;
+  const res = await fetch('/api/llm/key', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider, key }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  input.value = '';
+  await saveLlmSettingsNow();
+  showToast(t('llmKeyStored'));
+}
+
+async function deleteLlmKey() {
+  const provider = document.getElementById('set-llm-provider').value;
+  if (!confirm(t('llmKeyDeleteConfirm'))) return;
+  await fetch(`/api/llm/key/${provider}`, { method: 'DELETE' });
+  await loadLlmStatus();
+}
+
+async function loadLlmModels() {
+  const provider = document.getElementById('set-llm-provider').value;
+  const res = await fetch(`/api/llm/models/${provider}`);
+  const data = await res.json().catch(() => ({}));
+  const models = data.models || [];
+  if (!models.length) { showToast(t('llmModelsNone')); return; }
+  state.llmModels = { ...(state.llmModels || {}), [provider]: models };
+  renderLlmProvider(true);
+  showToast(t('llmModelsLoaded').replace('{n}', models.length));
+  document.getElementById('set-llm-model').focus();
+}
+
+async function testLlmConnection() {
+  const provider = document.getElementById('set-llm-provider').value;
+  const out = document.getElementById('llm-test-result');
+  const btn = document.getElementById('llm-test-btn');
+  if (!(await saveLlmSettingsNow())) return;
+  btn.disabled = true;
+  out.className = 'text-[11px] text-apple-secondary min-w-0 break-words animate-pulse';
+  out.textContent = t('llmTesting');
+  try {
+    const res = await fetch(`/api/llm/test/${provider}`, { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || 'Error');
+    out.className = 'text-[11px] text-apple-green min-w-0 break-words';
+    out.textContent = t('llmTestOk').replace('{model}', data.model).replace('{sec}', data.seconds);
+  } catch (e) {
+    out.className = 'text-[11px] text-apple-red min-w-0 break-words';
+    out.textContent = e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function selectActiveOllamaModel(modelId) {
+  if (modelId === '__cloud') {
+    await saveLlmSettingsNow({ llm_provider: 'cloud' });
+    const c = cloudLlmChoice();
+    showToast(c ? `${t('llmModeCloudOn')} · ${c.label}` : t('llmModeCloudOn'));
+    return;
+  }
+  if (state.llm && state.llm.mode === 'cloud') await saveLlmSettingsNow({ llm_provider: 'ollama' });
   document.getElementById('set-ollama-model').value = modelId;
   const summarySelect = document.getElementById('summary-llm-select');
   if (summarySelect) summarySelect.value = modelId;
@@ -1178,6 +1352,7 @@ async function saveAllSettings() {
       auto_title: String(document.getElementById('set-auto-title').checked),
       idle_unload_minutes: document.getElementById('set-idle-unload').value,
       ...obsidianSettingsPayload(),
+      ...llmSettingsPayload(),
       record_source_mode: document.getElementById('set-record-source')?.value || 'both',
       record_mic_device: document.getElementById('set-record-mic')?.value || '',
       ...dubSettingsPayload(),
@@ -1765,7 +1940,7 @@ function renderLibraryAnswer(body, item) {
       <div class="text-[10.5px] uppercase tracking-wider text-apple-tertiary mb-1">${escapeHtml(t('libraryAskSources'))}</div>
       ${sources}
     </div>` : ''}
-    ${data.model ? `<div class="mt-2 text-[10.5px] text-apple-tertiary">${escapeHtml(formatModelName(data.model))}${data.mode === 'full' ? ' · ' + escapeHtml(t('askModeFull')) : ''}</div>` : ''}`;
+    ${data.model ? `<div class="mt-2 text-[10.5px] text-apple-tertiary">${data.cloud ? '☁ ' : ''}${escapeHtml(data.cloud ? data.model : formatModelName(data.model))}${data.mode === 'full' ? ' · ' + escapeHtml(t('askModeFull')) : ''}</div>` : ''}`;
 }
 
 function openLibrarySource(itemId, n) {
@@ -5633,6 +5808,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   loadSystemInfo();
+  loadLlmStatus();
   setTimeout(() => checkForUpdates(false), 4000);  // after the page has settled; only if enabled in settings
   loadDictionary();
   loadVram();
@@ -5787,12 +5963,21 @@ function linkifyTimestamps(root, maxSec, onSeek) {
   }
 }
 
+// The model for this request: "cloud" for the cloud model, otherwise an Ollama tag
+function summaryModelChoice() {
+  const value = document.getElementById('summary-llm-select')?.value || '';
+  if (value === '__cloud') {
+    const c = cloudLlmChoice();
+    return { chosenModel: 'cloud', prettyModel: c ? c.label : 'Cloud' };
+  }
+  return { chosenModel: value || undefined, prettyModel: formatModelName(value || 'Ollama') };
+}
+
 async function generateSummaryForActiveTab() {
   if (!state.activeMeeting) return;
   const btn = document.getElementById('generate-summary-btn');
   const box = document.getElementById('summary-content');
-  const chosenModel = document.getElementById('summary-llm-select')?.value || undefined;
-  const prettyModel = formatModelName(chosenModel || 'Ollama');
+  const { chosenModel, prettyModel } = summaryModelChoice();
   btn.disabled = true;
   box.innerHTML = `<div class="py-12 flex items-center justify-center gap-2 text-xs text-apple-secondary animate-pulse"><span>${state.uiLang === 'en' ? 'Generating analysis' : 'Формирование анализа'}</span><span class="px-2 py-0.5 rounded-md bg-white/10 text-white font-medium">${escapeHtml(prettyModel)}</span></div>`;
 
@@ -5820,8 +6005,7 @@ async function runCustomQuestion() {
   const prompt = input.value.trim();
   if (!prompt) return;
 
-  const chosenModel = document.getElementById('summary-llm-select')?.value || undefined;
-  const prettyModel = formatModelName(chosenModel || 'Ollama');
+  const { chosenModel, prettyModel } = summaryModelChoice();
   const box = document.getElementById('summary-content');
   box.innerHTML = `<div class="py-12 flex items-center justify-center gap-2 text-xs text-apple-secondary animate-pulse"><span>${state.uiLang === 'en' ? 'Searching for answer' : 'Поиск ответа'}</span><span class="px-2 py-0.5 rounded-md bg-white/10 text-white font-medium">${escapeHtml(prettyModel)}</span></div>`;
 

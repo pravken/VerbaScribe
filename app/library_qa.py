@@ -18,7 +18,7 @@ import sqlite3
 from typing import Any, Dict, List, Optional
 
 from app.audio_utils import format_timestamp
-from app.database import _db_lock, get_all_settings, get_connection, get_meeting
+from app.database import _db_lock, get_connection, get_meeting
 
 MAX_FRAGMENTS = 14
 MAX_CONTEXT_CHARS = 11000
@@ -51,7 +51,7 @@ def _terms(question: str) -> List[str]:
     return out[:10]
 
 
-def retrieve(question: str, meeting_ids: Optional[List[int]] = None) -> List[Dict[str, Any]]:
+def retrieve(question: str, meeting_ids: Optional[List[int]] = None, limit: int = MAX_FRAGMENTS) -> List[Dict[str, Any]]:
     terms = _terms(question)
     if not terms or meeting_ids == []:
         return []
@@ -69,7 +69,7 @@ def retrieve(question: str, meeting_ids: Optional[List[int]] = None) -> List[Dic
                 FROM segments_fts WHERE segments_fts MATCH ?{scope_sql}
                 ORDER BY score LIMIT ?
                 """,
-                (match, *scope_args, MAX_FRAGMENTS * 3),
+                (match, *scope_args, limit * 3),
             ).fetchall()
         except sqlite3.OperationalError:
             rows = []
@@ -110,7 +110,7 @@ def retrieve(question: str, meeting_ids: Optional[List[int]] = None) -> List[Dic
             "text": (seg.get("text") or "").strip(),
             "context": "\n".join(lines),
         })
-        if len(fragments) >= MAX_FRAGMENTS:
+        if len(fragments) >= limit:
             break
     return fragments
 
@@ -173,7 +173,8 @@ def ask_library(
     model_name: Optional[str] = None,
     meeting_ids: Optional[List[int]] = None,
 ) -> Dict[str, Any]:
-    from app.ollama_client import _lang_phrase, _ollama_chat, ensure_ollama_running, get_ollama_status
+    from app.llm import LlmError, target
+    from app.ollama_client import _lang_phrase
 
     question = (question or "").strip()[:1000]
     if not question:
@@ -181,36 +182,31 @@ def ask_library(
     if meeting_ids is not None and not meeting_ids:
         raise ValueError("В выбранной папке нет записей")
 
+    try:
+        llm = target(model_name)  # an explicit user action: Ollama may be started
+    except LlmError as e:
+        raise RuntimeError(str(e)) from e
+    # A cloud model reads far more at once: bigger folders are read in full, more fragments fit
+    scale = 8 if llm.is_cloud else 1
     mode = "search"
-    max_chars = MAX_CONTEXT_CHARS
+    max_chars = MAX_CONTEXT_CHARS * scale
     fragments: List[Dict[str, Any]] = []
     scope_meetings: List[Dict[str, Any]] = []
     if meeting_ids is not None:
         scope_meetings = [m for m in (get_meeting(i) for i in meeting_ids) if m and m.get("segments")]
         if not scope_meetings:
             return {"answer": "", "sources": [], "found": False, "mode": mode}
-        if sum(_transcript_chars(m) for m in scope_meetings) <= FULL_MODE_MAX_CHARS:
+        if sum(_transcript_chars(m) for m in scope_meetings) <= FULL_MODE_MAX_CHARS * scale:
             mode = "full"
-            max_chars = FULL_MODE_MAX_CHARS + 4000
+            max_chars = FULL_MODE_MAX_CHARS * scale + 4000
             fragments = full_fragments(scope_meetings)
     if mode == "search":
-        fragments = retrieve(question, meeting_ids)
+        fragments = retrieve(question, meeting_ids, limit=MAX_FRAGMENTS * (3 if llm.is_cloud else 1))
         if meeting_ids is not None and len(fragments) < 3:
             # Few keyword hits in a folder: its overviews still say what the recordings are about
             fragments = summary_fragments(scope_meetings)[:MAX_FRAGMENTS] + fragments
     if not fragments:
         return {"answer": "", "sources": [], "found": False, "mode": mode}
-
-    settings = get_all_settings()
-    base_url = (settings.get("ollama_url") or "http://127.0.0.1:11434").replace("localhost", "127.0.0.1").rstrip("/")
-    model = model_name or settings.get("ollama_model") or "qwen2.5:7b"
-    ensure_ollama_running(base_url)  # an explicit user action
-    status = get_ollama_status(base_url)
-    if not status["running"] or not status["models"]:
-        raise RuntimeError("Ollama не запущена или в ней нет моделей. Откройте «Настройки» и скачайте модель.")
-    if model not in status["models"]:
-        same = [m for m in status["models"] if m.startswith(model.split(":")[0])]
-        model = same[0] if same else status["models"][0]
 
     blocks, used = [], 0
     for n, f in enumerate(fragments, start=1):
@@ -234,9 +230,9 @@ def ask_library(
         f"Отвечай {lang}, кратко и по делу, в формате Markdown без эмодзи."
     )
     user = "Фрагменты расшифровок:\n\n" + "\n\n".join(blocks) + f"\n\nВопрос: {question}"
-    answer = _ollama_chat(base_url, model, system, user)
+    answer = llm.chat(system, user)
     sources = [
         {k: f[k] for k in ("meeting_id", "title", "date", "start", "speaker", "text")} | {"n": n}
         for n, f in enumerate(fragments, start=1)
     ]
-    return {"answer": answer, "sources": sources, "found": True, "model": model, "mode": mode}
+    return {"answer": answer, "sources": sources, "found": True, "model": llm.label, "mode": mode, "cloud": llm.is_cloud}

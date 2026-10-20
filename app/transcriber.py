@@ -24,7 +24,7 @@ from app.database import (
     update_meeting_progress,
 )
 from app.diarizer import diarize_and_merge_segments
-from app.ollama_client import generate_meeting_summary, get_ollama_status
+from app.ollama_client import generate_meeting_summary
 from app.text_utils import (
     clean_filler_words_in_segments,
     is_hallucination,
@@ -614,9 +614,10 @@ def _after_transcription(
         and meeting.get("title_is_default")
         and is_generic_title(meeting.get("title") or "")
     ):
-        ollama_st = get_ollama_status()
-        if ollama_st["running"] and ollama_st["models"]:
-            update_meeting_progress(meeting_id, progress=94, stage_text="Название записи по содержанию (Ollama)...")
+        from app import llm
+
+        if llm.available(settings):
+            update_meeting_progress(meeting_id, progress=94, stage_text="Название записи по содержанию...")
             try:
                 title = generate_meeting_title(segments, speakers, answer_lang=lang)
                 if title:
@@ -794,15 +795,17 @@ def _process_meeting_job(meeting_id: int) -> None:
         summaries = meeting.get("summaries") or {}
 
         if auto_summary and merged_segments:
-            ollama_st = get_ollama_status()
-            if ollama_st["running"] and ollama_st["models"]:
-                if device == "cuda" and _free_vram_gb() < _SUMMARY_MIN_FREE_VRAM_GB:
+            from app import llm
+
+            if llm.available(settings):
+                cloud = llm.uses_cloud(settings)
+                if not cloud and device == "cuda" and _free_vram_gb() < _SUMMARY_MIN_FREE_VRAM_GB:
                     release_whisper_model()
                 update_meeting_progress(
                     meeting_id,
                     status="summarizing",
                     progress=90,
-                    stage_text="Формирование обзора записи (Ollama)...",
+                    stage_text="Формирование обзора записи (" + ("облачная модель" if cloud else "Ollama") + ")...",
                 )
                 try:
                     summary_md = generate_meeting_summary(

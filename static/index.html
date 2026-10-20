@@ -1596,6 +1596,61 @@
         </div>
 
         <div data-stab="analysis" class="space-y-5 hidden">
+        <!-- Where analysis runs: the local Ollama or a cloud model over its API (app/llm.py) -->
+        <div class="space-y-3 pb-4 border-b apple-border">
+          <div>
+            <h4 class="text-xs font-semibold text-white" data-i18n="llmModeTitle">Модель для анализа</h4>
+            <p class="text-[11px] text-apple-secondary leading-snug" data-i18n="llmModeDesc">Обзоры, задачи, главы, ответы на вопросы, названия записей и заметки Obsidian. Перевод текста, живые субтитры и дубляж всегда работают через Ollama.</p>
+          </div>
+          <div class="apple-segmented w-full settings-tabs">
+            <button onclick="setLlmMode('ollama')" id="llm-mode-ollama" class="apple-segment-btn" data-i18n="llmModeLocal">На компьютере (Ollama)</button>
+            <button onclick="setLlmMode('cloud')" id="llm-mode-cloud" class="apple-segment-btn" data-i18n="llmModeCloud">Облачная модель по API</button>
+          </div>
+          <div id="llm-cloud-panel" class="hidden space-y-3">
+            <div class="rounded-lg border border-apple-amber/40 bg-apple-amber/10 px-3 py-2.5 text-[11.5px] text-apple-amber leading-relaxed" data-i18n="llmCloudWarning">Текст расшифровки анализируемой записи (а для вопросов по медиатеке — найденные фрагменты) отправляется в выбранный сервис через интернет и обрабатывается по его правилам. Аудио и видео не отправляются. Запросы оплачиваются по тарифам сервиса.</div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="llmProviderLabel">Сервис</label>
+                <select id="set-llm-provider" onchange="renderLlmProvider()" class="w-full h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
+                  <option value="openai">OpenAI (ChatGPT)</option>
+                  <option value="anthropic">Anthropic (Claude)</option>
+                  <option value="gemini">Google (Gemini)</option>
+                  <option value="openai_compat" data-i18n="llmProviderCompat">OpenAI-совместимый (OpenRouter, DeepSeek, LM Studio…)</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="llmModelLabel">Модель</label>
+                <div class="flex items-center gap-1.5">
+                  <input id="set-llm-model" type="text" list="llm-model-list" class="flex-1 min-w-0 h-8 bg-apple-sidebar border apple-border rounded-lg px-3 text-xs text-white font-mono focus:outline-none focus:border-apple-blue" />
+                  <datalist id="llm-model-list"></datalist>
+                  <button onclick="loadLlmModels()" class="ui-btn ui-btn-subtle h-8 !px-2 shrink-0" data-i18n-title="tipLlmModels" title="Загрузить список моделей, доступных по ключу">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div id="llm-base-url-row" class="hidden">
+              <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="llmBaseUrlLabel">Адрес API (Base URL)</label>
+              <input id="set-llm-base-url" type="text" placeholder="https://openrouter.ai/api/v1"
+                class="w-full h-8 bg-apple-sidebar border apple-border rounded-lg px-3 text-xs text-white font-mono placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="llmKeyLabel">API-ключ</label>
+              <div class="flex items-center gap-2">
+                <input id="set-llm-key" type="password" autocomplete="off" spellcheck="false"
+                  class="flex-1 min-w-0 h-8 bg-apple-sidebar border apple-border rounded-lg px-3 text-xs text-white font-mono placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
+                <button onclick="saveLlmKey()" class="ui-btn ui-btn-primary h-8 px-3 text-[11px] shrink-0" data-i18n="llmKeySave">Сохранить ключ</button>
+                <button onclick="deleteLlmKey()" id="llm-key-delete" class="hidden ui-btn ui-btn-subtle h-8 px-2.5 text-[11px] shrink-0 text-apple-red" data-i18n="llmKeyDelete">Удалить</button>
+              </div>
+              <p id="llm-key-hint" class="mt-1 text-[11px] text-apple-tertiary leading-snug break-words"></p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="testLlmConnection()" id="llm-test-btn" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px]" data-i18n="llmTest">Проверить подключение</button>
+              <span id="llm-test-result" class="text-[11px] text-apple-tertiary min-w-0 break-words"></span>
+            </div>
+          </div>
+        </div>
+
         <!-- Section 3: Ollama Local AI Model Manager -->
         <div class="pt-4 border-t apple-border space-y-3">
           <div class="flex items-center justify-between gap-2">

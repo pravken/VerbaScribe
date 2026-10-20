@@ -141,6 +141,9 @@ def init_db() -> None:
             "obsidian_chapters": "true",
             "obsidian_transcript": "true",
             "obsidian_generate": "true",  # make the overview and tasks for the note if they are missing
+            "llm_provider": "ollama",  # analysis: "ollama" (local) or "cloud" (app/llm.py)
+            "llm_cloud_provider": "openai",
+            "llm_cloud_consent": "false",  # the user agreed that transcripts are sent to the cloud service
         }
 
         for k, v in default_settings.items():

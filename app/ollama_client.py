@@ -525,29 +525,10 @@ def generate_meeting_summary(
     base_url: Optional[str] = None,
     answer_lang: Optional[str] = "ru",
 ) -> str:
-    settings = get_all_settings()
-    base_url = (base_url or settings.get("ollama_url") or "http://127.0.0.1:11434").replace("localhost", "127.0.0.1").rstrip("/")
-    model_name = model_name or settings.get("ollama_model") or "qwen2.5:7b"
+    from app.llm import target
 
-    # Generating a summary is an explicit user action, so starting an installed Ollama is fine here
-    ensure_ollama_running(base_url)
-    status = get_ollama_status(base_url)
-    if not status["running"]:
-        raise RuntimeError(
-            "Локальный сервер Ollama не установлен или не запущен. Откройте «Настройки», выберите модель LLM и нажмите «Скачать»."
-        )
-
-    available_models = status["models"]
-    if not available_models:
-        raise RuntimeError(
-            f"В Ollama пока не скачана ни одна модель. Откройте «Настройки» и нажмите кнопку «Скачать» напротив {model_name}."
-        )
-
-    selected_model = model_name
-    if selected_model not in available_models:
-        matches = [m for m in available_models if m.startswith(selected_model.split(":")[0])]
-        selected_model = matches[0] if matches else available_models[0]
-
+    # Ollama, or the cloud model chosen in Settings → Analysis ("cloud" asks for it explicitly)
+    llm = target(model_name)
     lines = build_transcript_lines(segments, speakers)
     transcript_text = "\n".join(lines)
     if not transcript_text.strip():
@@ -567,9 +548,10 @@ def generate_meeting_summary(
         instruction = SUMMARY_TEMPLATES.get(template_key, SUMMARY_TEMPLATES["protocol"]).format(lang=lang)
 
     source_label = "Вот точная расшифровка аудио/видеозаписи"
-    if len(transcript_text) > SINGLE_PASS_MAX_CHARS:
+    single_pass_max = SINGLE_PASS_MAX_CHARS if not llm.is_cloud else llm.max_chars
+    if len(transcript_text) > single_pass_max:
         # Map step: condense each part of a long recording into detailed timestamped notes
-        chunks = _chunk_lines(lines, CHUNK_MAX_CHARS)
+        chunks = _chunk_lines(lines, CHUNK_MAX_CHARS if not llm.is_cloud else llm.max_chars // 2)
         focus = (
             f"Особенно подробно выпиши всё, что относится к вопросу: {custom_prompt.strip()}\n"
             if custom_prompt.strip()
@@ -578,9 +560,7 @@ def generate_meeting_summary(
         notes: List[str] = []
         for idx, chunk in enumerate(chunks, start=1):
             notes.append(
-                _ollama_chat(
-                    base_url,
-                    selected_model,
+                llm.chat(
                     system_prompt,
                     f"Это фрагмент {idx} из {len(chunks)} расшифровки длинной записи:\n```text\n{chunk}\n```\n\n"
                     f"Составь {lang} подробный конспект этого фрагмента списком: кто что сказал, факты, мнения, "
@@ -601,7 +581,7 @@ def generate_meeting_summary(
         "Напоминание: пиши ТОЛЬКО о том, что реально сказано в записи. "
         "Не выдумывай посторонних людей, встреч или проектов."
     )
-    return _ollama_chat(base_url, selected_model, system_prompt, user_message)
+    return llm.chat(system_prompt, user_message)
 
 
 # --- A title for a recording, from its content ---
@@ -628,15 +608,9 @@ def generate_meeting_title(
     model_name: Optional[str] = None,
 ) -> str:
     """A short title (3-8 words) for the recording from the beginning of its transcript."""
-    settings = get_all_settings()
-    base_url = (settings.get("ollama_url") or "http://127.0.0.1:11434").replace("localhost", "127.0.0.1").rstrip("/")
-    status = get_ollama_status(base_url)
-    if not status["running"] or not status["models"]:
-        raise RuntimeError("Ollama не запущена или в ней нет моделей")
-    model = model_name or settings.get("ollama_model") or "qwen2.5:7b"
-    if model not in status["models"]:
-        same = [m for m in status["models"] if m.startswith(model.split(":")[0])]
-        model = same[0] if same else status["models"][0]
+    from app.llm import target
+
+    llm = target(model_name, start_ollama=False)
     text = "\n".join(build_transcript_lines(segments, speakers))[:7000]
     if not text.strip():
         raise RuntimeError("Транскрипт пуст")
@@ -646,7 +620,7 @@ def generate_meeting_title(
         f"Отвечай {lang}. Выведи только название: 3–8 слов, без кавычек, без точки в конце, без даты, "
         "без слов «Встреча», «Запись», «Обсуждение» в начале, если можно обойтись без них."
     )
-    raw = _ollama_chat(base_url, model, system, f"Расшифровка:\n{text}\n\nНазвание:")
+    raw = llm.chat(system, f"Расшифровка:\n{text}\n\nНазвание:")
     return clean_title(raw)
 
 

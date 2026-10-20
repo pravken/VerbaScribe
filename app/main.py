@@ -303,7 +303,11 @@ class SettingsUpdatePayload(BaseModel):
 
 @app.post("/api/settings")
 def api_update_settings(payload: SettingsUpdatePayload) -> Dict[str, Any]:
-    updated = update_settings(payload.settings)
+    # Sending transcripts to a cloud service needs the consent given in Settings → Analysis
+    if payload.settings.get("llm_provider") == "cloud" and get_all_settings().get("llm_cloud_consent") != "true" \
+            and str(payload.settings.get("llm_cloud_consent")) != "true":
+        raise HTTPException(status_code=400, detail="Подтвердите отправку текста в облачный сервис в «Настройки → Анализ»")
+    updated = update_settings({k: v for k, v in payload.settings.items() if not str(k).startswith("llm_key_")})
     return {"settings": updated, "ollama": get_ollama_status()}
 
 
@@ -1073,7 +1077,7 @@ def api_generate_summary(meeting_id: int, payload: SummaryRequestPayload) -> Dic
             speakers=speakers,
             template_key=payload.template,
             custom_prompt=payload.custom_prompt,
-            model_name=payload.model,
+            model_name=payload.model or None,
             answer_lang=payload.lang or m.get("language") or "ru",
         )
     except Exception as e:
@@ -1974,3 +1978,64 @@ def api_vram_unload_all() -> Dict[str, Any]:
         raise HTTPException(status_code=409, detail="Сейчас идёт обработка или запись")
     res = idle_unload.unload_now()
     return {**vram_snapshot(), **res}
+
+
+# --- Cloud language models for analysis (app/llm.py) ---
+@app.get("/api/llm/status")
+def api_llm_status() -> Dict[str, Any]:
+    from app.llm import status
+
+    return status()
+
+
+class LlmKeyPayload(BaseModel):
+    provider: str
+    key: str
+
+
+@app.post("/api/llm/key")
+def api_llm_set_key(payload: LlmKeyPayload) -> Dict[str, Any]:
+    """Stores an API key (encrypted with DPAPI on Windows); it is never sent back to the page."""
+    from app import secret_store
+    from app.llm import PROVIDERS, key_name, status
+
+    if payload.provider not in PROVIDERS:
+        raise HTTPException(status_code=400, detail="Неизвестный сервис")
+    key = payload.key.strip()
+    if not key or len(key) > 500 or any(c.isspace() for c in key):
+        raise HTTPException(status_code=400, detail="Ключ выглядит неверно")
+    secret_store.set_secret(key_name(payload.provider), key)
+    return status()
+
+
+@app.delete("/api/llm/key/{provider}")
+def api_llm_delete_key(provider: str) -> Dict[str, Any]:
+    from app import secret_store
+    from app.llm import PROVIDERS, key_name, status
+
+    if provider not in PROVIDERS:
+        raise HTTPException(status_code=400, detail="Неизвестный сервис")
+    secret_store.delete_secret(key_name(provider))
+    return status()
+
+
+@app.get("/api/llm/models/{provider}")
+def api_llm_models(provider: str) -> Dict[str, Any]:
+    from app.llm import PROVIDERS, list_models
+
+    if provider not in PROVIDERS:
+        raise HTTPException(status_code=400, detail="Неизвестный сервис")
+    return {"models": list_models(provider)}
+
+
+@app.post("/api/llm/test/{provider}")
+def api_llm_test(provider: str) -> Dict[str, Any]:
+    """Sends a two-word request to check the key, the address and the model."""
+    from app.llm import PROVIDERS, LlmError, test_connection
+
+    if provider not in PROVIDERS:
+        raise HTTPException(status_code=400, detail="Неизвестный сервис")
+    try:
+        return test_connection(provider)
+    except LlmError as e:
+        raise HTTPException(status_code=502, detail=str(e))
