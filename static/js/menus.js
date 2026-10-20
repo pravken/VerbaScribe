@@ -240,27 +240,10 @@ function toggleTranslateMenu(e) {
   e.stopPropagation();
   hideContextMenu();
   document.getElementById('export-menu')?.classList.add('hidden');
-  renderTranslateQuick();
   document.getElementById('translate-menu').classList.toggle('hidden');
 }
 
-// One click: shows the translation into a quick language, or makes it when there is none yet
-function renderTranslateQuick() {
-  const m = state.activeMeeting;
-  const box = document.getElementById('translate-quick');
-  if (!box || !m) return;
-  const have = meetingTranslations(m);
-  const src = String(m.language || '').slice(0, 2);
-  box.innerHTML = `<span class="text-[10.5px] text-apple-tertiary mr-auto">${escapeHtml(t('translateQuick'))}</span>`
-    + quickLangs().map(c => {
-      const ready = !!have[c];
-      const same = c === src;
-      return `<button onclick="quickTranslate('${c}')" ${same ? 'disabled' : ''}
-        title="${escapeHtml(same ? t('translateQuickSame') : ready ? t('translateQuickShow').replace('{lang}', langName(c)) : t('translateQuickMake').replace('{lang}', langName(c)))}"
-        class="quick-lang ${ready ? 'on' : ''}" style="${same ? 'opacity:.35' : ''}">${ready ? '✓ ' : ''}${escapeHtml(langCode(c))}</button>`;
-    }).join('');
-}
-
+// One click (the chips in the transcript toolbar): shows the translation, or makes it
 async function quickTranslate(lang) {
   hideTranslateMenu();
   const m = state.activeMeeting;
