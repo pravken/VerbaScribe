@@ -49,7 +49,7 @@ function renderExportMenu() {
     + item({ kind: 'doc', fmt: 'txt' }, t('exportPlainText'), 'TXT') + item({ kind: 'doc', fmt: 'json' }, 'JSON', 'JSON');
 
   html += sep + header(t('exportGroupSubs'));
-  html += item({ kind: 'doc', fmt: 'srt' }, t('exportSrtFile'), 'SRT');
+  html += item({ kind: 'doc', fmt: 'srt' }, t('exportSrtFile'), 'SRT') + item({ kind: 'doc', fmt: 'vtt' }, t('exportVttFile'), 'VTT');
   if (isVideo) {
     html += item({ kind: 'video_soft' }, t('exportVideoSoft'), t('exportTagVideo'), t('tipSubsSoft'))
       + item({ kind: 'video_burn' }, t('exportVideoBurn'), t('exportTagVideo'), t('tipSubsBurn'));
@@ -61,8 +61,9 @@ function renderExportMenu() {
   if (!trReady) html += note(t('exportTrWillRun').replace('{lang}', langName(trLang)));
   const tr = (fmt, variant, label, tag) => item({ kind: 'doc', fmt, lang: trLang, variant }, label, tag);
   html += tr('docx', 'translated', 'Word', 'DOCX') + tr('md', 'translated', 'Markdown', 'MD') + tr('txt', 'translated', t('exportPlainText'), 'TXT')
-    + tr('srt', 'translated', t('exportSrtFile'), 'SRT')
-    + tr('docx', 'bilingual', `Word · ${t('exportBilingual')}`, 'DOCX') + tr('srt', 'bilingual', `${t('exportSrtFile')} · ${t('exportBilingual')}`, 'SRT');
+    + tr('srt', 'translated', t('exportSrtFile'), 'SRT') + tr('vtt', 'translated', t('exportVttFile'), 'VTT')
+    + tr('docx', 'bilingual', `Word · ${t('exportBilingual')}`, 'DOCX') + tr('srt', 'bilingual', `${t('exportSrtFile')} · ${t('exportBilingual')}`, 'SRT')
+    + tr('vtt', 'bilingual', `${t('exportVttFile')} · ${t('exportBilingual')}`, 'VTT');
   if (isVideo) {
     html += item({ kind: 'video_soft', lang: trLang, variant: 'translated' }, t('exportVideoSoftTr'), t('exportTagVideo'), t('tipSubsSoft'))
       + item({ kind: 'video_burn', lang: trLang, variant: 'translated' }, t('exportVideoBurnTr'), t('exportTagVideo'), t('tipSubsBurn'));

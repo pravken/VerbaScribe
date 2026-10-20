@@ -7,10 +7,10 @@ HTTP errors.
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-from app.exporter import export_docx, export_json, export_markdown, export_srt, export_txt
+from app.exporter import export_docx, export_json, export_markdown, export_txt
 
 EXPORT_VARIANTS = {"translated", "bilingual"}
-DOC_FORMATS = ("docx", "md", "txt", "srt", "json")
+DOC_FORMATS = ("docx", "md", "txt", "srt", "vtt", "json")
 
 
 def export_source(m: Dict[str, Any], lang: Optional[str], variant: str) -> Tuple[Dict[str, Any], str]:
@@ -35,9 +35,9 @@ def build_export_bytes(
     """(content, media type, file name)."""
     fmt = fmt.lower()
     if lang and fmt == "json":
-        raise ValueError("Перевод экспортируется в DOCX, MD, TXT или SRT")
-    if lang and variant == "bilingual" and fmt not in ("srt", "docx"):
-        raise ValueError("Двуязычный экспорт доступен в SRT и DOCX")
+        raise ValueError("Перевод экспортируется в DOCX, MD, TXT, SRT или VTT")
+    if lang and variant == "bilingual" and fmt not in ("srt", "vtt", "docx"):
+        raise ValueError("Двуязычный экспорт доступен в SRT, VTT и DOCX")
     try:
         src, suffix = export_source(m, lang, variant)
     except ValueError as e:
@@ -49,16 +49,18 @@ def build_export_bytes(
         return export_markdown(src).encode("utf-8"), "text/markdown; charset=utf-8", f"{base}.md"
     if fmt == "txt":
         return export_txt(src).encode("utf-8"), "text/plain; charset=utf-8", f"{base}.txt"
-    if fmt == "srt":
-        if lang:
-            from app.translation import build_cues, cues_to_srt
+    if fmt in ("srt", "vtt"):
+        from app.translation import build_cues, cues_to_srt, cues_to_vtt
 
-            cues = build_cues(
-                m.get("segments") or [], (m.get("translations") or {}).get(lang), variant=variant,
-                speakers=m.get("speakers"), with_speaker=False,
-            )
-            return cues_to_srt(cues).encode("utf-8"), "text/plain; charset=utf-8", f"{base}.srt"
-        return export_srt(src).encode("utf-8"), "text/plain; charset=utf-8", f"{base}.srt"
+        # Subtitles in readable pieces: the original is cut by its word timings, a translation in
+        # proportion to its length; the original names the speaker at the start of each phrase
+        cues = build_cues(
+            m.get("segments") or [], (m.get("translations") or {}).get(lang) if lang else None,
+            variant=variant if lang else "original", speakers=m.get("speakers"), with_speaker=not lang,
+        )
+        if fmt == "vtt":
+            return cues_to_vtt(cues).encode("utf-8"), "text/vtt; charset=utf-8", f"{base}.vtt"
+        return cues_to_srt(cues).encode("utf-8"), "text/plain; charset=utf-8", f"{base}.srt"
     if fmt == "json":
         return export_json(src).encode("utf-8"), "application/json; charset=utf-8", f"{base}.json"
     if fmt == "docx":

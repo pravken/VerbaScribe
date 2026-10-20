@@ -175,24 +175,6 @@ def export_txt(meeting: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def export_srt(meeting: Dict[str, Any]) -> str:
-    speakers = meeting.get("speakers") or {}
-    segments = meeting.get("segments") or []
-
-    blocks = []
-    for idx, seg in enumerate(segments, start=1):
-        spk_id = seg.get("speaker", "SPEAKER_00")
-        spk_name = speakers.get(spk_id, {}).get("name", spk_id)
-        start_srt = format_timestamp(seg.get("start", 0.0), srt=True)
-        end_srt = format_timestamp(seg.get("end", 0.0), srt=True)
-        text = seg.get("text", "").strip()
-        if seg.get("secondary_text"):
-            text += "\n" + seg["secondary_text"].strip()
-        blocks.append(f"{idx}\n{start_srt} --> {end_srt}\n[{spk_name}] {text}")
-
-    return "\n\n".join(blocks)
-
-
 def export_json(meeting: Dict[str, Any]) -> str:
     payload = {
         "id": meeting.get("id"),

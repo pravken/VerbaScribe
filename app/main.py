@@ -1842,6 +1842,7 @@ _EXPORT_FILE_TYPES = {
     "md": ("Markdown (*.md)", "*.md", ".md"),
     "txt": ("Текстовый файл (*.txt)", "*.txt", ".txt"),
     "srt": ("Субтитры (*.srt)", "*.srt", ".srt"),
+    "vtt": ("Субтитры WebVTT (*.vtt)", "*.vtt", ".vtt"),
     "json": ("JSON (*.json)", "*.json", ".json"),
     "docx": ("Документ Word (*.docx)", "*.docx", ".docx"),
     "mp4": ("Видео MP4 (*.mp4)", "*.mp4", ".mp4"),
