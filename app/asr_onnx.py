@@ -85,8 +85,6 @@ def ensure_package() -> None:
     """Installs onnx-asr into the program's Python when it is missing (an update copied over an old
     installation brings the code but not the new library)."""
     import importlib
-    import subprocess
-    import sys
 
     try:
         importlib.import_module("onnx_asr")
@@ -94,12 +92,46 @@ def ensure_package() -> None:
     except ImportError:
         pass
     print(f"[onnx] installing {ONNX_ASR_PIN}")
-    proc = subprocess.run([sys.executable, "-m", "pip", "install", "--disable-pip-version-check", ONNX_ASR_PIN],
-                          capture_output=True, text=True, encoding="utf-8", errors="replace",
-                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    if proc.returncode != 0:
-        raise RuntimeError("Не удалось установить onnx-asr: " + (proc.stderr or proc.stdout or "")[-300:])
-    importlib.invalidate_caches()
+    errors = []
+    for cmd in _install_commands():
+        proc = _run(cmd)
+        if proc.returncode == 0:
+            importlib.invalidate_caches()
+            return
+        errors.append((proc.stderr or proc.stdout or "").strip()[-300:])
+    raise RuntimeError("Не удалось установить onnx-asr: " + (errors[-1] if errors else "нет uv и pip"))
+
+
+def _run(cmd):
+    import subprocess
+
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except OSError as e:
+        return subprocess.CompletedProcess(cmd, 1, "", str(e))
+
+
+def _install_commands():
+    """uv first (setup.bat makes the venv with uv, which has no pip in it), then pip, bootstrapping it
+    with ensurepip when the venv has none."""
+    import os
+    import shutil
+    import sys
+
+    uv = shutil.which("uv")
+    if not uv:
+        home = Path(os.environ.get("USERPROFILE") or Path.home())
+        for c in (home / ".local" / "bin" / "uv.exe", home / ".cargo" / "bin" / "uv.exe",
+                  Path(os.environ.get("LOCALAPPDATA") or home) / "Microsoft" / "WinGet" / "Links" / "uv.exe"):
+            if c.is_file():
+                uv = str(c)
+                break
+    if uv:
+        yield [uv, "pip", "install", "--python", sys.executable, ONNX_ASR_PIN]
+    if _run([sys.executable, "-m", "pip", "--version"]).returncode != 0:
+        _run([sys.executable, "-m", "ensurepip", "--upgrade"])
+    yield [sys.executable, "-m", "pip", "install", "--disable-pip-version-check", ONNX_ASR_PIN]
 
 
 def _load(model_id: str):
