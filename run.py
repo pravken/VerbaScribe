@@ -114,6 +114,10 @@ def app_url(host: str, port: int) -> str:
     return f"http://{host}:{port}/?token={token}" if token else f"http://{host}:{port}/"
 
 
+# Why the server thread ended, if it did (shown in the window instead of "connection refused")
+SERVER_STATE = {"error": ""}
+
+
 def start_server_in_thread(host: str, port: int) -> threading.Thread:
     # The token is chosen here and handed to the server, so the window never opens with a stale
     # token file left by the previous run (the server may still be starting)
@@ -123,9 +127,69 @@ def start_server_in_thread(host: str, port: int) -> threading.Thread:
     register_cuda_dlls()
     config = uvicorn.Config("app.main:app", host=host, port=port, log_level="warning", timeout_graceful_shutdown=3)
     server = uvicorn.Server(config)
-    t = threading.Thread(target=server.run, daemon=True, name="uvicorn_server")
+
+    def _run() -> None:
+        import traceback
+
+        try:
+            server.run()
+            if not server.started:
+                SERVER_STATE["error"] = "Сервер остановился при запуске (подробности в журнале)"
+        except BaseException as e:  # an import error, a blocked library file, a port in use (SystemExit)
+            traceback.print_exc()
+            SERVER_STATE["error"] = f"{type(e).__name__}: {e}"
+
+    t = threading.Thread(target=_run, daemon=True, name="uvicorn_server")
     t.start()
     return t
+
+
+# Shown at once while the server starts (the first start after installing can take minutes:
+# antivirus checks every library file); replaced by the app as soon as the server answers
+LOADING_HTML = """<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#141416;color:#F5F5F7;
+font:14px "Segoe UI",system-ui,sans-serif}.box{max-width:640px;padding:32px;text-align:center}
+.dot{width:10px;height:10px;border-radius:50%;background:#0A84FF;display:inline-block;margin:0 3px;animation:p 1.2s infinite ease-in-out}
+.dot:nth-child(2){animation-delay:.2s}.dot:nth-child(3){animation-delay:.4s}@keyframes p{0%,100%{opacity:.25}50%{opacity:1}}
+h1{font-size:18px;font-weight:600;margin:18px 0 8px}p{color:#98989D;line-height:1.5;margin:6px 0}
+pre{text-align:left;white-space:pre-wrap;background:#242426;border:1px solid #3a3a3c;border-radius:10px;padding:12px;color:#FF9F0A;font-size:12px}
+code{color:#F5F5F7}</style></head><body><div class="box" id="box">
+<div><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+<h1>Запуск VerbaScribe…</h1><p id="hint">Первый запуск после установки может занять несколько минут:
+Windows проверяет файлы библиотек.</p></div>
+<script>
+let t0 = Date.now();
+setInterval(() => { const s = Math.round((Date.now() - t0) / 1000); if (s > 20) document.getElementById('hint').textContent =
+  'Идёт запуск (' + s + ' с). Первый запуск после установки может занять несколько минут: Windows проверяет файлы библиотек.'; }, 1000);
+function showError(text, log, sac) {
+  document.getElementById('box').innerHTML = '<h1>Сервер VerbaScribe не запустился</h1><pre></pre>'
+    + (sac ? '<p>Похоже, файл заблокировала функция Windows «Интеллектуальное управление приложениями». Выключите её: Безопасность Windows → Управление приложениями/браузером → Параметры интеллектуального управления приложениями → Выкл., затем запустите VerbaScribe снова.</p>' : '')
+    + '<p>Журнал: <code></code></p>';
+  document.querySelector('pre').textContent = text;
+  document.querySelector('code').textContent = log;
+}
+</script></body></html>"""
+
+
+def open_app_when_ready(window, host: str, port: int, log_path: str) -> None:
+    """Replaces the loading screen with the app once the server answers, or shows why it did not
+    start. No time limit: a slow first start is still a start."""
+    import json
+
+    while not SERVER_STATE["error"]:
+        if is_port_in_use(host, port):
+            window.load_url(app_url(host, port))
+            return
+        time.sleep(0.3)
+    err = SERVER_STATE["error"]
+    try:  # uvicorn reports an import error in the log and only then exits: show the end of the log
+        tail = Path(log_path).read_text(encoding="utf-8", errors="replace").splitlines()[-25:]
+        err = err + "\n\n" + "\n".join(tail)
+    except OSError:
+        pass
+    # WinError 4551 / "Application Control policy": Smart App Control or WDAC blocked a file
+    sac = "4551" in err or "Application Control" in err or "управления приложениями" in err
+    window.evaluate_js(f"showError({json.dumps(err)}, {json.dumps(log_path)}, {json.dumps(sac)})")
 
 
 class WindowApi:
@@ -544,13 +608,13 @@ def main() -> None:
             if not already_running:
                 print("Starting VerbaScribe local AI server...")
                 start_server_in_thread(args.host, args.port)
-                wait_for_server(args.host, args.port)
 
-            url = app_url(args.host, args.port)
             webview.settings["ALLOW_DOWNLOADS"] = True
+            # The app's page once the server answers; until then a loading screen (see open_app_when_ready)
             window = webview.create_window(
                 title=WINDOW_TITLE,
-                url=url,
+                url=app_url(args.host, args.port) if already_running else None,
+                html=None if already_running else LOADING_HTML,
                 width=1460,
                 height=900,
                 min_size=(1100, 700),
@@ -587,7 +651,15 @@ def main() -> None:
             # last tabs, ...) survive a restart; private mode (pywebview's default) forgets them
             from app.paths import DATA_DIR
 
-            webview.start(func=apply_native_window_icon_and_hide_console, icon=icon_arg,
+            from app.applog import LOG_FILE
+
+            def _on_gui_ready() -> None:
+                if not already_running:
+                    threading.Thread(target=open_app_when_ready, args=(window, args.host, args.port, str(LOG_FILE)),
+                                     daemon=True, name="open_app").start()
+                apply_native_window_icon_and_hide_console()
+
+            webview.start(func=_on_gui_ready, icon=icon_arg,
                           private_mode=False, storage_path=str(DATA_DIR / "webview"))
             if tray is not None:
                 tray.stop()
