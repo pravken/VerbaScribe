@@ -396,7 +396,7 @@
           <span data-i18n="liveCaptionsToggle">Субтитры в реальном времени</span>
         </label>
         <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-secondary" data-i18n-title="tipLiveDraft"
-          title="Показывать фразу и её перевод по мере произнесения, не дожидаясь паузы. Черновик может поправляться, пока фраза не закончится">
+          title="Показывать фразу по мере произнесения, не дожидаясь паузы. Черновик может поправляться, пока фраза не закончится">
           <input type="checkbox" id="live-draft-toggle" onchange="studioConfigure()" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
           <span data-i18n="liveDraftToggle">Текст по ходу речи</span>
         </label>
@@ -419,9 +419,14 @@
             <button onclick="studioSetView('side')" id="studio-view-side" class="apple-segment-btn text-[11px]" data-i18n="studioViewSide">Рядом</button>
             <button onclick="studioSetView('tr')" id="studio-view-tr" class="apple-segment-btn text-[11px]" data-i18n="studioViewTr">Только перевод</button>
           </div>
-          <label class="flex items-center gap-1.5 cursor-pointer text-xs text-apple-label" data-i18n-title="tipStudioSpeed" title="Небольшая модель: быстрее, но перевод проще">
-            <input type="checkbox" id="studio-fast" onchange="studioSetSpeed(this.checked ? 'fast' : 'quality')" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
-            <span data-i18n="studioFastTranslation">Быстрый перевод</span>
+          <div class="apple-segmented" style="height: 26px;" data-i18n-title="tipStudioSpeed" title="Небольшая модель: быстрее, но перевод проще">
+            <button onclick="studioSetSpeed('quality')" id="studio-speed-quality" class="apple-segment-btn text-[11px]" data-i18n="studioSpeedQuality">Качество</button>
+            <button onclick="studioSetSpeed('fast')" id="studio-speed-fast" class="apple-segment-btn text-[11px]" data-i18n="studioSpeedFast">Скорость</button>
+          </div>
+          <label class="flex items-center gap-1.5 cursor-pointer text-xs text-apple-label" data-i18n-title="tipLiveDraftTr"
+            title="Переводить фразу, пока её произносят, не дожидаясь паузы. Дополнительно нагружает модель перевода">
+            <input type="checkbox" id="live-draft-tr-toggle" onchange="studioConfigure()" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <span data-i18n="liveDraftTrToggle">Перевод по ходу речи</span>
           </label>
         </div>
         <div class="flex items-center gap-1">

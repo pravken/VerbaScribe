@@ -594,11 +594,16 @@ function liveDraftOn() {
   return !!document.getElementById('live-draft-toggle')?.checked;
 }
 
+function liveDraftTrOn() {
+  return !!document.getElementById('live-draft-tr-toggle')?.checked;
+}
+
 function saveLiveCaptionPrefs() {
   const prefs = {
     on: document.getElementById('live-captions-toggle').checked,
     translate: document.getElementById('live-translate-select').value,
     draft: document.getElementById('live-draft-toggle').checked,
+    draftTr: document.getElementById('live-draft-tr-toggle').checked,
   };
   try { localStorage.setItem('verbascribe_live_captions', JSON.stringify(prefs)); } catch (e) {}
 }
@@ -614,6 +619,7 @@ async function initLiveCaptionControls() {
   speech.value = studio.speech;
   document.getElementById('live-captions-toggle').checked = !!prefs.on;
   document.getElementById('live-draft-toggle').checked = !!prefs.draft;
+  document.getElementById('live-draft-tr-toggle').checked = !!prefs.draftTr;
   renderStudioControls();
 }
 
@@ -737,7 +743,7 @@ async function startLiveCaptions(ctx, stream) {
         pair: quickLangs(),
         capture_id: _recCaptureId,
         speed: studio.speed,
-        draft: liveDraftOn(),
+        draft: liveDraftTrOn(),
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -923,7 +929,9 @@ function updateRecordButtonState() {
 }
 
 function renderStudioControls() {
-  document.getElementById('studio-fast').checked = studio.speed === 'fast';
+  ['quality', 'fast'].forEach(k => {
+    document.getElementById(`studio-speed-${k}`).className = `apple-segment-btn text-[11px] ${studio.speed === k ? 'apple-segment-active' : 'text-apple-secondary hover:text-white'}`;
+  });
   document.getElementById('studio-tr-options').classList.toggle('hidden', !document.getElementById('live-translate-select').value);
   renderQuickLangs();
   // "Auto" shows the language heard last
@@ -953,7 +961,7 @@ async function studioConfigure(speechChanged) {
   try {
     await fetch(`/api/live/${liveCap.session}/config`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ translate_to: target, pair: quickLangs(), speed: studio.speed, speech_lang: speechChanged ? studio.speech : null, draft: liveDraftOn() }),
+      body: JSON.stringify({ translate_to: target, pair: quickLangs(), speed: studio.speed, speech_lang: speechChanged ? studio.speech : null, draft: liveDraftTrOn() }),
     });
   } catch (e) { console.error(e); }
   syncStudioCaptions();
@@ -1073,8 +1081,8 @@ function syncStudioCaptions() {
     }
     // Optional: the phrase as it is spoken (otherwise only "…" until it is final)
     row.orig.set(liveDraftOn() ? liveCap.partial : '');
-    row.tr.set(liveDraftOn() ? (liveCap.partialTranslation || '') : '');
-    row.el.classList.toggle('cap-draft-live', liveDraftOn());
+    row.tr.set(liveDraftTrOn() ? (liveCap.partialTranslation || '') : '');
+    row.el.classList.toggle('cap-draft-live', liveDraftTrOn());
     setCapTags(row, liveCap.lang, liveCap.partialTarget || (target === 'auto' ? '' : target));
   } else if (capView.draftKey) {
     // The draft ended without becoming a line (noise taken for speech)
