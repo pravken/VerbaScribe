@@ -2607,9 +2607,11 @@ function renderMeetingsSidebar() {
         ${SVG_SPARK}<span class="truncate">${escapeHtml(t('libraryAskFromSearch'))}</span>
       </button>`;
     if (state.globalSearchResults.length === 0) {
+      listEl._keyed = false;
       listEl.innerHTML = askHtml + `<div class="px-3 py-8 text-center text-xs text-apple-tertiary">${escapeHtml(t('noMatches'))}</div>`;
       return;
     }
+    listEl._keyed = false;
     listEl.innerHTML = askHtml + state.globalSearchResults.map(item => `
       <div class="rounded-lg bg-white/[0.03] border apple-border p-2.5 space-y-1.5 mb-1.5">
         <div onclick="openMeeting(${item.meeting_id}, true)"
@@ -2635,6 +2637,7 @@ function renderMeetingsSidebar() {
 
   const folders = state.folders || [];
   if (state.meetings.length === 0 && !folders.some(f => !f.system_key)) {
+    listEl._keyed = false;
     listEl.innerHTML = `<div class="px-3 py-8 text-center text-xs text-apple-tertiary">${t('noRecordings')}</div>`;
     return;
   }
@@ -2648,28 +2651,68 @@ function renderMeetingsSidebar() {
   }
   const prefs = libPrefs();
   for (const list of byFolder.values()) list.sort(libComparator(prefs));
-  const items = (list, depth) => {
-    if (!list || !list.length) return '';
+  // Every row is a keyed part: a progress event then replaces only the row that changed
+  const parts = [];
+  const items = (list, depth, groupKey) => {
+    if (!list || !list.length) return;
     if (prefs.view === 'grid') {
-      return `<div class="lib-grid" style="padding-left:${6 + depth * 14}px">${list.map(meetingTileHtml).join('')}</div>`;
+      parts.push([`g${groupKey}`, `<div class="lib-grid" style="padding-left:${6 + depth * 14}px">${list.map(meetingTileHtml).join('')}</div>`]);
+      return;
     }
-    return list.map(m => prefs.view === 'compact' ? meetingCompactRowHtml(m, depth) : meetingRowHtml(m, depth)).join('');
+    for (const m of list) parts.push([`m${m.id}`, prefs.view === 'compact' ? meetingCompactRowHtml(m, depth) : meetingRowHtml(m, depth)]);
   };
   const collapsed = collapsedFolders();
-  let html = '';
   const walk = (parentId, depth) => {
     for (const f of sortedFolders(parentId)) {
       // An empty system folder only takes room
       if (f.system_key && !meetingsInFolderTree(f.id).length && !sortedFolders(f.id).length) continue;
-      html += folderRowHtml(f, depth, collapsed);
+      parts.push([`f${f.id}`, folderRowHtml(f, depth, collapsed)]);
       if (collapsed.has(f.id)) continue;
       walk(f.id, depth + 1);
-      html += items(byFolder.get(f.id), depth + 1);
+      items(byFolder.get(f.id), depth + 1, f.id);
     }
   };
   walk(null, 0);
-  html += items(byFolder.get(null), 0);
-  listEl.innerHTML = html;
+  items(byFolder.get(null), 0, 'root');
+  patchKeyedList(listEl, parts);
+}
+
+// Updates a list from [key, html] parts, touching only the elements whose html changed and
+// moving the rest into place: thumbnails are not reloaded and hover states survive an update
+function patchKeyedList(box, parts) {
+  if (!box._keyed) {
+    box.innerHTML = '';
+    box._keyed = true;
+    box._html = new Map();
+  }
+  const old = new Map([...box.children].map(el => [el.dataset.key, el]));
+  const make = (key, html) => {
+    const tpl = document.createElement('template');
+    tpl.innerHTML = html.trim();
+    const el = tpl.content.firstElementChild;
+    el.dataset.key = key;
+    return el;
+  };
+  let prev = null;
+  for (const [key, html] of parts) {
+    let el = old.get(key);
+    if (!el) {
+      el = make(key, html);
+    } else if (box._html.get(key) !== html) {
+      const fresh = make(key, html);
+      el.replaceWith(fresh);
+      el = fresh;
+    }
+    old.delete(key);
+    box._html.set(key, html);
+    const want = prev ? prev.nextElementSibling : box.firstElementChild;
+    if (el !== want) box.insertBefore(el, want);
+    prev = el;
+  }
+  for (const [key, el] of old) {
+    el.remove();
+    box._html.delete(key);
+  }
 }
 
 // --- Files dragged onto the window: a full-window overlay shows that they can be dropped ---

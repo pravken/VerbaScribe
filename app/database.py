@@ -197,6 +197,7 @@ _MEETING_EXTRA_COLUMNS = {
     "pending_exports_json": "TEXT DEFAULT '[]'",
     "has_video": "INTEGER DEFAULT NULL",  # NULL: told from the file extension (see is_video)
     "local_only": "INTEGER DEFAULT 0",  # 1: never sent to a cloud model (see is_local_only)
+    "media_size": "INTEGER DEFAULT NULL",  # bytes of the media file; NULL: not measured yet
 }
 
 SYSTEM_FOLDERS = {"recordings": "Записи", "imports": "Импорт"}
@@ -360,6 +361,13 @@ def get_dictionary_hotwords() -> str:
 
 
 # Meetings helpers
+def _file_size(path: str) -> Optional[int]:
+    try:
+        return os.path.getsize(path) if path else None
+    except OSError:
+        return None
+
+
 def create_meeting(
     title: str,
     filename: str,
@@ -388,12 +396,12 @@ def create_meeting(
             INSERT INTO meetings (
                 title, filename, media_path, status, progress, stage_text,
                 language, model_name, num_speakers_hint, created_at,
-                folder_id, source, owns_media, recorded_at, title_is_default, has_video
-            ) VALUES (?, ?, ?, 'queued', 0, 'В очереди на обработку...', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                folder_id, source, owns_media, recorded_at, title_is_default, has_video, media_size
+            ) VALUES (?, ?, ?, 'queued', 0, 'В очереди на обработку...', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (title, filename, media_path, language, model_name, num_speakers_hint, now,
              folder_id, source, 1 if owns_media else 0, recorded_at or now, 1 if title_is_default else 0,
-             None if has_video is None else int(bool(has_video))),
+             None if has_video is None else int(bool(has_video)), _file_size(media_path)),
         )
         meeting_id = cur.lastrowid
         conn.commit()
@@ -642,7 +650,7 @@ def get_meeting(meeting_id: int) -> Optional[Dict[str, Any]]:
 
 _LIST_COLUMNS = """id, title, filename, media_path, duration, status, progress, stage_text,
     error_message, language, model_name, num_speakers_hint,
-    speakers_json, created_at, completed_at, folder_id, source, recorded_at, has_video, local_only,
+    speakers_json, created_at, completed_at, folder_id, source, recorded_at, has_video, local_only, media_size,
     segments_json NOT IN ('', '[]') AS has_transcript,
     summaries_json NOT IN ('', '{}') AS has_summary"""
 
@@ -662,6 +670,7 @@ def list_meetings() -> List[Dict[str, Any]]:
             rows = conn.execute(f"SELECT {_LIST_COLUMNS}, translations_json, dubs_json FROM meetings ORDER BY id DESC").fetchall()
         conn.close()
         result = []
+        unmeasured = []
         for r in rows:
             d = dict(r)
             if "translations_json" in d:
@@ -680,13 +689,21 @@ def list_meetings() -> List[Dict[str, Any]]:
             except Exception:
                 d["speakers"] = {}
             d["is_video"] = is_video(d)
-            try:  # for sorting the library by size
-                d["size_bytes"] = os.path.getsize(d["media_path"]) if d.get("media_path") else 0
-            except OSError:
-                d["size_bytes"] = 0
+            # Measured once and kept: the list must not touch every file (a network drive is slow)
+            if d.get("media_size") is None:
+                d["media_size"] = _file_size(d.get("media_path") or "")
+                if d["media_size"] is not None:
+                    unmeasured.append((d["media_size"], d["id"]))
+            d["size_bytes"] = d.pop("media_size") or 0
             d.pop("media_path", None)
             result.append(d)
-        return result
+    if unmeasured:
+        with _db_lock:
+            conn = get_connection()
+            conn.executemany("UPDATE meetings SET media_size = ? WHERE id = ?", unmeasured)
+            conn.commit()
+            conn.close()
+    return result
 
 
 def delete_meeting(meeting_id: int) -> bool:
