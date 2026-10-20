@@ -183,6 +183,11 @@ function handleLiveEvent(ev) {
   if (ev.type === 'queue') { scheduleQueueReload(); scheduleVramRefresh(800); return; }
   if (ev.type === 'exported') { onExportedEvent(ev); scheduleListReload(); return; }
   if (ev.type === 'call') { handleCallEvent(ev); return; }
+  // Text recognized so far, while the recording is still being transcribed
+  if (ev.type === 'segments') {
+    if (state.activeMeeting && state.activeMeeting.id === ev.id) selectMeeting(ev.id, false);
+    return;
+  }
   if (ev.type !== 'progress') return;
 
   const m = state.meetings.find(x => x.id === ev.id);

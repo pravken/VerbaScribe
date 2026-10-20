@@ -150,11 +150,12 @@ def words_from_tokens(tokens: List[str], timestamps: List[float], offset: float,
 
 
 def transcribe(model_id: str, wav_path: Path, total_dur: float, on_progress: Callable[[float], None],
-               check_cancel: Callable[[], None]) -> List[Dict[str, Any]]:
-    """Segments like faster-whisper's: [{start, end, text, words: [{word, start, end, prob}]}]."""
+               check_cancel: Callable[[], None], out: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+    """Segments like faster-whisper's: [{start, end, text, words: [{word, start, end, prob}]}].
+    `out` (optional) receives them as they come, for showing the text while it is recognized."""
     asr = _load(model_id)
     results: Iterator[Any] = asr.recognize(str(wav_path))
-    segments: List[Dict[str, Any]] = []
+    segments: List[Dict[str, Any]] = out if out is not None else []
     for res in results:
         check_cancel()
         text = " ".join((res.text or "").split())

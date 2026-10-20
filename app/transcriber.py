@@ -1,3 +1,5 @@
+from __future__ import annotations  # type hints name WhisperModel, which is imported only when used
+
 import threading
 import time
 import traceback
@@ -9,7 +11,8 @@ from app.hardware import clear_vram, get_hardware_info, register_cuda_dlls
 
 register_cuda_dlls()
 
-from faster_whisper import BatchedInferencePipeline, WhisperModel
+# faster-whisper (CTranslate2) and the speaker model (PyTorch) are imported when a job needs them,
+# not when the app starts: the window opens in seconds even from a cold disk
 
 from app.audio_utils import extract_audio_16k_mono, format_timestamp, get_media_duration
 from app.database import (
@@ -23,7 +26,6 @@ from app.database import (
     save_segments_backup,
     update_meeting_progress,
 )
-from app.diarizer import diarize_and_merge_segments
 from app.ollama_client import generate_meeting_summary
 from app.text_utils import (
     clean_filler_words_in_segments,
@@ -376,6 +378,8 @@ def _load_whisper_with_fallback(model_name: str, device: str, compute_type: str)
     last_err = None
     for dev, ctype in attempts:
         try:
+            from faster_whisper import WhisperModel
+
             return WhisperModel(
                 model_or_path,
                 device=dev,
@@ -547,6 +551,8 @@ def _start_transcription(
             while t < duration - 0.2:
                 clips.append({"start": t, "end": min(duration, t + 30.0)})
                 t += 30.0
+        from faster_whisper import BatchedInferencePipeline
+
         return BatchedInferencePipeline(model=whisper_model).transcribe(
             str(wav_path),
             language=language,
@@ -568,8 +574,32 @@ def _start_transcription(
     )
 
 
+PARTIAL_EVERY_SEC = 20.0
+
+
+class _PartialTranscript:
+    """Shows the text while it is recognized: every PARTIAL_EVERY_SEC the phrases so far are saved
+    (one speaker until diarization runs) and the page is told to reload them."""
+
+    def __init__(self, meeting_id: int):
+        self.meeting_id = meeting_id
+        self.last = time.time()
+
+    def push(self, raw_segments: List[Dict[str, Any]], force: bool = False) -> None:
+        if not raw_segments or (not force and time.time() - self.last < PARTIAL_EVERY_SEC):
+            return
+        self.last = time.time()
+        from app import events
+
+        partial = [{**seg, "id": i, "speaker": "SPEAKER_00"} for i, seg in enumerate(raw_segments)]
+        save_meeting_results(self.meeting_id, segments=partial,
+                             speakers={"SPEAKER_00": {"name": "Участник 1", "color": "#0A84FF"}})
+        events.publish({"type": "segments", "id": self.meeting_id})
+
+
 def _collect_segments(meeting_id: int, segments_iter, total_dur: float) -> List[Dict[str, Any]]:
     raw_segments: List[Dict[str, Any]] = []
+    partial = _PartialTranscript(meeting_id)
     for seg in segments_iter:
         _check_cancel(meeting_id)
         text = (seg.text or "").strip()
@@ -601,6 +631,7 @@ def _collect_segments(meeting_id: int, segments_iter, total_dur: float) -> List[
             }
         )
 
+        partial.push(raw_segments)
         # Update progress between 16% and 65%
         ratio = min(1.0, float(seg.end) / total_dur)
         pct = 16 + int(49 * ratio)
@@ -738,7 +769,15 @@ def _process_meeting_job(meeting_id: int) -> None:
                 update_meeting_progress(meeting_id, progress=16 + int(49 * ratio),
                                         stage_text=f"Транскрибация: {format_timestamp(ratio * total_dur)} из {format_timestamp(total_dur)}")
 
-            raw_segments = asr_onnx.transcribe(model_name, wav_path, total_dur, _onnx_progress, lambda: _check_cancel(meeting_id))
+            partial = _PartialTranscript(meeting_id)
+            onnx_done: List[Dict[str, Any]] = []
+
+            def _onnx_progress_and_partial(ratio: float) -> None:
+                _onnx_progress(ratio)
+                partial.push(onnx_done)
+
+            raw_segments = asr_onnx.transcribe(model_name, wav_path, total_dur, _onnx_progress_and_partial,
+                                               lambda: _check_cancel(meeting_id), out=onnx_done)
             text_all = " ".join(s["text"] for s in raw_segments)
             cyr = sum(1 for ch in text_all if "\u0400" <= ch <= "\u04ff")
             detected_lang = language or ("ru" if cyr > len(text_all) * 0.3 else "en")
@@ -807,6 +846,8 @@ def _process_meeting_job(meeting_id: int) -> None:
 
         def _diar_cb(pct: int, msg: str) -> None:
             update_meeting_progress(meeting_id, progress=pct, stage_text=msg)
+
+        from app.diarizer import diarize_and_merge_segments
 
         speakers_meta, merged_segments = diarize_and_merge_segments(
             wav_path=wav_path,
