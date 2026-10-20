@@ -113,15 +113,21 @@ def learn(name: str, embedding: Optional[List[float]]) -> None:
         conn.close()
 
 
-def apply_to_speakers(speakers: Dict[str, Dict[str, Any]]) -> int:
+def apply_to_speakers(speakers: Dict[str, Dict[str, Any]], only_unnamed: bool = False) -> int:
     """
-    Gives known names to the speakers of a new recording. Each profile names at most one speaker
-    (the most similar one) and only above MATCH_THRESHOLD. Returns how many were named.
+    Gives known names to the speakers of a recording. Each profile names at most one speaker
+    (the most similar one) and only above MATCH_THRESHOLD. only_unnamed: speakers the user named
+    keep their names, and a name already used in the recording is not given again (for recordings
+    made before the profile existed). Returns how many were named.
     """
     if not speakers or not enabled():
         return 0
     profiles = _load()
-    if not profiles:
+    if only_unnamed:
+        taken = {str(m.get("name") or "").strip().lower() for m in speakers.values() if not is_default_name(str(m.get("name") or ""))}
+        profiles = [p for p in profiles if p["name"].lower() not in taken]
+        speakers = {k: v for k, v in speakers.items() if is_default_name(str(v.get("name") or ""))}
+    if not profiles or not speakers:
         return 0
     candidates = []
     for spk_id, meta in speakers.items():
@@ -144,3 +150,68 @@ def apply_to_speakers(speakers: Dict[str, Dict[str, Any]]) -> int:
         used_profiles.add(p["id"])
         named += 1
     return named
+
+
+def apply_to_library() -> Dict[str, int]:
+    """Looks for the known voices in recordings made before their profiles existed; only unnamed
+    speakers get a name. Returns how many recordings and speakers were named."""
+    from app.database import save_meeting_results
+
+    if not enabled() or not _load():
+        return {"meetings": 0, "speakers": 0}
+    with _db_lock:
+        conn = get_connection()
+        rows = conn.execute("SELECT id, speakers_json FROM meetings WHERE status = 'completed'").fetchall()
+        conn.close()
+    meetings = speakers_named = 0
+    for r in rows:
+        try:
+            speakers = json.loads(r["speakers_json"] or "{}")
+        except ValueError:
+            continue
+        if not any(m.get("embedding") for m in speakers.values() if isinstance(m, dict)):
+            continue
+        named = apply_to_speakers(speakers, only_unnamed=True)
+        if named:
+            save_meeting_results(int(r["id"]), speakers=speakers)
+            meetings += 1
+            speakers_named += named
+    return {"meetings": meetings, "speakers": speakers_named}
+
+
+def people() -> List[Dict[str, Any]]:
+    """Everyone named in the library, with the recordings they speak in and for how long, most
+    frequent first: [{name, profile, total_seconds, recordings: [{meeting_id, title, date, seconds}]}]."""
+    profile_names = {p["name"].lower() for p in _load()}
+    with _db_lock:
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT id, title, recorded_at, created_at, speakers_json, segments_json FROM meetings WHERE status = 'completed'"
+        ).fetchall()
+        conn.close()
+    by_name: Dict[str, Dict[str, Any]] = {}
+    for r in rows:
+        try:
+            speakers = json.loads(r["speakers_json"] or "{}")
+            segments = json.loads(r["segments_json"] or "[]")
+        except ValueError:
+            continue
+        seconds: Dict[str, float] = {}
+        for seg in segments:
+            spk = seg.get("speaker")
+            seconds[spk] = seconds.get(spk, 0.0) + max(0.0, float(seg.get("end") or 0) - float(seg.get("start") or 0))
+        for spk_id, meta in speakers.items():
+            name = str((meta or {}).get("name") or "").strip()
+            if is_default_name(name) or not seconds.get(spk_id):
+                continue
+            entry = by_name.setdefault(name.lower(), {"name": name, "profile": name.lower() in profile_names,
+                                                      "total_seconds": 0.0, "recordings": []})
+            entry["total_seconds"] += seconds[spk_id]
+            entry["recordings"].append({"meeting_id": int(r["id"]), "title": r["title"],
+                                        "date": str(r["recorded_at"] or r["created_at"] or "")[:10],
+                                        "seconds": round(seconds[spk_id], 1)})
+    out = sorted(by_name.values(), key=lambda e: (-len(e["recordings"]), -e["total_seconds"]))
+    for e in out:
+        e["total_seconds"] = round(e["total_seconds"], 1)
+        e["recordings"].sort(key=lambda x: x["date"], reverse=True)
+    return out

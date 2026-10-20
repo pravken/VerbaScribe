@@ -140,5 +140,49 @@ class DigestTest(unittest.TestCase):
         self.assertNotIn("Старая", sent[0])
 
 
+class PeopleTest(unittest.TestCase):
+    def setUp(self):
+        try:
+            from app import voice_profiles as vp
+        except ImportError:
+            self.skipTest("app dependencies not installed")
+        from app import database as db
+
+        self.db, self.vp = db, vp
+        db.init_db()
+        db.update_settings({"voice_profiles": "true"})
+        self.voice = [1.0, 0.0, 0.0, 0.0]
+        vp.learn("Иван Тестов", self.voice)
+        self.mid = db.create_meeting("Старая встреча", "a.wav", "/tmp/a.wav")["id"]
+        db.save_meeting_results(self.mid, speakers={
+            "SPEAKER_00": {"name": "Участник 1", "embedding": self.voice},
+            "SPEAKER_01": {"name": "Мария Тестова", "embedding": [0.0, 1.0, 0.0, 0.0]},
+        }, segments=[
+            {"id": 1, "start": 0, "end": 30, "speaker": "SPEAKER_00", "text": "a"},
+            {"id": 2, "start": 30, "end": 40, "speaker": "SPEAKER_01", "text": "b"},
+        ])
+        db.update_meeting_progress(self.mid, status="completed", progress=100)
+
+    def tearDown(self):
+        self.db.delete_meeting(self.mid)
+        for p in self.vp.list_profiles():
+            if p["name"] == "Иван Тестов":
+                self.vp.delete_profile(p["id"])
+
+    def test_old_recordings_get_known_voices_and_people_are_listed(self):
+        out = self.vp.apply_to_library()
+        self.assertGreaterEqual(out["speakers"], 1)
+        speakers = self.db.get_meeting(self.mid)["speakers"]
+        self.assertEqual(speakers["SPEAKER_00"]["name"], "Иван Тестов")
+        self.assertEqual(speakers["SPEAKER_01"]["name"], "Мария Тестова")  # a name given by the user stays
+        people = {p["name"]: p for p in self.vp.people()}
+        ivan = people["Иван Тестов"]
+        self.assertTrue(ivan["profile"])
+        rec = next(r for r in ivan["recordings"] if r["meeting_id"] == self.mid)
+        self.assertEqual(rec["seconds"], 30.0)
+        self.assertFalse(people["Мария Тестова"]["profile"])
+        self.assertEqual(self.vp.apply_to_library()["meetings"], 0)  # nothing left to name
+
+
 if __name__ == "__main__":
     unittest.main()

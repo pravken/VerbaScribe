@@ -248,6 +248,7 @@ function switchAppView(view) {
     tab.classList.toggle('app-tab-active', v === view);
     tab.setAttribute('aria-selected', String(v === view));
   }
+  if (view === 'ask') loadPeople();
   hideContextMenu();
   hideFolderMenu();
   if (view === 'studio') {
@@ -307,6 +308,7 @@ function meetingsInFolderTree(id) {
 
 function askScopeValid(scope) {
   if (scope.type === 'folder') return !!folderById(scope.id);
+  if (scope.type === 'person') return !!personByName(scope.name);
   if (scope.type === 'meeting') return state.meetings.some(m => m.id === scope.id);
   return true;
 }
@@ -319,6 +321,10 @@ function askScopeLabel(scope) {
   if (scope.type === 'meeting') {
     const m = state.meetings.find(x => x.id === scope.id);
     return `${t('askScopeMeeting')}: ${m ? m.title : ''}`;
+  }
+  if (scope.type === 'person') {
+    const p = personByName(scope.name);
+    return `${t('askScopePerson').replace('{name}', scope.name)} · ${t('askRecordingsCount').replace('{n}', p ? p.recordings.length : 0)}`;
   }
   return `${t('askScopeAll')} · ${t('askRecordingsCount').replace('{n}', state.meetings.length)}`;
 }
@@ -352,6 +358,43 @@ function renderAskScope() {
   }
   box.innerHTML = html;
   document.getElementById('ask-scope-label').textContent = askScopeLabel(sc);
+  renderPeople();
+}
+
+// --- People: everyone named in the library, and the recordings they speak in ---
+state.people = [];
+
+function personByName(name) {
+  return (state.people || []).find(p => p.name.toLowerCase() === String(name || '').toLowerCase()) || null;
+}
+
+async function loadPeople() {
+  state.people = await fetch('/api/people').then(r => r.ok ? r.json() : []).catch(() => []);
+  if (state.appView === 'ask') renderAskScope();
+}
+
+function formatSpeakingTime(sec) {
+  const min = Math.round(sec / 60);
+  return min >= 60 ? `${Math.floor(min / 60)} ${t('unitH')} ${min % 60} ${t('unitMin')}` : `${Math.max(1, min)} ${t('unitMin')}`;
+}
+
+function renderPeople() {
+  const block = document.getElementById('ask-people-block');
+  const people = state.people || [];
+  block.classList.toggle('hidden', !people.length);
+  if (!people.length) return;
+  const sc = state.askScope;
+  document.getElementById('ask-people-list').innerHTML = people.slice(0, 50).map(p => {
+    const on = sc.type === 'person' && sc.name.toLowerCase() === p.name.toLowerCase();
+    const tip = t('tipPerson').replace('{n}', p.recordings.length).replace('{time}', formatSpeakingTime(p.total_seconds))
+      + '\n' + p.recordings.slice(0, 12).map(r => `${r.date} · ${r.title} · ${formatSpeakingTime(r.seconds)}`).join('\n');
+    return `<button onclick='setAskScope(${JSON.stringify({ type: 'person', name: p.name })})' title="${escapeHtml(tip)}"
+      class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[12px] transition ${on ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'}">
+      <span class="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold ${on ? 'bg-white/25' : 'bg-white/10 text-apple-secondary'}">${escapeHtml(p.name.slice(0, 1).toUpperCase())}</span>
+      <span class="truncate flex-1">${escapeHtml(p.name)}${p.profile ? ` <span class="${on ? 'text-white/70' : 'text-apple-tertiary'}" title="${escapeHtml(t('tipPersonVoice'))}">◉</span>` : ''}</span>
+      <span class="text-[10.5px] font-mono ${on ? 'text-white/80' : 'text-apple-tertiary'}">${p.recordings.length}</span>
+    </button>`;
+  }).join('');
 }
 
 function setAskScope(scope) {
@@ -362,6 +405,7 @@ function setAskScope(scope) {
 
 function askScopePayload(scope) {
   if (scope.type === 'folder') return { folder_id: scope.id };
+  if (scope.type === 'person') return { meeting_ids: (personByName(scope.name) || { recordings: [] }).recordings.map(r => r.meeting_id) };
   if (scope.type === 'meeting') return { meeting_ids: [scope.id] };
   return {};
 }

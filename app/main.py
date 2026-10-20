@@ -1280,6 +1280,26 @@ def api_library_digest(payload: DigestPayload) -> Dict[str, Any]:
         raise HTTPException(status_code=503, detail=str(e))
 
 
+@app.get("/api/people")
+def api_people() -> List[Dict[str, Any]]:
+    """Named speakers across the library and the recordings they speak in (app/voice_profiles.py)."""
+    from app.voice_profiles import people
+
+    return people()
+
+
+@app.post("/api/voice-profiles/apply-all")
+def api_voice_profiles_apply_all() -> Dict[str, Any]:
+    from app.voice_profiles import apply_to_library
+
+    result = apply_to_library()
+    if result["meetings"]:
+        from app import events
+
+        events.publish({"type": "list"})
+    return result
+
+
 @app.get("/api/voice-profiles")
 def api_voice_profiles() -> Dict[str, Any]:
     from app.voice_profiles import enabled, list_profiles

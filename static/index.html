@@ -451,6 +451,10 @@
         <div class="text-[11px] font-semibold text-apple-secondary uppercase tracking-wider mb-1.5" data-i18n="askScopeTitle">Где искать ответ</div>
         <div id="ask-scope-list" class="space-y-0.5"></div>
       </div>
+      <div id="ask-people-block" class="hidden">
+        <div class="text-[11px] font-semibold text-apple-secondary uppercase tracking-wider mb-1.5" data-i18n="peopleTitle">Люди</div>
+        <div id="ask-people-list" class="space-y-0.5"></div>
+      </div>
       <p class="text-[11px] text-apple-tertiary leading-snug" data-i18n="libraryAskIntro">Ответ формирует локальная модель Ollama только по найденным фрагментам расшифровок. Ссылки в ответе открывают запись на нужном моменте.</p>
     </div>
 
@@ -1649,6 +1653,9 @@
               </label>
               <p class="text-[11px] text-apple-tertiary leading-snug" data-i18n="voiceProfilesHint">Голос запоминается, когда вы указываете имя участника. В новых записях похожий голос получает это имя автоматически. Отпечатки голосов хранятся только в базе на этом компьютере.</p>
               <div id="voice-profiles-list" class="space-y-1"></div>
+              <button onclick="applyVoiceProfilesToLibrary()" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]"
+                data-i18n-title="tipVoiceApplyAll" title="Подписать знакомые голоса в записях, сделанных до того, как голос был запомнен. Имена, которые вы дали сами, не меняются"
+                data-i18n="voiceApplyAll">Найти эти голоса в старых записях</button>
             </div>
           </div>
           <label class="settings-toggle flex items-center gap-2.5 cursor-pointer text-xs text-apple-label" data-i18n-title="tipVadToggle" title="Отсекать пустые паузы и тишину нейросетью Silero VAD">

@@ -188,6 +188,17 @@ function renderVoiceProfiles(data) {
     </div>`).join('');
 }
 
+async function applyVoiceProfilesToLibrary() {
+  const res = await fetch('/api/voice-profiles/apply-all', { method: 'POST' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  showToast(data.speakers ? t('voiceApplyAllDone').replace('{n}', data.speakers).replace('{m}', data.meetings) : t('voiceApplyAllNone'));
+  if (data.speakers) {
+    await loadMeetingsList();
+    if (state.activeMeeting) selectMeeting(state.activeMeeting.id, false);
+  }
+}
+
 async function deleteVoiceProfile(id, name) {
   if (!confirm(t('voiceProfileDeleteConfirm').replace('{name}', name || ''))) return;
   const res = await fetch(`/api/voice-profiles/${id}`, { method: 'DELETE' });
