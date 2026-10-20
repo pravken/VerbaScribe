@@ -148,7 +148,9 @@ def get_models_status() -> Dict[str, Any]:
     from app.asr_onnx import catalog as onnx_catalog
 
     for item in onnx_catalog():
-        whisper_list.append({**item, "badge": f"{round(item['size_mb'] / 1024, 1)} GB · {item['license']}", "vram": "CPU"})
+        mb = item["size_mb"]
+        size = f"{round(mb / 1024, 1)} GB" if mb >= 1000 else f"{mb} MB"
+        whisper_list.append({**item, "size": size, "badge": f"{size} · {item['license']}", "vram": "CPU"})
 
     diarizer_ready = is_diarizer_installed()
 
