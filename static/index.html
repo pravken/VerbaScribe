@@ -441,6 +441,16 @@
           <div id="studio-cap-empty" class="text-center text-apple-tertiary text-sm pt-16"></div>
         </div>
       </div>
+      <!-- Questions about what was said so far, while recording (app/live.py ask) -->
+      <div id="studio-ask" class="hidden shrink-0 border-t apple-border bg-apple-sidebar/95 px-5 py-2.5 space-y-2">
+        <div id="studio-ask-answer" class="hidden max-h-48 overflow-y-auto markdown-body text-[13px] text-apple-label"></div>
+        <div class="flex items-center gap-2">
+          <input id="studio-ask-input" type="text" onkeydown="if(event.key==='Enter') studioAsk()"
+            data-i18n-placeholder="studioAskPh" placeholder="Спросить по разговору: о чём договорились? что он ответил про сроки?"
+            class="flex-1 h-8 bg-apple-card border apple-border rounded-lg px-3 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
+          <button onclick="studioAsk()" id="studio-ask-btn" class="ui-btn ui-btn-primary h-8" data-i18n="askBtn">Спросить</button>
+        </div>
+      </div>
     </div>
     </div>
 

@@ -1228,6 +1228,45 @@ class LiveConfigPayload(BaseModel):
     pair: Optional[List[str]] = None
 
 
+class LiveAskPayload(BaseModel):
+    question: str
+    lang: str = "ru"
+
+
+@app.post("/api/live/{session_id}/ask")
+def api_live_ask(session_id: str, payload: LiveAskPayload) -> Dict[str, Any]:
+    """A question about what was said so far in a running recording (its live captions)."""
+    from app.audio_utils import format_timestamp
+    from app.live import get_session
+    from app.llm import LlmError, target
+    from app.ollama_client import _lang_phrase
+
+    s = get_session(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Субтитры этой записи не идут")
+    question = payload.question.strip()[:500]
+    if not question:
+        raise HTTPException(status_code=400, detail="Пустой вопрос")
+    lines = [f"[{format_timestamp(ln['start'])}] {ln['text']}" for ln in s.lines if (ln.get("text") or "").strip()]
+    if s.partial:
+        lines.append(f"[сейчас] {s.partial}")
+    if not lines:
+        raise HTTPException(status_code=400, detail="Пока ничего не сказано")
+    try:
+        llm = target(None)
+    except LlmError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    text = "\n".join(lines)[-max(6000, llm.max_chars - 2000):]  # the latest part if the call is long
+    system = ("Ты помогаешь во время идущего разговора. Отвечай ТОЛЬКО по расшифровке ниже (она из живых субтитров и может "
+              "содержать ошибки распознавания). Если ответа нет — так и скажи. Коротко, по делу, 1–4 предложения, "
+              f"ссылайся на время в квадратных скобках. Отвечай {_lang_phrase(payload.lang)}.")
+    try:
+        answer = llm.chat(system, f"Расшифровка разговора:\n{text}\n\nВопрос: {question}")
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=str(e)[:300])
+    return {"answer": answer, "model": llm.label, "cloud": llm.is_cloud}
+
+
 @app.post("/api/live/{session_id}/config")
 def api_live_config(session_id: str, payload: LiveConfigPayload) -> Dict[str, Any]:
     """Changes the caption translation while recording (language, fast or quality model)."""

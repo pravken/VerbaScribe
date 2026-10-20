@@ -490,6 +490,37 @@ async function handleCallEvent(ev) {
   }
 }
 
+// --- Questions during a call: answered from the live captions so far ---
+async function studioAsk() {
+  const input = document.getElementById('studio-ask-input');
+  const q = input.value.trim();
+  if (!q || !liveCap.session) return;
+  const box = document.getElementById('studio-ask-answer');
+  const btn = document.getElementById('studio-ask-btn');
+  btn.disabled = true;
+  box.classList.remove('hidden');
+  box.innerHTML = `<div class="text-apple-tertiary animate-pulse">${escapeHtml(t('libraryAskWorking'))}</div>`;
+  try {
+    const res = await fetch(`/api/live/${liveCap.session}/ask`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: q, lang: state.uiLang === 'en' ? 'en' : 'ru' }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || 'Error');
+    box.innerHTML = `<div class="text-[11px] text-apple-tertiary mb-1">${escapeHtml(q)}</div>${sanitizedMarkdown(data.answer)}`;
+    input.value = '';
+  } catch (e) {
+    box.innerHTML = `<div class="text-apple-amber">${escapeHtml(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function syncStudioAsk() {
+  const el = document.getElementById('studio-ask');
+  if (el) el.classList.toggle('hidden', !liveCap.session);
+}
+
 async function quickRecord(presetId) {
   if (isRecording()) {
     switchAppView('studio');  // already recording: back to the studio
@@ -996,6 +1027,7 @@ function setCapTags(row, lang, target) {
 }
 
 function syncStudioCaptions() {
+  syncStudioAsk();
   const target = document.getElementById('live-translate-select').value;
   const view = target ? studio.view : 'orig';
   const rowsBox = document.getElementById('studio-cap-rows');

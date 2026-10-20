@@ -344,3 +344,31 @@ class MediaCutTest(unittest.TestCase):
         dur = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(out)],
                                    capture_output=True, text=True).stdout)
         self.assertAlmostEqual(dur, 3.5, delta=0.15)
+
+
+class LiveAskTest(unittest.TestCase):
+    def test_question_answered_from_live_captions(self):
+        from unittest import mock
+
+        try:
+            from fastapi.testclient import TestClient
+
+            from app import live, main
+            from app.llm import Target
+        except ImportError:
+            self.skipTest("fastapi not installed")
+        s = live.LiveSession("ru", None)
+        s.lines = [{"id": 1, "start": 65.0, "end": 70.0, "text": "Переносим релиз на пятницу", "translation": None}]
+        with live._sessions_lock:
+            live._sessions[s.id] = s
+        sent = []
+        tgt = Target("ollama", "m", 20000, lambda system, user: sent.append(user) or "На пятницу [01:05]")
+        with mock.patch.object(main, "enqueue_meeting_job"), mock.patch("app.llm.target", return_value=tgt), \
+                TestClient(main.app, base_url="http://127.0.0.1:8794") as c:
+            c.get(f"/?token={main.SESSION_TOKEN}")
+            r = c.post(f"/api/live/{s.id}/ask", json={"question": "Когда релиз?"})
+            self.assertEqual(r.status_code, 200, r.text)
+            self.assertEqual(r.json()["answer"], "На пятницу [01:05]")
+            self.assertIn("[01:05] Переносим релиз на пятницу", sent[0])
+            self.assertEqual(c.post("/api/live/nope/ask", json={"question": "x"}).status_code, 404)
+        live.stop_session(s.id)
