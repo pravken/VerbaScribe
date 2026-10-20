@@ -34,6 +34,8 @@ from typing import Any, Callable, Dict, List, Optional
 GITHUB_REPO = "pravken/VerbaScribe"
 LATEST_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 CHECK_INTERVAL_SEC = 6 * 3600
+# Files are only ever downloaded from this repository's releases
+DOWNLOAD_PREFIX = f"https://github.com/{GITHUB_REPO}/releases/download/"
 # Never replaced by an update: user data, models and the Python environments
 PROTECTED = {".venv", ".venv-dub", ".python", "models", "data", "node_modules", ".git"}
 
@@ -101,7 +103,10 @@ def check(force: bool = False) -> Dict[str, Any]:
             else:
                 r.raise_for_status()
                 rel = r.json()
-                assets = {a.get("name"): a.get("browser_download_url") for a in rel.get("assets") or []}
+                assets = {a.get("name"): a.get("browser_download_url") for a in rel.get("assets") or []
+                          if str(a.get("browser_download_url") or "").startswith(DOWNLOAD_PREFIX)}
+                # GitHub's own SHA-256 of each uploaded file ("sha256:<hex>"), independent of SHA256SUMS.txt
+                digests = {a.get("name"): str(a.get("digest") or "") for a in rel.get("assets") or []}
                 zip_name = next((n for n in assets if re.fullmatch(r"VerbaScribe-v[\w.\-]+\.zip", n or "")), None)
                 latest = {
                     "version": str(rel.get("tag_name") or "").lstrip("v"),
@@ -113,6 +118,7 @@ def check(force: bool = False) -> Dict[str, Any]:
                     "zip_url": assets.get(zip_name) if zip_name else None,
                     "zip_name": zip_name,
                     "sums_url": assets.get("SHA256SUMS.txt"),
+                    "zip_digest": digests.get(zip_name, "").removeprefix("sha256:").lower() if zip_name else "",
                 }
             with _lock:
                 _state.update(checked_at=time.time(), latest=latest, error="")
@@ -182,6 +188,8 @@ def _download(latest: Dict[str, Any]) -> None:
                         expected = parts[0].lower()
             if not expected:
                 raise RuntimeError("В релизе нет контрольной суммы архива (SHA256SUMS.txt)")
+            if latest.get("zip_digest") and latest["zip_digest"] != expected:
+                raise RuntimeError("Контрольные суммы релиза не совпадают между собой — обновление отменено")
             h = hashlib.sha256()
             with c.stream("GET", latest["zip_url"]) as r:
                 r.raise_for_status()

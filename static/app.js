@@ -676,6 +676,8 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     fillObsidianSettings(s);
     fillDubSettings(s);
     renderRecordSaveHint();
+    state.liveModelSetting = s.live_whisper_model || 'auto';
+    renderLiveModelSelect();
 
     const srcMode = s.record_source_mode || 'both';
     if (document.getElementById('set-record-source')) {
@@ -947,6 +949,8 @@ function updateWhisperModelsUI(models) {
   const activeModel = document.getElementById('set-whisper-model').value || models.active_whisper || 'large-v3-turbo';
   const catalogBox = document.getElementById('whisper-catalog-list');
   const whisperList = models.whisper_catalog || models.whisper || [];
+  state.whisperInstalled = whisperList.filter(i => i.installed).map(i => i.id);
+  renderLiveModelSelect();
 
   if (catalogBox && whisperList.length > 0) {
     catalogBox.innerHTML = whisperList.map(item => {
@@ -1215,6 +1219,18 @@ async function renderAnalysisEstimate() {
 }
 
 const ICON_LOCK = '<svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/></svg>';
+
+// Captions while recording: "auto" or one of the downloaded Whisper models
+function renderLiveModelSelect() {
+  const sel = document.getElementById('set-live-model');
+  if (!sel) return;
+  const value = sel.dataset.touched ? sel.value : (state.liveModelSetting || 'auto');
+  const ids = state.whisperInstalled || [];
+  sel.innerHTML = `<option value="auto">${escapeHtml(t('liveModelAuto'))}</option>`
+    + ids.map(id => `<option value="${escapeHtml(id)}">${escapeHtml(formatModelName(id))}</option>`).join('');
+  sel.value = [...sel.options].some(o => o.value === value) ? value : 'auto';
+  sel.onchange = () => { sel.dataset.touched = '1'; };
+}
 
 function renderSummaryModelSelect() {
   const summarySelect = document.getElementById('summary-llm-select');
@@ -1534,6 +1550,7 @@ async function saveAllSettings() {
       ...llmSettingsPayload(),
       record_source_mode: document.getElementById('set-record-source')?.value || 'both',
       record_mic_device: document.getElementById('set-record-mic')?.value || '',
+      live_whisper_model: document.getElementById('set-live-model')?.value || 'auto',
       ...dubSettingsPayload(),
     }
   };

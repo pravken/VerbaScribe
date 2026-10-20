@@ -135,6 +135,7 @@ def init_db() -> None:
             "update_check": "true",  # look for a new release on GitHub at start (app/updater.py)
             "idle_unload_minutes": "10",  # free models from memory after this long unused; 0 = never
             "recordings_dir": "",  # where recordings made in the app are saved; "" = <data>/recordings
+            "live_whisper_model": "auto",  # captions while recording (app/live.py caption_model)
             "auto_title": "true",  # name recordings by their content (LLM) when the title is generic
             "obsidian_auto": "false",  # save a note to the Obsidian vault after processing
             "obsidian_vault": "",

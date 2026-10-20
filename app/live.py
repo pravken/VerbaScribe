@@ -305,6 +305,29 @@ def start_session(lang: Optional[str], translate_to: Optional[str], capture_id: 
     return s
 
 
+def active_session_count() -> int:
+    """Caption sessions that received audio recently (a closed window's session drops out)."""
+    _drop_idle()
+    with _sessions_lock:
+        return len(_sessions)
+
+
+def caption_model(settings: Dict[str, str], hw: Dict[str, Any]) -> str:
+    """The Whisper model for live captions. "auto": on a GPU with less than 10 GB, or on the CPU,
+    the smallest downloaded model of small/medium, so the captions leave room for the work queue
+    (the saved file is transcribed again by the main model anyway); otherwise the main model."""
+    from app.model_manager import is_whisper_model_installed
+
+    main = settings.get("whisper_model") or "large-v3-turbo"
+    chosen = (settings.get("live_whisper_model") or "auto").strip()
+    if chosen != "auto":
+        return chosen if is_whisper_model_installed(chosen) else main
+    device = settings.get("device") or hw.get("recommended_device") or "cpu"
+    if device == "cuda" and float(hw.get("vram_total_gb") or 0) >= 10:
+        return main
+    return next((m for m in ("small", "medium") if is_whisper_model_installed(m)), main)
+
+
 def get_session(session_id: str) -> Optional[LiveSession]:
     with _sessions_lock:
         return _sessions.get(session_id)

@@ -1507,6 +1507,16 @@
             </div>
           </div>
 
+          <div>
+            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="liveModelLabel">Модель для субтитров во время записи</label>
+            <select id="set-live-model" data-i18n-title="tipLiveModel"
+              title="Субтитры в студии нужны, чтобы следить за речью; после записи файл всё равно расшифровывается основной моделью"
+              class="w-full h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
+              <option value="auto" data-i18n="liveModelAuto">Авто</option>
+            </select>
+            <p class="text-[10.5px] text-apple-tertiary mt-1" data-i18n="liveModelHint">Авто: на видеокарте меньше 10 ГБ и на процессоре — скачанная Small или Medium, чтобы субтитры не мешали обработке очереди; иначе основная модель</p>
+          </div>
+
           <!-- Live SoundCloud Waveform & dB Meter inside Settings -->
           <div class="bg-apple-sidebar border apple-border rounded-xl p-3 space-y-2">
             <div class="flex items-center justify-between">

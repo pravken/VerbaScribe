@@ -411,6 +411,29 @@ def _free_vram_gb() -> float:
     return 0.0
 
 
+# About how much VRAM a job needs for Whisper plus the speaker model, in GB
+_JOB_VRAM_GB = {"large-v3": 5.0, "large-v3-turbo": 3.5, "medium": 3.0, "small": 2.0}
+LIVE_WAIT_POLL_SEC = 5.0
+
+
+def _wait_for_vram_after_live(meeting_id: int, model_name: str) -> None:
+    """While a recording with live captions runs, its caption model shares the GPU. A job that would
+    not fit next to it waits for the recording to end instead of running out of memory in the
+    middle of both (which can abort the job or stop the captions)."""
+    from app import live
+
+    need = _JOB_VRAM_GB.get(model_name, 4.0)
+    waited = False
+    while live.active_session_count() and _free_vram_gb() < need:
+        if not waited:
+            update_meeting_progress(meeting_id, stage_text="Ожидание: видеопамять занята субтитрами идущей записи...")
+            waited = True
+        _check_cancel(meeting_id)
+        time.sleep(LIVE_WAIT_POLL_SEC)
+    if waited:
+        update_meeting_progress(meeting_id, stage_text="Загрузка модели Whisper...")
+
+
 def _get_whisper_model(model_name: str, device: str, compute_type: str) -> Tuple[WhisperModel, bool]:
     """Returns (model, reused)."""
     key = (model_name, device, compute_type)
@@ -696,6 +719,8 @@ def _process_meeting_job(meeting_id: int) -> None:
         vad_enabled = settings.get("vad_filter", "true").lower() == "true"
 
         _check_cancel(meeting_id)
+        if device == "cuda" and _whisper_cache["key"] != (model_name, device, compute_type):
+            _wait_for_vram_after_live(meeting_id, model_name)
         whisper_model, reused = _get_whisper_model(model_name, device, compute_type)
 
         # `hotwords` is applied to every 30s window; `initial_prompt` would only affect the first
