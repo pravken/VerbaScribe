@@ -88,6 +88,46 @@ def apps_using_microphone() -> List[str]:
     return out
 
 
+def microphone_records() -> List[Dict[str, object]]:
+    """Every app Windows lists for the microphone, newest first, with its raw start and stop times:
+    shown in Settings to see what the registry actually holds while a call runs."""
+    if sys.platform != "win32":
+        return []
+    import winreg
+
+    out: List[Dict[str, object]] = []
+    for path, nonpackaged in ((_MIC_KEY, False), (_MIC_KEY + r"\NonPackaged", True)):
+        try:
+            root = winreg.OpenKey(winreg.HKEY_CURRENT_USER, path)
+        except OSError as e:
+            out.append({"name": f"{'NonPackaged' if nonpackaged else 'microphone'}: {e}", "start": 0, "stop": 0})
+            continue
+        with root:
+            i = 0
+            while True:
+                try:
+                    sub = winreg.EnumKey(root, i)
+                except OSError:
+                    break
+                i += 1
+                if sub == "NonPackaged":
+                    continue
+                try:
+                    with winreg.OpenKey(root, sub) as key:
+                        vals = {}
+                        for v in ("LastUsedTimeStart", "LastUsedTimeStop"):
+                            try:
+                                vals[v] = int(winreg.QueryValueEx(key, v)[0])
+                            except OSError:
+                                vals[v] = None
+                except OSError:
+                    continue
+                name = sub.split("#")[-1] if nonpackaged else sub
+                out.append({"name": name.lower(), "start": vals["LastUsedTimeStart"], "stop": vals["LastUsedTimeStop"]})
+    out.sort(key=lambda r: -(r["start"] or 0))
+    return out
+
+
 def matching_app(in_use: List[str], watched: List[str]) -> Optional[str]:
     """The first watched app (a key of CALL_APPS) among what uses the microphone."""
     for key in watched:
@@ -174,5 +214,10 @@ def status() -> Dict[str, object]:
         mic = apps_using_microphone()
     except Exception as e:
         mic = [f"error: {e}"]
+    try:
+        records = microphone_records()
+    except Exception as e:
+        records = [{"name": f"error: {e}", "start": 0, "stop": 0}]
     return {"supported": sys.platform == "win32", "active": _watcher.active, "running": _started, "mic_now": mic,
+            "records_count": len(records), "records": records[:3],
             "apps": [{"id": k, "name": v["name"]} for k, v in CALL_APPS.items()]}
