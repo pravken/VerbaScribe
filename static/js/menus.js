@@ -240,7 +240,37 @@ function toggleTranslateMenu(e) {
   e.stopPropagation();
   hideContextMenu();
   document.getElementById('export-menu')?.classList.add('hidden');
+  renderTranslateQuick();
   document.getElementById('translate-menu').classList.toggle('hidden');
+}
+
+// One click: shows the translation into a quick language, or makes it when there is none yet
+function renderTranslateQuick() {
+  const m = state.activeMeeting;
+  const box = document.getElementById('translate-quick');
+  if (!box || !m) return;
+  const have = meetingTranslations(m);
+  const src = String(m.language || '').slice(0, 2);
+  box.innerHTML = `<span class="text-[10.5px] text-apple-tertiary mr-auto">${escapeHtml(t('translateQuick'))}</span>`
+    + quickLangs().map(c => {
+      const ready = !!have[c];
+      const same = c === src;
+      return `<button onclick="quickTranslate('${c}')" ${same ? 'disabled' : ''}
+        title="${escapeHtml(same ? t('translateQuickSame') : ready ? t('translateQuickShow').replace('{lang}', langName(c)) : t('translateQuickMake').replace('{lang}', langName(c)))}"
+        class="quick-lang ${ready ? 'on' : ''}" style="${same ? 'opacity:.35' : ''}">${ready ? '✓ ' : ''}${escapeHtml(langCode(c))}</button>`;
+    }).join('');
+}
+
+async function quickTranslate(lang) {
+  hideTranslateMenu();
+  const m = state.activeMeeting;
+  if (!m) return;
+  if (meetingTranslations(m)[lang]) {
+    state.txLang = lang;
+    setTranscriptView(state.txView === 'orig' || !state.txView ? 'both' : state.txView);
+    return;
+  }
+  await startTranslation(false, lang);
 }
 
 function hideTranslateMenu() {

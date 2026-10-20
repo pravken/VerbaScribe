@@ -826,7 +826,7 @@ function meetingRowHtml(m, depth) {
       ${thumb}
       <div class="min-w-0 flex-1">
         <div class="flex items-center justify-between gap-2">
-          <span title="${escapeHtml(m.title)}" class="text-[12.5px] font-medium truncate">${escapeHtml(m.title)}</span>
+          <span title="${escapeHtml(m.title)}" class="text-[12.5px] font-medium leading-snug line-clamp-2 break-words min-w-0">${escapeHtml(m.title)}</span>
           <button onclick="openRecordingContextMenu(event, ${m.id})" title="${escapeHtml(t('tipItemMenu'))}"
             class="opacity-0 group-hover:opacity-100 px-1 rounded hover:bg-black/20 text-xs shrink-0 transition">•••</button>
         </div>
@@ -1269,3 +1269,38 @@ async function submitLocalPath() {
     await selectMeeting(data.created[0].id, true);
   }
 }
+
+// --- Sidebar width: dragged on its right edge, kept per computer ---
+const SIDEBAR_MIN = 240, SIDEBAR_MAX = 560, SIDEBAR_DEFAULT = 312;
+
+function setSidebarWidth(w, save) {
+  const aside = document.getElementById('app-sidebar');
+  if (!aside) return;
+  w = Math.round(Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, Math.min(w, window.innerWidth - 560))));
+  aside.style.width = `${w}px`;
+  if (save) try { localStorage.setItem('verbascribe_sidebar_width', String(w)); } catch (e) {}
+}
+
+(function initSidebarResize() {
+  try { const w = Number(localStorage.getItem('verbascribe_sidebar_width')); if (w) setSidebarWidth(w, false); } catch (e) {}
+  const handle = document.getElementById('sidebar-resizer');
+  if (!handle) return;
+  handle.addEventListener('dblclick', () => setSidebarWidth(SIDEBAR_DEFAULT, true));
+  handle.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    handle.setPointerCapture(e.pointerId);
+    handle.classList.add('dragging');
+    document.body.classList.add('sidebar-dragging');
+    const left = document.getElementById('app-sidebar').getBoundingClientRect().left;
+    const move = (ev) => setSidebarWidth(ev.clientX - left, false);
+    const up = (ev) => {
+      setSidebarWidth(ev.clientX - left, true);
+      handle.classList.remove('dragging');
+      document.body.classList.remove('sidebar-dragging');
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', up);
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', up);
+  });
+})();

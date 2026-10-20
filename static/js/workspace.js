@@ -20,6 +20,7 @@ async function selectMeeting(id, reloadPlayer = true) {
 
   updateProcessingBanner(m);
   renderAudioTrackSwitch();
+  renderFillerButton();
   if (prevId !== m.id || state.activeWorkspaceTab === 'summary') renderAnalysisEstimate();
 
   if (reloadPlayer || prevId !== m.id) {
@@ -888,37 +889,19 @@ function renderSpeakerPillsBar() {
     return;
   }
 
+  // Compact: a speaker icon for "everyone" and a numbered circle in each speaker's colour; the
+  // name is in the tooltip, right-click plays a sample of the voice
   const allActive = !state.speakerFilter;
-  let html = `
-    <button onclick="filterBySpeaker(null)"
-      title="${escapeHtml(t('tipFilterAllSpeakers'))}"
-      class="ui-btn h-7 px-2.5 rounded-full text-[11px] ${
-        allActive ? 'bg-white text-black' : 'bg-white/5 text-apple-secondary hover:text-white'
-      }">
-      ${t('allSpeakers')}
-    </button>
-  `;
-
-  html += keys.map(spkId => {
+  let html = `<button onclick="filterBySpeaker(null)" title="${escapeHtml(t('tipFilterAllSpeakers'))}"
+      class="spk-chip ${allActive ? 'spk-chip-on' : ''}">${ICON_SPEAKERS}</button>`;
+  html += keys.map((spkId, i) => {
     const s = speakers[spkId];
     const active = state.speakerFilter === spkId;
-    return `
-      <div class="inline-flex items-center h-7 rounded-full text-[11px] transition ${
-        active ? 'bg-apple-blue text-white' : 'bg-white/5 text-apple-label hover:bg-white/10'
-      }">
-        <button onclick="filterBySpeaker('${spkId}')"
-          title="${escapeHtml(t('tipFilterSpeaker'))}"
-          class="pl-2.5 pr-1.5 h-full flex items-center gap-1.5">
-          <span class="w-2 h-2 rounded-full" style="background:${s.color}"></span>
-          <span class="font-medium">${escapeHtml(s.name)}</span>
-        </button>
-        <button onclick="previewSpeakerVoice(${s.sample_start || 0}, ${s.sample_end || 5})"
-          title="${escapeHtml(t('tipPlayVoiceSample'))}"
-          class="pr-2 pl-1 h-full flex items-center opacity-70 hover:opacity-100">
-          ${SVG_ICONS.playMini}
-        </button>
-      </div>
-    `;
+    const named = !/^(Участник|Speaker|SPEAKER)[ _]?\d+$/i.test(s.name || '');
+    const label = named ? (s.name || '?').trim().slice(0, 1).toUpperCase() : String(i + 1);
+    return `<button onclick="filterBySpeaker('${spkId}')" oncontextmenu="event.preventDefault(); previewSpeakerVoice(${s.sample_start || 0}, ${s.sample_end || 5})"
+      title="${escapeHtml(`${s.name}\n${t('tipFilterSpeaker')} · ${t('tipSpeakerChipVoice')}`)}"
+      class="spk-chip ${active ? 'spk-chip-on' : ''}" style="--spk:${s.color}">${escapeHtml(label)}</button>`;
   }).join('');
 
   container.innerHTML = html;
@@ -1350,23 +1333,43 @@ async function mergeSegmentWithPrevious(segId) {
   }
 }
 
+// Filler words: one button that removes them or brings them back. After a cleanup (made
+// automatically after transcription, or by hand) it shows what was cut: "−12 words · −8 s"
 async function cleanActiveTranscriptFillers() {
-  if (!state.activeMeeting) return;
-  const res = await fetch(`/api/meetings/${state.activeMeeting.id}/clean-fillers`, {
-    method: 'POST'
-  });
+  const m = state.activeMeeting;
+  if (!m) return;
+  if (m.has_segments_backup) {
+    await restoreSegments(m.id);
+    renderFillerButton();
+    return;
+  }
+  const res = await fetch(`/api/meetings/${m.id}/clean-fillers`, { method: 'POST' });
   if (!res.ok) return;
   const data = await res.json();
   state.activeMeeting = data.meeting;
   renderTranscript();
-  const cnt = data.removed_count || 0;
-  const meetingId = state.activeMeeting.id;
-  showToast(
-    cnt > 0
-      ? (state.uiLang === 'en' ? `Cleaned ${cnt} filler words` : `Удалено слов-паразитов и повторов: ${cnt}`)
-      : (state.uiLang === 'en' ? 'Transcript is already clean' : 'Текст уже чистый'),
-    cnt > 0 ? { label: t('undo'), onClick: () => restoreSegments(meetingId) } : undefined
-  );
+  if (!data.removed_count) showToast(t('fillersNone'));
+  renderFillerButton();
+}
+
+async function renderFillerButton() {
+  const m = state.activeMeeting;
+  const btn = document.getElementById('clean-fillers-btn');
+  if (!btn || !m) return;
+  const label = btn.querySelector('.tx-tool-label');
+  let stats = { cleaned: false };
+  if (m.has_segments_backup) stats = await fetch(`/api/meetings/${m.id}/fillers`).then(r => r.json()).catch(() => stats);
+  if (state.activeMeeting !== m) return;
+  if (stats.cleaned) {
+    const parts = [stats.words ? `−${stats.words} ${t('fillersWordsShort')}` : '', stats.seconds ? `−${Math.round(stats.seconds)} ${t('unitSec')}` : ''].filter(Boolean);
+    label.textContent = `${t('fillersRestore')}${parts.length ? ' · ' + parts.join(' · ') : ''}`;
+    btn.title = t('tipFillersRestore');
+    btn.classList.add('text-apple-blue');
+  } else {
+    label.textContent = t('cleanSpeechBtn');
+    btn.title = t('tipCleanSpeech');
+    btn.classList.remove('text-apple-blue');
+  }
 }
 
 function openInlineSegmentEditor(segId) {

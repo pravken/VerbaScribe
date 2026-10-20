@@ -344,6 +344,21 @@ class TrayController:
         if started:
             threading.Thread(target=self._poll, daemon=True, name="tray_status").start()
 
+    # ---- quiet mode: no notifications from the tray (switched in its menu or in Settings)
+    def _quiet(self) -> bool:
+        from app.database import get_all_settings
+
+        return (get_all_settings().get("quiet_mode") or "false").lower() == "true"
+
+    def _notify(self, title: str, text: str, warning: bool = False) -> None:
+        if not self._quiet():
+            self.tray.notify(title, text, warning=warning)
+
+    def _toggle_quiet(self) -> None:
+        from app.database import update_settings
+
+        update_settings({"quiet_mode": "false" if self._quiet() else "true"})
+
     # ---- global hotkey: starts or stops a recording with the default preset, window or not
     def _apply_hotkey(self) -> None:
         from app.database import get_all_settings
@@ -358,9 +373,9 @@ class TrayController:
         self.window.evaluate_js("window.trayCommand && window.trayCommand('record', null)")
         key = self._hotkey_spec
         if recording:
-            self.tray.notify("Запись остановлена", "Запись сохранена и отправлена на расшифровку")
+            self._notify("Запись остановлена", "Запись сохранена и отправлена на расшифровку")
         else:
-            self.tray.notify("Запись начата", f"Чтобы остановить, нажмите {key}" if key else "")
+            self._notify("Запись начата", f"Чтобы остановить, нажмите {key}" if key else "")
 
     # ---- status
     def _poll(self) -> None:
@@ -397,11 +412,11 @@ class TrayController:
         title = m.get("title") or ""
         status = m.get("status")
         if status == "failed":
-            self.tray.notify(f"{label}: ошибка", title, warning=True)
+            self._notify(f"{label}: ошибка", title, warning=True)
         elif status == "cancelled":
             return
         else:
-            self.tray.notify(f"{label} завершено", title)
+            self._notify(f"{label} завершено", title)
 
     def _window_in_front(self) -> bool:
         user32 = ctypes.windll.user32
@@ -420,6 +435,7 @@ class TrayController:
             ("Импорт файлов…", "import", 0),
             ("Вопрос по медиатеке…", "ask", 0),
             (None, None, 0),
+            ("Тихий режим (без уведомлений)", "quiet", 0x8 if self._quiet() else 0),  # MF_CHECKED
             ("Настройки…", "settings", 0),
             ("Открыть папку данных", "data", 0),
             (None, None, 0),
@@ -454,6 +470,9 @@ class TrayController:
                 for pid, name in presets[:12]]
 
     def on_command(self, cmd: str) -> None:
+        if cmd == "quiet":
+            self._toggle_quiet()
+            return
         if cmd == "hotkey_record":
             self._hotkey_record()
             return
@@ -503,7 +522,7 @@ class TrayController:
             return True
         # Something runs: keep working in the tray instead of stopping it
         threading.Timer(0.05, self.window.hide).start()
-        self.tray.notify("VerbaScribe работает в фоне",
+        self._notify("VerbaScribe работает в фоне",
                          "Запись или обработка продолжается. Значок в трее — открыть окно или выйти.")
         return False
 

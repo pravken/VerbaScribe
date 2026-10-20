@@ -86,6 +86,7 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     document.getElementById('set-ollama-model').value = s.ollama_model || 'qwen2.5:7b';
     document.getElementById('set-auto-summary').checked = s.auto_summary !== 'false';
     document.getElementById('set-auto-title').checked = s.auto_title !== 'false';
+    document.getElementById('set-quiet-mode').checked = s.quiet_mode === 'true';
     document.getElementById('set-semantic').checked = s.semantic_search === 'true';
     document.getElementById('set-semantic-model').value = s.semantic_model || 'bge-m3';
     loadSemanticStatus();
@@ -548,6 +549,7 @@ function updateOllamaUI(ollama) {
 
   state.lastOllama = ollama;
   renderSummaryModelSelect();
+  renderSemanticModelCard();
 
   if (catalogBox && ollama.catalog) {
     catalogBox.innerHTML = ollama.catalog.map(item => {
@@ -655,6 +657,23 @@ async function fillCallSettings(s) {
   sel.innerHTML = recordPresets().map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(presetLabel(p))}</option>`).join('');
   sel.value = [...sel.options].some(o => o.value === s.call_preset) ? s.call_preset : (sel.options[0] || {}).value || '';
   renderCallSettings();
+  if (st.supported) refreshCallMicNow();
+}
+
+// What uses the microphone now, refreshed while the settings are open: during a call it shows
+// whether Windows reports the app at all (if not, it cannot be detected)
+async function refreshCallMicNow() {
+  const box = document.getElementById('call-mic-now');
+  const modal = document.getElementById('modal-settings');
+  if (!box || !modal || modal.classList.contains('hidden')) return;
+  const st = await fetch('/api/calls/status').then(r => r.json()).catch(() => null);
+  if (st) {
+    const names = (st.mic_now || []).map(n => n.replace(/_[a-z0-9]{13}$/, ''));
+    box.textContent = `${t('callMicNow')}: ${names.length ? names.join(', ') : t('callMicNobody')}`
+      + (st.active ? ` · ${t('callActive').replace('{app}', st.active)}` : '');
+  }
+  clearTimeout(window._callMicTimer);
+  window._callMicTimer = setTimeout(refreshCallMicNow, 3000);
 }
 
 function renderCallSettings() {
@@ -731,13 +750,36 @@ async function loadSemanticStatus() {
   if (st.running && modal && !modal.classList.contains('hidden')) window._semanticTimer = setTimeout(loadSemanticStatus, 3000);
 }
 
+// The embedding model as a card like the other models: size, what it is, download or build
+function renderSemanticModelCard() {
+  const box = document.getElementById('semantic-model-card');
+  const ollama = state.lastOllama;
+  if (!box) return;
+  const model = document.getElementById('set-semantic-model').value || 'bge-m3';
+  const installed = !!ollama && (ollama.models || []).some(n => n === model || n.startsWith(model + ':'));
+  const ps = (ollama && ollama.pull_state) || {};
+  const pulling = ps.active && ps.model === model;
+  const action = pulling
+    ? `<span class="ui-btn bg-apple-blue/20 text-apple-blue font-mono animate-pulse">${ps.progress || 1}%</span>`
+    : installed
+      ? `<button onclick="buildSemanticIndex()" class="ui-btn ui-btn-subtle text-white hover:bg-apple-blue">${escapeHtml(t('semanticBuild'))}</button>`
+      : `<button onclick="pullSemanticModel()" class="ui-btn ui-btn-primary">${SVG_ICONS.download}<span>${escapeHtml(t('semanticDownload'))} (1.2 GB)</span></button>`;
+  box.innerHTML = `<div class="p-3 rounded-xl border transition flex items-center justify-between gap-3 ${installed ? 'bg-apple-blue/10 border-apple-blue/50' : 'bg-apple-sidebar border-white/10'}">
+    <div class="min-w-0 flex-1">
+      <div class="flex items-center flex-wrap gap-2">
+        <span class="text-xs font-semibold text-white">BGE-M3</span>
+        <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-apple-secondary">1.2 GB · MIT</span>
+        <span class="text-[10px] text-apple-tertiary">${installed ? '✓ ' + escapeHtml(t('semanticInstalled')) : '1+ GB VRAM / CPU'}</span>
+      </div>
+      <p class="text-[11.5px] text-apple-secondary mt-1 leading-snug">${escapeHtml(t('semanticModelDesc'))}</p>
+    </div>
+    <div class="shrink-0">${action}</div>
+  </div>`;
+}
+
 async function pullSemanticModel() {
-  const model = document.getElementById('set-semantic-model').value.trim() || 'bge-m3';
-  const res = await fetch('/api/ollama/pull', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, allow_install: false }),
-  });
-  const data = await res.json().catch(() => ({}));
-  showToast(res.ok ? t('semanticPulling').replace('{model}', model) : (data.detail || 'Error'));
+  await pullOllamaModel(document.getElementById('set-semantic-model').value.trim() || 'bge-m3', false);
+  renderSemanticModelCard();
 }
 
 async function buildSemanticIndex() {
@@ -921,7 +963,7 @@ async function setLlmMode(mode) {
     if (!confirm(t('llmConsentConfirm'))) return;
     extra.llm_cloud_consent = 'true';
   }
-  if (mode === 'cloud') state.llmShowCloud = true;
+  state.llmShowCloud = mode === 'cloud';
   if (await saveLlmSettingsNow(extra)) {
     showToast(mode === 'cloud' ? t('llmModeCloudOn') : t('llmModeLocalOn'));
   }
@@ -1060,6 +1102,7 @@ async function saveAllSettings() {
       diarization_enabled: String(document.getElementById('set-diarization').checked),
       voice_profiles: String(document.getElementById('set-voice-profiles').checked),
       update_check: String(document.getElementById('set-update-check').checked),
+      quiet_mode: String(document.getElementById('set-quiet-mode').checked),
       vad_filter: String(document.getElementById('set-vad').checked),
       audio_enhance: String(document.getElementById('set-audio-enhance')?.checked !== false),
       clean_fillers: String(document.getElementById('set-clean-fillers')?.checked !== false),
@@ -1123,7 +1166,7 @@ function startOllamaPollingLoop(model) {
   }, 900);
 }
 
-async function pullOllamaModel(modelArg) {
+async function pullOllamaModel(modelArg, makeActive = true) {
   const model = (modelArg || document.getElementById('set-ollama-model').value || 'qwen2.5:7b').trim();
   let allowInstall = false;
   if (state.system && state.system.ollama && !state.system.ollama.installed) {
@@ -1132,7 +1175,7 @@ async function pullOllamaModel(modelArg) {
       : 'Ollama не установлена. Установить её сейчас через winget (пакет Ollama.Ollama, около 1 ГБ)?\n\nМожно установить и вручную: https://ollama.com/download');
     if (!allowInstall) return;
   }
-  document.getElementById('set-ollama-model').value = model;
+  if (makeActive) document.getElementById('set-ollama-model').value = model;  // not for the embedding model
   const pretty = formatModelName(model);
 
   state.ollamaPullState = {

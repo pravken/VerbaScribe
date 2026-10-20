@@ -474,7 +474,11 @@ async function handleCallEvent(ev) {
     const s = (state.system && state.system.settings) || {};
     state.callRecording = ev.app;
     showToast(t('callRecordStarted').replace('{app}', ev.name || ev.app));
-    await quickRecord(s.call_preset || defaultRecordPresetId());
+    try {
+      await quickRecord(s.call_preset || defaultRecordPresetId());
+    } catch (e) {
+      showToast(`${t('callRecordFailed')}: ${e.message || e}`);
+    }
     if (!isRecording()) state.callRecording = null;
   } else if (ev.state === 'ended' && state.callRecording) {
     state.callRecording = null;

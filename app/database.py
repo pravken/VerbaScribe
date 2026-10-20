@@ -137,6 +137,7 @@ def init_db() -> None:
             "recordings_dir": "",  # where recordings made in the app are saved; "" = <data>/recordings
             "live_whisper_model": "auto",
             "record_hotkey": "Ctrl+Alt+R",
+            "quiet_mode": "false",  # no tray notifications (run.py TrayController)
             "call_auto_record": "false",  # record calls by themselves (app/call_watch.py)
             "call_apps": "zoom,teams,telegram",
             "call_preset": "call",  # system-wide start/stop of a recording (app/tray.py); "" = off
@@ -539,6 +540,33 @@ def save_segments_backup(meeting_id: int, segments: List[Dict[str, Any]]) -> Non
         )
         conn.commit()
         conn.close()
+
+
+def filler_stats(meeting_id: int) -> Dict[str, Any]:
+    """What the last cleanup removed, compared with the copy kept before it: how many words and
+    how long they took to say. {"cleaned": False} when there is no such copy."""
+    with _db_lock:
+        conn = get_connection()
+        row = conn.execute("SELECT segments_json, segments_backup_json FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+        conn.close()
+    if not row or not row["segments_backup_json"]:
+        return {"cleaned": False, "words": 0, "seconds": 0.0}
+
+    def words(segs: List[Dict[str, Any]]) -> Dict[tuple, float]:
+        out = {}
+        for s in segs:
+            for w in s.get("words") or []:
+                key = (round(float(w.get("start") or 0), 2), str(w.get("word") or "").strip().casefold().strip(".,!?…"))
+                out[key] = max(0.0, float(w.get("end") or 0) - float(w.get("start") or 0))
+        return out
+
+    before, after = words(_loads_list(row["segments_backup_json"])), words(_loads_list(row["segments_json"]))
+    gone = [d for k, d in before.items() if k not in after]
+    if not before:  # no word timings: count words of the text
+        n_before = sum(len((s.get("text") or "").split()) for s in _loads_list(row["segments_backup_json"]))
+        n_after = sum(len((s.get("text") or "").split()) for s in _loads_list(row["segments_json"]))
+        return {"cleaned": True, "words": max(0, n_before - n_after), "seconds": 0.0}
+    return {"cleaned": True, "words": len(gone), "seconds": round(sum(gone), 1)}
 
 
 def restore_segments_backup(meeting_id: int) -> bool:

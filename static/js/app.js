@@ -802,6 +802,14 @@ function textMenuItems(e) {
       items.push({ label: t('ctxAddToDictionary'), run: () => addToDictionary(text) });
     }
   } else if (segRow) {
+    // A word under the cursor: it can go to the dictionary as it is
+    const wordEl = el.closest && el.closest('.word-token');
+    const word = wordEl ? wordEl.textContent.replace(/^[\s.,!?;:«»"'()]+|[\s.,!?;:«»"'()]+$/g, '') : '';
+    if (word) {
+      items.push({ label: t('ctxAddWordToDictionary').replace('{word}', word), run: () => addToDictionary(word) });
+      items.push({ label: t('ctxPlayFromHere'), key: formatTime(Number(wordEl.dataset.start)), run: () => seekPlayer(Number(wordEl.dataset.start)) });
+      items.push({ sep: true });
+    }
     const segText = segRow.querySelector('[id^="seg-text-"]')?.innerText.replace(/\s+/g, ' ').trim() || '';
     const start = Number(segRow.dataset.start);
     items.push({ label: t('ctxCopyLine'), run: () => copyPlain(segText) });

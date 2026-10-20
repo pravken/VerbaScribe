@@ -114,12 +114,15 @@ class CallWatcher:
         self.released_at: Optional[float] = None
 
     def tick(self, app: Optional[str], now: float) -> None:
+        if app != self.candidate and not self.active:
+            print(f"[calls] microphone: {CALL_APPS[app]['name'] if app else 'released'}", flush=True)
         if self.active:
             if app:
                 self.released_at = None
             elif self.released_at is None:
                 self.released_at = now
             elif now - self.released_at >= STOP_GRACE_SEC:
+                print(f"[calls] call in {self.active} ended: stopping the recording", flush=True)
                 self.publish({"type": "call", "state": "ended", "app": self.active,
                               "name": CALL_APPS[self.active]["name"]})
                 self.active, self.released_at, self.candidate = None, None, None
@@ -129,6 +132,7 @@ class CallWatcher:
             return
         if app and now - self.candidate_since >= START_DELAY_SEC:
             self.active, self.released_at = app, None
+            print(f"[calls] call in {app}: starting a recording", flush=True)
             self.publish({"type": "call", "state": "started", "app": app, "name": CALL_APPS[app]["name"]})
 
 
@@ -162,5 +166,11 @@ def start() -> None:
 
 
 def status() -> Dict[str, object]:
-    return {"supported": sys.platform == "win32", "active": _watcher.active,
+    """For the settings page: what uses the microphone right now, so it can be checked during a
+    call that the app is seen at all."""
+    try:
+        mic = apps_using_microphone()
+    except Exception as e:
+        mic = [f"error: {e}"]
+    return {"supported": sys.platform == "win32", "active": _watcher.active, "running": _started, "mic_now": mic,
             "apps": [{"id": k, "name": v["name"]} for k, v in CALL_APPS.items()]}

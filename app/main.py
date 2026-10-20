@@ -1381,6 +1381,13 @@ def api_clean_fillers(meeting_id: int) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail=str(e))
 
 
+@app.get("/api/meetings/{meeting_id}/fillers")
+def api_filler_stats(meeting_id: int) -> Dict[str, Any]:
+    from app.database import filler_stats
+
+    return filler_stats(meeting_id)
+
+
 @app.post("/api/meetings/{meeting_id}/restore-segments")
 def api_restore_segments(meeting_id: int) -> Dict[str, Any]:
     """Undoes the last filler cleanup (automatic or manual) for this recording."""
