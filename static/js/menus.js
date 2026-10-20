@@ -347,13 +347,42 @@ async function ctxExport(fmt) {
   await exportMeetingById(state.contextMeetingId, fmt);
 }
 
+// Delete confirmation; for a file used in place it can also delete that file from the disk
+function confirmDeleteDialog(m) {
+  return new Promise(resolve => {
+    const local = m.source === 'local';
+    const wrap = document.createElement('div');
+    wrap.className = 'fixed inset-0 modal-backdrop z-[70] flex items-center justify-center p-4';
+    wrap.innerHTML = `<div class="w-full max-w-md bg-apple-card border apple-border rounded-2xl shadow-2xl p-5 space-y-4 modal-card">
+      <div class="text-sm font-semibold text-white">${escapeHtml(t('deleteTitle'))}</div>
+      <p class="text-xs text-apple-secondary leading-relaxed">${escapeHtml(t('confirmDelete').replace('{title}', m.title))}</p>
+      ${local ? `<label class="flex items-start gap-2.5 cursor-pointer text-xs text-apple-label"><input type="checkbox" id="del-with-source" class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-red" />
+        <span>${escapeHtml(t('deleteWithSource'))}<span class="block text-[11px] text-apple-tertiary mt-0.5 break-all">${escapeHtml(m.filename || '')}</span></span></label>` : ''}
+      <div class="flex justify-end gap-2">
+        <button data-a="no" class="ui-btn ui-btn-subtle">${escapeHtml(t('cancel'))}</button>
+        <button data-a="yes" class="ui-btn bg-apple-red text-white hover:opacity-90">${escapeHtml(t('ctxDelete'))}</button>
+      </div></div>`;
+    const done = (v) => { wrap.remove(); document.removeEventListener('keydown', onKey, true); resolve(v); };
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); done(null); } };
+    wrap.addEventListener('click', (e) => {
+      const a = e.target.closest('button[data-a]');
+      if (e.target === wrap || (a && a.dataset.a === 'no')) done(null);
+      else if (a) done({ withSource: !!wrap.querySelector('#del-with-source')?.checked });
+    });
+    document.addEventListener('keydown', onKey, true);
+    document.body.appendChild(wrap);
+    wrap.querySelector('button[data-a="yes"]').focus();
+  });
+}
+
 async function ctxDeleteRecording() {
   hideContextMenu();
   const m = state.meetings.find(x => x.id === state.contextMeetingId);
   if (!m) return;
-  if (!confirm(t('confirmDelete').replace('{title}', m.title))) return;
+  const choice = await confirmDeleteDialog(m);
+  if (!choice) return;
 
-  const delRes = await fetch(`/api/meetings/${m.id}`, { method: 'DELETE' });
+  const delRes = await fetch(`/api/meetings/${m.id}${choice.withSource ? '?with_source=true' : ''}`, { method: 'DELETE' });
   if (!delRes.ok) {
     const data = await delRes.json().catch(() => ({}));
     showToast(data.detail || 'Error');

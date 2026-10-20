@@ -799,11 +799,11 @@ def api_reveal_meeting_file(meeting_id: int) -> Dict[str, Any]:
 
 
 @app.delete("/api/meetings/{meeting_id}")
-def api_delete_meeting(meeting_id: int) -> Dict[str, Any]:
+def api_delete_meeting(meeting_id: int, with_source: bool = False) -> Dict[str, Any]:
     if is_job_active(meeting_id):
         request_cancel(meeting_id)
         raise HTTPException(status_code=409, detail="Запись обрабатывается: обработка отменяется, удалите её через несколько секунд.")
-    ok = delete_meeting(meeting_id)
+    ok = delete_meeting(meeting_id, with_source=with_source)
     if not ok:
         raise HTTPException(status_code=404, detail="Встреча не найдена")
     return {"ok": True}

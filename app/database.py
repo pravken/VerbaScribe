@@ -761,10 +761,16 @@ def list_meetings() -> List[Dict[str, Any]]:
     return result
 
 
-def delete_meeting(meeting_id: int) -> bool:
+def delete_meeting(meeting_id: int, with_source: bool = False) -> bool:
+    """with_source: the media file used in place (added by its path) is deleted too."""
     meeting = get_meeting(meeting_id)
     if not meeting:
         return False
+    if with_source and meeting.get("source") == "local" and meeting.get("media_path"):
+        try:
+            Path(meeting["media_path"]).unlink(missing_ok=True)
+        except OSError as e:
+            print(f"[delete] source file of meeting {meeting_id}: {e}", flush=True)
 
     dub_paths = [d.get(k) for d in meeting.get("dubs") or [] for k in ("path", "srt_path")]
     owned = [meeting.get("media_path")] if meeting.get("owns_media") else []

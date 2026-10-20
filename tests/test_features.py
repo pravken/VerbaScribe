@@ -186,3 +186,19 @@ class PeopleTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DeleteWithSourceTest(unittest.TestCase):
+    def test_source_file_only_on_request(self):
+        import tempfile
+        from pathlib import Path
+
+        from app import database as db
+
+        db.init_db()
+        for with_source in (False, True):
+            src = Path(tempfile.mkdtemp()) / "talk.mp3"
+            src.write_bytes(b"x")
+            mid = db.create_meeting("Локальная", "talk.mp3", str(src), source="local")["id"]
+            db.delete_meeting(mid, with_source=with_source)
+            self.assertEqual(src.exists(), not with_source)
