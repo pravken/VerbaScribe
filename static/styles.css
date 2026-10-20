@@ -408,3 +408,10 @@ select option, select optgroup {
   padding: 3px 5px; border-radius: 4px;
   background: rgba(255, 255, 255, 0.08); color: #98989d;
 }
+
+/* Transcript toolbar: when the column is narrow the text buttons keep only their icons (their
+   titles explain them), so the speaker pills keep enough room instead of stacking up */
+#wview-transcript > div:first-child { container-type: inline-size; }
+@container (max-width: 900px) {
+  .tx-toolbar .tx-tool-label { display: none; }
+}

@@ -423,9 +423,9 @@
 
         <!-- Contextual Transcript Sub-Toolbar: Speaker Pills on Left + Transcript Action Buttons & Search on Right -->
         <div class="border-b apple-border bg-apple-bg/95 px-6 py-2 shrink-0">
-          <div class="max-w-3xl mx-auto flex items-center justify-between gap-3 flex-wrap">
-            <!-- Left: Speaker Filter Pills -->
-            <div class="flex items-center gap-1.5 flex-wrap min-h-[28px]" id="speaker-pills-container">
+          <div class="tx-toolbar max-w-4xl mx-auto flex items-center justify-between gap-3">
+            <!-- Left: Speaker Filter Pills (they wrap within their part; the tools stay on one line) -->
+            <div class="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap min-h-[28px]" id="speaker-pills-container">
               <!-- Populated dynamically -->
             </div>
 
@@ -448,7 +448,7 @@
                 <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/>
                 </svg>
-                <span data-i18n="cleanSpeechBtn">Очистить текст</span>
+                <span class="tx-tool-label" data-i18n="cleanSpeechBtn">Очистить текст</span>
               </button>
 
               <button onclick="toggleAutoScroll()" id="autoscroll-btn"
@@ -458,10 +458,10 @@
                 <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12"/>
                 </svg>
-                <span data-i18n="followSpeech">Автопрокрутка</span>
+                <span class="tx-tool-label" data-i18n="followSpeech">Автопрокрутка</span>
               </button>
 
-              <div class="relative w-44 shrink-0">
+              <div class="relative w-40 shrink-0">
                 <svg class="w-3.5 h-3.5 text-apple-tertiary absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/>
                 </svg>
@@ -486,7 +486,7 @@
 
         <!-- Scrollable Transcript Document -->
         <div id="transcript-container" class="flex-1 overflow-y-auto px-6 py-5">
-          <div id="transcript-inner" class="max-w-3xl mx-auto space-y-1.5">
+          <div id="transcript-inner" class="max-w-4xl mx-auto space-y-1.5">
             <!-- Populated dynamically -->
           </div>
         </div>
