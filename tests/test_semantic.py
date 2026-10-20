@@ -59,7 +59,7 @@ class SemanticIndexTest(unittest.TestCase):
         for mid in semantic.pending_ids():
             semantic.index_meeting(mid)
         self.assertEqual(semantic.pending_ids(), [])
-        hits = semantic.search("Какой у нас дедлайн?")
+        hits = semantic.search("Какой у нас дедлайн?", meeting_ids=[self.a, self.b])  # other tests share the db
         self.assertEqual(hits[0]["meeting_id"], self.a)
         self.assertIn("пятницу", hits[0]["text"])
         self.assertIn("Анна:", hits[0]["text"])  # chunks carry the speaker names
