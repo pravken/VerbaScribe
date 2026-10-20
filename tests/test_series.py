@@ -28,3 +28,14 @@ class SeriesMatchTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OnnxEnsurePackageTest(unittest.TestCase):
+    def test_installs_when_missing(self):
+        from unittest import mock
+        from app import asr_onnx
+
+        with mock.patch("importlib.import_module", side_effect=ImportError), \
+             mock.patch("subprocess.run", return_value=mock.Mock(returncode=0)) as run:
+            asr_onnx.ensure_package()
+        self.assertIn(asr_onnx.ONNX_ASR_PIN, run.call_args[0][0])

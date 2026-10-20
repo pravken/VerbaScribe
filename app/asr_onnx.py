@@ -78,8 +78,33 @@ def catalog() -> List[Dict[str, Any]]:
     return out
 
 
+ONNX_ASR_PIN = "onnx-asr==0.12.0"
+
+
+def ensure_package() -> None:
+    """Installs onnx-asr into the program's Python when it is missing (an update copied over an old
+    installation brings the code but not the new library)."""
+    import importlib
+    import subprocess
+    import sys
+
+    try:
+        importlib.import_module("onnx_asr")
+        return
+    except ImportError:
+        pass
+    print(f"[onnx] installing {ONNX_ASR_PIN}")
+    proc = subprocess.run([sys.executable, "-m", "pip", "install", "--disable-pip-version-check", ONNX_ASR_PIN],
+                          capture_output=True, text=True, encoding="utf-8", errors="replace",
+                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    if proc.returncode != 0:
+        raise RuntimeError("Не удалось установить onnx-asr: " + (proc.stderr or proc.stdout or "")[-300:])
+    importlib.invalidate_caches()
+
+
 def _load(model_id: str):
-    """The model and the VAD, loaded once (downloading what is missing)."""
+    """The model and the VAD, loaded once (installing the library and downloading what is missing)."""
+    ensure_package()
     import onnx_asr
 
     with _lock:
