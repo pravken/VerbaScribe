@@ -524,6 +524,9 @@ def main() -> None:
             try:
                 tray = TrayController(window)
                 tray.start()
+                from app import updater
+
+                updater.exit_hooks.append(tray.stop)
             except Exception as e:  # the app works without the tray icon
                 print(f"[tray] not available: {e}", file=sys.stderr)
 

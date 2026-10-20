@@ -1,9 +1,9 @@
 import tests  # noqa: F401 - keeps the real user data out of reach (see tests/__init__.py)
 import unittest
 
-import numpy as np
-
 try:
+    import numpy as np
+
     from app import database, voice_profiles
 except ImportError:  # numpy/app dependencies are not installed (e.g. in the release CI job)
     voice_profiles = None

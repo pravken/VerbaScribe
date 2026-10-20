@@ -22,7 +22,13 @@ Recordings and transcripts are processed and stored locally (NVIDIA GPU via CUDA
 - **Filler-word removal** ("uh", "um", "э-э", "ммм"…). The original text is kept and can be restored.
 - **Local summaries and Q&A** via Ollama (default models: Qwen 2.5 and Mistral 7B). Language models can make mistakes; treat summaries as a draft, not a source of truth. Long recordings are summarized in parts.
 - **Transcript editor and player**: click a word to jump to it, edit segments, merge them, rename speakers, waveform, playback speed.
-- **Recording** from a microphone, system audio, or both.
+- **Recording** from a microphone, system audio, or both, with saved presets for one-click starts. System audio is captured directly (WASAPI loopback), without a screen-share prompt.
+- **Recording studio**: a full-screen view for recording with live captions and real-time translation; the speech language is detected automatically.
+- **Live captions** during recording, optionally translated as you speak.
+- **Chapters** with titles generated for long recordings, and **Q&A across the whole library**.
+- **Voice profiles**: once you name a speaker, their voice is recognised in new recordings (stored only in the local database).
+- **Tray icon** that shows what the app is doing and starts or stops a recording from its menu.
+- **Automatic update check** with one-click install from GitHub Releases; the download is verified against the release checksums, and your data, models and settings stay untouched.
 - **Search** across all recordings.
 - **Custom vocabulary** (names, terms) passed to Whisper as hotwords.
 - **Export** to Word (`.docx`), Markdown, plain text, SRT subtitles and JSON.
@@ -109,8 +115,9 @@ VerbaScribe has no telemetry. It connects to the internet only for these actions
 | You confirm installing Ollama | winget (package `Ollama.Ollama`) |
 | You install the dubbing environment (optional) | PyPI and download.pytorch.org |
 | Your first dubbing job | Hugging Face (Chatterbox and Demucs weights) |
-
 | You click **Download FFmpeg** in Settings | github.com (release `9.0.2` of `GyanD/codexffmpeg`) |
+| App start, at most every 6 hours (can be turned off in Settings → General) | api.github.com: the number of the latest VerbaScribe release, nothing about you or your computer |
+| You click **Install** for an update | github.com: the release archive and `SHA256SUMS.txt`; PyPI and download.pytorch.org if the new version needs other Python packages |
 
 The user interface, fonts and scripts are served locally. The built-in server listens only on `127.0.0.1`. Every launch creates a random session token, so other websites open in your browser cannot read or control the app.
 
@@ -168,7 +175,13 @@ To update Python dependencies, edit `requirements.in` and regenerate the lock (c
 - **Удаление слов-паразитов** («э-э», «ммм», «uh», «um»…). Исходный текст сохраняется, его можно вернуть.
 - **Локальные саммари и ответы на вопросы** через Ollama (модели по умолчанию — Qwen 2.5 и Mistral 7B). Языковые модели могут ошибаться, поэтому считайте саммари черновиком, а не источником истины. Длинные записи обрабатываются по частям.
 - **Редактор расшифровки и плеер**: клик по слову перематывает к нему, реплики можно править и склеивать, спикеров — переименовывать; есть звуковая дорожка и выбор скорости.
-- **Запись** с микрофона, системного звука или обоих источников.
+- **Запись** с микрофона, системного звука или обоих источников, с пресетами для запуска в один клик. Системный звук захватывается напрямую (WASAPI loopback), без запроса на показ экрана.
+- **Студия записи**: полноэкранный режим с живыми субтитрами и переводом в реальном времени; язык речи определяется автоматически.
+- **Живые субтитры** во время записи, по желанию — сразу с переводом.
+- **Главы** с заголовками для длинных записей и **вопросы по всей библиотеке** записей.
+- **Профили голосов**: стоит один раз назвать участника по имени, и в новых записях его голос узнаётся автоматически (хранится только в локальной базе).
+- **Значок в трее** показывает, чем занято приложение, и запускает или останавливает запись из меню.
+- **Проверка обновлений** и установка в один клик из GitHub Releases; архив сверяется с контрольными суммами релиза, ваши данные, модели и настройки не затрагиваются.
 - **Поиск** по всем записям.
 - **Словарь** имён и терминов, который передаётся в Whisper как hotwords.
 - **Экспорт** в Word (`.docx`), Markdown, текст, субтитры SRT и JSON.
@@ -254,8 +267,9 @@ start.bat
 | Вы подтверждаете установку Ollama | winget (пакет `Ollama.Ollama`) |
 | Вы устанавливаете окружение дубляжа (по желанию) | PyPI и download.pytorch.org |
 | Первый запуск дубляжа | Hugging Face (веса Chatterbox и Demucs) |
-
 | Вы нажимаете **Скачать FFmpeg** в настройках | github.com (релиз `9.0.2` репозитория `GyanD/codexffmpeg`) |
+| Запуск приложения, не чаще раза в 6 часов (отключается в «Настройки → Общие») | api.github.com: номер последней версии VerbaScribe, без каких-либо данных о вас или компьютере |
+| Вы нажимаете **Установить** для обновления | github.com: архив релиза и `SHA256SUMS.txt`; PyPI и download.pytorch.org, если новой версии нужны другие пакеты Python |
 
 Интерфейс, шрифты и скрипты загружаются локально. Встроенный сервер слушает только `127.0.0.1`. При каждом запуске создаётся случайный токен сессии, поэтому другие сайты, открытые в браузере, не могут читать данные приложения или управлять им.
 

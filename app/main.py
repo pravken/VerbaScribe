@@ -1184,6 +1184,46 @@ def api_vram_preload(payload: VramActionPayload) -> Dict[str, Any]:
         raise HTTPException(status_code=409, detail=str(e))
 
 
+# --- Updates from GitHub Releases (app/updater.py) ---
+@app.get("/api/update")
+def api_update_status(check: bool = False) -> Dict[str, Any]:
+    from app import updater
+
+    return updater.check(force=False) if check else updater.status()
+
+
+@app.post("/api/update/check")
+def api_update_check() -> Dict[str, Any]:
+    from app import updater
+
+    return updater.check(force=True)
+
+
+@app.post("/api/update/download")
+def api_update_download() -> Dict[str, Any]:
+    from app import updater
+
+    try:
+        return updater.start_download()
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@app.post("/api/update/install")
+def api_update_install() -> Dict[str, Any]:
+    from app import updater
+    from app.transcriber import running_job_kind
+
+    if running_job_kind():
+        raise HTTPException(status_code=409, detail="Дождитесь окончания текущей задачи")
+    try:
+        updater.launch_installer()
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    updater.quit_soon()
+    return {"ok": True}
+
+
 @app.post("/api/meetings/{meeting_id}/dub")
 def api_start_dub(meeting_id: int, payload: DubRequestPayload) -> Dict[str, Any]:
     from app.dubbing import DUB_LANGUAGES, dub_environment_status

@@ -434,6 +434,7 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     document.getElementById('set-compute-type').value = s.compute_type || 'float16';
     document.getElementById('set-diarization').checked = s.diarization_enabled !== 'false';
     document.getElementById('set-voice-profiles').checked = s.voice_profiles !== 'false';
+    document.getElementById('set-update-check').checked = s.update_check !== 'false';
     document.getElementById('set-vad').checked = s.vad_filter !== 'false';
     if (document.getElementById('set-audio-enhance')) {
       document.getElementById('set-audio-enhance').checked = s.audio_enhance !== 'false';
@@ -950,6 +951,7 @@ async function saveAllSettings() {
       compute_type: document.getElementById('set-compute-type').value,
       diarization_enabled: String(document.getElementById('set-diarization').checked),
       voice_profiles: String(document.getElementById('set-voice-profiles').checked),
+      update_check: String(document.getElementById('set-update-check').checked),
       vad_filter: String(document.getElementById('set-vad').checked),
       audio_enhance: String(document.getElementById('set-audio-enhance')?.checked !== false),
       clean_fillers: String(document.getElementById('set-clean-fillers')?.checked !== false),
@@ -4658,6 +4660,75 @@ function initLogoEasterEgg() {
   });
 }
 
+// --- Updates (app/updater.py): check GitHub Releases, download, verify, install on request ---
+const updateState = { info: null, notified: false, polling: false };
+
+function renderUpdateStatus() {
+  const info = updateState.info;
+  const text = document.getElementById('update-status-text');
+  const btn = document.getElementById('update-install-btn');
+  if (!text || !info) return;
+  const en = state.uiLang === 'en';
+  const dl = info.download || {};
+  let msg = (en ? 'Installed version ' : 'Установлена версия ') + info.current + '.';
+  if (dl.active) msg += en ? ` Downloading ${info.latest.version}… ${dl.progress}%` : ` Скачивание ${info.latest.version}… ${dl.progress}%`;
+  else if (dl.error) msg += ' ' + dl.error;
+  else if (info.available) {
+    msg += en ? ` Version ${info.latest.version} is available.` : ` Доступна версия ${info.latest.version}.`;
+    if (info.git_checkout) msg += en ? ' This folder is a git checkout: update it with git pull.' : ' Папка программы — git-репозиторий: обновите её командой git pull.';
+  } else if (info.error) msg += (en ? ' Check failed: ' : ' Не удалось проверить: ') + info.error;
+  else if (info.checked_at) msg += en ? ' This is the latest version.' : ' Это последняя версия.';
+  text.textContent = msg;
+  btn.classList.toggle('hidden', !info.can_install || !!dl.active);
+  btn.textContent = dl.done ? t('updateRestartBtn') : t('updateInstallBtn');
+}
+
+async function checkForUpdates(force) {
+  try {
+    const r = force ? await fetch('/api/update/check', { method: 'POST' }) : await fetch('/api/update?check=true');
+    updateState.info = await r.json();
+  } catch (e) { return; }
+  renderUpdateStatus();
+  const info = updateState.info;
+  const en = state.uiLang === 'en';
+  if (!force && info.available && !updateState.notified) {
+    updateState.notified = true;
+    showToast(en ? `VerbaScribe ${info.latest.version} is available` : `Доступна версия VerbaScribe ${info.latest.version}`,
+      { label: en ? 'Details' : 'Подробнее', onClick: () => openModal('settings', 'general') });
+  } else if (force && !info.available && !info.error) {
+    showToast(en ? 'You have the latest version' : 'У вас последняя версия');
+  }
+}
+
+async function installUpdate() {
+  const info = updateState.info;
+  if (!info || !info.can_install) return;
+  const en = state.uiLang === 'en';
+  if (!(info.download || {}).done) {
+    if (updateState.polling) return;
+    const r = await fetch('/api/update/download', { method: 'POST' });
+    if (!r.ok) { showToast((await r.json()).detail || 'Error'); return; }
+    updateState.info = await r.json();
+    renderUpdateStatus();
+    updateState.polling = true;
+    while (true) {
+      await new Promise(res => setTimeout(res, 700));
+      try { updateState.info = await (await fetch('/api/update')).json(); } catch (e) { continue; }
+      renderUpdateStatus();
+      if (!updateState.info.download.active) break;
+    }
+    updateState.polling = false;
+    if (!updateState.info.download.done) return;
+  }
+  const ok = confirm(en
+    ? `Install VerbaScribe ${info.latest.version}? The app will close, update itself and start again.`
+    : `Установить VerbaScribe ${info.latest.version}? Программа закроется, обновится и запустится снова.`);
+  if (!ok) return;
+  const r = await fetch('/api/update/install', { method: 'POST' });
+  if (!r.ok) { showToast((await r.json()).detail || 'Error'); return; }
+  showToast(en ? 'Installing the update…' : 'Установка обновления…');
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   state.autoScroll = true;
   initLogoEasterEgg();
@@ -4755,6 +4826,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   loadSystemInfo();
+  setTimeout(() => checkForUpdates(false), 4000);  // after the page has settled; only if enabled in settings
   loadDictionary();
   loadVram();
   document.addEventListener('visibilitychange', () => { if (!document.hidden) scheduleVramRefresh(100); });

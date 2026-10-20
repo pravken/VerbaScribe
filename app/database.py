@@ -109,6 +109,7 @@ def init_db() -> None:
             "batched_inference": "true",  # faster-whisper BatchedInferencePipeline on GPU
             "keep_model_loaded": "true",  # reuse Whisper between queued recordings if VRAM allows
             "voice_profiles": "true",  # name known voices automatically (app/voice_profiles.py)
+            "update_check": "true",  # look for a new release on GitHub at start (app/updater.py)
         }
 
         for k, v in default_settings.items():
