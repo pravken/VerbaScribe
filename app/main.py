@@ -713,6 +713,9 @@ def api_rename_meeting(meeting_id: int, payload: MeetingTitlePayload) -> Dict[st
         raise HTTPException(status_code=400, detail="Название не может быть пустым")
     # A title the user gave is never replaced by one made from the content
     update_meeting_fields(meeting_id, title=title[:300], title_is_default=0)
+    from app.naming import rename_recording_file
+
+    rename_recording_file(meeting_id)
     refresh_if_exported(meeting_id)
     return get_meeting(meeting_id)
 
@@ -1110,8 +1113,11 @@ def _queue_recording(payload: RecordFinishPayload, dest: Path, safe_stem: str, h
         title_is_default=True,
         has_video=has_video,
     )
+    from app.naming import rename_recording_file
+
+    rename_recording_file(m["id"])  # "2026-10-20 Запись 14-05.m4a"; renamed again once titled
     enqueue_meeting_job(m["id"])
-    return {"created": [m]}
+    return {"created": [get_meeting(m["id"]) or m]}
 
 
 class UiLangPayload(BaseModel):
@@ -1818,7 +1824,9 @@ def api_video_subtitles(meeting_id: int, payload: SubtitlesRequestPayload) -> Di
         raise HTTPException(status_code=400, detail="Нет текста для субтитров")
     srt_text = cues_to_srt(cues)
     track_lang = lang or (m.get("language") or "")
-    out_path = default_output_path(m.get("title") or media.stem, media, track_lang or "orig", variant, payload.mode)
+    from app.naming import base_name
+
+    out_path = default_output_path(base_name(m) or media.stem, media, track_lang or "orig", variant, payload.mode)
     if payload.ask_path:
         ext = output_extension(media)
         chosen = _pick_path_native("save", _default_export_dir(), out_path.name, ext.lstrip("."))

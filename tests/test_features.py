@@ -202,3 +202,26 @@ class DeleteWithSourceTest(unittest.TestCase):
             mid = db.create_meeting("Локальная", "talk.mp3", str(src), source="local")["id"]
             db.delete_meeting(mid, with_source=with_source)
             self.assertEqual(src.exists(), not with_source)
+
+
+class FileNamingTest(unittest.TestCase):
+    def test_recording_renamed_by_template(self):
+        import tempfile
+        from pathlib import Path
+
+        from app import database as db
+        from app.naming import base_name, rename_recording_file
+
+        db.init_db()
+        d = Path(tempfile.mkdtemp())
+        f = d / "a1b2c3d4_Запись.m4a"
+        f.write_bytes(b"x")
+        mid = db.create_meeting("Планёрка: релиз?", f.name, str(f), source="recording", owns_media=True,
+                                recorded_at="2026-10-20 14:05:00")["id"]
+        self.assertEqual(base_name(db.get_meeting(mid), "{date} {time} {title}"), "2026-10-20 14-05 Планёрка релиз")
+        db.update_settings({"file_name_template": "{date} {title}"})
+        new = rename_recording_file(mid)
+        self.assertEqual(new.name, "2026-10-20 Планёрка релиз.m4a")
+        self.assertTrue(new.exists() and not f.exists())
+        self.assertEqual(db.get_meeting(mid)["media_path"], str(new))
+        db.delete_meeting(mid)

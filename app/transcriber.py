@@ -647,6 +647,9 @@ def _after_transcription(
                 title = generate_meeting_title(segments, speakers, answer_lang=lang, local_only=local_only)
                 if title:
                     update_meeting_fields(meeting_id, title=title, title_is_default=0)
+                    from app.naming import rename_recording_file
+
+                    rename_recording_file(meeting_id)
             except Exception as e:
                 print(f"[title] meeting {meeting_id}: {e}", flush=True)
     if obsidian.auto_export_enabled(settings):

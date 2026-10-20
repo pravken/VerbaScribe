@@ -26,7 +26,10 @@ def export_source(m: Dict[str, Any], lang: Optional[str], variant: str) -> Tuple
 
 
 def safe_title(m: Dict[str, Any]) -> str:
-    return "".join(c if c.isalnum() or c in " -_" else "_" for c in m.get("title", "meeting")).strip() or "meeting"
+    """The export file name from the template in Settings -> Export ("{date} {title}")."""
+    from app.naming import base_name
+
+    return base_name(m)
 
 
 def build_export_bytes(

@@ -543,6 +543,7 @@ function fillObsidianSettings(s) {
   }
   document.getElementById('set-obsidian-subfolder').value = s.obsidian_subfolder ?? 'VerbaScribe';
   document.getElementById('set-obsidian-filename').value = s.obsidian_filename || '{date} {title}';
+  document.getElementById('set-file-name-template').value = s.file_name_template || '{date} {title}';
   const vault = document.getElementById('set-obsidian-vault');
   vault.textContent = s.obsidian_vault || t('obsVaultNone');
   vault.title = s.obsidian_vault || '';
@@ -554,6 +555,7 @@ function obsidianSettingsPayload() {
   const out = {
     obsidian_subfolder: document.getElementById('set-obsidian-subfolder').value.trim(),
     obsidian_filename: document.getElementById('set-obsidian-filename').value.trim() || '{date} {title}',
+    file_name_template: document.getElementById('set-file-name-template').value.trim() || '{date} {title}',
   };
   for (const k of OBSIDIAN_TOGGLES) out[`obsidian_${k}`] = String(document.getElementById(`set-obsidian-${k}`).checked);
   return out;
