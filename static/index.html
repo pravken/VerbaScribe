@@ -1882,8 +1882,21 @@
             <h4 class="text-xs font-semibold text-white" data-i18n="fileNameTitle">Имена файлов</h4>
             <p class="text-[11px] text-apple-secondary leading-snug" data-i18n="fileNameDesc">Шаблон имени для записей из студии и всех экспортов: {date} — дата записи, {time} — время, {title} — название, {lang} — язык. Запись получает имя по названию, как только оно появится.</p>
           </div>
-          <input id="set-file-name-template" type="text" spellcheck="false" placeholder="{date} {title}"
+          <input id="set-file-name-template" type="text" spellcheck="false" placeholder="{date} {title}" oninput="updateFileNamePreview()"
             class="w-full h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono focus:outline-none focus:border-apple-blue" />
+          <div class="flex flex-wrap gap-1" id="file-name-tokens"></div>
+          <div class="flex items-center gap-2 pt-1">
+            <span class="text-[11px] text-apple-secondary" data-i18n="dateFoldersLabel">Папки по дате</span>
+            <select id="set-date-folders" onchange="updateFileNamePreview()" data-i18n-title="tipDateFolders"
+              title="Записи из студии и экспорты раскладываются по папкам с датой записи. Имена вида 2026-10-21 сортируются в Проводнике по порядку"
+              class="h-7 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none">
+              <option value="off" data-i18n="dateFoldersOff">Не создавать</option>
+              <option value="day" data-i18n="dateFoldersDay">По дням — 2026-10-21</option>
+              <option value="month" data-i18n="dateFoldersMonth">По месяцам — 2026-10</option>
+              <option value="year_month" data-i18n="dateFoldersYearMonth">Год и месяц — 2026\2026-10</option>
+            </select>
+          </div>
+          <div class="text-[11px] text-apple-tertiary font-mono break-all" id="file-name-preview"></div>
         </div>
         <!-- Export Folder -->
         <div class="space-y-2 pb-4 border-b apple-border">

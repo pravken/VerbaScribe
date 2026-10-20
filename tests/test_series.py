@@ -257,3 +257,25 @@ class SpaceTokenTest(unittest.TestCase):
         words = words_from_text("в той стадии, 8:00", toks, [i * 0.1 for i in range(len(toks))], 1.0, 2.0)
         self.assertEqual([w["word"] for w in words], [" в", " той", " стадии,", " 8:00"])
         self.assertEqual(words[2]["start"], 1.2)
+
+
+class DateFolderTest(unittest.TestCase):
+    def test_names_and_parent(self):
+        import tempfile
+        from datetime import datetime
+        from pathlib import Path
+        from app.naming import date_folder, in_date_folder, without_date_folders
+
+        dt = datetime(2026, 10, 21, 9, 30)
+        self.assertEqual(date_folder(dt, "day"), "2026-10-21")
+        self.assertEqual(date_folder(dt, "month"), "2026-10")
+        self.assertEqual(date_folder(dt, "year_month"), "2026/2026-10")
+        self.assertEqual(date_folder(dt, "off"), "")
+        self.assertEqual(without_date_folders(Path("/x/Exports/2026/2026-10")), Path("/x/Exports"))
+        with tempfile.TemporaryDirectory() as tmp:
+            from unittest import mock
+            with mock.patch("app.naming.get_all_settings", return_value={"date_folders": "day"}):
+                # The remembered folder is yesterday's date folder: today's goes next to it
+                d = in_date_folder(Path(tmp) / "2026-10-20", dt)
+            self.assertEqual(d, Path(tmp) / "2026-10-21")
+            self.assertTrue(d.is_dir())

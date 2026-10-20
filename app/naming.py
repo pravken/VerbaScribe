@@ -3,12 +3,43 @@ File names of a recording's files: its recording in the recordings folder and ev
 from one template like the Obsidian notes ("{date} {title}" by default; {time} and {lang} too).
 """
 
+import re
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 from app.database import _db_lock, get_all_settings, get_connection, get_meeting
 
 DEFAULT_TEMPLATE = "{date} {title}"
+
+# Folders by date for recordings and exports, named so that sorting by name in Explorer is
+# chronological ("2026-10-21", not "21.10.2026")
+DATE_FOLDERS = {"off": "", "day": "%Y-%m-%d", "month": "%Y-%m", "year_month": "%Y/%Y-%m"}
+_DATE_NAME_RE = re.compile(r"^\d{4}(-\d{2}){0,2}$")
+
+
+def date_folder(dt: datetime, mode: Optional[str] = None) -> str:
+    """"2026-10-21", "2026-10", "2026/2026-10" or "" (off)."""
+    if mode is None:
+        mode = get_all_settings().get("date_folders") or "off"
+    fmt = DATE_FOLDERS.get(mode, "")
+    return dt.strftime(fmt) if fmt else ""
+
+
+def without_date_folders(folder: Path) -> Path:
+    """The folder above the date folders (the remembered export folder may be one of them)."""
+    while _DATE_NAME_RE.match(folder.name) and folder.parent != folder:
+        folder = folder.parent
+    return folder
+
+
+def in_date_folder(base: Path, dt: datetime) -> Path:
+    sub = date_folder(dt)
+    if not sub:
+        return base
+    folder = without_date_folders(base) / sub
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
 
 
 def base_name(m: Dict[str, Any], template: Optional[str] = None) -> str:

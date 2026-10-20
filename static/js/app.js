@@ -576,6 +576,8 @@ function fillObsidianSettings(s) {
   document.getElementById('set-obsidian-subfolder').value = s.obsidian_subfolder ?? 'VerbaScribe';
   document.getElementById('set-obsidian-filename').value = s.obsidian_filename || '{date} {title}';
   document.getElementById('set-file-name-template').value = s.file_name_template || '{date} {title}';
+  document.getElementById('set-date-folders').value = s.date_folders || 'off';
+  updateFileNamePreview();
   const vault = document.getElementById('set-obsidian-vault');
   vault.textContent = s.obsidian_vault || t('obsVaultNone');
   vault.title = s.obsidian_vault || '';
@@ -588,9 +590,41 @@ function obsidianSettingsPayload() {
     obsidian_subfolder: document.getElementById('set-obsidian-subfolder').value.trim(),
     obsidian_filename: document.getElementById('set-obsidian-filename').value.trim() || '{date} {title}',
     file_name_template: document.getElementById('set-file-name-template').value.trim() || '{date} {title}',
+    date_folders: document.getElementById('set-date-folders').value || 'off',
   };
   for (const k of OBSIDIAN_TOGGLES) out[`obsidian_${k}`] = String(document.getElementById(`set-obsidian-${k}`).checked);
   return out;
+}
+
+// Settings -> Export: tokens to insert and an example of the folder and file name
+const FILE_NAME_TOKENS = ['{date}', '{time}', '{title}', '{lang}'];
+
+function updateFileNamePreview() {
+  const input = document.getElementById('set-file-name-template');
+  const tokens = document.getElementById('file-name-tokens');
+  if (tokens && !tokens.childElementCount) {
+    tokens.innerHTML = FILE_NAME_TOKENS.map(tk => `<button type="button" data-tk="${tk}" class="ui-btn ui-btn-subtle h-6 !px-2 text-[10.5px] font-mono">${tk}</button>`).join('');
+    tokens.onclick = e => {
+      const b = e.target.closest('[data-tk]');
+      if (!b) return;
+      const pos = input.selectionStart ?? input.value.length;
+      input.value = input.value.slice(0, pos) + b.dataset.tk + input.value.slice(input.selectionEnd ?? pos);
+      input.focus();
+      updateFileNamePreview();
+    };
+  }
+  const m = state.activeMeeting;
+  const d = m ? new Date(String(m.recorded_at || m.created_at || '').replace(' ', 'T')) : new Date();
+  const dt = isNaN(d) ? new Date() : d;
+  const p2 = n => String(n).padStart(2, '0');
+  const ymd = `${dt.getFullYear()}-${p2(dt.getMonth() + 1)}-${p2(dt.getDate())}`;
+  const name = (input.value.trim() || '{date} {title}')
+    .replaceAll('{date}', ymd).replaceAll('{time}', `${p2(dt.getHours())}-${p2(dt.getMinutes())}`)
+    .replaceAll('{title}', (m && m.title) || t('fileNameExampleTitle')).replaceAll('{lang}', ((m && m.language) || 'ru').toUpperCase())
+    .replace(/[<>:"/\\|?*]/g, '').trim();
+  const mode = document.getElementById('set-date-folders').value;
+  const folder = { off: '', day: ymd, month: ymd.slice(0, 7), year_month: `${ymd.slice(0, 4)}\\${ymd.slice(0, 7)}` }[mode] || '';
+  document.getElementById('file-name-preview').textContent = `${t('fileNameExample')}: ${folder ? folder + '\\' : ''}${name}.md`;
 }
 
 function updateObsidianPreview() {

@@ -916,7 +916,52 @@ function libPrefs() {
     view: LIB_VIEWS.includes(p.view) ? p.view : 'details',
     sort: LIB_SORTS.includes(p.sort) ? p.sort : 'recorded',
     dir: p.dir === 'asc' ? 'asc' : 'desc',
+    group: LIB_GROUPS.includes(p.group) ? p.group : 'none',
   };
+}
+
+// Recordings grouped by the day (or month) they were recorded, like folders that can be folded
+const LIB_GROUPS = ['none', 'day', 'month'];
+
+function libDateKey(m, group) {
+  const d = String(m.recorded_at || m.created_at || '').slice(0, 10);
+  return group === 'month' ? d.slice(0, 7) : d;
+}
+
+function libDateLabel(key, group) {
+  const lang = state.uiLang === 'en' ? 'en-US' : 'ru-RU';
+  const d = new Date(`${group === 'month' ? key + '-01' : key}T12:00:00`);
+  if (isNaN(d)) return key || '—';
+  if (group === 'month') {
+    const s = d.toLocaleDateString(lang, { month: 'long', year: 'numeric' }).replace(/\s*г\.$/, '');
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+  const local = n => { const x = new Date(); x.setDate(x.getDate() - n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+  const named = key === local(0) ? t('libToday') : key === local(1) ? t('libYesterday') : '';
+  const full = d.toLocaleDateString(lang, { day: 'numeric', month: 'long', year: 'numeric', weekday: 'short' }).replace(/\s*г\.$/, '');
+  return named ? `${named} · ${full}` : full;
+}
+
+function collapsedDates() {
+  try { return new Set(JSON.parse(localStorage.getItem('verbascribe_dates_collapsed') || '[]')); } catch (e) { return new Set(); }
+}
+
+function toggleDateCollapsed(key) {
+  const set = collapsedDates();
+  if (set.has(key)) set.delete(key); else set.add(key);
+  try { localStorage.setItem('verbascribe_dates_collapsed', JSON.stringify([...set].slice(-300))); } catch (e) {}
+  renderMeetingsSidebar();
+}
+
+function dateRowHtml(id, label, count, depth, open) {
+  return `
+    <div onclick="toggleDateCollapsed(this.dataset.id)" data-id="${escapeHtml(id)}"
+         class="flex items-center gap-1.5 pr-2 py-1 rounded-lg cursor-pointer text-apple-secondary hover:bg-white/5 transition"
+         style="padding-left:${6 + depth * 14}px" title="${escapeHtml(label)}">
+      <span class="shrink-0 text-apple-tertiary transition-transform ${open ? 'rotate-90' : ''}">${ICON_CHEVRON}</span>
+      <span class="text-[11px] font-semibold truncate flex-1">${escapeHtml(label)}</span>
+      <span class="text-[10.5px] font-mono text-apple-tertiary">${count}</span>
+    </div>`;
 }
 
 function setLibPref(key, value) {
@@ -961,7 +1006,9 @@ function openLibViewMenu(e) {
   menu.innerHTML = `<div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(t('libView'))}</div>`
     + LIB_VIEWS.map(v => item('view', v, t(`libView_${v}`), p.view === v)).join('')
     + `<div class="my-1 h-px bg-white/10"></div><div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(t('libSort'))}</div>`
-    + LIB_SORTS.map(v => item('sort', v, t(`libSort_${v}`), p.sort === v, arrow)).join('');
+    + LIB_SORTS.map(v => item('sort', v, t(`libSort_${v}`), p.sort === v, arrow)).join('')
+    + `<div class="my-1 h-px bg-white/10"></div><div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(t('libGroup'))}</div>`
+    + LIB_GROUPS.map(v => item('group', v, t(`libGroup_${v}`), p.group === v)).join('');
   menu.addEventListener('click', (ev) => {
     const b = ev.target.closest('button[data-k]');
     ev.stopPropagation();
@@ -1113,8 +1160,24 @@ function renderMeetingsSidebar() {
   for (const list of byFolder.values()) list.sort(libComparator(prefs));
   // Every row is a keyed part: a progress event then replaces only the row that changed
   const parts = [];
-  const items = (list, depth, groupKey) => {
+  const datesCollapsed = collapsedDates();
+  const items = (list, depth, groupKey, byDate = prefs.group !== 'none') => {
     if (!list || !list.length) return;
+    if (byDate) {
+      const buckets = new Map();
+      for (const m of list) {
+        const k = libDateKey(m, prefs.group);
+        if (!buckets.has(k)) buckets.set(k, []);
+        buckets.get(k).push(m);
+      }
+      for (const [k, ms] of buckets) {
+        const id = `${groupKey}:${k}`;
+        const open = !datesCollapsed.has(id);
+        parts.push([`d${id}`, dateRowHtml(id, libDateLabel(k, prefs.group), ms.length, depth, open)]);
+        if (open) items(ms, depth + 1, `${groupKey}_${k}`, false);
+      }
+      return;
+    }
     if (prefs.view === 'grid') {
       parts.push([`g${groupKey}`, `<div class="lib-grid" style="padding-left:${6 + depth * 14}px">${list.map(meetingTileHtml).join('')}</div>`]);
       return;

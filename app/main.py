@@ -555,6 +555,15 @@ def _recordings_dir() -> Path:
     return recordings_dir(get_all_settings().get("recordings_dir") or "")
 
 
+def _recording_folder() -> Path:
+    """Where a new studio recording goes: the recordings folder, or today's folder in it."""
+    from datetime import datetime
+
+    from app.naming import in_date_folder
+
+    return in_date_folder(_recordings_dir(), datetime.now())
+
+
 # Recording stops by itself below this much free space, so the file and the database stay intact
 DISK_STOP_BYTES = 300 * 1024 * 1024
 DISK_WARN_BYTES = 2 * 1024 * 1024 * 1024
@@ -1099,7 +1108,7 @@ async def api_record_finish(payload: RecordFinishPayload) -> Dict[str, Any]:
     safe_stem = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", payload.title.strip() or "Запись")[:100]
     if screen:
         audio = [p for p in (page if payload.has_mic else None, system) if p]
-        dest = _recordings_dir() / f"{uuid.uuid4().hex[:8]}_{safe_stem}.mp4"
+        dest = _recording_folder() / f"{uuid.uuid4().hex[:8]}_{safe_stem}.mp4"
         res = await run_in_threadpool(_run_ffmpeg, screen_mix_command(tool_cmd("ffmpeg"), screen, audio, dest))
         if res.returncode != 0 or not dest.is_file():
             raise HTTPException(status_code=500, detail="Не удалось свести запись: " + (res.stderr or "")[-300:])
@@ -1110,7 +1119,7 @@ async def api_record_finish(payload: RecordFinishPayload) -> Dict[str, Any]:
 
     has_video = bool(payload.has_video and page)
     ext = ".webm" if page and (has_video or not system) else ".m4a"
-    dest = _recordings_dir() / f"{uuid.uuid4().hex[:8]}_{safe_stem}{ext}"
+    dest = _recording_folder() / f"{uuid.uuid4().hex[:8]}_{safe_stem}{ext}"
     cmd = record_mix_command(tool_cmd("ffmpeg"), page, system, has_video, payload.has_mic, dest)
     if cmd is None:
         shutil.move(str(page), str(dest))  # the recordings folder may have changed to another drive
@@ -1885,7 +1894,7 @@ def api_dub_save(meeting_id: int, lang: str, kind: str) -> Dict[str, Any]:
     if not src.is_file():
         raise HTTPException(status_code=404, detail="Файл не найден")
     fmt = src.suffix.lower().lstrip(".")
-    chosen = _pick_path_native("save", _default_export_dir(), src.name, fmt)
+    chosen = _pick_export_path(get_meeting(meeting_id), src.name, fmt)
     if not chosen:
         return {"ok": False, "cancelled": True}
     out_path = Path(chosen)
@@ -1893,7 +1902,7 @@ def api_dub_save(meeting_id: int, lang: str, kind: str) -> Dict[str, Any]:
         out_path = out_path.with_name(out_path.name + src.suffix)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, out_path)
-    update_settings({"export_dir": str(out_path.parent)})
+    update_settings({"export_dir": str(_export_base(out_path.parent))})
     return {"ok": True, "path": str(out_path), "filename": out_path.name, "folder": str(out_path.parent)}
 
 
@@ -1995,7 +2004,7 @@ def api_meeting_cut(meeting_id: int, payload: CutPayload) -> Dict[str, Any]:
     has_video = bool(probe_media(media)["has_video"])
     ext = output_extension(media) if has_video else ".m4a"
     suffix = ".highlights" if payload.kind == "highlights" else ".clean"
-    chosen = _pick_path_native("save", _default_export_dir(), f"{base_name(m)}{suffix}{ext}", ext.lstrip("."))
+    chosen = _pick_export_path(m, f"{base_name(m)}{suffix}{ext}", ext.lstrip("."))
     if not chosen:
         return {"ok": False, "cancelled": True}
     out = Path(chosen)
@@ -2003,7 +2012,7 @@ def api_meeting_cut(meeting_id: int, payload: CutPayload) -> Dict[str, Any]:
         out = out.with_name(out.name + ext)
     if out.resolve() == media.resolve():
         raise HTTPException(status_code=400, detail="Нельзя сохранить результат поверх исходного файла")
-    update_settings({"export_dir": str(out.parent)})
+    update_settings({"export_dir": str(_export_base(out.parent))})
     if not enqueue_cut_job(meeting_id, payload.kind, intervals, has_video, str(out)):
         raise HTTPException(status_code=409, detail="Запись сейчас обрабатывается")
     return {"ok": True, "queued": True, "filename": out.name, "path": str(out), "kept_seconds": round(kept_seconds(intervals), 1),
@@ -2051,13 +2060,13 @@ def api_video_subtitles(meeting_id: int, payload: SubtitlesRequestPayload) -> Di
     out_path = default_output_path(base_name(m) or media.stem, media, track_lang or "orig", variant, payload.mode)
     if payload.ask_path:
         ext = output_extension(media)
-        chosen = _pick_path_native("save", _default_export_dir(), out_path.name, ext.lstrip("."))
+        chosen = _pick_export_path(m, out_path.name, ext.lstrip("."))
         if not chosen:
             return {"ok": False, "cancelled": True}
         out_path = Path(chosen)
         if out_path.suffix.lower() != ext:
             out_path = out_path.with_name(out_path.name + ext)
-        update_settings({"export_dir": str(out_path.parent)})
+        update_settings({"export_dir": str(_export_base(out_path.parent))})
     try:
         check_output_path(media, out_path)
     except ValueError as e:
@@ -2153,6 +2162,30 @@ def _default_export_dir() -> Path:
     return default_export_dir()
 
 
+def _export_base(folder: Path) -> Path:
+    from app.naming import without_date_folders
+
+    return without_date_folders(folder)
+
+
+def _pick_export_path(m: Optional[Dict[str, Any]], filename: str, fmt: str) -> Optional[str]:
+    """The Save dialog for an export, opened in the recording's date folder when that is on (a
+    date folder made just for this and left empty after a cancel is removed)."""
+    from app.naming import in_date_folder
+    from app.obsidian import meeting_datetime
+
+    base = _default_export_dir()
+    folder = in_date_folder(base, meeting_datetime(m)) if m else base
+    existed = folder == base or any(folder.iterdir())
+    chosen = _pick_path_native("save", folder, filename, fmt)
+    if not chosen and not existed:
+        try:
+            folder.rmdir()
+        except OSError:
+            pass
+    return chosen
+
+
 def _pick_path_native(mode: str, directory: Path, filename: str = "", fmt: str = "") -> Optional[str]:
     """
     Spawns an isolated native file/folder dialog via app.native_dialog in a subprocess.
@@ -2202,7 +2235,7 @@ def api_save_export_to_disk(
         raise HTTPException(status_code=404, detail="Встреча не найдена")
 
     content, _, filename = _build_export_bytes(m, fmt, lang, variant)
-    chosen = _pick_path_native("save", _default_export_dir(), filename, fmt.lower())
+    chosen = _pick_export_path(m, filename, fmt.lower())
     if not chosen:
         return {"ok": False, "cancelled": True}
 
@@ -2212,7 +2245,7 @@ def api_save_export_to_disk(
         out_path = out_path.with_name(out_path.name + ext)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_bytes(content)
-    update_settings({"export_dir": str(out_path.parent)})
+    update_settings({"export_dir": str(_export_base(out_path.parent))})
 
     return {"ok": True, "path": str(out_path), "filename": out_path.name, "folder": str(out_path.parent)}
 
