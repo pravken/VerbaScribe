@@ -141,13 +141,22 @@ def _load(model_id: str):
 
     with _lock:
         if model_id not in _loaded:
-            model_dir(model_id).mkdir(parents=True, exist_ok=True)
-            _vad_dir().mkdir(parents=True, exist_ok=True)
+            fetch(model_id)
             asr = onnx_asr.load_model(ONNX_MODELS[model_id]["onnx_name"], model_dir(model_id))
             vad = onnx_asr.load_vad(VAD_NAME, _vad_dir())
             _loaded[model_id] = asr.with_vad(vad, max_speech_duration_s=MAX_PHRASE_SEC, min_silence_duration_ms=300,
                                              speech_pad_ms=120).with_timestamps()
         return _loaded[model_id]
+
+
+def fetch(model_id: str) -> None:
+    """Downloads the missing model files into our models folder. onnx_asr.load_model with a path that
+    already exists only looks there and never downloads, so the files are fetched with its resolver
+    (offline=False: look in the folder, download from Hugging Face what is not there)."""
+    from onnx_asr.loader import create_asr_resolver, create_vad_resolver
+
+    create_asr_resolver(ONNX_MODELS[model_id]["onnx_name"], model_dir(model_id), offline=False).resolve_model()
+    create_vad_resolver(VAD_NAME, _vad_dir(), offline=False).resolve_model()
 
 
 def release() -> None:

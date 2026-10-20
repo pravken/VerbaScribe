@@ -42,3 +42,30 @@ class OnnxEnsurePackageTest(unittest.TestCase):
         cmd = run.call_args[0][0]
         self.assertEqual(cmd[:3], ["uv", "pip", "install"])
         self.assertIn(asr_onnx.ONNX_ASR_PIN, cmd)
+
+    def test_fetch_downloads_into_existing_folder(self):
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+        from app import asr_onnx
+        from onnx_asr.resolver import Resolver
+
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp) / "gigaam-v2"
+            d.mkdir()  # an earlier failed attempt left an empty folder
+            calls = []
+
+            def fake_download(self, quantization, *, local_files_only):
+                calls.append(local_files_only)
+                Path(self.local_dir).mkdir(parents=True, exist_ok=True)
+                for f in self.model_type._get_model_files(quantization).values():
+                    p = Path(self.local_dir, f.removeprefix("**/").replace("?", "_"))
+                    p.write_text("x")
+                return self.local_dir
+
+            with mock.patch.object(asr_onnx, "model_dir", return_value=d), \
+                 mock.patch.object(asr_onnx, "_vad_dir", return_value=Path(tmp) / "vad"), \
+                 mock.patch.object(Resolver, "_download_model", fake_download):
+                asr_onnx.fetch("gigaam-v2")
+            self.assertIn(False, calls)
+            self.assertTrue(list(d.glob("*.onnx")))
