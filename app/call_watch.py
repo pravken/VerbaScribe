@@ -179,6 +179,7 @@ class CallWatcher:
 
 
 _watcher = CallWatcher()
+_last_seen: List[List[str]] = [[]]
 _started = False
 _lock = threading.Lock()
 
@@ -191,7 +192,11 @@ def _run() -> None:
             if (settings.get("call_auto_record") or "false").lower() != "true":
                 _watcher.tick(None, time.time())  # switched off mid-call: the recording is ended as usual
                 continue
-            _watcher.tick(matching_app(apps_using_microphone(), watched_apps(settings)), time.time())
+            in_use = apps_using_microphone()
+            if in_use != _last_seen[0]:  # every change of what holds the microphone, for diagnosing
+                print(f"[calls] microphone in use by: {', '.join(in_use) or 'nobody'}", flush=True)
+                _last_seen[0] = in_use
+            _watcher.tick(matching_app(in_use, watched_apps(settings)), time.time())
         except Exception:
             traceback.print_exc()
             time.sleep(10)
@@ -205,6 +210,7 @@ def start() -> None:
         if not _started:
             threading.Thread(target=_run, daemon=True, name="call_watch").start()
             _started = True
+            print("[calls] watcher started", flush=True)
 
 
 def status() -> Dict[str, object]:

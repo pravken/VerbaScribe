@@ -191,7 +191,12 @@ def _run() -> None:
                 index_meeting(mid, settings)
             _state["error"] = ""
         except Exception as e:
-            traceback.print_exc()
+            # Reported once, not every two minutes (a model that is not downloaded is the usual case)
+            if str(e)[:300] != _state["error"]:
+                if isinstance(e, RuntimeError):
+                    print(f"[semantic] {e}", flush=True)
+                else:
+                    traceback.print_exc()
             _state["error"] = str(e)[:300]
         finally:
             _state.update(running=False, current=None)
