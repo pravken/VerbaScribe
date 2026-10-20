@@ -274,17 +274,43 @@ class TrayController:
         window.events.closing += self.on_closing
 
     def start(self) -> None:
+        self._apply_hotkey()
         started = ICO_PATH.exists() and self.tray.start()
         print(f"[tray] icon {'shown' if started and self.tray.hwnd else 'not shown'}")
         if started:
             threading.Thread(target=self._poll, daemon=True, name="tray_status").start()
+
+    # ---- global hotkey: starts or stops a recording with the default preset, window or not
+    def _apply_hotkey(self) -> None:
+        from app.database import get_all_settings
+
+        spec = (get_all_settings().get("record_hotkey") or "").strip()
+        if spec != getattr(self, "_hotkey_spec", None):
+            self._hotkey_spec = spec
+            self.tray.set_hotkey(spec, "hotkey_record")
+
+    def _hotkey_record(self) -> None:
+        recording = bool(self._status.get("recording"))
+        self.window.evaluate_js("window.trayCommand && window.trayCommand('record', null)")
+        key = self._hotkey_spec
+        if recording:
+            self.tray.notify("Запись остановлена", "Запись сохранена и отправлена на расшифровку")
+        else:
+            self.tray.notify("Запись начата", f"Чтобы остановить, нажмите {key}" if key else "")
 
     # ---- status
     def _poll(self) -> None:
         from app.app_status import snapshot
         from app.database import get_meeting
 
+        tick = 0
         while not self.quitting:
+            tick += 1
+            if tick % 5 == 0:
+                try:
+                    self._apply_hotkey()  # changed in Settings → Recording
+                except Exception as e:
+                    print(f"[tray] hotkey error: {e}", file=sys.stderr)
             try:
                 st = snapshot()
                 self._status = st
@@ -325,6 +351,7 @@ class TrayController:
             ("Открыть VerbaScribe", "open", self._mf_default),
             (None, None, 0),
             (st.get("text") or "Готово к работе", None, self._mf_grayed),
+            *self._quick_record_item(st),
             *self._record_items(st),
             ("Импорт файлов…", "import", 0),
             ("Вопрос по медиатеке…", "ask", 0),
@@ -335,10 +362,18 @@ class TrayController:
             ("Выход", "quit", 0),
         ]
 
+    def _quick_record_item(self, st):
+        """One click: records with the default preset without bringing the window up."""
+        if st.get("recording"):
+            return []
+        key = getattr(self, "_hotkey_spec", "")
+        return [("● Начать запись" + (f"\t{key}" if key else ""), "hotkey_record", 0)]
+
     def _record_items(self, st):
         """One entry per recording preset (app.js BUILTIN_PRESETS + the user's own)."""
         if st.get("recording"):
-            return [("Остановить запись", "record", 0)]
+            key = getattr(self, "_hotkey_spec", "")
+            return [("■ Остановить запись" + (f"\t{key}" if key else ""), "record", 0)]
         import json
 
         from app.database import get_all_settings
@@ -355,6 +390,9 @@ class TrayController:
                 for pid, name in presets[:12]]
 
     def on_command(self, cmd: str) -> None:
+        if cmd == "hotkey_record":
+            self._hotkey_record()
+            return
         if cmd.startswith("record:"):
             self.show_window()
             import json

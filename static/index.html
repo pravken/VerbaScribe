@@ -1512,6 +1512,17 @@
           </div>
 
           <div>
+            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="hotkeyLabel">Горячая клавиша записи</label>
+            <div class="flex items-center gap-2">
+              <input id="set-record-hotkey" type="text" readonly onkeydown="captureHotkey(event)" onfocus="this.select()"
+                data-i18n-title="tipHotkey" title="Нажмите сочетание клавиш: запись начнётся и остановится из любой программы, окно не разворачивается"
+                class="w-44 h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono focus:outline-none focus:border-apple-blue cursor-pointer" />
+              <button onclick="clearHotkey()" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" data-i18n="hotkeyClear">Отключить</button>
+              <span id="hotkey-status" class="text-[11px] text-apple-tertiary"></span>
+            </div>
+          </div>
+
+          <div>
             <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="liveModelLabel">Модель для субтитров во время записи</label>
             <select id="set-live-model" data-i18n-title="tipLiveModel"
               title="Субтитры в студии нужны, чтобы следить за речью; после записи файл всё равно расшифровывается основной моделью"

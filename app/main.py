@@ -544,6 +544,14 @@ def disk_state() -> Dict[str, Any]:
             "stop_bytes": DISK_STOP_BYTES, "low": 0 <= low < DISK_WARN_BYTES, "critical": 0 <= low < DISK_STOP_BYTES}
 
 
+@app.get("/api/hotkey")
+def api_hotkey() -> Dict[str, Any]:
+    """Whether the recording hotkey is registered (it lives in the desktop window's tray thread)."""
+    from app.hotkey import hotkey_state
+
+    return dict(hotkey_state)
+
+
 @app.get("/api/disk")
 def api_disk() -> Dict[str, Any]:
     return disk_state()

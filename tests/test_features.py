@@ -38,5 +38,16 @@ class SubtitleCueTest(unittest.TestCase):
         self.assertIn("1\n00:00:01,500 --> 00:00:03,250\nПривет", cues_to_srt(cues))
 
 
+class HotkeyTest(unittest.TestCase):
+    def test_parse(self):
+        from app.hotkey import MOD_ALT, MOD_CONTROL, MOD_SHIFT, parse_hotkey
+
+        self.assertEqual(parse_hotkey("Ctrl+Alt+R"), (MOD_CONTROL | MOD_ALT, ord("R")))
+        self.assertEqual(parse_hotkey("ctrl + shift + f9"), (MOD_CONTROL | MOD_SHIFT, 0x78))
+        self.assertEqual(parse_hotkey("Alt+5"), (MOD_ALT, ord("5")))
+        for bad in ("", "R", "Shift+R", "Ctrl+Alt", "Ctrl+Я", "Hyper+R", "Ctrl+F25"):
+            self.assertIsNone(parse_hotkey(bad), bad)
+
+
 if __name__ == "__main__":
     unittest.main()

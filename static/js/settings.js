@@ -95,6 +95,8 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     fillDubSettings(s);
     renderRecordSaveHint();
     state.liveModelSetting = s.live_whisper_model || 'auto';
+    document.getElementById('set-record-hotkey').value = s.record_hotkey ?? 'Ctrl+Alt+R';
+    loadHotkeyStatus();
     renderLiveModelSelect();
 
     const srcMode = s.record_source_mode || 'both';
@@ -638,6 +640,38 @@ async function renderAnalysisEstimate() {
 
 const ICON_LOCK = '<svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/></svg>';
 
+// --- Recording hotkey: pressed in the field, registered system-wide by the tray (app/tray.py) ---
+function captureHotkey(e) {
+  e.preventDefault();
+  if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return;
+  if (e.key === 'Escape') { e.target.blur(); return; }
+  if (e.key === 'Backspace' || e.key === 'Delete') { e.target.value = ''; return; }
+  const mods = [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Win'].filter(Boolean);
+  if (!mods.some(m => m !== 'Shift')) {
+    document.getElementById('hotkey-status').textContent = t('hotkeyNeedsMod');
+    return;
+  }
+  // Codes, not letters: the same keys work in any keyboard layout
+  const code = e.code.startsWith('Key') ? e.code.slice(3) : e.code.startsWith('Digit') ? e.code.slice(5)
+    : /^F\d{1,2}$/.test(e.code) ? e.code : { Space: 'Space', Pause: 'Pause', Insert: 'Insert', Home: 'Home', End: 'End', PageUp: 'PageUp', PageDown: 'PageDown' }[e.code];
+  if (!code) return;
+  e.target.value = [...mods, code].join('+');
+  document.getElementById('hotkey-status').textContent = t('hotkeySaveHint');
+}
+
+function clearHotkey() {
+  document.getElementById('set-record-hotkey').value = '';
+  document.getElementById('hotkey-status').textContent = t('hotkeySaveHint');
+}
+
+async function loadHotkeyStatus() {
+  const box = document.getElementById('hotkey-status');
+  const st = await fetch('/api/hotkey').then(r => r.json()).catch(() => null);
+  if (!box || !st || st.ok === null || st.ok === undefined) { if (box) box.textContent = ''; return; }
+  box.textContent = st.ok ? t('hotkeyActive') : (st.error || t('hotkeyFailed'));
+  box.className = 'text-[11px] ' + (st.ok ? 'text-apple-green' : 'text-apple-amber');
+}
+
 // Captions while recording: "auto" or one of the downloaded Whisper models
 function renderLiveModelSelect() {
   const sel = document.getElementById('set-live-model');
@@ -1009,6 +1043,7 @@ async function saveAllSettings() {
       record_source_mode: document.getElementById('set-record-source')?.value || 'both',
       record_mic_device: document.getElementById('set-record-mic')?.value || '',
       live_whisper_model: document.getElementById('set-live-model')?.value || 'auto',
+      record_hotkey: document.getElementById('set-record-hotkey')?.value.trim() || '',
       ...dubSettingsPayload(),
     }
   };

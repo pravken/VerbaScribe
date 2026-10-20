@@ -15,6 +15,8 @@ from ctypes import wintypes
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
+from app.hotkey import MOD_NOREPEAT, hotkey_state, parse_hotkey
+
 user32 = ctypes.windll.user32 if sys.platform == "win32" else None
 shell32 = ctypes.windll.shell32 if sys.platform == "win32" else None
 gdi32 = ctypes.windll.gdi32 if sys.platform == "win32" else None
@@ -26,6 +28,9 @@ WM_COMMAND = 0x0111
 WM_USER = 0x0400
 WM_APP_TRAY = WM_USER + 20
 WM_APP_UPDATE = WM_USER + 21
+WM_APP_HOTKEY = WM_USER + 22
+WM_HOTKEY = 0x0312
+HOTKEY_ID = 1
 WM_LBUTTONUP = 0x0202
 WM_LBUTTONDBLCLK = 0x0203
 WM_RBUTTONUP = 0x0205
@@ -106,6 +111,8 @@ def _setup_prototypes() -> None:
     user32.DestroyIcon.argtypes = [wintypes.HICON]
     user32.SetForegroundWindow.argtypes = [wintypes.HWND]
     user32.DestroyWindow.argtypes = [wintypes.HWND]
+    user32.RegisterHotKey.argtypes = [wintypes.HWND, ctypes.c_int, wintypes.UINT, wintypes.UINT]
+    user32.UnregisterHotKey.argtypes = [wintypes.HWND, ctypes.c_int]
     user32.GetMessageW.argtypes = [ctypes.POINTER(wintypes.MSG), wintypes.HWND, wintypes.UINT, wintypes.UINT]
     shell32.Shell_NotifyIconW.argtypes = [wintypes.DWORD, ctypes.POINTER(NOTIFYICONDATAW)]
     gdi32.CreateDIBSection.argtypes = [wintypes.HDC, ctypes.c_void_p, wintypes.UINT,
@@ -233,6 +240,30 @@ class Tray:
         if self.hwnd:
             user32.PostMessageW(self.hwnd, WM_CLOSE, 0, 0)
 
+    def set_hotkey(self, spec: str, command: str) -> None:
+        """Registers a system-wide hotkey that sends `command` (replaces the previous one); an empty
+        spec removes it. Registration happens on the tray thread, which owns the window."""
+        with self._lock:
+            self._hotkey = (spec, command)
+        if self.hwnd:
+            user32.PostMessageW(self.hwnd, WM_APP_HOTKEY, 0, 0)
+
+    def _register_hotkey(self) -> None:
+        spec, command = getattr(self, "_hotkey", ("", ""))
+        user32.UnregisterHotKey(self.hwnd, HOTKEY_ID)
+        self._hotkey_command = command
+        hotkey_state.update(spec=spec, ok=None, error="")
+        if not spec:
+            return
+        parsed = parse_hotkey(spec)
+        if not parsed:
+            hotkey_state.update(ok=False, error="Неверное сочетание клавиш")
+            return
+        if user32.RegisterHotKey(self.hwnd, HOTKEY_ID, parsed[0] | MOD_NOREPEAT, parsed[1]):
+            hotkey_state.update(ok=True)
+        else:
+            hotkey_state.update(ok=False, error="Сочетание уже занято другой программой")
+
     # ---- tray thread
     def _nid(self, flags: int) -> NOTIFYICONDATAW:
         nid = NOTIFYICONDATAW()
@@ -273,6 +304,8 @@ class Tray:
         if not self.hwnd:
             print(f"[tray] window not created (error {kernel32.GetLastError()})", file=sys.stderr)
         self._add_icon()
+        if getattr(self, "_hotkey", None):
+            self._register_hotkey()
         self._ready.set()
         msg = wintypes.MSG()
         while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
@@ -313,6 +346,15 @@ class Tray:
             elif event in (WM_RBUTTONUP, WM_CONTEXTMENU):
                 self._show_menu()
             return 0
+        if msg == WM_APP_HOTKEY:
+            self._register_hotkey()
+            return 0
+        if msg == WM_HOTKEY and wparam == HOTKEY_ID:
+            try:
+                self.on_command(getattr(self, "_hotkey_command", ""))
+            except Exception as e:
+                print(f"[tray] hotkey error: {e}", file=sys.stderr)
+            return 0
         if msg == WM_APP_UPDATE:
             if wparam == 1:
                 with self._lock:
@@ -330,6 +372,7 @@ class Tray:
             self._add_icon()  # Explorer restarted: the icon has to be added again
             return 0
         if msg == WM_CLOSE:
+            user32.UnregisterHotKey(hwnd, HOTKEY_ID)
             shell32.Shell_NotifyIconW(NIM_DELETE, ctypes.byref(self._nid(0)))
             user32.DestroyWindow(hwnd)
             return 0
