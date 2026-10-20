@@ -708,6 +708,12 @@ def _after_transcription(
                     rename_recording_file(meeting_id)
             except Exception as e:
                 print(f"[title] meeting {meeting_id}: {e}", flush=True)
+    try:  # a recurring meeting joins the series of the earlier ones (app/series.py)
+        from app import series
+
+        series.auto_assign(meeting_id)
+    except Exception as e:
+        print(f"[series] meeting {meeting_id}: {e}", flush=True)
     if obsidian.auto_export_enabled(settings):
         update_meeting_progress(meeting_id, progress=97, stage_text="Сохранение заметки в Obsidian...")
         try:

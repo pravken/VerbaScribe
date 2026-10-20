@@ -463,6 +463,10 @@
         <div class="text-[11px] font-semibold text-apple-secondary uppercase tracking-wider mb-1.5" data-i18n="askScopeTitle">Где искать ответ</div>
         <div id="ask-scope-list" class="space-y-0.5"></div>
       </div>
+      <div id="ask-series-block" class="hidden">
+        <div class="text-[11px] font-semibold text-apple-secondary uppercase tracking-wider mb-1.5" data-i18n="seriesTitle">Серии встреч</div>
+        <div id="ask-series-list" class="space-y-0.5"></div>
+      </div>
       <div id="ask-people-block" class="hidden">
         <div class="text-[11px] font-semibold text-apple-secondary uppercase tracking-wider mb-1.5" data-i18n="peopleTitle">Люди</div>
         <div id="ask-people-list" class="space-y-0.5"></div>
@@ -723,6 +727,10 @@
                 data-i18n-title="tipSumChapters"
                 title="Смысловые главы записи с отметками времени; по ним над текстом появляется оглавление"
                 class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumChapters">Главы</button>
+              <button onclick="selectSummaryTab('since_last')" id="sumtab-since_last"
+                data-i18n-title="tipSumSinceLast"
+                title="Задачи и договорённости прошлой встречи серии: что выполнено, что в работе, что не обсуждали"
+                class="hidden apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumSinceLast">С прошлого раза</button>
             </div>
 
             <div class="flex items-center gap-1.5">
@@ -1005,7 +1013,10 @@
     <button id="ctx-restore-item" onclick="ctxRestoreSegments()" data-i18n-title="tipCtxRestore" title="Вернуть исходный текст распознавания" class="macos-menu-item hidden">
       <span data-i18n="ctxRestore">Вернуть текст до очистки</span>
     </button>
-<button id="ctx-local-item" onclick="ctxToggleLocalOnly()" data-i18n-title="tipLocalOnly" title="Не отправлять в облачную модель: анализ, названия и ответы ассистента — только локальной моделью" class="macos-menu-item">
+<button onclick="openSeriesMenu(event)" class="macos-menu-item" data-i18n-title="tipSeriesMenu" title="Серия повторяющихся встреч: те же люди, та же тема">
+      <span data-i18n="ctxSeries">Серия встреч…</span><span id="ctx-series-name" class="text-[10.5px] opacity-60 truncate max-w-[90px]"></span>
+    </button>
+    <button id="ctx-local-item" onclick="ctxToggleLocalOnly()" data-i18n-title="tipLocalOnly" title="Не отправлять в облачную модель: анализ, названия и ответы ассистента — только локальной моделью" class="macos-menu-item">
       <span data-i18n="ctxLocalOnly">Только локальный анализ</span><span id="ctx-local-item-check" class="text-[11px] opacity-70"></span>
     </button>
     <button onclick="ctxRevealInExplorer()" data-i18n-title="tipCtxReveal" title="Открыть папку с исходным медиафайлом в Проводнике Windows" class="macos-menu-item">

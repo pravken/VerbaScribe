@@ -180,7 +180,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // --- Summaries ---
 function selectSummaryTab(tab) {
   state.activeSummaryTab = tab;
-  ['protocol', 'tasks', 'tldr', 'chapters'].forEach(k => {
+  ['protocol', 'tasks', 'tldr', 'chapters', 'since_last'].forEach(k => {
     const btn = document.getElementById(`sumtab-${k}`);
     if (btn) {
       btn.className = (k === tab)
@@ -332,8 +332,40 @@ function summaryModelChoice() {
   return { chosenModel: value || undefined, prettyModel: formatModelName(value || 'Ollama') };
 }
 
+// "Since last time" (app/series.py): the previous meeting of the series checked against this one
+async function generateSinceLast() {
+  const m = state.activeMeeting;
+  const btn = document.getElementById('generate-summary-btn');
+  const box = document.getElementById('summary-content');
+  const { chosenModel } = summaryModelChoice();
+  btn.disabled = true;
+  box.innerHTML = `<div class="py-12 text-center text-xs text-apple-secondary animate-pulse">${escapeHtml(t('sinceLastWorking'))}</div>`;
+  try {
+    const res = await fetch(`/api/meetings/${m.id}/since-last`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: chosenModel, lang: state.uiLang }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Error');
+    m.summaries = data.summaries;
+    renderSummaryPanel();
+  } catch (e) {
+    box.innerHTML = `<div class="py-6 text-xs text-apple-red">${escapeHtml(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function renderSeriesUi() {
+  const m = state.activeMeeting;
+  const tab = document.getElementById('sumtab-since_last');
+  if (tab) tab.classList.toggle('hidden', !(m && m.series_id));
+  if (state.activeSummaryTab === 'since_last' && !(m && m.series_id)) selectSummaryTab('protocol');
+}
+
 async function generateSummaryForActiveTab() {
   if (!state.activeMeeting) return;
+  if (state.activeSummaryTab === 'since_last') { await generateSinceLast(); return; }
   const btn = document.getElementById('generate-summary-btn');
   const box = document.getElementById('summary-content');
   const { chosenModel, prettyModel } = summaryModelChoice();

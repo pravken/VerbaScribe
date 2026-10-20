@@ -1325,6 +1325,84 @@ def api_library_ask(payload: LibraryAskPayload) -> Dict[str, Any]:
         raise HTTPException(status_code=503, detail=str(e))
 
 
+# --- Series of recurring meetings (app/series.py) ---
+@app.get("/api/series")
+def api_list_series() -> List[Dict[str, Any]]:
+    from app.series import list_series
+
+    return list_series()
+
+
+class SeriesAssignPayload(BaseModel):
+    series_id: Optional[int] = None  # None: out of any series
+    new_name: Optional[str] = None   # a new series with this name
+
+
+@app.patch("/api/meetings/{meeting_id}/series")
+def api_meeting_series(meeting_id: int, payload: SeriesAssignPayload) -> Dict[str, Any]:
+    from app.series import create_series
+
+    if not get_meeting(meeting_id):
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    sid = create_series(payload.new_name) if payload.new_name else payload.series_id
+    update_meeting_fields(meeting_id, series_id=sid)
+    return api_get_meeting(meeting_id)
+
+
+class SeriesRenamePayload(BaseModel):
+    name: str
+
+
+@app.patch("/api/series/{series_id}")
+def api_rename_series(series_id: int, payload: SeriesRenamePayload) -> Dict[str, Any]:
+    from app.series import rename_series
+
+    rename_series(series_id, payload.name)
+    return {"ok": True}
+
+
+class SinceLastPayload(BaseModel):
+    lang: str = "ru"
+    model: Optional[str] = None
+
+
+@app.post("/api/meetings/{meeting_id}/since-last")
+def api_since_last(meeting_id: int, payload: SinceLastPayload) -> Dict[str, Any]:
+    """"Since last time": the previous meeting's tasks checked against this one."""
+    from app.series import since_last_time
+
+    try:
+        md = since_last_time(meeting_id, payload.model or None, payload.lang or "ru")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=str(e)[:300])
+    m = get_meeting(meeting_id) or {}
+    summaries = {**(m.get("summaries") or {}), "since_last": md}
+    save_meeting_results(meeting_id, summaries=summaries)
+    return {"summaries": summaries}
+
+
+class BriefPayload(BaseModel):
+    series_id: Optional[int] = None
+    person: Optional[str] = None
+    lang: str = "ru"
+    model: Optional[str] = None
+
+
+@app.post("/api/library/brief")
+def api_library_brief(payload: BriefPayload) -> Dict[str, Any]:
+    """A brief before the next meeting of a series or with a person (app/series.py)."""
+    from app.series import brief
+
+    try:
+        return brief(payload.series_id, payload.person, payload.model, payload.lang)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=str(e)[:300])
+
+
 class DigestPayload(BaseModel):
     folder_id: Optional[int] = None  # a folder with its subfolders; None: the whole library
     days: Optional[int] = None       # only what was recorded in the last days

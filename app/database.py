@@ -225,6 +225,7 @@ _MEETING_EXTRA_COLUMNS = {
     "has_video": "INTEGER DEFAULT NULL",  # NULL: told from the file extension (see is_video)
     "local_only": "INTEGER DEFAULT 0",  # 1: never sent to a cloud model (see is_local_only)
     "media_size": "INTEGER DEFAULT NULL",  # bytes of the media file; NULL: not measured yet
+    "series_id": "INTEGER DEFAULT NULL",  # a series of recurring meetings (app/series.py)
 }
 
 SYSTEM_FOLDERS = {"recordings": "Записи", "imports": "Импорт"}
@@ -591,7 +592,7 @@ def restore_segments_backup(meeting_id: int) -> bool:
 
 def update_meeting_fields(meeting_id: int, **fields: Any) -> None:
     allowed = {"title", "model_name", "language", "num_speakers_hint", "folder_id", "title_is_default", "obsidian_path",
-               "local_only"}
+               "local_only", "series_id"}
     items = [(k, v) for k, v in fields.items() if k in allowed]
     if not items:
         return
@@ -706,7 +707,7 @@ def get_meeting(meeting_id: int) -> Optional[Dict[str, Any]]:
 
 _LIST_COLUMNS = """id, title, filename, media_path, duration, status, progress, stage_text,
     error_message, language, model_name, num_speakers_hint,
-    speakers_json, created_at, completed_at, folder_id, source, recorded_at, has_video, local_only, media_size,
+    speakers_json, created_at, completed_at, folder_id, source, recorded_at, has_video, local_only, media_size, series_id,
     segments_json NOT IN ('', '[]') AS has_transcript,
     summaries_json NOT IN ('', '{}') AS has_summary"""
 

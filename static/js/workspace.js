@@ -21,6 +21,7 @@ async function selectMeeting(id, reloadPlayer = true) {
   updateProcessingBanner(m);
   renderAudioTrackSwitch();
   renderFillerButton();
+  renderSeriesUi();
   if (prevId !== m.id || state.activeWorkspaceTab === 'summary') renderAnalysisEstimate();
 
   if (reloadPlayer || prevId !== m.id) {

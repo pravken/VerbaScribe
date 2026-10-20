@@ -202,6 +202,7 @@ function openRecordingContextMenu(e, meetingId) {
   // Inherited from a folder: shown as on, and changed on that folder
   const inherited = !m.local_only && folderLocalOnly(m.folder_id);
   document.getElementById('ctx-local-item-check').textContent = m.local_only || inherited ? '✓' : '';
+  document.getElementById('ctx-series-name').textContent = ((state.series || []).find(s => s.id === m.series_id) || {}).name || '';
   document.getElementById('ctx-local-item').disabled = inherited;
   document.getElementById('ctx-local-item').style.opacity = inherited ? '.5' : '';
   document.getElementById('ctx-local-item').title = inherited ? t('tipLocalOnlyInherited') : t('tipLocalOnly');
@@ -246,6 +247,52 @@ async function ctxToggleLocalOnly() {
   showToast(m.local_only ? t('localOnlyOn') : t('localOnlyOff'));
   renderMeetingsSidebar();
 }
+
+// --- Series menu of a recording ---
+state.series = [];
+
+async function loadSeries() {
+  state.series = await fetch('/api/series').then(r => r.ok ? r.json() : []).catch(() => []);
+}
+
+async function openSeriesMenu(e) {
+  e.stopPropagation();
+  const m = state.meetings.find(x => x.id === state.contextMeetingId);
+  hideContextMenu();
+  if (!m) return;
+  await loadSeries();
+  document.getElementById('series-menu')?.remove();
+  const menu = document.createElement('div');
+  menu.id = 'series-menu';
+  menu.className = 'fixed w-60 max-h-80 overflow-y-auto macos-menu z-50';
+  menu.innerHTML = `<div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(t('ctxSeries'))}</div>`
+    + state.series.map(s => `<button class="macos-menu-item" data-sid="${s.id}"><span class="truncate">${escapeHtml(s.name)}</span><span class="text-[10.5px] opacity-70">${m.series_id === s.id ? '✓' : s.count}</span></button>`).join('')
+    + `<button class="macos-menu-item" data-sid="new"><span>${escapeHtml(t('seriesNew'))}</span></button>`
+    + (m.series_id ? `<button class="macos-menu-item" data-sid="none"><span>${escapeHtml(t('seriesRemove'))}</span></button>` : '');
+  menu.addEventListener('click', async (ev) => {
+    const b = ev.target.closest('button[data-sid]');
+    ev.stopPropagation();
+    if (!b) return;
+    menu.remove();
+    let body = { series_id: null };
+    if (b.dataset.sid === 'new') {
+      const name = (prompt(t('seriesNamePrompt'), m.title) || '').trim();
+      if (!name) return;
+      body = { new_name: name };
+    } else if (b.dataset.sid !== 'none') body = { series_id: Number(b.dataset.sid) };
+    const res = await fetch(`/api/meetings/${m.id}/series`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (state.activeMeeting && state.activeMeeting.id === m.id) { state.activeMeeting.series_id = data.series_id; renderSeriesUi(); }
+    await loadMeetingsList();
+    loadSeries();
+  });
+  document.body.appendChild(menu);
+  menu.style.left = `${Math.min(e.clientX, window.innerWidth - 250)}px`;
+  menu.style.top = `${Math.min(e.clientY, window.innerHeight - 330)}px`;
+}
+
+document.addEventListener('click', () => document.getElementById('series-menu')?.remove());
 
 function hideContextMenu() {
   document.getElementById('recording-context-menu')?.classList.add('hidden');

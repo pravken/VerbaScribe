@@ -315,6 +315,7 @@ function meetingsInFolderTree(id) {
 function askScopeValid(scope) {
   if (scope.type === 'folder') return !!folderById(scope.id);
   if (scope.type === 'person') return !!personByName(scope.name);
+  if (scope.type === 'series') return (state.series || []).some(s => s.id === scope.id);
   if (scope.type === 'meeting') return state.meetings.some(m => m.id === scope.id);
   return true;
 }
@@ -327,6 +328,10 @@ function askScopeLabel(scope) {
   if (scope.type === 'meeting') {
     const m = state.meetings.find(x => x.id === scope.id);
     return `${t('askScopeMeeting')}: ${m ? m.title : ''}`;
+  }
+  if (scope.type === 'series') {
+    const s = (state.series || []).find(x => x.id === scope.id);
+    return `${t('askScopeSeries')}: ${s ? s.name : ''} · ${t('askRecordingsCount').replace('{n}', s ? s.count : 0)}`;
   }
   if (scope.type === 'person') {
     const p = personByName(scope.name);
@@ -375,7 +380,7 @@ function personByName(name) {
 }
 
 async function loadPeople() {
-  state.people = await fetch('/api/people').then(r => r.ok ? r.json() : []).catch(() => []);
+  [state.people] = await Promise.all([fetch('/api/people').then(r => r.ok ? r.json() : []).catch(() => []), loadSeries()]);
   if (state.appView === 'ask') renderAskScope();
 }
 
@@ -384,7 +389,22 @@ function formatSpeakingTime(sec) {
   return min >= 60 ? `${Math.floor(min / 60)} ${t('unitH')} ${min % 60} ${t('unitMin')}` : `${Math.max(1, min)} ${t('unitMin')}`;
 }
 
+function renderSeriesScope() {
+  const block = document.getElementById('ask-series-block');
+  const list = state.series || [];
+  block.classList.toggle('hidden', !list.length);
+  const sc = state.askScope;
+  document.getElementById('ask-series-list').innerHTML = list.map(s => {
+    const on = sc.type === 'series' && sc.id === s.id;
+    return `<button onclick='setAskScope(${JSON.stringify({ type: 'series', id: s.id })})'
+      class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[12px] transition ${on ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'}">
+      <span class="shrink-0 ${on ? 'text-white' : 'text-apple-tertiary'}">↻</span><span class="truncate flex-1">${escapeHtml(s.name)}</span>
+      <span class="text-[10.5px] font-mono ${on ? 'text-white/80' : 'text-apple-tertiary'}">${s.count}</span></button>`;
+  }).join('');
+}
+
 function renderPeople() {
+  renderSeriesScope();
   const block = document.getElementById('ask-people-block');
   const people = state.people || [];
   block.classList.toggle('hidden', !people.length);
@@ -412,6 +432,7 @@ function setAskScope(scope) {
 function askScopePayload(scope) {
   if (scope.type === 'folder') return { folder_id: scope.id };
   if (scope.type === 'person') return { meeting_ids: (personByName(scope.name) || { recordings: [] }).recordings.map(r => r.meeting_id) };
+  if (scope.type === 'series') return { meeting_ids: state.meetings.filter(m => m.series_id === scope.id).map(m => m.id) };
   if (scope.type === 'meeting') return { meeting_ids: [scope.id] };
   return {};
 }
@@ -425,10 +446,14 @@ function openDigestMenu(e) {
   menu.id = 'digest-menu';
   menu.className = 'fixed w-56 macos-menu z-50';
   const where = scope.type === 'folder' ? t('digestScopeFolder') : t('digestScopeAll');
-  menu.innerHTML = `<div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(where)}</div>`
+  // Before the next meeting of a series, or with a person
+  const brief = scope.type === 'series' || scope.type === 'person'
+    ? `<button class="macos-menu-item" data-brief="1"><span>${escapeHtml(t('briefBtn'))}</span></button><div class="my-1 h-px bg-white/10"></div>` : '';
+  menu.innerHTML = brief + `<div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(where)}</div>`
     + [[7, t('digestWeek')], [30, t('digestMonth')], [0, t('digestEverything')]]
       .map(([d, label]) => `<button class="macos-menu-item" data-days="${d}"><span>${escapeHtml(label)}</span></button>`).join('');
   menu.addEventListener('click', (ev) => {
+    if (ev.target.closest('button[data-brief]')) { ev.stopPropagation(); menu.remove(); makeBrief(); return; }
     const b = ev.target.closest('button[data-days]');
     ev.stopPropagation();
     if (!b) return;
@@ -442,6 +467,28 @@ function openDigestMenu(e) {
 }
 
 document.addEventListener('click', () => document.getElementById('digest-menu')?.remove());
+
+async function makeBrief() {
+  const scope = { ...state.askScope };
+  const item = { id: ++_askSeq, question: t('briefBtn'), scopeLabel: askScopeLabel(scope), status: 'pending', data: null, error: '' };
+  askThread.unshift(item);
+  renderAskThread();
+  try {
+    const res = await fetch('/api/library/brief', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ series_id: scope.type === 'series' ? scope.id : null, person: scope.type === 'person' ? scope.name : null,
+        lang: state.uiLang === 'en' ? 'en' : 'ru' }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || 'Error');
+    item.data = data;
+    item.status = 'done';
+  } catch (e) {
+    item.error = e.message;
+    item.status = 'error';
+  }
+  renderAskThread();
+}
 
 async function makeDigest(days) {
   const scope = state.askScope.type === 'folder' ? { ...state.askScope } : { type: 'all' };
