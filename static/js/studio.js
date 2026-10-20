@@ -803,6 +803,8 @@ async function sendLiveAudio() {
     liveCap.partialTarget = data.partial_target || '';
     liveCap.partial = data.partial || '';
     liveCap.partialTranslation = data.partial_translation || '';
+    liveCap.captionModel = data.caption_model || '';
+    liveCap.translateModel = data.translate_model || '';
     liveCap.translationReady = !!data.translation_ready;
     liveCap.lang = data.lang || liveCap.lang;
     liveCap.error = data.error || '';
@@ -1117,8 +1119,15 @@ function syncStudioCaptions() {
   capFollowBottom();
   renderStudioControls();
   const status = document.getElementById('studio-status');
+  // Which models write the captions and the translation now (the chips on the left may show
+  // several loaded at once)
+  const models = liveCap.session ? [
+    liveCap.captionModel ? `${t('studioModelCaptions')}: ${liveCap.captionModel}` : '',
+    target && liveCap.translateModel ? `${t('studioModelTranslation')}: ${liveCap.translateModel}` : '',
+  ].filter(Boolean).join(' · ') : '';
   status.textContent = liveCap.error ? liveCap.error
-    : target && liveCap.session && !liveCap.translationReady ? t('studioLoadingTranslator') : '';
+    : target && liveCap.session && !liveCap.translationReady ? [t('studioLoadingTranslator'), models].filter(Boolean).join(' · ')
+    : models;
   status.className = `text-[11px] ml-auto ${liveCap.error ? 'text-apple-amber' : 'text-apple-tertiary'}`;
 }
 

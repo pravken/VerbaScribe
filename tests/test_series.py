@@ -198,3 +198,13 @@ class LiveSentenceLinesTest(unittest.TestCase):
             out = asr_onnx.recognize_array("gigaam-v3", None)
         self.assertEqual([o[2] for o in out], ["Да.", "Хорошо"])
         self.assertEqual(out[1][0], 2.2)
+
+    def test_state_names_models(self):
+        from unittest import mock
+        from app import live
+
+        with mock.patch.object(live, "caption_onnx_model", return_value="gigaam-v3"):
+            s = live.LiveSession("ru", None)
+        st = s.state()
+        self.assertEqual(st["caption_model"], "GigaAM v3")
+        self.assertEqual(st["translate_model"], "")

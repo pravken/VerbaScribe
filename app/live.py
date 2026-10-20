@@ -313,7 +313,28 @@ class LiveSession:
             "partial_translation": self.translator.draft_translation if self.translator else "",
             "translation_ready": bool(self.translator and self.translator.ready),
             "error": self.error or (self.translator.error if self.translator else ""),
+            "caption_model": self.caption_label(),
+            "translate_model": self.translate_label(),
         }
+
+    def caption_label(self) -> str:
+        """The model writing the captions now, for the studio."""
+        if self.onnx_model:
+            from app.asr_onnx import ONNX_MODELS
+
+            return ONNX_MODELS[self.onnx_model]["name"]
+        from app.model_manager import format_whisper_model_name
+
+        name = _worker.model_name if _worker is not None and _worker.proc is not None else ""
+        return format_whisper_model_name(name) if name else "Whisper"
+
+    def translate_label(self) -> str:
+        model = getattr(self.translator, "_model", None) if self.translator else None
+        if not model:
+            return ""
+        from app.ollama_client import format_llm_model_name
+
+        return format_llm_model_name(model)
 
 
 def start_session(lang: Optional[str], translate_to: Optional[str], capture_id: Optional[str] = None,
