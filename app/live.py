@@ -143,7 +143,7 @@ def _caption_worker() -> _CaptionWorker:
 
 class LiveSession:
     def __init__(self, lang: Optional[str], translate_to: Optional[str], capture_id: Optional[str] = None,
-                 speed: str = "quality"):
+                 speed: str = "quality", pair: Optional[List[str]] = None):
         self.id = uuid.uuid4().hex
         self.capture_id = capture_id
         # The language chosen for speech (None: detected in every window, so a meeting may switch
@@ -151,6 +151,7 @@ class LiveSession:
         self.speech_lang = lang if lang and lang != "auto" else None
         self.lang = self.speech_lang
         self.translate_to = translate_to or None
+        self.pair = list(pair or ["ru", "en"])[:2]  # the two languages of translate_to="auto"
         self.audio = np.zeros(0, dtype=np.float32)
         self.offset = 0.0           # recording time (s) of self.audio[0]
         self.received = 0.0         # seconds of audio received in total
@@ -165,7 +166,7 @@ class LiveSession:
             from app.live_translate import LiveTranslator
 
             # Starts loading the translation model now, while the first phrase is being spoken
-            self.translator = LiveTranslator(lambda: self.lang, translate_to, speed)
+            self.translator = LiveTranslator(lambda: self.lang, translate_to, speed, self.pair)
         self._next_id = 1
 
     # -------------------------------------------------------------- audio in
@@ -247,9 +248,11 @@ class LiveSession:
                 # must not be shown with it (the page keeps it on the final line until its own
                 # translation arrives)
                 self.translator.reset_draft()
-            self.translator.set_draft(self.partial)
+            # The page shows only final lines (the draft is revised several times while spoken),
+            # so the draft is not translated: the model is free for the final lines
 
-    def configure(self, translate_to: Optional[str], speed: Optional[str], speech_lang: Optional[str] = None) -> None:
+    def configure(self, translate_to: Optional[str], speed: Optional[str], speech_lang: Optional[str] = None,
+                  pair: Optional[List[str]] = None) -> None:
         """Changes the translation (and the speech language) while recording; the last lines are
         translated again."""
         from app.live_translate import LiveTranslator
@@ -263,14 +266,15 @@ class LiveSession:
                 self.translator.stop()
             self.translator, self.translate_to = None, None
             return
-        changed = translate_to != self.translate_to
+        new_pair = list(pair)[:2] if pair else self.pair
+        changed = translate_to != self.translate_to or (translate_to == "auto" and new_pair != self.pair)
         self.translate_to = translate_to
+        self.pair = new_pair
         if self.translator is None:
-            self.translator = LiveTranslator(lambda: self.lang, translate_to, speed or "quality")
+            self.translator = LiveTranslator(lambda: self.lang, translate_to, speed or "quality", self.pair)
             self.translator.add_lines([ln for ln in self.lines[-20:]])
         else:
-            self.translator.configure(translate_to, speed, retranslate=self.lines[-20:] if changed else None)
-        self.translator.set_draft(self.partial)
+            self.translator.configure(translate_to, speed, retranslate=self.lines[-20:] if changed else None, pair=self.pair)
 
     # -------------------------------------------------------------- out
     def state(self, since_id: int = 0) -> Dict[str, Any]:
@@ -280,6 +284,9 @@ class LiveSession:
             "speech_lang": self.speech_lang or "auto",
             "lines": [ln for ln in self.lines if ln["id"] > since_id or ln["translation"] is None],
             "translations": {ln["id"]: ln["translation"] for ln in self.lines if ln["translation"]},
+            # The language each line went into (differs per line with translate_to="auto")
+            "targets": {ln["id"]: ln.get("target") for ln in self.lines if ln.get("target")},
+            "partial_target": self.translator.draft_target if self.translator else "",
             "partial": self.partial,
             "partial_translation": self.translator.draft_translation if self.translator else "",
             "translation_ready": bool(self.translator and self.translator.ready),
@@ -288,9 +295,9 @@ class LiveSession:
 
 
 def start_session(lang: Optional[str], translate_to: Optional[str], capture_id: Optional[str] = None,
-                  speed: str = "quality") -> LiveSession:
+                  speed: str = "quality", pair: Optional[List[str]] = None) -> LiveSession:
     _drop_idle()
-    s = LiveSession(lang, translate_to, capture_id, speed)
+    s = LiveSession(lang, translate_to, capture_id, speed, pair)
     with _sessions_lock:
         _sessions[s.id] = s
     # Start the caption worker now, so the first captions do not wait for the model to load

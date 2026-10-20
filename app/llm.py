@@ -12,6 +12,7 @@ A cloud model has a much larger context, so `max_chars` lets callers send long t
 instead of summarising them in parts.
 """
 
+import re
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
@@ -315,3 +316,47 @@ def status() -> Dict[str, Any]:
         "consent": settings.get("llm_cloud_consent") == "true",
         "providers": providers,
     }
+
+
+# ------------------------------------------------------------------ choosing a model
+_SKIP_WORDS = ("embed", "tts", "audio", "image", "vision-only", "live", "realtime", "transcribe", "search",
+               "moderation", "aqa", "learnlm", "gemma", "imagen", "veo", "computer-use", "robotics", "deep-research")
+_PREFER = {
+    "gemini": ("flash",),     # fast and cheap enough for long transcripts
+    "anthropic": ("sonnet",),
+    "openai": ("mini",),
+    "openai_compat": (),
+}
+
+
+def _version_key(model_id: str) -> tuple:
+    nums = [int(n) for n in re.findall(r"\d+", model_id)[:4]]
+    return tuple(nums)
+
+
+def pick_default_model(provider: str, models: List[str]) -> Optional[str]:
+    """A sensible model from the ones the key can use: the newest of the preferred family
+    (Gemini Flash, Claude Sonnet, GPT mini), without previews, experiments and lite versions."""
+    usable = [m for m in models if not any(w in m.lower() for w in _SKIP_WORDS)]
+    if not usable:
+        return models[0] if models else None
+    stable = [m for m in usable if not re.search(r"preview|exp|experimental|latest|\d{4}-\d{2}-\d{2}|-\d{8}$", m.lower())] or usable
+    prefer = _PREFER.get(provider) or ()
+    family = [m for m in stable if any(p in m.lower() for p in prefer) and "lite" not in m.lower() and "nano" not in m.lower()] or stable
+    return max(family, key=_version_key)
+
+
+def ensure_model(provider: str) -> Dict[str, Any]:
+    """After a key is saved: if the chosen model is not available with it, switch to a default one.
+    Returns {"models": [...], "model": chosen, "changed": bool}."""
+    from app.database import update_settings
+
+    models = list_models(provider)
+    current = cloud_model(provider)
+    if not models or current in models:
+        return {"models": models, "model": current, "changed": False}
+    better = pick_default_model(provider, models)
+    if better and better != current:
+        update_settings({f"llm_model_{provider}": better})
+        return {"models": models, "model": better, "changed": True}
+    return {"models": models, "model": current, "changed": False}

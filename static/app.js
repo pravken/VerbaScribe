@@ -586,8 +586,8 @@ async function loadSystemInfo() {
 
     const hw = data.hardware;
     document.getElementById('hw-text').textContent = hw.cuda_available
-      ? hw.device_name.replace('NVIDIA GeForce ', '')
-      : 'CPU';
+      ? hw.device_name.replace(/^NVIDIA (GeForce )?/, '')
+      : t('hwNoGpu');
     document.getElementById('hw-dot').className = hw.cuda_available
       ? 'w-1.5 h-1.5 rounded-full bg-apple-green shrink-0'
       : 'w-1.5 h-1.5 rounded-full bg-apple-amber shrink-0';
@@ -709,16 +709,22 @@ function renderSystemLoad(sys) {
   const cpu = sys && sys.cpu_percent;
   const ram = sys && sys.ram;
   row.classList.toggle('hidden', cpu == null && !ram);
+  const nameEl = document.getElementById('cpu-name');
+  if (sys && sys.cpu_name && nameEl.textContent !== sys.cpu_name) {
+    nameEl.textContent = sys.cpu_name;
+    document.getElementById('cpu-cell').title = `${sys.cpu_name}${sys.cores ? ` · ${t('hwThreads').replace('{n}', sys.cores)}` : ''}\n${t('tipCpuUsage')}`;
+  }
   if (cpu != null) {
     document.getElementById('cpu-text').textContent = `${Math.round(cpu)}%`;
     document.getElementById('cpu-bar').style.width = `${Math.min(100, cpu)}%`;
-    document.getElementById('cpu-bar').className = `h-full transition-all duration-500 ${cpu > 85 ? 'bg-apple-red/80' : 'bg-apple-green/70'}`;
+    document.getElementById('cpu-bar').className = `${cpu > 85 ? 'bg-apple-red/80' : 'bg-apple-green/70'}`;
   }
   if (ram) {
     const pct = (100 * ram.used_gb) / Math.max(0.1, ram.total_gb);
     document.getElementById('ram-text').textContent = `${ram.used_gb}/${ram.total_gb} ${t('unitGB')}`;
+    document.getElementById('ram-name').textContent = t('hwRamName').replace('{gb}', Math.round(ram.total_gb));
     document.getElementById('ram-bar').style.width = `${Math.min(100, pct)}%`;
-    document.getElementById('ram-bar').className = `h-full transition-all duration-500 ${pct > 90 ? 'bg-apple-red/80' : 'bg-apple-amber/70'}`;
+    document.getElementById('ram-bar').className = `${pct > 90 ? 'bg-apple-red/80' : 'bg-apple-amber/70'}`;
     document.getElementById('ram-cell').title = t('tipRamUsage').replace('{free}', ram.free_gb);
   }
 }
@@ -737,10 +743,11 @@ function renderVram(data) {
   const row = document.getElementById('vram-row');
   const gpu = data.gpu;
   row.classList.toggle('hidden', !gpu);
-  if (!gpu) { vram.chips = data.chips || []; renderIdleStatus(data.idle); return; }
-  document.getElementById('vram-text').textContent = `${gpu.used_gb} / ${gpu.total_gb} ${t('unitGB')}`;
+  document.querySelector('#hw-block .hw-row-btn .hw-bar').classList.toggle('invisible', !gpu);
+  if (!gpu) { document.getElementById('vram-text').textContent = ''; vram.chips = data.chips || []; renderIdleStatus(data.idle); return; }
+  document.getElementById('vram-text').textContent = `${gpu.used_gb}/${gpu.total_gb} ${t('unitGB')}`;
   document.getElementById('vram-bar').style.width = `${Math.min(100, (100 * gpu.used_gb) / Math.max(1, gpu.total_gb))}%`;
-  row.firstElementChild.title = t('tipVramUsage').replace('{free}', gpu.free_gb);
+  document.querySelector('#hw-block .hw-row-btn').title = `${t('tipVramUsage').replace('{free}', gpu.free_gb)}\n${t('tipHwStatus')}`;
 
   const chips = data.chips || [];  // every model: loaded, loading or ready to load
   const html = chips.map((c, i) => {
@@ -1204,24 +1211,85 @@ function renderLlmProvider(keepModel) {
   if (keepModel !== true) state.llmProviderEdited = true;
   const p = st.providers[prov];
   const modelInput = document.getElementById('set-llm-model');
-  if (keepModel !== true || !modelInput.dataset.prov || modelInput.dataset.prov !== prov) {
+  if (keepModel !== true || modelInput.dataset.prov !== prov) {
     modelInput.value = p.model || '';
     modelInput.dataset.prov = prov;
   }
-  modelInput.placeholder = p.default_model || 'model-name';
-  document.getElementById('llm-model-list').innerHTML = (state.llmModels && state.llmModels[prov] || p.suggested || [])
-    .map(m => `<option value="${escapeHtml(m)}"></option>`).join('');
+  renderLlmModelSelect(prov);
   document.getElementById('llm-base-url-row').classList.toggle('hidden', prov !== 'openai_compat');
   document.getElementById('set-llm-base-url').value = prov === 'openai_compat' ? (p.base_url || '') : '';
-  const hint = document.getElementById('llm-key-hint');
+
+  // Key: a clear "saved" mark, and where to get one (a link that opens in the browser)
   const keyInput = document.getElementById('set-llm-key');
+  const badge = document.getElementById('llm-key-badge');
+  const ok = p.key.saved && p.key.readable;
+  badge.classList.toggle('hidden', !p.key.saved);
+  badge.className = `${p.key.saved ? '' : 'hidden '}inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium ${ok ? 'bg-apple-green/15 text-apple-green' : 'bg-apple-red/15 text-apple-red'}`;
+  badge.innerHTML = ok ? `${SVG_ICONS.check}<span>${escapeHtml(t('llmKeyBadge').replace('{last4}', p.key.last4))}</span>` : escapeHtml(t('llmKeyBadgeBroken'));
   keyInput.placeholder = p.key.saved ? t('llmKeySavedPh').replace('{last4}', p.key.last4) : t('llmKeyPh');
+  keyInput.classList.toggle('border-apple-green/50', ok);
+  const hint = document.getElementById('llm-key-hint');
   hint.textContent = p.key.saved
     ? (p.key.readable ? t('llmKeySaved') : t('llmKeyUnreadable'))
     : (p.keys_url ? t('llmKeyWhere').replace('{url}', p.keys_url) : t('llmKeyCompat'));
-  hint.className = `mt-1 text-[11px] leading-snug break-words ${p.key.saved && !p.key.readable ? 'text-apple-red' : 'text-apple-tertiary'}`;
+  hint.className = `mt-1 text-[11px] leading-snug break-words select-text ${p.key.saved && !p.key.readable ? 'text-apple-red' : 'text-apple-tertiary'}`;
+  const links = document.getElementById('llm-key-links');
+  links.classList.toggle('hidden', !p.keys_url);
+  document.getElementById('llm-key-open').dataset.url = p.keys_url || '';
+  document.getElementById('llm-key-copy').dataset.url = p.keys_url || '';
   document.getElementById('llm-key-delete').classList.toggle('hidden', !p.key.saved);
-  document.getElementById('llm-test-result').textContent = '';
+  if (keepModel !== true) setLlmTestResult('', '');
+  // The models the key can use, once per provider and session
+  state.llmModelsTried = state.llmModelsTried || {};
+  if (p.key.saved && p.key.readable && !(state.llmModels && state.llmModels[prov]) && !state.llmModelsTried[prov]) {
+    state.llmModelsTried[prov] = true;
+    loadLlmModels(false);
+  }
+}
+
+// The model list: the models the key can use (or the suggestions until it is loaded) and "other…"
+function renderLlmModelSelect(prov) {
+  const st = state.llm;
+  const p = st.providers[prov];
+  const input = document.getElementById('set-llm-model');
+  const sel = document.getElementById('set-llm-model-select');
+  const loaded = state.llmModels && state.llmModels[prov];
+  const list = [...(loaded || p.suggested || [])];
+  const current = input.value.trim();
+  const custom = !!current && !list.includes(current);
+  sel.innerHTML = list.map(m => `<option value="${escapeHtml(m)}" ${m === current ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('')
+    + (custom ? `<option value="${escapeHtml(current)}" selected>${escapeHtml(current)}</option>` : '')
+    + `<option value="__custom">${escapeHtml(t('llmModelOther'))}</option>`;
+  if (!current && list.length) { sel.value = list[0]; input.value = list[0]; }
+  input.classList.toggle('hidden', !state.llmCustomModel);
+  const hint = document.getElementById('llm-model-hint');
+  hint.textContent = loaded
+    ? (custom ? t('llmModelNotInList') : t('llmModelsFromKey').replace('{n}', loaded.length))
+    : (p.key.saved ? '' : t('llmModelsAfterKey'));
+  hint.className = `mt-1 text-[10.5px] leading-snug ${loaded && custom ? 'text-apple-amber' : 'text-apple-tertiary'}`;
+}
+
+function onLlmModelSelect(value) {
+  const input = document.getElementById('set-llm-model');
+  if (value === '__custom') {
+    state.llmCustomModel = true;
+    input.classList.remove('hidden');
+    input.focus();
+    input.select();
+    return;
+  }
+  state.llmCustomModel = false;
+  input.value = value;
+  input.classList.add('hidden');
+  setLlmTestResult('', '');
+}
+
+function setLlmTestResult(kind, text) {
+  const out = document.getElementById('llm-test-result');
+  out.classList.toggle('hidden', !text);
+  const cls = { ok: 'bg-apple-green/10 text-apple-green border border-apple-green/30', err: 'bg-apple-red/10 text-apple-red border border-apple-red/30', wait: 'text-apple-secondary animate-pulse' }[kind] || '';
+  out.className = `${text ? '' : 'hidden '}text-[11px] leading-snug break-words select-text rounded-lg px-3 py-2 ${cls}`;
+  out.textContent = text;
 }
 
 function llmSettingsPayload() {
@@ -1257,61 +1325,105 @@ async function setLlmMode(mode) {
   }
 }
 
+// Saving a key: the server checks which models it can use (and picks one if the chosen one is not
+// among them), then the connection is tested right away, so it is clear whether everything works
 async function saveLlmKey() {
   const input = document.getElementById('set-llm-key');
   const key = input.value.trim();
   if (!key) { input.focus(); return; }
   const provider = document.getElementById('set-llm-provider').value;
+  setLlmTestResult('wait', t('llmKeyChecking'));
+  if (!(await saveLlmSettingsNow())) return;
   const res = await fetch('/api/llm/key', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider, key }),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  if (!res.ok) { setLlmTestResult('err', data.detail || 'Error'); return; }
   input.value = '';
-  await saveLlmSettingsNow();
-  showToast(t('llmKeyStored'));
+  state.llm = data;
+  if ((data.models || []).length) state.llmModels = { ...(state.llmModels || {}), [provider]: data.models };
+  const modelInput = document.getElementById('set-llm-model');
+  modelInput.value = data.model || modelInput.value;
+  state.llmCustomModel = false;
+  renderLlmSettings();
+  renderSummaryModelSelect();
+  if (data.model_changed) showToast(t('llmModelSwitched').replace('{model}', data.model));
+  await testLlmConnection();
 }
 
 async function deleteLlmKey() {
   const provider = document.getElementById('set-llm-provider').value;
   if (!confirm(t('llmKeyDeleteConfirm'))) return;
   await fetch(`/api/llm/key/${provider}`, { method: 'DELETE' });
+  if (state.llmModels) delete state.llmModels[provider];
   await loadLlmStatus();
 }
 
-async function loadLlmModels() {
+async function loadLlmModels(explicit) {
   const provider = document.getElementById('set-llm-provider').value;
-  const res = await fetch(`/api/llm/models/${provider}`);
-  const data = await res.json().catch(() => ({}));
-  const models = data.models || [];
-  if (!models.length) { showToast(t('llmModelsNone')); return; }
-  state.llmModels = { ...(state.llmModels || {}), [provider]: models };
-  renderLlmProvider(true);
-  showToast(t('llmModelsLoaded').replace('{n}', models.length));
-  document.getElementById('set-llm-model').focus();
+  const btn = document.getElementById('llm-models-btn');
+  btn.classList.add('animate-spin');
+  try {
+    const res = await fetch(`/api/llm/models/${provider}`);
+    const data = await res.json().catch(() => ({}));
+    const models = data.models || [];
+    if (!models.length) {
+      if (explicit) setLlmTestResult('err', t('llmModelsNone'));
+      return;
+    }
+    state.llmModels = { ...(state.llmModels || {}), [provider]: models };
+    const input = document.getElementById('set-llm-model');
+    // The chosen model is not available with this key: suggest the recommended one
+    if (!state.llmCustomModel && data.recommended && !models.includes(input.value.trim())) {
+      input.value = data.recommended;
+      if (explicit) showToast(t('llmModelSwitched').replace('{model}', data.recommended));
+    }
+    renderLlmModelSelect(provider);
+    if (explicit) showToast(t('llmModelsLoaded').replace('{n}', models.length));
+  } finally {
+    btn.classList.remove('animate-spin');
+  }
 }
 
 async function testLlmConnection() {
   const provider = document.getElementById('set-llm-provider').value;
-  const out = document.getElementById('llm-test-result');
   const btn = document.getElementById('llm-test-btn');
   if (!(await saveLlmSettingsNow())) return;
   btn.disabled = true;
-  out.className = 'text-[11px] text-apple-secondary min-w-0 break-words animate-pulse';
-  out.textContent = t('llmTesting');
+  setLlmTestResult('wait', t('llmTesting'));
   try {
     const res = await fetch(`/api/llm/test/${provider}`, { method: 'POST' });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.detail || 'Error');
-    out.className = 'text-[11px] text-apple-green min-w-0 break-words';
-    out.textContent = t('llmTestOk').replace('{model}', data.model).replace('{sec}', data.seconds);
+    setLlmTestResult('ok', t('llmTestOk').replace('{model}', data.model).replace('{sec}', data.seconds));
   } catch (e) {
-    out.className = 'text-[11px] text-apple-red min-w-0 break-words';
-    out.textContent = e.message;
+    setLlmTestResult('err', e.message);
   } finally {
     btn.disabled = false;
   }
 }
+
+// Web links never open inside the app window: they go to the default browser
+async function openExternal(url) {
+  if (!url) return;
+  try {
+    const res = await fetch('/api/open-url', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
+    if (!res.ok) throw new Error();
+    showToast(t('linkOpened'));
+  } catch (e) {
+    copyText(url);
+  }
+}
+
+document.addEventListener('click', (e) => {
+  const a = e.target.closest && e.target.closest('a[href]');
+  if (!a) return;
+  const href = a.getAttribute('href') || '';
+  if (/^https?:\/\//i.test(href)) {
+    e.preventDefault();
+    openExternal(href);
+  }
+}, true);
 
 async function selectActiveOllamaModel(modelId) {
   if (modelId === '__cloud') {
@@ -1445,6 +1557,7 @@ async function loadDictionary() {
   document.getElementById('dict-count-badge').textContent = state.dictionary.filter(d => d.active).length;
 
   const box = document.getElementById('dictionary-list');
+  document.getElementById('dict-clear-btn').classList.toggle('hidden', state.dictionary.length === 0);
   if (state.dictionary.length === 0) {
     box.innerHTML = `<div class="p-6 text-center text-xs text-apple-tertiary">—</div>`;
     return;
@@ -1475,6 +1588,12 @@ async function addDictionaryItems() {
     body: JSON.stringify({ term: input.value, category: cat })
   });
   input.value = '';
+  await loadDictionary();
+}
+
+async function clearDictionary() {
+  if (!confirm(t('dictClearConfirm').replace('{n}', state.dictionary.length))) return;
+  await fetch('/api/dictionary', { method: 'DELETE' });
   await loadDictionary();
 }
 
@@ -1644,7 +1763,7 @@ function renderQueuePanel() {
       : running ? (m.stage_text || q.stage_text || '') : t('queueWaiting').replace('{n}', q.position);
     const timing = running && !q.cancelling ? formatTiming(jobTiming(q, pct)) : '';
     return `
-      <div onclick="selectMeeting(${q.id}, true)" title="${escapeHtml(detail)}"
+      <div onclick="openMeeting(${q.id}, true)" title="${escapeHtml(detail)}"
         class="group px-2 py-1.5 rounded-md cursor-pointer hover:bg-white/5 ${running ? 'bg-apple-blue/10' : ''}">
         <div class="flex items-center justify-between gap-2">
           <span class="flex items-center gap-1.5 min-w-0">
@@ -1731,11 +1850,12 @@ function switchAppView(view) {
   if (!APP_VIEWS.includes(view)) view = 'library';
   if (state.theatre && view !== 'library') exitTheatre();
   state.appView = view;
+  // The sidebar always shows the library; the main area shows the chosen part
   for (const v of APP_VIEWS) {
-    document.getElementById(`side-${v}`).classList.toggle('hidden', v !== view);
     document.getElementById(`${v}-view`).classList.toggle('hidden', v !== view);
-    document.getElementById(`nav-${v}`).className =
-      `apple-segment-btn ${v === view ? 'apple-segment-active' : 'text-apple-secondary hover:text-white'}`;
+    const tab = document.getElementById(`nav-${v}`);
+    tab.classList.toggle('app-tab-active', v === view);
+    tab.setAttribute('aria-selected', String(v === view));
   }
   hideContextMenu();
   hideFolderMenu();
@@ -1951,6 +2071,12 @@ function openLibrarySource(itemId, n) {
   selectMeetingAndSeek(s.meeting_id, s.start);
 }
 
+// A click in the library list: the recording opens in the library, whatever part of the app is shown
+function openMeeting(id) {
+  if (state.appView !== 'library') switchAppView('library');
+  return selectMeeting(id, true);
+}
+
 async function selectMeetingAndSeek(meetingId, startSec) {
   await selectMeeting(meetingId, true);
   switchWorkspaceTab('transcript');
@@ -2141,6 +2267,39 @@ async function libraryDrop(e, folderId) {
 
 document.addEventListener('dragend', clearLibraryDrag);
 
+// What a recording has been through, as small icons in the library: transcript, analysis,
+// translations (with their languages) and dubs; the step running now pulses, a failed one is red
+const REC_BADGE_ICONS = {
+  transcript: '<path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h10M4 18h7"/>',
+  summary: '<path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/>',
+  translation: '<path stroke-linecap="round" stroke-linejoin="round" d="M10.5 21l5.25-11.25L21 21m-9-3h7.5M3 5.621a48.474 48.474 0 016-.371m0 0c1.12 0 2.233.038 3.334.114M9 5.25V3m3.334 2.364C11.176 10.658 7.69 15.08 3 17.502m9.334-12.138c.896.061 1.785.147 2.666.257m-4.589 8.495a18.023 18.023 0 01-3.827-5.802"/>',
+  dub: '<path stroke-linecap="round" stroke-linejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z"/>',
+};
+const REC_STEP_OF_STATUS = {
+  queued: 'transcript', extracting_audio: 'transcript', transcribing: 'transcript', diarizing: 'transcript',
+  summarizing: 'summary', translating: 'translation', dubbing: 'dub', rendering: 'dub',
+};
+
+function recordingBadgesHtml(m) {
+  const running = REC_STEP_OF_STATUS[m.status];
+  const failedStep = m.status === 'failed' ? (m.has_transcript ? null : 'transcript') : null;
+  const badge = (kind, done, label, text = '') => {
+    const busy = running === kind;
+    const fail = failedStep === kind;
+    if (!done && !busy && !fail) return '';
+    const tip = busy ? `${label} · ${t('recBadgeRunning')}` : fail ? `${t('statusFailed')}${m.error_message ? ': ' + m.error_message : ''}` : label;
+    return `<span class="rec-badge ${busy ? 'rec-badge-busy' : ''} ${fail ? 'rec-badge-fail' : ''}" title="${escapeHtml(tip)}">`
+      + `<svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">${REC_BADGE_ICONS[kind]}</svg>`
+      + (text ? `<span>${escapeHtml(text)}</span>` : '') + '</span>';
+  };
+  const trLangs = m.translations_langs || [];
+  const dubLangs = m.dub_langs || [];
+  return badge('transcript', m.has_transcript, t('recBadgeTranscript'))
+    + badge('summary', m.has_summary, t('recBadgeSummary'))
+    + badge('translation', trLangs.length > 0, `${t('recBadgeTranslation')}${trLangs.length ? ': ' + trLangs.map(langName).join(', ') : ''}`, trLangs.map(langCode).join(' '))
+    + badge('dub', dubLangs.length > 0, `${t('recBadgeDub')}${dubLangs.length ? ': ' + dubLangs.map(langName).join(', ') : ''}`, dubLangs.map(langCode).join(' '));
+}
+
 function meetingRowHtml(m, depth) {
   const isSelected = state.activeMeeting && state.activeMeeting.id === m.id;
   const isBusy = !DONE_STATUSES.includes(m.status);
@@ -2152,7 +2311,7 @@ function meetingRowHtml(m, depth) {
   const status = m.status === 'failed' ? t('statusFailed') : m.status === 'cancelled' ? t('statusCancelled')
     : `${spkCount || 1} ${t('spkShort')} · ${(m.language || 'ru').toUpperCase()}`;
   return `
-    <div onclick="selectMeeting(${m.id}, true)"
+    <div onclick="openMeeting(${m.id}, true)"
          oncontextmenu="openRecordingContextMenu(event, ${m.id})"
          draggable="true" ondragstart="libraryDragStart(event, 'm', ${m.id})"
          class="group cursor-pointer pr-2 py-1.5 rounded-lg transition relative flex items-center gap-2 ${
@@ -2166,8 +2325,11 @@ function meetingRowHtml(m, depth) {
             class="opacity-0 group-hover:opacity-100 px-1 rounded hover:bg-black/20 text-xs shrink-0 transition">•••</button>
         </div>
         <div class="flex items-center justify-between gap-2 text-[11px] mt-0.5 ${isSelected ? 'text-white/80' : 'text-apple-secondary'}">
-          <span class="font-mono shrink-0">${isBusy ? `${m.progress}%` : formatTime(m.duration)}</span>
-          <span class="truncate">${escapeHtml(shortDate(m.recorded_at || m.created_at))} · ${escapeHtml(status)}</span>
+          <span class="flex items-center gap-1.5 min-w-0">
+            <span class="font-mono shrink-0">${isBusy ? `${m.progress}%` : formatTime(m.duration)}</span>
+            <span class="rec-badges">${recordingBadgesHtml(m)}</span>
+          </span>
+          <span class="truncate shrink-0 max-w-[55%]">${escapeHtml(libSortValue(m))} · ${escapeHtml(status)}</span>
         </div>
         ${isBusy ? `
           <div class="w-full h-1 bg-black/25 rounded-full overflow-hidden mt-1">
@@ -2183,6 +2345,140 @@ function shortDate(s) {
   const thisYear = String(new Date().getFullYear()) === m[1];
   return thisYear ? `${m[3]}.${m[2]}` : `${m[3]}.${m[2]}.${m[1].slice(2)}`;
 }
+
+// --- Library view and sorting (kept per computer) ---
+const LIB_VIEWS = ['details', 'compact', 'grid'];
+const LIB_SORTS = ['recorded', 'added', 'name', 'duration', 'size'];
+
+function libPrefs() {
+  let p = {};
+  try { p = JSON.parse(localStorage.getItem('verbascribe_library_view') || '{}') || {}; } catch (e) {}
+  return {
+    view: LIB_VIEWS.includes(p.view) ? p.view : 'details',
+    sort: LIB_SORTS.includes(p.sort) ? p.sort : 'recorded',
+    dir: p.dir === 'asc' ? 'asc' : 'desc',
+  };
+}
+
+function setLibPref(key, value) {
+  const p = libPrefs();
+  // Choosing the sort that is already on flips its direction
+  if (key === 'sort' && p.sort === value) p.dir = p.dir === 'asc' ? 'desc' : 'asc';
+  else if (key === 'sort') p.dir = value === 'name' ? 'asc' : 'desc';
+  if (key !== 'dir') p[key] = value;
+  try { localStorage.setItem('verbascribe_library_view', JSON.stringify(p)); } catch (e) {}
+  renderMeetingsSidebar();
+}
+
+function libComparator({ sort, dir }) {
+  const key = {
+    recorded: m => m.recorded_at || m.created_at || '',
+    added: m => m.created_at || '',
+    name: m => (m.title || '').toLocaleLowerCase(),
+    duration: m => Number(m.duration) || 0,
+    size: m => Number(m.size_bytes) || 0,
+  }[sort];
+  const sign = dir === 'asc' ? 1 : -1;
+  return (a, b) => {
+    const x = key(a), y = key(b);
+    const c = typeof x === 'string' ? x.localeCompare(y, undefined, { numeric: true }) : x - y;
+    return (c || b.id - a.id) * sign;
+  };
+}
+
+function openLibViewMenu(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const had = document.getElementById('lib-view-menu');
+  closeLibViewMenu();
+  if (had) return;
+  const p = libPrefs();
+  const item = (key, value, label, on, extra = '') => `<button class="macos-menu-item" data-k="${key}" data-v="${value}">`
+    + `<span>${escapeHtml(label)}</span><span class="text-[10.5px] opacity-70">${on ? (extra || '✓') : ''}</span></button>`;
+  const arrow = p.dir === 'asc' ? '↑' : '↓';
+  const menu = document.createElement('div');
+  menu.id = 'lib-view-menu';
+  menu.className = 'fixed w-56 macos-menu z-50';
+  menu.innerHTML = `<div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(t('libView'))}</div>`
+    + LIB_VIEWS.map(v => item('view', v, t(`libView_${v}`), p.view === v)).join('')
+    + `<div class="my-1 h-px bg-white/10"></div><div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(t('libSort'))}</div>`
+    + LIB_SORTS.map(v => item('sort', v, t(`libSort_${v}`), p.sort === v, arrow)).join('');
+  menu.addEventListener('click', (ev) => {
+    const b = ev.target.closest('button[data-k]');
+    ev.stopPropagation();
+    if (!b) return;
+    setLibPref(b.dataset.k, b.dataset.v);
+    closeLibViewMenu();
+  });
+  document.body.appendChild(menu);
+  const r = e.currentTarget.getBoundingClientRect();
+  menu.style.left = `${Math.min(r.left, window.innerWidth - 232)}px`;
+  menu.style.top = `${r.bottom + 4}px`;
+}
+
+function closeLibViewMenu() {
+  document.getElementById('lib-view-menu')?.remove();
+}
+
+document.addEventListener('click', closeLibViewMenu);
+
+function formatSize(bytes) {
+  if (!bytes) return '';
+  const mb = bytes / 1048576;
+  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} ${t('unitGb')}` : `${mb >= 10 ? Math.round(mb) : mb.toFixed(1)} ${t('unitMb')}`;
+}
+
+// What the row shows on its right: the sorted-by value when it is not the date
+function libSortValue(m) {
+  const { sort } = libPrefs();
+  if (sort === 'size') return formatSize(m.size_bytes);
+  if (sort === 'added') return shortDate(m.created_at);
+  return shortDate(m.recorded_at || m.created_at);
+}
+
+function meetingCompactRowHtml(m, depth) {
+  const isSelected = state.activeMeeting && state.activeMeeting.id === m.id;
+  const isBusy = !DONE_STATUSES.includes(m.status);
+  return `
+    <div onclick="openMeeting(${m.id}, true)" oncontextmenu="openRecordingContextMenu(event, ${m.id})"
+         draggable="true" ondragstart="libraryDragStart(event, 'm', ${m.id})" title="${escapeHtml(m.title)}"
+         class="group cursor-pointer pr-2 py-1 rounded-md transition flex items-center gap-2 text-[12px] ${
+           isSelected ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'
+         }" style="padding-left:${10 + depth * 14}px">
+      <span class="shrink-0 ${isSelected ? 'text-white/80' : 'text-apple-tertiary'}">${m.is_video ? ICON_FILE_VIDEO : ICON_FILE_AUDIO}</span>
+      <span class="truncate flex-1 min-w-0">${escapeHtml(m.title)}</span>
+      <span class="rec-badges shrink-0 ${isSelected ? 'text-white/80' : 'text-apple-secondary'}">${recordingBadgesHtml(m)}</span>
+      <span class="font-mono text-[10.5px] shrink-0 ${isSelected ? 'text-white/80' : 'text-apple-tertiary'}">${isBusy ? `${m.progress}%` : libPrefs().sort === 'size' ? formatSize(m.size_bytes) : formatTime(m.duration)}</span>
+    </div>`;
+}
+
+function meetingTileHtml(m) {
+  const isSelected = state.activeMeeting && state.activeMeeting.id === m.id;
+  const isBusy = !DONE_STATUSES.includes(m.status);
+  const cover = m.is_video
+    ? `<img src="/api/meetings/${m.id}/thumb" loading="lazy" alt="" draggable="false" onerror="this.replaceWith(Object.assign(document.createElement('span'), {className: 'lib-tile-icon', innerHTML: ICON_FILE_VIDEO}))" class="w-full h-full object-cover" />`
+    : `<span class="lib-tile-icon">${ICON_FILE_AUDIO}</span>`;
+  return `
+    <div onclick="openMeeting(${m.id}, true)" oncontextmenu="openRecordingContextMenu(event, ${m.id})"
+         draggable="true" ondragstart="libraryDragStart(event, 'm', ${m.id})" title="${escapeHtml(m.title)}"
+         class="lib-tile group ${isSelected ? 'lib-tile-on' : ''}">
+      <div class="lib-tile-cover">
+        ${cover}
+        <span class="lib-tile-time">${isBusy ? `${m.progress}%` : formatTime(m.duration)}</span>
+        ${isBusy ? `<span class="lib-tile-progress" style="width:${m.progress}%"></span>` : ''}
+      </div>
+      <div class="px-1.5 pt-1 pb-1.5 min-w-0">
+        <div class="text-[11.5px] font-medium leading-tight line-clamp-2">${escapeHtml(m.title)}</div>
+        <div class="flex items-center justify-between gap-1 mt-1 text-[10px] ${isSelected ? 'text-white/80' : 'text-apple-secondary'}">
+          <span class="rec-badges">${recordingBadgesHtml(m)}</span>
+          <span class="shrink-0">${escapeHtml(libSortValue(m))}</span>
+        </div>
+      </div>
+    </div>`;
+}
+
+const ICON_FILE_AUDIO = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 9l10.5-3m0 6.553v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 11-.99-3.467l2.31-.66a2.25 2.25 0 001.632-2.163zm0 0V2.25L9 5.25v10.303m0 0v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 01-.99-3.467l2.31-.66A2.25 2.25 0 009 15.553z"/></svg>';
+const ICON_FILE_VIDEO = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><path stroke-linecap="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"/></svg>';
 
 function folderRowHtml(f, depth, collapsed) {
   const count = meetingsInFolderTree(f.id).length;
@@ -2217,13 +2513,13 @@ function renderMeetingsSidebar() {
     }
     listEl.innerHTML = askHtml + state.globalSearchResults.map(item => `
       <div class="rounded-lg bg-white/[0.03] border apple-border p-2.5 space-y-1.5 mb-1.5">
-        <div onclick="selectMeeting(${item.meeting_id}, true)"
+        <div onclick="openMeeting(${item.meeting_id}, true)"
              title="${escapeHtml(item.title)}"
              class="text-xs font-semibold text-white hover:text-apple-blue cursor-pointer truncate">
           ${escapeHtml(item.title)}
         </div>
         ${(item.hits || []).map(h => `
-          <div onclick="selectMeetingAndSeek(${item.meeting_id}, ${h.start})"
+          <div onclick="switchAppView('library'); selectMeetingAndSeek(${item.meeting_id}, ${h.start})"
                title="${escapeHtml(t('tipSeekTimestamp'))}"
                class="px-2 py-1 rounded bg-black/30 hover:bg-apple-blue/20 cursor-pointer text-[11px] transition">
             <div class="flex items-center justify-between text-[10px] text-apple-blue font-mono">
@@ -2251,6 +2547,15 @@ function renderMeetingsSidebar() {
     if (!byFolder.has(key)) byFolder.set(key, []);
     byFolder.get(key).push(m);
   }
+  const prefs = libPrefs();
+  for (const list of byFolder.values()) list.sort(libComparator(prefs));
+  const items = (list, depth) => {
+    if (!list || !list.length) return '';
+    if (prefs.view === 'grid') {
+      return `<div class="lib-grid" style="padding-left:${6 + depth * 14}px">${list.map(meetingTileHtml).join('')}</div>`;
+    }
+    return list.map(m => prefs.view === 'compact' ? meetingCompactRowHtml(m, depth) : meetingRowHtml(m, depth)).join('');
+  };
   const collapsed = collapsedFolders();
   let html = '';
   const walk = (parentId, depth) => {
@@ -2260,11 +2565,11 @@ function renderMeetingsSidebar() {
       html += folderRowHtml(f, depth, collapsed);
       if (collapsed.has(f.id)) continue;
       walk(f.id, depth + 1);
-      for (const m of byFolder.get(f.id) || []) html += meetingRowHtml(m, depth + 1);
+      html += items(byFolder.get(f.id), depth + 1);
     }
   };
   walk(null, 0);
-  for (const m of byFolder.get(null) || []) html += meetingRowHtml(m, 0);
+  html += items(byFolder.get(null), 0);
   listEl.innerHTML = html;
 }
 
@@ -4019,7 +4324,6 @@ function toggleStudioVoiceEnhancer() {
 // AUDIO SOURCE SELECTION, SETTINGS SIGNAL TESTER & SOUNDCLOUD LIVE RECORDER
 // =========================================================================
 let _mediaRecorder = null;
-let _recChunks = [];
 let _recStreams = [];
 let _recAudioCtx = null;
 let _recStartTime = 0;
@@ -4030,6 +4334,7 @@ let _recWaveHistory = [];
 let _recCaptureId = null;
 let _recSysLevel = 0;
 let _recSysTimer = null;
+let _recSignalAt = 0;
 
 let _settingsTestStreams = [];
 let _settingsTestCtx = null;
@@ -4365,6 +4670,7 @@ function applyRecordPreset(id) {
   const micSel = document.getElementById('record-mic-select');
   if (p.mic && [...micSel.options].some(o => o.value === p.mic)) micSel.value = p.mic;
   document.getElementById('live-captions-toggle').checked = !!p.live;
+  if (p.video !== undefined) document.getElementById('record-video-select').value = p.video || '';
   document.getElementById('live-translate-select').value = p.translate || '';
   saveLiveCaptionPrefs();
   renderRecordPresetSelect(p.id);
@@ -4377,6 +4683,7 @@ function presetFromForm(base) {
     mic: document.getElementById('record-mic-select').value || '',
     live: document.getElementById('live-captions-toggle').checked,
     translate: document.getElementById('live-translate-select').value || '',
+    video: document.getElementById('record-video-select').value || '',
   };
 }
 
@@ -4468,6 +4775,9 @@ async function prepareStudio(presetId) {
     const savedSource = (state.system && state.system.settings && state.system.settings.record_source_mode) || 'both';
     document.getElementById('record-source-select').value = savedSource;
   }
+  if (!_studioPrepared) {
+    try { document.getElementById('record-video-select').value = localStorage.getItem('verbascribe_record_video') || ''; } catch (e) {}
+  }
   if (!_studioPrepared || presetId) applyRecordPreset(presetId || state.recPresetId || defaultRecordPresetId());
   else renderRecordPresetSelect(state.recPresetId || defaultRecordPresetId());
   renderRecordSaveHint();
@@ -4480,11 +4790,15 @@ async function prepareStudio(presetId) {
   document.getElementById('record-timer-display').textContent = '00:00';
   document.getElementById('record-level-bar').style.width = '2%';
   document.getElementById('record-db-display').textContent = '-60 dB';
-  document.getElementById('record-signal-badge').textContent = t('recReady');
-  document.getElementById('record-signal-badge').className = 'px-2 py-0.5 rounded-full text-[11px] font-medium bg-white/5 text-apple-secondary';
+  document.getElementById('record-signal-dot').classList.remove('on');
   _studioPrepared = true;
   renderStudioState();
   setTimeout(() => drawIdleSoundCloudBars('record-waveform-canvas'), 40);
+}
+
+function saveRecordVideoPref() {
+  try { localStorage.setItem('verbascribe_record_video', document.getElementById('record-video-select').value); } catch (e) {}
+  renderStudioState();
 }
 
 function renderRecordSaveHint() {
@@ -4514,9 +4828,7 @@ async function initLiveCaptionControls() {
   if (liveCap.session) return;
   const prefs = liveCaptionPrefs();
   const codes = await textLanguages();
-  const sel = document.getElementById('live-translate-select');
-  sel.innerHTML = `<option value="">${escapeHtml(t('liveNoTranslation'))}</option>` + textLangOptions(codes, false);
-  sel.value = prefs.translate || '';
+  fillTranslateSelect(codes, prefs.translate || '');
   // Speech: Whisper language codes (no script variants)
   const speech = document.getElementById('studio-speech');
   speech.innerHTML = `<option value="auto">${escapeHtml(t('studioSpeechAuto'))}</option>` + textLangOptions(codes, true);
@@ -4524,6 +4836,92 @@ async function initLiveCaptionControls() {
   document.getElementById('live-captions-toggle').checked = !!prefs.on;
   renderStudioControls();
 }
+
+// --- Quick translation languages: two buttons (right-click changes the language) and "auto",
+// which translates each phrase into the other language of the two (Russian speech into English,
+// English speech into Russian) ---
+const QUICK_LANGS_DEFAULT = ['ru', 'en'];
+
+function quickLangs() {
+  try {
+    const v = JSON.parse(localStorage.getItem('verbascribe_quick_langs') || 'null');
+    if (Array.isArray(v) && v.length === 2 && v[0] !== v[1]) return v;
+  } catch (e) {}
+  return [...QUICK_LANGS_DEFAULT];
+}
+
+function autoPairLabel() {
+  const [a, b] = quickLangs();
+  return `${langCode(a)} ⇄ ${langCode(b)}`;
+}
+
+function fillTranslateSelect(codes, value) {
+  const sel = document.getElementById('live-translate-select');
+  sel.innerHTML = `<option value="">${escapeHtml(t('liveNoTranslation'))}</option>`
+    + `<option value="auto">${escapeHtml(t('liveAutoPair').replace('{pair}', autoPairLabel()))}</option>`
+    + textLangOptions(codes, false);
+  sel.value = [...sel.options].some(o => o.value === value) ? value : '';
+}
+
+function renderQuickLangs() {
+  const box = document.getElementById('studio-quick-langs');
+  if (!box) return;
+  const current = document.getElementById('live-translate-select').value;
+  const [a, b] = quickLangs();
+  const btn = (value, label, title, menuIndex) =>
+    `<button onclick="setQuickTranslate('${value}')" ${menuIndex != null ? `oncontextmenu="openQuickLangMenu(event, ${menuIndex})"` : ''}
+      class="quick-lang ${current === value ? 'on' : ''}" title="${escapeHtml(title)}">${escapeHtml(label)}</button>`;
+  box.innerHTML = btn(a, langCode(a), t('tipQuickLang').replace('{lang}', langName(a)), 0)
+    + btn(b, langCode(b), t('tipQuickLang').replace('{lang}', langName(b)), 1)
+    + btn('auto', `⇄ ${t('liveAutoShort')}`, t('tipQuickAuto').replace('{a}', langName(a)).replace('{b}', langName(b)), null);
+}
+
+function setQuickTranslate(value) {
+  const sel = document.getElementById('live-translate-select');
+  sel.value = sel.value === value ? '' : value;  // a second click turns translation off
+  studioConfigure();
+}
+
+function openQuickLangMenu(e, index) {
+  e.preventDefault();
+  e.stopPropagation();
+  closeQuickLangMenu();
+  const codes = (_textLangs || TEXT_LANG_FALLBACK).map(c => ({ c, n: langName(c) })).sort((x, y) => x.n.localeCompare(y.n));
+  const langs = quickLangs();
+  const menu = document.createElement('div');
+  menu.id = 'quick-lang-menu';
+  menu.className = 'fixed w-56 max-h-80 overflow-y-auto macos-menu z-50';
+  menu.innerHTML = `<div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(t('quickLangPick'))}</div>`
+    + codes.map(({ c, n }) => `<button class="macos-menu-item" data-code="${c}" ${langs.includes(c) && c !== langs[index] ? 'disabled style="opacity:.4"' : ''}>`
+      + `<span>${escapeHtml(n)}</span><span class="text-[10.5px] opacity-60">${c === langs[index] ? '✓' : escapeHtml(langCode(c))}</span></button>`).join('');
+  menu.addEventListener('click', (ev) => {
+    const b = ev.target.closest('button[data-code]');
+    ev.stopPropagation();
+    if (!b || b.disabled) return;
+    setQuickLang(index, b.dataset.code);
+    closeQuickLangMenu();
+  });
+  document.body.appendChild(menu);
+  menu.style.left = `${Math.min(e.clientX, window.innerWidth - 236)}px`;
+  menu.style.top = `${Math.min(e.clientY, window.innerHeight - 330)}px`;
+}
+
+function closeQuickLangMenu() {
+  document.getElementById('quick-lang-menu')?.remove();
+}
+
+function setQuickLang(index, code) {
+  const langs = quickLangs();
+  const old = langs[index];
+  langs[index] = code;
+  try { localStorage.setItem('verbascribe_quick_langs', JSON.stringify(langs)); } catch (e) {}
+  const sel = document.getElementById('live-translate-select');
+  const value = sel.value === old ? code : sel.value;
+  fillTranslateSelect(_textLangs || TEXT_LANG_FALLBACK, value);
+  studioConfigure();
+}
+
+document.addEventListener('click', closeQuickLangMenu);
 
 function downsampleTo16k(input, rate) {
   if (rate === 16000) return input;
@@ -4556,6 +4954,7 @@ async function startLiveCaptions(ctx, stream) {
       body: JSON.stringify({
         lang: studio.speech || 'auto',
         translate_to: document.getElementById('live-translate-select').value || null,
+        pair: quickLangs(),
         capture_id: _recCaptureId,
         speed: studio.speed,
       }),
@@ -4610,6 +5009,11 @@ async function sendLiveAudio() {
       const ln = liveCap.lines.get(Number(id));
       if (ln) ln.translation = tr;
     }
+    for (const [id, tg] of Object.entries(data.targets || {})) {
+      const ln = liveCap.lines.get(Number(id));
+      if (ln) ln.target = tg;
+    }
+    liveCap.partialTarget = data.partial_target || '';
     liveCap.partial = data.partial || '';
     liveCap.partialTranslation = data.partial_translation || '';
     liveCap.translationReady = !!data.translation_ready;
@@ -4692,14 +5096,16 @@ function renderStudioState() {
   const rec = isRecording();
   const sourceName = { mic: t('sourceMic'), system: t('sourceSystem'), both: t('sourceBoth') };
   const p = recordPresets().find(x => x.id === state.recPresetId);
+  const withVideo = document.getElementById('record-video-select').value === 'screen';
   document.getElementById('studio-source').textContent =
-    [p ? presetLabel(p) : '', sourceName[document.getElementById('record-source-select').value] || ''].filter(Boolean).join(' · ');
+    [p ? presetLabel(p) : '', sourceName[document.getElementById('record-source-select').value] || '', withVideo ? t('recVideoShort') : '']
+      .filter(Boolean).join(' · ');
   document.getElementById('studio-heading').textContent = t(rec ? 'studioRecording' : 'studioIdle');
   document.getElementById('studio-rec-dot').classList.toggle('studio-idle', !rec);
   for (const id of ['studio-start-btn', 'btn-start-rec']) document.getElementById(id).classList.toggle('hidden', rec);
   for (const id of ['studio-stop-btn', 'studio-cancel-btn', 'btn-stop-rec', 'btn-cancel-rec']) document.getElementById(id).classList.toggle('hidden', !rec);
   // What is recorded cannot change mid-recording; how captions look can
-  for (const id of ['record-preset-select', 'record-source-select', 'record-mic-select', 'record-title-input']) {
+  for (const id of ['record-preset-select', 'record-source-select', 'record-mic-select', 'record-video-select', 'record-title-input']) {
     document.getElementById(id).disabled = rec;
   }
   document.getElementById('rec-dot-indicator').classList.toggle('animate-ping', rec);
@@ -4731,12 +5137,14 @@ function updateRecordButtonState() {
     btn.classList.remove('animate-pulse');
   }
   document.getElementById('nav-studio-dot').classList.toggle('hidden', !recording);
-  document.getElementById('nav-studio-label').textContent = recording && state.appView !== 'studio' ? timer : t('navStudio');
+  document.getElementById('nav-studio-icon').classList.toggle('hidden', recording);
+  document.getElementById('nav-studio-label').textContent = recording ? `${t('navStudio')} · ${timer}` : t('navStudio');
 }
 
 function renderStudioControls() {
   document.getElementById('studio-fast').checked = studio.speed === 'fast';
   document.getElementById('studio-tr-options').classList.toggle('hidden', !document.getElementById('live-translate-select').value);
+  renderQuickLangs();
   // "Auto" shows the language heard last
   const autoOpt = document.querySelector('#studio-speech option[value="auto"]');
   if (autoOpt) autoOpt.textContent = t('studioSpeechAuto') + (liveCap.lang && studio.speech === 'auto' ? ` · ${langCode(liveCap.lang)}` : '');
@@ -4764,7 +5172,7 @@ async function studioConfigure(speechChanged) {
   try {
     await fetch(`/api/live/${liveCap.session}/config`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ translate_to: target, speed: studio.speed, speech_lang: speechChanged ? studio.speech : null }),
+      body: JSON.stringify({ translate_to: target, pair: quickLangs(), speed: studio.speed, speech_lang: speechChanged ? studio.speech : null }),
     });
   } catch (e) { console.error(e); }
   syncStudioCaptions();
@@ -4781,66 +5189,29 @@ async function studioToggleCaptions(on) {
 }
 
 // --- Studio captions without flicker ---
-// Every caption line keeps its own element for as long as it is shown, and its text is typed in
-// towards what the server sent last: a revision keeps the common beginning and retypes only the
-// rest, and a translation that is not ready yet never blanks the one already shown. When the draft
-// phrase becomes final, the same element carries on as that line together with the draft's
-// translation, until the final translation arrives and replaces it in place.
-const CAP_MIN_CPS = 45;        // typing speed, characters per second
-const CAP_CATCHUP_SEC = 0.45;  // a longer backlog is typed faster, so text never lags far behind
+// Only final text is shown: the server revises the phrase being spoken two or three times, and
+// showing each revision looked like the same line appearing again and again. The phrase being
+// spoken is a quiet "…" row; when it becomes final its text fades in once, and its translation
+// fades in under it when it is ready. Every line keeps its own element while it is shown.
 const CAP_MAX_ROWS = 150;
-const capView = { rows: new Map(), draftKey: null, draftSeq: 0, raf: 0, lastT: 0, stick: true };
-const _reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+const capView = { rows: new Map(), draftKey: null, draftSeq: 0, stick: true };
 
 class CapTyper {
-  constructor(el) { this.el = el; this.shown = ''; this.target = ''; this.acc = 0; }
+  constructor(el) { this.el = el; this.target = ''; }
 
   set(text) {
     text = text || '';
     if (text === this.target) return;
     this.target = text;
-    if (_reduceMotion) this.jump();
-    else capKick();
-  }
-
-  jump() { this.shown = this.target; this.el.textContent = this.shown; }
-
-  step(dt) {
-    if (this.shown === this.target) return false;
-    if (!this.target.startsWith(this.shown)) {
-      const a = this.shown, b = this.target;
-      let p = 0;
-      while (p < a.length && p < b.length && a[p] === b[p]) p++;
-      this.shown = a.slice(0, p);
+    this.el.textContent = text;
+    if (text) {
+      this.el.classList.remove('cap-in');
+      void this.el.offsetWidth;  // restarts the fade
+      this.el.classList.add('cap-in');
     }
-    const backlog = this.target.length - this.shown.length;
-    this.acc += Math.max(CAP_MIN_CPS, backlog / CAP_CATCHUP_SEC) * dt;
-    const n = Math.floor(this.acc);
-    if (n > 0) {
-      this.acc -= n;
-      this.shown = this.target.slice(0, this.shown.length + n);
-    }
-    this.el.textContent = this.shown;
-    return this.shown !== this.target;
   }
-}
 
-function capKick() {
-  if (capView.raf) return;
-  capView.lastT = performance.now();
-  capView.raf = requestAnimationFrame(capFrame);
-}
-
-function capFrame(now) {
-  const dt = Math.min(0.1, Math.max(0, (now - capView.lastT) / 1000));
-  capView.lastT = now;
-  let busy = false;
-  for (const row of capView.rows.values()) {
-    if (row.orig.step(dt)) busy = true;
-    if (row.tr.step(dt)) busy = true;
-  }
-  capFollowBottom();
-  capView.raf = busy ? requestAnimationFrame(capFrame) : 0;
+  jump() { this.el.textContent = this.target; }
 }
 
 function capFollowBottom() {
@@ -4858,7 +5229,6 @@ function capReset() {
 
 function capResetTranslations() {
   for (const row of capView.rows.values()) {
-    row.provisional = '';
     row.tr.target = '';
     row.tr.jump();
   }
@@ -4870,7 +5240,7 @@ function createCapRow(key) {
   el.innerHTML = '<div class="cap-o"><span class="lang-tag cap-o-tag"></span><span class="cap-orig"></span></div>'
     + '<div class="cap-t"><span class="lang-tag cap-t-tag"></span><span class="cap-tr"></span></div>';
   document.getElementById('studio-cap-rows').appendChild(el);
-  const row = { key, el, orig: new CapTyper(el.querySelector('.cap-orig')), tr: new CapTyper(el.querySelector('.cap-tr')), provisional: '' };
+  const row = { key, el, orig: new CapTyper(el.querySelector('.cap-orig')), tr: new CapTyper(el.querySelector('.cap-tr')) };
   capView.rows.set(key, row);
   return row;
 }
@@ -4882,16 +5252,6 @@ function setCapTags(row, lang, target) {
   if (tt.textContent !== langCode(target)) tt.textContent = langCode(target);
 }
 
-// The part of the draft's translation that belongs to the line it became, by length; the rest
-// stays with the next draft until that one is translated
-function splitTranslation(tr, share) {
-  if (!tr || share >= 0.85) return [tr || '', ''];
-  let cut = Math.round(tr.length * share);
-  const space = tr.indexOf(' ', cut);
-  cut = space < 0 ? tr.length : space;
-  return [tr.slice(0, cut).trim(), tr.slice(cut).trim()];
-}
-
 function syncStudioCaptions() {
   const target = document.getElementById('live-translate-select').value;
   const view = target ? studio.view : 'orig';
@@ -4901,7 +5261,6 @@ function syncStudioCaptions() {
 
   const lines = [...liveCap.lines.values()].sort((a, b) => a.id - b.id);
   const fresh = lines.filter(ln => !capView.rows.has(ln.id));
-  let carry = '';
   fresh.forEach((ln, i) => {
     const draftRow = i === 0 && capView.draftKey ? capView.rows.get(capView.draftKey) : null;
     if (draftRow) {
@@ -4910,9 +5269,6 @@ function syncStudioCaptions() {
       draftRow.key = ln.id;
       capView.rows.set(ln.id, draftRow);
       draftRow.el.classList.remove('cap-draft');
-      // How much of the old draft this line is: usually all of it (the next draft is new speech)
-      const share = ln.text.length / Math.max(1, draftRow.orig.target.length);
-      [draftRow.provisional, carry] = splitTranslation(draftRow.tr.target, share);
     } else {
       createCapRow(ln.id);
     }
@@ -4922,9 +5278,8 @@ function syncStudioCaptions() {
     if (!row) continue;
     row.orig.set(ln.text);
     row.el.classList.toggle('cap-same', !!ln.translation && ln.translation === ln.text);
-    // Never blank a translation that is already on screen
-    row.tr.set(ln.translation || row.provisional || row.tr.target);
-    setCapTags(row, ln.lang, target);
+    row.tr.set(ln.translation || '');
+    setCapTags(row, ln.lang, ln.target || (target === 'auto' ? '' : target));
   }
 
   if (liveCap.partial) {
@@ -4933,12 +5288,8 @@ function syncStudioCaptions() {
       capView.draftKey = `d${++capView.draftSeq}`;
       row = createCapRow(capView.draftKey);
       row.el.classList.add('cap-draft');
-      if (carry) row.tr.set(carry);
     }
-    row.orig.set(liveCap.partial);
-    if (liveCap.partialTranslation) row.tr.set(liveCap.partialTranslation);
-    row.el.classList.toggle('cap-same', !!liveCap.partialTranslation && liveCap.partialTranslation === liveCap.partial);
-    setCapTags(row, liveCap.lang, target);
+    setCapTags(row, liveCap.lang, liveCap.partialTarget || (target === 'auto' ? '' : target));
   } else if (capView.draftKey) {
     // The draft ended without becoming a line (noise taken for speech)
     capView.rows.get(capView.draftKey)?.el.remove();
@@ -4959,7 +5310,7 @@ function syncStudioCaptions() {
   head.classList.toggle('hidden', !(view === 'side' && has));
   if (view === 'side') {
     document.getElementById('studio-cap-head-orig').textContent = t('studioOriginalCol') + (liveCap.lang ? ` · ${langName(liveCap.lang)}` : '');
-    document.getElementById('studio-cap-head-tr').textContent = langName(target);
+    document.getElementById('studio-cap-head-tr').textContent = target === 'auto' ? `${t('studioTranslationCol')} · ${autoPairLabel()}` : langName(target);
   }
   const empty = document.getElementById('studio-cap-empty');
   empty.classList.toggle('hidden', has);
@@ -4984,6 +5335,28 @@ async function startLiveRecording() {
     const micId = document.getElementById('record-mic-select').value || '';
     syncRecordModalToSettings();
 
+    // Video first: the screen picker must open right after the click, before anything is awaited
+    _recVideoStream = null;
+    if (document.getElementById('record-video-select').value === 'screen') {
+      try {
+        _recVideoStream = await navigator.mediaDevices.getDisplayMedia({
+          video: { frameRate: { ideal: 30, max: 30 }, width: { max: 1920 }, height: { max: 1080 } },
+          audio: false,
+        });
+      } catch (e) {
+        if (e && e.name === 'NotAllowedError') return;  // the picker was closed: nothing starts
+        throw new Error(t('recVideoFailed') + (e && e.message ? `: ${e.message}` : ''));
+      }
+      const preview = document.getElementById('record-video-preview');
+      preview.srcObject = _recVideoStream;
+      preview.classList.remove('hidden');
+      // Sharing stopped from the system bar: the sound keeps recording, the picture ends there
+      _recVideoStream.getVideoTracks()[0].addEventListener('ended', () => {
+        preview.classList.add('hidden');
+        showToast(t('recVideoEnded'));
+      });
+    }
+
     // System audio: recorded by the app (no prompt); the browser's screen share is only a fallback
     _recCaptureId = null;
     _recSysLevel = 0;
@@ -5002,16 +5375,24 @@ async function startLiveRecording() {
     const { ctx, mixedStream, acquiredStreams } = await buildCaptureStream(sourceMode, micId, !!_recCaptureId);
     _recAudioCtx = ctx;
     _recStreams = acquiredStreams;
-    _recChunks = [];
 
-    // With system audio from the app and no microphone there is nothing for the page to record
+    // The page records the microphone and the video; with system audio from the app, no
+    // microphone and no video there is nothing for it to record
     _mediaRecorder = null;
-    if (!(_recCaptureId && sourceMode === 'system')) {
-      _mediaRecorder = new MediaRecorder(mixedStream);
+    _recPage = null;
+    const pageAudio = !(_recCaptureId && sourceMode === 'system');
+    if (pageAudio || _recVideoStream) {
+      const tracks = [...(_recVideoStream ? _recVideoStream.getVideoTracks() : []), ...(pageAudio ? mixedStream.getAudioTracks() : [])];
+      const { mimeType, options } = recorderFormat(!!_recVideoStream, pageAudio);
+      const res = await fetch('/api/record/page/start', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || 'Error');
+      _recPage = { id: data.page_id, upload: Promise.resolve(), failed: '', hasVideo: !!_recVideoStream, hasMic: pageAudio };
+      _mediaRecorder = new MediaRecorder(new MediaStream(tracks), mimeType ? { mimeType, ...options } : options);
       _mediaRecorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) _recChunks.push(e.data);
+        if (e.data && e.data.size > 0) sendRecordingChunk(_recPage, e.data);
       };
-      _mediaRecorder.start(250);
+      _mediaRecorder.start(1000);
     }
     if (_recCaptureId) {
       clearInterval(_recSysTimer);
@@ -5068,14 +5449,12 @@ async function startLiveRecording() {
       document.getElementById('record-db-display').textContent = `${db} dB`;
       document.getElementById('studio-db').textContent = `${db} dB`;
 
-      const badge = document.getElementById('record-signal-badge');
-      if (db > -44) {
-        badge.textContent = t('recSignalActive');
-        badge.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-apple-green/20 text-apple-green';
-      } else {
-        badge.textContent = t('recSignalSilence');
-        badge.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-white/5 text-apple-secondary';
-      }
+      // A plain on/off dot with a short hold, so speech pauses do not make it blink
+      const now = performance.now();
+      if (db > -44) _recSignalAt = now;
+      const on = now - _recSignalAt < 600;
+      const dot = document.getElementById('record-signal-dot');
+      if (dot.classList.contains('on') !== on) dot.classList.toggle('on', on);
 
       _recAnimFrame = requestAnimationFrame(updateMeter);
     }
@@ -5102,6 +5481,32 @@ async function startLiveRecording() {
   }
 }
 
+// The page's recording goes to the server every second, in order (see /api/record/page)
+let _recPage = null;
+let _recVideoStream = null;
+
+function recorderFormat(video, audio) {
+  const candidates = video
+    ? (audio ? ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'] : ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'])
+    : ['audio/webm;codecs=opus', 'audio/webm'];
+  const mimeType = candidates.find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || '';
+  return { mimeType, options: video ? { videoBitsPerSecond: 2_500_000, audioBitsPerSecond: 128_000 } : { audioBitsPerSecond: 128_000 } };
+}
+
+function sendRecordingChunk(page, blob) {
+  if (!page) return;
+  page.upload = page.upload.then(async () => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const r = await fetch(`/api/record/page/${page.id}/chunk`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: blob });
+        if (r.ok) return;
+      } catch (e) {}
+      await new Promise(res => setTimeout(res, 500 * (attempt + 1)));
+    }
+    page.failed = t('recChunkFailed');
+  });
+}
+
 function _cleanupRecordingResources() {
   reportRecordingState(false);
   window._recMixedStream = null;
@@ -5115,6 +5520,13 @@ function _cleanupRecordingResources() {
     _recStreams.forEach(s => s.getTracks().forEach(tr => tr.stop()));
     _recStreams = [];
   }
+  if (_recVideoStream) {
+    _recVideoStream.getTracks().forEach(tr => tr.stop());
+    _recVideoStream = null;
+  }
+  const preview = document.getElementById('record-video-preview');
+  preview.srcObject = null;
+  preview.classList.add('hidden');
   if (_recAudioCtx) {
     try { _recAudioCtx.close(); } catch (e) {}
     _recAudioCtx = null;
@@ -5135,8 +5547,14 @@ function cancelLiveRecording() {
   if (!isRecording()) return;
   if (!confirm(t('recCancelConfirm'))) return;
   if (_mediaRecorder && _mediaRecorder.state !== 'inactive') {
+    _mediaRecorder.ondataavailable = null;
     _mediaRecorder.onstop = null;
     _mediaRecorder.stop();
+  }
+  if (_recPage) {
+    const page = _recPage;
+    page.upload.then(() => fetch(`/api/record/page/${page.id}/cancel`, { method: 'POST' })).catch(() => {});
+    _recPage = null;
   }
   if (_recCaptureId) {
     fetch(`/api/record/${_recCaptureId}/cancel`, { method: 'POST' }).catch(() => {});
@@ -5154,34 +5572,32 @@ async function stopAndTranscribeRecording() {
   if (recorder && recorder.state !== 'inactive') {
     await new Promise(resolve => {
       recorder.onstop = resolve;
-      recorder.stop();
+      recorder.stop();  // the last chunk arrives before onstop
     });
   }
-
-  const blob = recorder ? new Blob(_recChunks, { type: 'audio/webm' }) : null;
+  const page = _recPage;
+  _recPage = null;
   const captureId = _recCaptureId;
   _recCaptureId = null;
   const rawTitle = (document.getElementById('record-title-input').value || t('recordDefaultTitle')).trim();
   _cleanupRecordingResources();
 
-  const safeName = rawTitle.replace(/[\\/:*?"<>|]/g, '_') + '.webm';
-
-  let created;
-  if (captureId) {
-    // The app mixes its system-audio recording with the microphone and queues the result
-    const fd = new FormData();
-    fd.append('title', rawTitle);
-    if (blob) fd.append('file', new File([blob], safeName, { type: 'audio/webm' }));
-    const res = await fetch(`/api/record/${captureId}/finish`, { method: 'POST', body: fd });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      showToast(data.detail || 'Error');
-      return;
-    }
-    created = data.created;
-  } else {
-    created = await uploadFiles([new File([blob], safeName, { type: 'audio/webm' })], { source: 'recording', title: rawTitle });
+  if (page) await page.upload;  // every chunk is on the server
+  if (page && page.failed) showToast(page.failed);
+  const res = await fetch('/api/record/finish', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title: rawTitle, page_id: page ? page.id : null, capture_id: captureId,
+      has_video: !!(page && page.hasVideo), has_mic: !!(page && page.hasMic),
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    showToast(data.detail || 'Error');
+    return;
   }
+  const created = data.created;
   await loadMeetingsList();
   prepareStudio();
   const first = created && created[0];
@@ -6391,3 +6807,193 @@ async function cancelPendingExports(id) {
   await fetch(`/api/meetings/${id}/pending-exports`, { method: 'DELETE' });
   loadMeetingInfo();
 }
+
+// --- Text context menu ---
+// The app window has no browser menu of its own, so right-click on text opens this one: in a text
+// field it edits (cut, copy, paste, select all); on selected text it copies the text and offers what
+// the app can do with it (play from there, search, ask the assistant, add to the dictionary).
+const TEXT_AREAS = '#studio-captions, #transcript-container, #summary-content, #ask-thread, #info-content, .markdown-body';
+
+function closeTextMenu() {
+  document.getElementById('text-menu')?.remove();
+}
+
+function textMenuItems(e) {
+  const el = e.target;
+  if (isTypingTarget(el) && el.tagName !== 'SELECT') {
+    const field = el;
+    const ro = field.readOnly || field.disabled;
+    const sel = field.isContentEditable ? String(window.getSelection()) : field.value.slice(field.selectionStart ?? 0, field.selectionEnd ?? 0);
+    return [
+      { label: t('ctxCut'), key: 'Ctrl+X', disabled: ro || !sel, run: () => { field.focus(); document.execCommand('cut'); } },
+      { label: t('ctxCopy'), key: 'Ctrl+C', disabled: !sel, run: () => copyPlain(sel) },
+      { label: t('ctxPaste'), key: 'Ctrl+V', disabled: ro, run: () => pasteInto(field) },
+      { sep: true },
+      { label: t('ctxSelectAll'), key: 'Ctrl+A', run: () => { field.focus(); field.select ? field.select() : document.execCommand('selectAll'); } },
+    ];
+  }
+  const area = el.closest && el.closest(TEXT_AREAS);
+  const selection = window.getSelection();
+  const text = String(selection || '').replace(/\s+/g, ' ').trim();
+  const inSel = text && selection.rangeCount && area && area.contains(selection.getRangeAt(0).commonAncestorContainer);
+  if (!area && !text) return null;
+  const items = [];
+  const segRow = (inSel ? nodeEl(selection.anchorNode) : el)?.closest?.('.segment-row');
+  const inStudio = area && area.id === 'studio-captions';
+  if (text && (inSel || !area)) {
+    items.push({ label: t('ctxCopy'), key: 'Ctrl+C', run: () => copyPlain(String(selection)) });
+    if (segRow) {
+      const start = selectionStartTime(selection) ?? Number(segRow.dataset.start);
+      items.push({ label: t('ctxCopyWithTime'), run: () => copyPlain(`[${formatTime(start)}] ${text}`) });
+      items.push({ sep: true });
+      items.push({ label: t('ctxPlayFromHere'), key: formatTime(start), run: () => seekPlayer(start) });
+    }
+    items.push({ sep: true });
+    const short = text.length <= 80;
+    if (state.activeMeeting && short && document.getElementById('library-view') && !document.getElementById('library-view').classList.contains('hidden')) {
+      items.push({ label: t('ctxFindHere'), run: () => findInTranscript(text) });
+    }
+    if (short) items.push({ label: t('ctxFindAll'), run: () => findEverywhere(text) });
+    items.push({ label: t('ctxAskAssistant'), run: () => askAbout(text) });
+    if (text.length <= 60 && text.split(' ').length <= 5) {
+      items.push({ label: t('ctxAddToDictionary'), run: () => addToDictionary(text) });
+    }
+  } else if (segRow) {
+    const segText = segRow.querySelector('[id^="seg-text-"]')?.innerText.replace(/\s+/g, ' ').trim() || '';
+    const start = Number(segRow.dataset.start);
+    items.push({ label: t('ctxCopyLine'), run: () => copyPlain(segText) });
+    items.push({ label: t('ctxCopyWithTime'), run: () => copyPlain(`[${formatTime(start)}] ${segText}`) });
+    items.push({ label: t('ctxPlayFromHere'), key: formatTime(start), run: () => seekPlayer(start) });
+  } else if (inStudio) {
+    const row = el.closest('.cap-row');
+    const line = row ? capRowText(row) : '';
+    if (line) items.push({ label: t('ctxCopyLine'), run: () => copyPlain(line) });
+  }
+  if (area) {
+    items.push({ sep: true });
+    if (inStudio) items.push({ label: t('ctxCopyAllCaptions'), disabled: !capView.rows.size, run: () => copyPlain(studioCaptionsText()) });
+    items.push({ label: t('ctxSelectAll'), key: 'Ctrl+A', run: () => selectAllIn(inStudio ? document.getElementById('studio-cap-rows') : area) });
+  }
+  return items;
+}
+
+function nodeEl(node) {
+  return node && (node.nodeType === 1 ? node : node.parentElement);
+}
+
+// The time of the first selected word, when the words carry their timings
+function selectionStartTime(selection) {
+  const range = selection.getRangeAt(0);
+  const startEl = nodeEl(range.startContainer);
+  const word = startEl?.closest('.word-token');
+  if (word) return Number(word.dataset.start);
+  const row = startEl?.closest('.segment-row');
+  const first = row && [...row.querySelectorAll('.word-token')].find(w => range.intersectsNode(w));
+  return first ? Number(first.dataset.start) : null;
+}
+
+function capRowText(row) {
+  const o = row.querySelector('.cap-orig')?.textContent.trim() || '';
+  const tr = row.querySelector('.cap-tr')?.textContent.trim() || '';
+  return tr && tr !== o ? `${o}\n${tr}` : o;
+}
+
+function studioCaptionsText() {
+  return [...capView.rows.values()].filter(r => r.key !== capView.draftKey).map(r => capRowText(r.el)).filter(Boolean).join('\n\n');
+}
+
+function selectAllIn(el) {
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+function copyPlain(text) {
+  if (text) copyText(text);
+}
+
+async function pasteInto(field) {
+  field.focus();
+  try {
+    const text = await navigator.clipboard.readText();
+    if (field.isContentEditable) {
+      document.execCommand('insertText', false, text);
+    } else {
+      field.setRangeText(text, field.selectionStart, field.selectionEnd, 'end');
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  } catch (e) {
+    showToast(t('ctxPasteBlocked'));
+  }
+}
+
+function findInTranscript(text) {
+  focusTranscriptSearch();
+  const input = document.getElementById('transcript-search');
+  input.value = text;
+  renderTranscript();
+}
+
+function findEverywhere(text) {
+  switchAppView('library');
+  const input = document.getElementById('global-search-input');
+  input.value = text;
+  input.focus();
+  handleGlobalSidebarSearch(text);
+}
+
+function askAbout(text) {
+  const inLibrary = !document.getElementById('library-view')?.classList.contains('hidden');
+  const scope = inLibrary && state.activeMeeting ? { type: 'meeting', id: state.activeMeeting.id } : null;
+  openLibraryAsk(t('ctxAskTemplate').replace('{text}', text.length > 300 ? text.slice(0, 300) + '…' : text), scope);
+}
+
+async function addToDictionary(text) {
+  const term = text.replace(/^[\s.,!?;:«»"'()]+|[\s.,!?;:«»"'()]+$/g, '');
+  if (!term) return;
+  const res = await fetch('/api/dictionary', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ term, category: 'Термин' }),
+  });
+  if (res.ok) {
+    showToast(t('ctxAddedToDictionary').replace('{term}', term));
+    loadDictionary();
+  }
+}
+
+document.addEventListener('contextmenu', (e) => {
+  closeTextMenu();
+  if (e.defaultPrevented) return;
+  const items = textMenuItems(e);
+  if (!items || !items.some(i => !i.sep)) return;
+  e.preventDefault();
+  closeQuickLangMenu();
+  const menu = document.createElement('div');
+  menu.id = 'text-menu';
+  menu.className = 'fixed min-w-[220px] macos-menu z-[60]';
+  const clean = items.filter((it, i, a) => !it.sep || (i > 0 && !a[i - 1].sep && i < a.length - 1));
+  menu.innerHTML = clean.map((it, i) => it.sep
+    ? '<div class="my-1 h-px bg-white/10"></div>'
+    : `<button class="macos-menu-item gap-6" data-i="${i}" ${it.disabled ? 'disabled style="opacity:.4"' : ''}><span>${escapeHtml(it.label)}</span>`
+      + `<span class="text-[10.5px] opacity-50 font-mono">${escapeHtml(it.key || '')}</span></button>`).join('');
+  // Keeps the selection: a click in the menu must not clear it before the action reads it
+  menu.addEventListener('mousedown', ev => ev.preventDefault());
+  menu.addEventListener('click', (ev) => {
+    const b = ev.target.closest('button[data-i]');
+    ev.stopPropagation();
+    if (!b || b.disabled) return;
+    closeTextMenu();
+    clean[Number(b.dataset.i)].run();
+  });
+  document.body.appendChild(menu);
+  const r = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(4, Math.min(e.clientX, window.innerWidth - r.width - 4))}px`;
+  menu.style.top = `${Math.max(4, Math.min(e.clientY, window.innerHeight - r.height - 4))}px`;
+});
+document.addEventListener('click', closeTextMenu);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeTextMenu(); });
+window.addEventListener('blur', closeTextMenu);
+document.addEventListener('scroll', closeTextMenu, true);

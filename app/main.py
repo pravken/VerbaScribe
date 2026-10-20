@@ -367,6 +367,14 @@ def api_toggle_dictionary(term_id: int, payload: DictionaryTogglePayload) -> Dic
     return {"ok": True}
 
 
+@app.delete("/api/dictionary")
+def api_clear_dictionary() -> Dict[str, Any]:
+    from app.database import clear_dictionary
+
+    clear_dictionary()
+    return {"ok": True}
+
+
 @app.delete("/api/dictionary/{term_id}")
 def api_delete_dictionary(term_id: int) -> Dict[str, Any]:
     delete_dictionary_term(term_id)
@@ -760,52 +768,129 @@ def api_record_cancel(capture_id: str) -> Dict[str, Any]:
     return {"ok": True}
 
 
-@app.post("/api/record/{capture_id}/finish")
-async def api_record_finish(
-    capture_id: str,
-    title: str = Form("Запись"),
-    file: Optional[UploadFile] = File(None),
-) -> Dict[str, Any]:
-    """Stops the system-audio capture, mixes it with the page's microphone recording (if any) and
-    queues the result for transcription like an imported file."""
+# --- What the page records (microphone, and the screen or a window), streamed to the server ---
+# The page sends its MediaRecorder output every second, so a long recording with video never has to
+# fit into the window's memory, and what was recorded survives if the window is closed.
+_page_recordings: Dict[str, Path] = {}
+_page_lock = threading.Lock()
+
+
+def _page_part(page_id: str) -> Path:
+    with _page_lock:
+        p = _page_recordings.get(page_id)
+    if p is None:
+        raise HTTPException(status_code=404, detail="Запись не найдена")
+    return p
+
+
+@app.post("/api/record/page/start")
+def api_record_page_start() -> Dict[str, Any]:
+    page_id = uuid.uuid4().hex
+    part = _recordings_dir() / f".page_{page_id[:12]}.webm.part"
+    part.write_bytes(b"")
+    with _page_lock:
+        _page_recordings[page_id] = part
+    return {"page_id": page_id}
+
+
+@app.post("/api/record/page/{page_id}/chunk")
+async def api_record_page_chunk(page_id: str, request: Request) -> Dict[str, Any]:
+    part = _page_part(page_id)
+    data = await request.body()
+    if len(data) > 64 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Слишком большой фрагмент записи")
+    with part.open("ab") as f:
+        f.write(data)
+    return {"ok": True, "size": part.stat().st_size}
+
+
+@app.post("/api/record/page/{page_id}/cancel")
+def api_record_page_cancel(page_id: str) -> Dict[str, Any]:
+    with _page_lock:
+        part = _page_recordings.pop(page_id, None)
+    if part:
+        part.unlink(missing_ok=True)
+    return {"ok": True}
+
+
+class RecordFinishPayload(BaseModel):
+    title: str = "Запись"
+    page_id: Optional[str] = None     # what the page recorded (microphone and/or video)
+    capture_id: Optional[str] = None  # system audio recorded by the app
+    has_video: bool = False           # the page recording has a video track (screen, window, tab)
+    has_mic: bool = False             # the page recording has an audio track
+
+
+def _run_ffmpeg(cmd: List[str]) -> subprocess.CompletedProcess:
+    return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+
+
+def record_mix_command(ffmpeg: str, page: Optional[Path], system: Optional[Path], has_video: bool,
+                       has_mic: bool, dest: Path) -> Optional[List[str]]:
+    """The FFmpeg command that turns the parts of a recording into one file, or None when the page
+    recording can be used as it is."""
+    base = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error"]
+    if page and not system:
+        # Video from MediaRecorder has no index: a copy into a new file makes it seekable
+        return base + ["-i", str(page), "-c", "copy", str(dest)] if has_video else None
+    if system and not page:
+        return base + ["-i", str(system), "-c:a", "aac", "-b:a", "160k", str(dest)]
+    if has_video:
+        # The picture is copied as recorded; the sound is the system audio, mixed with the microphone
+        audio = (["-filter_complex", "[0:a][1:a]amix=inputs=2:duration=longest:normalize=0[a]", "-map", "0:v", "-map", "[a]"]
+                 if has_mic else ["-map", "0:v", "-map", "1:a"])
+        return base + ["-i", str(page), "-i", str(system), *audio, "-c:v", "copy", "-c:a", "libopus", "-b:a", "128k", str(dest)]
+    # normalize=0: each source keeps its level instead of both being halved
+    return base + ["-i", str(page), "-i", str(system), "-filter_complex",
+                   "[0:a][1:a]amix=inputs=2:duration=longest:normalize=0[a]", "-map", "[a]",
+                   "-c:a", "aac", "-b:a", "160k", str(dest)]
+
+
+@app.post("/api/record/finish")
+async def api_record_finish(payload: RecordFinishPayload) -> Dict[str, Any]:
+    """Ends a recording: stops the system-audio capture, joins it with what the page recorded
+    (microphone, video) and queues the result for transcription."""
     from starlette.concurrency import run_in_threadpool
 
     from app.ffmpeg_manager import tool_cmd
     from app.system_audio import finish_capture
 
-    cap = finish_capture(capture_id)
-    if not cap or not cap.path.is_file():
-        raise HTTPException(status_code=404, detail="Запись системного звука не найдена")
-    safe_stem = re.sub(r'[\\/:*?"<>|]', "_", title.strip() or "Запись")[:100]
-    dest = _recordings_dir() / f"{uuid.uuid4().hex[:8]}_{safe_stem}.m4a"
-    mic_path = None
-    if file is not None:
-        mic_path = UPLOADS_DIR / f"mic_{uuid.uuid4().hex[:8]}{Path(file.filename or 'mic.webm').suffix or '.webm'}"
-        with mic_path.open("wb") as out_f:
-            shutil.copyfileobj(file.file, out_f)
-    if mic_path:
-        # normalize=0: each source keeps its level instead of both being halved
-        cmd = [tool_cmd("ffmpeg"), "-y", "-hide_banner", "-loglevel", "error", "-i", str(mic_path), "-i", str(cap.path),
-               "-filter_complex", "[0:a][1:a]amix=inputs=2:duration=longest:normalize=0[a]", "-map", "[a]",
-               "-c:a", "aac", "-b:a", "160k", str(dest)]
+    page: Optional[Path] = None
+    if payload.page_id:
+        with _page_lock:
+            page = _page_recordings.pop(payload.page_id, None)
+        if page is not None and (not page.is_file() or page.stat().st_size == 0):
+            page.unlink(missing_ok=True)
+            page = None
+    cap = finish_capture(payload.capture_id) if payload.capture_id else None
+    system = cap.path if cap and cap.path.is_file() else None
+    if not page and not system:
+        raise HTTPException(status_code=404, detail="Запись пуста: звук не был получен")
+
+    safe_stem = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", payload.title.strip() or "Запись")[:100]
+    has_video = bool(payload.has_video and page)
+    ext = ".webm" if page and (has_video or not system) else ".m4a"
+    dest = _recordings_dir() / f"{uuid.uuid4().hex[:8]}_{safe_stem}{ext}"
+    cmd = record_mix_command(tool_cmd("ffmpeg"), page, system, has_video, payload.has_mic, dest)
+    if cmd is None:
+        shutil.move(str(page), str(dest))  # the recordings folder may have changed to another drive
     else:
-        cmd = [tool_cmd("ffmpeg"), "-y", "-hide_banner", "-loglevel", "error", "-i", str(cap.path),
-               "-c:a", "aac", "-b:a", "160k", str(dest)]
-
-    def _mix() -> subprocess.CompletedProcess:
-        return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-
-    res = await run_in_threadpool(_mix)
-    if res.returncode != 0 or not dest.is_file():
-        raise HTTPException(status_code=500, detail="Не удалось свести запись: " + (res.stderr or "")[-300:])
-    cap.path.unlink(missing_ok=True)
-    if mic_path:
-        mic_path.unlink(missing_ok=True)
+        res = await run_in_threadpool(_run_ffmpeg, cmd)
+        if res.returncode != 0 or not dest.is_file():
+            if page and not system:
+                dest.unlink(missing_ok=True)
+                shutil.move(str(page), str(dest))  # the original is still a playable recording
+            else:
+                raise HTTPException(status_code=500, detail="Не удалось свести запись: " + (res.stderr or "")[-300:])
+        if page:
+            page.unlink(missing_ok=True)
+    if system:
+        system.unlink(missing_ok=True)
 
     settings = get_all_settings()
     m = create_meeting(
-        title=title.strip()[:300] or safe_stem,
+        title=payload.title.strip()[:300] or safe_stem,
         filename=dest.name,
         media_path=str(dest),
         language=settings.get("language", "auto"),
@@ -814,6 +899,7 @@ async def api_record_finish(
         source="recording",
         owns_media=True,
         title_is_default=True,
+        has_video=has_video,
     )
     enqueue_meeting_job(m["id"])
     return {"created": [m]}
@@ -854,17 +940,29 @@ class LiveStartPayload(BaseModel):
     translate_to: Optional[str] = None
     capture_id: Optional[str] = None  # system audio recorded by the app is mixed into the captions
     speed: str = "quality"            # "quality": the configured model, "fast": a small installed one
+    pair: Optional[List[str]] = None  # with translate_to="auto": the two languages, e.g. ["ru", "en"]
+
+
+def _live_target(translate_to: Optional[str], pair: Optional[List[str]]) -> tuple:
+    """Validated (target, pair) of live captions; "auto" translates each line into the other
+    language of the pair."""
+    from app.translation import TEXT_LANGUAGES
+
+    target = (translate_to or "").strip().lower() or None
+    if target and target != "auto" and target not in TEXT_LANGUAGES:
+        raise HTTPException(status_code=400, detail="Неподдерживаемый язык перевода")
+    clean = [str(p).strip().lower() for p in (pair or []) if str(p).strip()][:2]
+    if clean and (len(clean) != 2 or clean[0] == clean[1] or any(p not in TEXT_LANGUAGES for p in clean)):
+        raise HTTPException(status_code=400, detail="Для автоперевода нужны два разных языка")
+    return target, clean or None
 
 
 @app.post("/api/live/start")
 def api_live_start(payload: LiveStartPayload) -> Dict[str, Any]:
     from app.live import start_session
-    from app.translation import TEXT_LANGUAGES
 
-    target = (payload.translate_to or "").strip().lower() or None
-    if target and target not in TEXT_LANGUAGES:
-        raise HTTPException(status_code=400, detail="Неподдерживаемый язык перевода")
-    return start_session(payload.lang, target, payload.capture_id, payload.speed).state()
+    target, pair = _live_target(payload.translate_to, payload.pair)
+    return start_session(payload.lang, target, payload.capture_id, payload.speed, pair).state()
 
 
 @app.post("/api/live/{session_id}/audio")
@@ -889,21 +987,19 @@ class LiveConfigPayload(BaseModel):
     translate_to: Optional[str] = None
     speed: Optional[str] = None
     speech_lang: Optional[str] = None  # "auto" or a language code; None keeps the current one
+    pair: Optional[List[str]] = None
 
 
 @app.post("/api/live/{session_id}/config")
 def api_live_config(session_id: str, payload: LiveConfigPayload) -> Dict[str, Any]:
     """Changes the caption translation while recording (language, fast or quality model)."""
     from app.live import get_session
-    from app.translation import TEXT_LANGUAGES
 
     s = get_session(session_id)
     if not s:
         raise HTTPException(status_code=404, detail="Сеанс субтитров не найден")
-    target = (payload.translate_to or "").strip().lower() or None
-    if target and target not in TEXT_LANGUAGES:
-        raise HTTPException(status_code=400, detail="Неподдерживаемый язык перевода")
-    s.configure(target, payload.speed if payload.speed in ("quality", "fast") else None, payload.speech_lang)
+    target, pair = _live_target(payload.translate_to, payload.pair)
+    s.configure(target, payload.speed if payload.speed in ("quality", "fast") else None, payload.speech_lang, pair)
     return s.state(0)
 
 
@@ -1995,9 +2091,10 @@ class LlmKeyPayload(BaseModel):
 
 @app.post("/api/llm/key")
 def api_llm_set_key(payload: LlmKeyPayload) -> Dict[str, Any]:
-    """Stores an API key (encrypted with DPAPI on Windows); it is never sent back to the page."""
+    """Stores an API key (encrypted with DPAPI on Windows); it is never sent back to the page.
+    The models the key can use are fetched at once; an unavailable chosen model is replaced."""
     from app import secret_store
-    from app.llm import PROVIDERS, key_name, status
+    from app.llm import PROVIDERS, ensure_model, key_name, status
 
     if payload.provider not in PROVIDERS:
         raise HTTPException(status_code=400, detail="Неизвестный сервис")
@@ -2005,7 +2102,8 @@ def api_llm_set_key(payload: LlmKeyPayload) -> Dict[str, Any]:
     if not key or len(key) > 500 or any(c.isspace() for c in key):
         raise HTTPException(status_code=400, detail="Ключ выглядит неверно")
     secret_store.set_secret(key_name(payload.provider), key)
-    return status()
+    picked = ensure_model(payload.provider)
+    return {**status(), "models": picked["models"], "model_changed": picked["changed"], "model": picked["model"]}
 
 
 @app.delete("/api/llm/key/{provider}")
@@ -2021,11 +2119,29 @@ def api_llm_delete_key(provider: str) -> Dict[str, Any]:
 
 @app.get("/api/llm/models/{provider}")
 def api_llm_models(provider: str) -> Dict[str, Any]:
-    from app.llm import PROVIDERS, list_models
+    from app.llm import PROVIDERS, list_models, pick_default_model
 
     if provider not in PROVIDERS:
         raise HTTPException(status_code=400, detail="Неизвестный сервис")
-    return {"models": list_models(provider)}
+    models = list_models(provider)
+    return {"models": models, "recommended": pick_default_model(provider, models)}
+
+
+class OpenUrlPayload(BaseModel):
+    url: str
+
+
+@app.post("/api/open-url")
+def api_open_url(payload: OpenUrlPayload) -> Dict[str, Any]:
+    """Opens a web link in the default browser (the app window itself never navigates away)."""
+    import webbrowser
+    from urllib.parse import urlparse
+
+    u = urlparse(payload.url.strip())
+    if u.scheme not in ("https", "http") or not u.netloc:
+        raise HTTPException(status_code=400, detail="Можно открыть только веб-ссылку")
+    webbrowser.open(u.geturl())
+    return {"ok": True}
 
 
 @app.post("/api/llm/test/{provider}")

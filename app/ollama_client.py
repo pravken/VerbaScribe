@@ -384,6 +384,45 @@ def start_model_pull(
     return dict(_pull_state)
 
 
+# A long segment (one speaker talking for a minute) gets a time stamp for every phrase inside it,
+# so the analysis can point to the moment, not only to where the speaker started
+LINE_SPLIT_SEC = 6.0
+LINE_MAX_SEC = 15.0
+_SENTENCE_END = (".", "!", "?", "…", ";")
+
+
+def _segment_parts(seg: Dict[str, Any]) -> List[tuple]:
+    """(start, text) pieces of a segment: at sentence ends after LINE_SPLIT_SEC, at the latest after
+    LINE_MAX_SEC. Segments without word timings or short ones stay whole."""
+    words = [w for w in seg.get("words") or [] if str(w.get("word") or "").strip()]
+    start = float(seg.get("start", 0.0) or 0.0)
+    end = float(seg.get("end", start) or start)
+    text = (seg.get("text") or "").strip()
+    if not words or end - start <= LINE_SPLIT_SEC:
+        return [(start, text)]
+    parts, cur, cur_start = [], [], None
+    for w in words:
+        if cur_start is None:
+            cur_start = float(w.get("start", start) or start)
+        cur.append(str(w.get("word")))
+        span = float(w.get("end", cur_start) or cur_start) - cur_start
+        word = str(w.get("word")).strip()
+        if (span >= LINE_SPLIT_SEC and word.endswith(_SENTENCE_END)) or span >= LINE_MAX_SEC:
+            parts.append((cur_start, "".join(cur).strip()))
+            cur, cur_start = [], None
+    if cur:
+        parts.append((cur_start if cur_start is not None else start, "".join(cur).strip()))
+    # Word timings follow the original recognition: after an edit the words may no longer match
+    joined = " ".join(p[1] for p in parts)
+    if _normalize(joined) != _normalize(text):
+        return [(start, text)]
+    return parts
+
+
+def _normalize(text: str) -> str:
+    return re.sub(r"\W+", "", (text or "").casefold())
+
+
 def build_transcript_lines(
     segments: List[Dict[str, Any]],
     speakers: Dict[str, Dict[str, Any]],
@@ -392,8 +431,10 @@ def build_transcript_lines(
     for seg in segments:
         spk_id = seg.get("speaker", "SPEAKER_00")
         spk_name = speakers.get(spk_id, {}).get("name", spk_id)
-        ts = format_timestamp(seg.get("start", 0.0))
-        lines.append(f"[{ts}] {spk_name}: {seg.get('text', '').strip()}")
+        for i, (start, text) in enumerate(_segment_parts(seg)):
+            ts = format_timestamp(start)
+            # The speaker is named once per segment; its continuation lines only carry the time
+            lines.append(f"[{ts}] {spk_name}: {text}" if i == 0 else f"[{ts}] {text}")
     return lines
 
 

@@ -7,6 +7,7 @@ after start returns None for it.
 """
 
 import ctypes
+import os
 import sys
 import threading
 from typing import Any, Dict, Optional, Tuple
@@ -83,5 +84,46 @@ def memory() -> Optional[Dict[str, float]]:
     return {"total_gb": round(total / gb, 1), "used_gb": round((total - avail) / gb, 1), "free_gb": round(avail / gb, 1)}
 
 
+_cpu_name: Optional[str] = None
+
+
+def cpu_name() -> str:
+    """'AMD Ryzen 9 5950X 16-Core Processor' and the like; '' when unknown. Read once."""
+    global _cpu_name
+    if _cpu_name is not None:
+        return _cpu_name
+    name = ""
+    try:
+        if sys.platform == "win32":
+            import winreg
+
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DESCRIPTION\System\CentralProcessor\0") as key:
+                name = str(winreg.QueryValueEx(key, "ProcessorNameString")[0])
+        else:
+            with open("/proc/cpuinfo", encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    if line.lower().startswith("model name"):
+                        name = line.split(":", 1)[1]
+                        break
+    except Exception:
+        name = ""
+    _cpu_name = short_cpu_name(name)
+    return _cpu_name
+
+
+def short_cpu_name(name: str) -> str:
+    """'Intel(R) Core(TM) i7-12700K CPU @ 3.60GHz' -> 'Intel Core i7-12700K'."""
+    import re
+
+    name = re.sub(r"\((R|TM|tm|r)\)", "", name or "")
+    name = re.sub(r"\s+CPU\s+@.*$|\s+@\s+[\d.]+\s*GHz.*$", "", name)
+    name = re.sub(r"\s+(w/|with)\s+Radeon.*$", "", name.strip())
+    prev = None
+    while prev != name:  # "… 16-Core Processor": both tails go
+        prev = name
+        name = re.sub(r"\s+(\d+-Core|Processor)$", "", name.strip())
+    return re.sub(r"\s+", " ", name).strip()
+
+
 def snapshot() -> Dict[str, Any]:
-    return {"cpu_percent": cpu_percent(), "ram": memory()}
+    return {"cpu_percent": cpu_percent(), "ram": memory(), "cpu_name": cpu_name(), "cores": os.cpu_count() or 0}

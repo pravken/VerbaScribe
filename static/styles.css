@@ -432,9 +432,20 @@ label.settings-toggle { display: flex; }
   background: rgba(255, 255, 255, 0.08); color: #98989d;
 }
 
-/* App parts in the sidebar header: three equal tabs */
-.app-nav { display: flex; }
-.app-nav .apple-segment-btn { flex: 1 1 0; padding: 0 6px; font-size: 11.5px; }
+/* Hardware block in the sidebar: one row per device, columns aligned */
+.hw-block { display: flex; flex-direction: column; gap: 4px; }
+.hw-row {
+  display: grid; grid-template-columns: 30px minmax(0, 1fr) 52px 70px; align-items: center; column-gap: 8px;
+  width: 100%; min-height: 18px; text-align: left; font-size: 10.5px;
+}
+.hw-row-btn { border-radius: 6px; padding: 2px 4px; margin: -2px -4px; width: calc(100% + 8px); transition: background-color 0.12s ease; }
+.hw-row-btn:hover { background: rgba(255, 255, 255, 0.06); }
+.hw-label { font-family: 'JetBrains Mono Variable', ui-monospace, monospace; font-size: 10px; color: #636366; }
+.hw-name { display: flex; align-items: center; gap: 6px; min-width: 0; color: #D1D1D6; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.hw-bar { position: relative; height: 4px; border-radius: 9999px; background: rgba(255, 255, 255, 0.10); overflow: hidden; }
+.hw-bar > span { position: absolute; inset: 0 auto 0 0; border-radius: 9999px; transition: width 0.5s ease; }
+.hw-value { font-family: 'JetBrains Mono Variable', ui-monospace, monospace; font-size: 10px; color: #98989D; text-align: right; white-space: nowrap; }
+
 
 /* Studio covering the whole window (presenting captions) */
 #studio-view.studio-focus { position: fixed; inset: 0; z-index: 40; }
@@ -450,6 +461,12 @@ label.settings-toggle { display: flex; }
 .cap-row .cap-t { color: #0A84FF; font-size: calc(var(--cap-size, 26px) * 0.82); line-height: 1.35; margin-top: 2px; transition: color 0.5s ease; overflow-wrap: anywhere; }
 .cap-row.cap-draft .cap-t { color: rgba(10, 132, 255, 0.7); }
 .cap-tr:empty::before { content: '…'; color: #636366; animation: cap-wait 1.4s ease-in-out infinite; }
+/* The phrase being spoken is only a quiet "…": its text is shown once it is final */
+.cap-draft .cap-orig:empty::before { content: '…'; color: #636366; animation: cap-wait 1.4s ease-in-out infinite; }
+.cap-draft .cap-t { visibility: hidden; }
+.cap-view-tr .cap-draft .cap-t { visibility: visible; }
+.cap-in { animation: cap-in 0.35s ease-out; }
+@keyframes cap-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes cap-wait { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
 .lang-tag:empty { display: none; }
 .cap-view-orig .cap-t { display: none; }
@@ -461,7 +478,7 @@ label.settings-toggle { display: flex; }
 .cap-view-side .cap-t { font-size: var(--cap-size, 26px); margin-top: 0; }
 .cap-view-side .cap-same .cap-tr { display: none; }
 .cap-view-side .cap-same .cap-t::after { content: '—'; color: #636366; }
-@media (prefers-reduced-motion: reduce) { .cap-tr:empty::before { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .cap-tr:empty::before, .cap-draft .cap-orig:empty::before, .cap-in { animation: none; } }
 
 /* Library: drop targets while a recording or a folder is dragged */
 #meetings-list .drop-target { background: rgba(10, 132, 255, 0.22) !important; box-shadow: inset 0 0 0 1px rgba(10, 132, 255, 0.7); }
@@ -474,3 +491,56 @@ label.settings-toggle { display: flex; }
 @container (max-width: 900px) {
   .tx-toolbar .tx-tool-label { display: none; }
 }
+
+/* Parts of the app: tabs along the top of the main area */
+.app-bar {
+  height: 40px; display: flex; align-items: flex-end; gap: 2px; padding: 0 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08); background: #19191B;
+}
+.app-tab {
+  height: 34px; display: inline-flex; align-items: center; gap: 7px; padding: 0 14px;
+  font-size: 12.5px; font-weight: 500; color: #98989D; border-radius: 8px 8px 0 0;
+  border: 1px solid transparent; border-bottom: none; margin-bottom: -1px; transition: color 0.12s ease, background-color 0.12s ease;
+}
+.app-tab:hover { color: #F5F5F7; background: rgba(255, 255, 255, 0.04); }
+.app-tab-active { color: #FFFFFF; background: #141416; border-color: rgba(255, 255, 255, 0.08); }
+.app-tab-active svg { color: #0A84FF; }
+#studio-view.studio-focus .studio-settings { display: none; }
+
+/* Signal on the input: one dot of a fixed size, so nothing jumps when it changes */
+.signal-dot {
+  width: 10px; height: 10px; border-radius: 9999px; flex-shrink: 0;
+  background: #48484A; box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.04);
+  transition: background-color 0.18s ease, box-shadow 0.18s ease;
+}
+.signal-dot.on { background: #30D158; box-shadow: 0 0 0 3px rgba(48, 209, 88, 0.22), 0 0 10px rgba(48, 209, 88, 0.45); }
+
+/* Quick translation languages in the studio */
+.quick-lang {
+  height: 26px; min-width: 34px; padding: 0 8px; border-radius: 7px; font-size: 11px; font-weight: 600;
+  letter-spacing: 0.03em; color: #98989D; background: rgba(255, 255, 255, 0.05); border: 1px solid transparent;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+.quick-lang:hover { color: #F5F5F7; background: rgba(255, 255, 255, 0.10); }
+.quick-lang.on { color: #0A84FF; background: rgba(10, 132, 255, 0.16); border-color: rgba(10, 132, 255, 0.4); }
+
+/* Library: what a recording has been through (transcript, analysis, translation, dub) */
+.rec-badges { display: inline-flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; }
+.rec-badge { display: inline-flex; align-items: center; gap: 2px; opacity: 0.75; font-size: 9.5px; font-weight: 600; letter-spacing: 0.02em; white-space: nowrap; }
+.rec-badge-busy { color: #64D2FF; opacity: 1; animation: cap-wait 1.4s ease-in-out infinite; }
+.rec-badge-fail { color: #FF453A; opacity: 1; }
+.bg-apple-blue .rec-badge-busy, .bg-apple-blue .rec-badge-fail { color: #fff; }
+@media (prefers-reduced-motion: reduce) { .rec-badge-busy { animation: none; } }
+
+/* Library as icons */
+.lib-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 6px; padding: 2px 4px 6px 0; }
+.lib-tile { cursor: pointer; border-radius: 9px; overflow: hidden; color: #F5F5F7; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.06); transition: background-color 0.15s ease, border-color 0.15s ease; }
+.lib-tile:hover { background: rgba(255, 255, 255, 0.07); }
+.lib-tile-on { background: #0A84FF; border-color: #0A84FF; color: #fff; }
+.lib-tile-on:hover { background: #0A84FF; }
+.lib-tile-cover { position: relative; aspect-ratio: 16 / 9; background: rgba(0, 0, 0, 0.45); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.lib-tile-icon { color: #8E8E93; }
+.lib-tile-icon svg { width: 22px; height: 22px; }
+.lib-tile-time { position: absolute; right: 4px; bottom: 4px; font: 600 9.5px ui-monospace, monospace; padding: 1px 4px; border-radius: 4px; background: rgba(0, 0, 0, 0.7); color: #fff; }
+.lib-tile-progress { position: absolute; left: 0; bottom: 0; height: 2px; background: #0A84FF; }
+.lib-tile-on .lib-tile-progress { background: #fff; }

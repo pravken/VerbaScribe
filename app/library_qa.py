@@ -18,6 +18,7 @@ import sqlite3
 from typing import Any, Dict, List, Optional
 
 from app.audio_utils import format_timestamp
+from app.ollama_client import _segment_parts
 from app.database import _db_lock, get_connection, get_meeting
 
 MAX_FRAGMENTS = 14
@@ -130,9 +131,11 @@ def full_fragments(meetings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             lines, size, j = [], 0, i
             while j < len(segs) and (not lines or size + len(segs[j].get("text") or "") < FULL_FRAGMENT_CHARS):
                 seg = segs[j]
-                line = f"[{format_timestamp(seg.get('start') or 0.0)}] {_speaker_name(speakers, seg.get('speaker'))}: {(seg.get('text') or '').strip()}"
-                lines.append(line)
-                size += len(line) + 1
+                name = _speaker_name(speakers, seg.get("speaker"))
+                for k, (start, text) in enumerate(_segment_parts(seg)):
+                    line = f"[{format_timestamp(start)}] {name + ': ' if k == 0 else ''}{text}"
+                    lines.append(line)
+                    size += len(line) + 1
                 j += 1
             first = segs[i]
             out.append({

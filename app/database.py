@@ -1,5 +1,6 @@
 import json
 import re
+import os
 import sqlite3
 import threading
 from datetime import datetime
@@ -190,6 +191,7 @@ _MEETING_EXTRA_COLUMNS = {
     "title_is_default": "INTEGER DEFAULT 0",  # 1: the title came from a file name and may be replaced
     "obsidian_path": "TEXT DEFAULT ''",
     "pending_exports_json": "TEXT DEFAULT '[]'",
+    "has_video": "INTEGER DEFAULT NULL",  # NULL: told from the file extension (see is_video)
 }
 
 SYSTEM_FOLDERS = {"recordings": "Записи", "imports": "Импорт"}
@@ -228,6 +230,14 @@ def _sort_existing_meetings(cur: sqlite3.Cursor) -> None:
 
 def is_video_path(path: str) -> bool:
     return Path(path or "").suffix.lower() in _VIDEO_EXTS
+
+
+def is_video(row: Dict[str, Any]) -> bool:
+    """A recording with a picture. Recordings made in the app are audio unless they captured the
+    screen; for other files the extension decides (a .webm may be either, it is shown as video)."""
+    if row.get("has_video") is not None:
+        return bool(row["has_video"])
+    return row.get("source") != "recording" and is_video_path(row.get("media_path") or "")
 
 
 def _loads_list(raw: Optional[str]) -> List[Dict[str, Any]]:
@@ -330,6 +340,14 @@ def delete_dictionary_term(term_id: int) -> None:
         conn.close()
 
 
+def clear_dictionary() -> None:
+    with _db_lock:
+        conn = get_connection()
+        conn.execute("DELETE FROM dictionary")
+        conn.commit()
+        conn.close()
+
+
 def get_dictionary_hotwords() -> str:
     """Active vocabulary terms joined for faster-whisper's `hotwords` (applied to every 30s window)."""
     terms = [item["term"] for item in list_dictionary(active_only=True)]
@@ -349,6 +367,7 @@ def create_meeting(
     owns_media: bool = False,
     recorded_at: str = "",
     title_is_default: bool = False,
+    has_video: Optional[bool] = None,
 ) -> Dict[str, Any]:
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with _db_lock:
@@ -364,11 +383,12 @@ def create_meeting(
             INSERT INTO meetings (
                 title, filename, media_path, status, progress, stage_text,
                 language, model_name, num_speakers_hint, created_at,
-                folder_id, source, owns_media, recorded_at, title_is_default
-            ) VALUES (?, ?, ?, 'queued', 0, 'В очереди на обработку...', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                folder_id, source, owns_media, recorded_at, title_is_default, has_video
+            ) VALUES (?, ?, ?, 'queued', 0, 'В очереди на обработку...', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (title, filename, media_path, language, model_name, num_speakers_hint, now,
-             folder_id, source, 1 if owns_media else 0, recorded_at or now, 1 if title_is_default else 0),
+             folder_id, source, 1 if owns_media else 0, recorded_at or now, 1 if title_is_default else 0,
+             None if has_video is None else int(bool(has_video))),
         )
         meeting_id = cur.lastrowid
         conn.commit()
@@ -614,27 +634,50 @@ def get_meeting(meeting_id: int) -> Optional[Dict[str, Any]]:
         return _deserialize_meeting(dict(row))
 
 
+_LIST_COLUMNS = """id, title, filename, media_path, duration, status, progress, stage_text,
+    error_message, language, model_name, num_speakers_hint,
+    speakers_json, created_at, completed_at, folder_id, source, recorded_at, has_video,
+    segments_json NOT IN ('', '[]') AS has_transcript,
+    summaries_json NOT IN ('', '{}') AS has_summary"""
+
+# What a recording has been through, for the badges in the library: the languages of its
+# translations and dubs (read inside SQLite, so the large JSON is not loaded for every row)
+_LIST_LANGS_SQL = """,
+    (SELECT group_concat(key) FROM json_each(CASE WHEN json_valid(translations_json) THEN translations_json ELSE '{}' END)) AS tr_langs,
+    (SELECT group_concat(json_extract(value, '$.lang')) FROM json_each(CASE WHEN json_valid(dubs_json) THEN dubs_json ELSE '[]' END)) AS dub_langs"""
+
+
 def list_meetings() -> List[Dict[str, Any]]:
     with _db_lock:
         conn = get_connection()
-        rows = conn.execute(
-            """
-            SELECT id, title, filename, media_path, duration, status, progress, stage_text,
-                   error_message, language, model_name, num_speakers_hint,
-                   speakers_json, created_at, completed_at, folder_id, source, recorded_at
-            FROM meetings
-            ORDER BY id DESC
-            """
-        ).fetchall()
+        try:
+            rows = conn.execute(f"SELECT {_LIST_COLUMNS}{_LIST_LANGS_SQL} FROM meetings ORDER BY id DESC").fetchall()
+        except sqlite3.OperationalError:  # SQLite without JSON functions
+            rows = conn.execute(f"SELECT {_LIST_COLUMNS}, translations_json, dubs_json FROM meetings ORDER BY id DESC").fetchall()
         conn.close()
         result = []
         for r in rows:
             d = dict(r)
+            if "translations_json" in d:
+                d["tr_langs"] = ",".join(_loads_dict(d.pop("translations_json")))
+                try:
+                    d["dub_langs"] = ",".join(str(x.get("lang")) for x in json.loads(d.pop("dubs_json") or "[]"))
+                except Exception:
+                    d["dub_langs"] = ""
+            d["translations_langs"] = [x for x in (d.pop("tr_langs") or "").split(",") if x]
+            d["dub_langs"] = [x for x in (d.pop("dub_langs") or "").split(",") if x and x != "None"]
+            d["has_transcript"] = bool(d["has_transcript"])
+            d["has_summary"] = bool(d["has_summary"])
             try:
                 d["speakers"] = json.loads(d.pop("speakers_json", "{}") or "{}")
             except Exception:
                 d["speakers"] = {}
-            d["is_video"] = d.get("source") != "recording" and is_video_path(d.pop("media_path", ""))
+            d["is_video"] = is_video(d)
+            try:  # for sorting the library by size
+                d["size_bytes"] = os.path.getsize(d["media_path"]) if d.get("media_path") else 0
+            except OSError:
+                d["size_bytes"] = 0
+            d.pop("media_path", None)
             result.append(d)
         return result
 
@@ -672,7 +715,7 @@ def delete_meeting(meeting_id: int) -> bool:
 def _deserialize_meeting(d: Dict[str, Any]) -> Dict[str, Any]:
     d["has_segments_backup"] = bool(d.pop("segments_backup_json", ""))
     d["pending_exports"] = _loads_list(d.pop("pending_exports_json", None))
-    d["is_video"] = d.get("source") != "recording" and is_video_path(d.get("media_path") or "")
+    d["is_video"] = is_video(d)
     for key, target in (
         ("speakers_json", "speakers"),
         ("segments_json", "segments"),
