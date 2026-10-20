@@ -169,3 +169,32 @@ class LiveSentenceLinesTest(unittest.TestCase):
         with mock.patch.object(asr_onnx, "recognize_array", return_value=[(0.2, 4.0, "Первое. Второе предложение? Третье")]):
             s._transcribe_window()
         self.assertEqual([l["text"] for l in s.lines], ["Первое.", "Второе предложение?", "Третье"])
+
+    def test_sentence_final_once_next_starts(self):
+        from unittest import mock
+        import numpy as np
+        from app import asr_onnx, live
+
+        with mock.patch.object(live, "caption_onnx_model", return_value="gigaam-v3"):
+            s = live.LiveSession("ru", None)
+        s.audio = np.zeros(live.SR * 5, dtype=np.float32)
+        # Both end within the last 1.6 s, but the first is followed by another sentence
+        with mock.patch.object(asr_onnx, "recognize_array", return_value=[(0.2, 3.6, "Первое."), (3.6, 4.9, "Второе")]):
+            s._transcribe_window()
+        self.assertEqual([l["text"] for l in s.lines], ["Первое."])
+        self.assertEqual(s.partial, "Второе")
+        self.assertAlmostEqual(s.offset, 3.6, places=2)
+
+    def test_recognize_array_cuts_at_words(self):
+        from types import SimpleNamespace
+        from unittest import mock
+        from app import asr_onnx
+
+        res = SimpleNamespace(text="Да. Хорошо", start=1.0, end=3.0,
+                              tokens=["▁Да", ".", "▁Хо", "рошо"], timestamps=[0.0, 0.3, 1.2, 1.5])
+        fake = mock.Mock()
+        fake.recognize.return_value = [res]
+        with mock.patch.object(asr_onnx, "_load", return_value=fake):
+            out = asr_onnx.recognize_array("gigaam-v3", None)
+        self.assertEqual([o[2] for o in out], ["Да.", "Хорошо"])
+        self.assertEqual(out[1][0], 2.2)

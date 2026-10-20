@@ -223,7 +223,7 @@ class LiveSession:
         else:
             segs, language, prob = _caption_worker().transcribe(window, self.speech_lang)
         # One caption line per sentence (a phrase without pauses can hold several)
-        from app.asr_onnx import split_sentences_text
+        from app.asr_onnx import _SENT_END, split_sentences_text
 
         segs = [_Seg(a, b, t) for x in segs for a, b, t in split_sentences_text(x.start, x.end, x.text.strip())]
         if self.speech_lang:
@@ -234,8 +234,12 @@ class LiveSession:
         force = win_sec > LIVE_WINDOW_SEC
         final_until = 0.0
         new_lines = []
-        for s in segs:
-            if s.end <= win_sec - FINAL_MARGIN_SEC or (force and s.end <= win_sec - 0.3):
+        for i, s in enumerate(segs):
+            # With GigaAM / Parakeet a sentence the speaker has moved on from is final at once (its
+            # end is exact, from the word timings): the draft line then holds only the sentence
+            # still being spoken and never splits in two on the screen
+            moved_on = bool(onnx_id) and i + 1 < len(segs) and s.text.strip().endswith(_SENT_END)
+            if moved_on or s.end <= win_sec - FINAL_MARGIN_SEC or (force and s.end <= win_sec - 0.3):
                 new_lines.append({
                     "id": self._next_id, "text": s.text.strip(), "lang": self.lang,
                     "start": round(self.offset + s.start, 2), "end": round(self.offset + s.end, 2),

@@ -216,13 +216,21 @@ def guess_language(text: str) -> str:
 
 
 def recognize_array(model_id: str, audio: Any) -> List[Tuple[float, float, str]]:
-    """Phrases of a short 16 kHz float32 window (live captions): [(start, end, text)]."""
+    """Sentences of a short 16 kHz float32 window (live captions): [(start, end, text)], cut at the
+    word timings, so a sentence ends exactly where the next one starts."""
     asr = _load(model_id)
     out = []
     for res in asr.recognize(audio, sample_rate=16000):
         text = " ".join((res.text or "").split())
-        if text:
-            out.append((float(res.start), float(res.end), text))
+        if not text:
+            continue
+        start, end = float(res.start), float(res.end)
+        if res.tokens and res.timestamps:
+            seg = {"start": start, "end": end, "text": text,
+                   "words": words_from_tokens(res.tokens, res.timestamps, start, end)}
+            out.extend((p["start"], p["end"], p["text"]) for p in split_sentences_words(seg))
+        else:
+            out.extend(split_sentences_text(start, end, text))
     return out
 
 
