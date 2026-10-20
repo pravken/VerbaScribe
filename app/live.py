@@ -344,7 +344,7 @@ def caption_onnx_model(settings: Dict[str, str], speech_lang: Optional[str]) -> 
         return chosen if asr_onnx.is_installed(chosen) and asr_onnx.supports_language(chosen, lang) else None
     if chosen != "auto":
         return None
-    order = ["gigaam-v3", "gigaam-v2", "parakeet-v3"] if lang == "ru" else ["parakeet-v3"]
+    order = ["gigaam-v3", "parakeet-v3"] if lang == "ru" else ["parakeet-v3"]
     return next((m for m in order if asr_onnx.is_installed(m) and asr_onnx.supports_language(m, lang)), None)
 
 

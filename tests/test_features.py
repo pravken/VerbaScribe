@@ -247,12 +247,12 @@ class OnnxAsrTest(unittest.TestCase):
         fake = SimpleNamespace(recognize=lambda path: iter(res))
         seen = []
         with mock.patch.object(asr_onnx, "_load", return_value=fake):
-            segs = asr_onnx.transcribe("gigaam-v2", "a.wav", 10.0, seen.append, lambda: None)
+            segs = asr_onnx.transcribe("gigaam-v3", "a.wav", 10.0, seen.append, lambda: None)
         self.assertEqual(segs, [{"start": 1.0, "end": 3.0, "text": "Добрый день",
                                  "words": [{"word": " Добрый", "start": 1.0, "end": 1.8, "prob": 1.0},
                                            {"word": " день", "start": 1.8, "end": 3.0, "prob": 1.0}]}])
         self.assertEqual(seen, [0.3])
-        self.assertFalse(asr_onnx.supports_language("gigaam-v2", "en"))
+        self.assertFalse(asr_onnx.supports_language("gigaam-v3", "en"))
         self.assertTrue(asr_onnx.supports_language("parakeet-v3", "de"))
 
 

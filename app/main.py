@@ -162,7 +162,12 @@ def _quiet_windows_connection_resets() -> None:
 async def lifespan(_app: FastAPI):
     _quiet_windows_connection_resets()
     init_db()
-    from app import idle_unload
+    from app import asr_onnx, idle_unload
+
+    try:
+        asr_onnx.remove_replaced()
+    except Exception:
+        traceback.print_exc()
 
     idle_unload.start()
     from app import semantic

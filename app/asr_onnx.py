@@ -28,15 +28,6 @@ ONNX_MODELS: Dict[str, Dict[str, Any]] = {
         "desc_ru": "Новая модель Сбера для русского языка: сразу пишет со знаками препинания и заглавными буквами, числа цифрами. Только русский, работает на процессоре.",
         "desc_en": "Sber's new model for Russian: writes with punctuation and capital letters, numbers as digits. Russian only, runs on the CPU.",
     },
-    "gigaam-v2": {
-        "onnx_name": "gigaam-v2-rnnt",
-        "name": "GigaAM v2",
-        "size_mb": 900,
-        "license": "MIT",
-        "languages": ["ru"],
-        "desc_ru": "Модель Сбера для русского языка, без знаков препинания и заглавных букв (их пишет GigaAM v3). Только русский, работает на процессоре.",
-        "desc_en": "Sber's model for Russian, without punctuation and capital letters (GigaAM v3 writes them). Russian only, runs on the CPU.",
-    },
     "parakeet-v3": {
         "onnx_name": "nemo-parakeet-tdt-0.6b-v3",
         "name": "Parakeet TDT v3",
@@ -54,6 +45,25 @@ MAX_PHRASE_SEC = 20.0
 _lock = threading.Lock()
 _loaded: Dict[str, Any] = {}
 _downloads: Dict[str, Dict[str, Any]] = {}
+
+
+# Removed models: what a setting or a recording that still names one now uses
+REPLACED = {"gigaam-v2": "gigaam-v3"}
+
+
+def remove_replaced() -> None:
+    """Moves settings off removed models and deletes their downloaded files."""
+    import shutil
+
+    from app.database import get_all_settings, update_settings
+
+    settings = get_all_settings()
+    changes = {k: REPLACED[v] for k in ("whisper_model", "live_whisper_model") if (v := settings.get(k)) in REPLACED}
+    if changes:
+        update_settings(changes)
+    for old in REPLACED:
+        if model_dir(old).is_dir():
+            shutil.rmtree(model_dir(old), ignore_errors=True)
 
 
 def is_onnx_model(model_id: str) -> bool:

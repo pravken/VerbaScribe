@@ -786,6 +786,7 @@ def _process_meeting_job(meeting_id: int) -> None:
         _check_cancel(meeting_id)
         from app import asr_onnx
 
+        model_name = asr_onnx.REPLACED.get(model_name, model_name)
         onnx_engine = asr_onnx.is_onnx_model(model_name)
         if onnx_engine:
             # GigaAM / Parakeet on ONNX Runtime (app/asr_onnx.py): no Whisper, no GPU needed

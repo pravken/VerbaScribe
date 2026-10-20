@@ -51,7 +51,7 @@ class OnnxEnsurePackageTest(unittest.TestCase):
         from onnx_asr.resolver import Resolver
 
         with tempfile.TemporaryDirectory() as tmp:
-            d = Path(tmp) / "gigaam-v2"
+            d = Path(tmp) / "gigaam-v3"
             d.mkdir()  # an earlier failed attempt left an empty folder
             calls = []
 
@@ -66,7 +66,7 @@ class OnnxEnsurePackageTest(unittest.TestCase):
             with mock.patch.object(asr_onnx, "model_dir", return_value=d), \
                  mock.patch.object(asr_onnx, "_vad_dir", return_value=Path(tmp) / "vad"), \
                  mock.patch.object(Resolver, "_download_model", fake_download):
-                asr_onnx.fetch("gigaam-v2")
+                asr_onnx.fetch("gigaam-v3")
             self.assertIn(False, calls)
             self.assertTrue(list(d.glob("*.onnx")))
 
@@ -80,20 +80,20 @@ class LiveOnnxChoiceTest(unittest.TestCase):
             return live.caption_onnx_model({"live_whisper_model": setting}, lang)
 
     def test_auto(self):
-        both = {"gigaam-v2", "parakeet-v3"}
-        self.assertEqual(self._pick("auto", "ru", both), "gigaam-v2")
+        both = {"gigaam-v3", "parakeet-v3"}
+        self.assertEqual(self._pick("auto", "ru", both), "gigaam-v3")
         self.assertEqual(self._pick("auto", "ru", both | {"gigaam-v3"}), "gigaam-v3")
         self.assertEqual(self._pick("auto", "en", both), "parakeet-v3")
         self.assertEqual(self._pick("auto", None, both), "parakeet-v3")
-        self.assertIsNone(self._pick("auto", None, {"gigaam-v2"}))
+        self.assertIsNone(self._pick("auto", None, {"gigaam-v3"}))
         self.assertIsNone(self._pick("auto", "ja", both))
         self.assertIsNone(self._pick("auto", "ru", set()))
 
     def test_explicit(self):
-        self.assertEqual(self._pick("gigaam-v2", "ru", {"gigaam-v2"}), "gigaam-v2")
-        self.assertIsNone(self._pick("gigaam-v2", "en", {"gigaam-v2"}))
-        self.assertEqual(self._pick("gigaam-v2", None, {"gigaam-v2"}), "gigaam-v2")
-        self.assertIsNone(self._pick("small", "ru", {"gigaam-v2"}))
+        self.assertEqual(self._pick("gigaam-v3", "ru", {"gigaam-v3"}), "gigaam-v3")
+        self.assertIsNone(self._pick("gigaam-v3", "en", {"gigaam-v3"}))
+        self.assertEqual(self._pick("gigaam-v3", None, {"gigaam-v3"}), "gigaam-v3")
+        self.assertIsNone(self._pick("small", "ru", {"gigaam-v3"}))
 
 
 class LiveOnnxWindowTest(unittest.TestCase):
@@ -102,7 +102,7 @@ class LiveOnnxWindowTest(unittest.TestCase):
         import numpy as np
         from app import asr_onnx, live
 
-        with mock.patch.object(live, "caption_onnx_model", return_value="gigaam-v2"):
+        with mock.patch.object(live, "caption_onnx_model", return_value="gigaam-v3"):
             s = live.LiveSession("ru", None)
         s.audio = np.zeros(live.SR * 6, dtype=np.float32)
         with mock.patch.object(asr_onnx, "recognize_array", return_value=[(0.2, 1.5, "Привет всем"), (4.8, 5.9, "дальше")]):
@@ -118,7 +118,7 @@ class LiveDraftTranslationTest(unittest.TestCase):
         from app import asr_onnx, live
 
         for on, expected in ((True, "дальше"), (False, "")):
-            with mock.patch.object(live, "caption_onnx_model", return_value="gigaam-v2"):
+            with mock.patch.object(live, "caption_onnx_model", return_value="gigaam-v3"):
                 s = live.LiveSession("ru", None)
             s.draft = on
             s.translator = mock.Mock()
@@ -126,3 +126,17 @@ class LiveDraftTranslationTest(unittest.TestCase):
             with mock.patch.object(asr_onnx, "recognize_array", return_value=[(0.2, 1.5, "Привет"), (4.8, 5.9, "дальше")]):
                 s._transcribe_window()
             s.translator.set_draft.assert_called_with(expected)
+
+
+class RemovedModelTest(unittest.TestCase):
+    def test_settings_move_to_v3(self):
+        from app import asr_onnx
+        from app.database import get_all_settings, init_db, update_settings
+
+        init_db()
+        update_settings({"whisper_model": "gigaam-v2", "live_whisper_model": "gigaam-v2"})
+        asr_onnx.remove_replaced()
+        s = get_all_settings()
+        self.assertEqual((s["whisper_model"], s["live_whisper_model"]), ("gigaam-v3", "gigaam-v3"))
+        update_settings({"whisper_model": "large-v3-turbo", "live_whisper_model": "auto"})
+        self.assertNotIn("gigaam-v2", asr_onnx.ONNX_MODELS)
