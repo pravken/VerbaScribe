@@ -85,7 +85,106 @@ def apps_using_microphone() -> List[str]:
     walk(_MIC_KEY, lambda sub: sub.lower())  # Store apps: "MSTeams_8wekyb3d8bbwe"
     # Classic programs: the path with "#" for "\": "C:#Users#me#AppData#Roaming#Zoom#bin#Zoom.exe"
     walk(_MIC_KEY + r"\NonPackaged", lambda sub: sub.split("#")[-1].lower())
+    # Some apps never update that list while they record (Telegram calls): their active recording
+    # sessions show them
+    try:
+        out.extend(n for n in capturing_processes() if n not in out)
+    except Exception as e:
+        print(f"[calls] audio sessions: {e}", flush=True)
     return out
+
+
+def _guid(text: str):
+    import ctypes
+    import uuid
+
+    class GUID(ctypes.Structure):
+        _fields_ = [("data", ctypes.c_ubyte * 16)]
+
+    g = GUID()
+    ctypes.memmove(g.data, uuid.UUID(text).bytes_le, 16)
+    return g
+
+
+def capturing_processes() -> List[str]:
+    """Lower-case program file names with an active recording session on any microphone, from
+    Windows Core Audio (what the microphone indicator itself shows). Unlike the registry list this
+    also sees apps that do not report their use there (Telegram calls). Plain COM through ctypes."""
+    if sys.platform != "win32":
+        return []
+    import ctypes
+    from ctypes import wintypes
+
+    ole32, kernel32 = ctypes.windll.ole32, ctypes.windll.kernel32
+    HRESULT = ctypes.c_long
+
+    def method(obj, index, *argtypes):
+        vtbl = ctypes.cast(obj, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))).contents
+        return ctypes.WINFUNCTYPE(HRESULT, ctypes.c_void_p, *argtypes)(vtbl[index])
+
+    def release(obj):
+        if obj:
+            method(obj, 2)(obj)
+
+    ole32.CoInitializeEx(None, 0)  # COINIT_MULTITHREADED; already initialized is fine
+    names: List[str] = []
+    enum = ctypes.c_void_p()
+    if ole32.CoCreateInstance(ctypes.byref(_guid("BCDE0395-E52F-467C-8E3D-C4579291692E")), None, 23,  # CLSCTX_ALL
+                              ctypes.byref(_guid("A95664D2-9614-4F35-A746-DE8DB63617E6")), ctypes.byref(enum)) != 0:
+        return names
+    coll = ctypes.c_void_p()
+    try:
+        # IMMDeviceEnumerator::EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE)
+        if method(enum, 3, ctypes.c_int, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p))(enum, 1, 1, ctypes.byref(coll)) != 0:
+            return names
+        count = wintypes.UINT()
+        method(coll, 3, ctypes.POINTER(wintypes.UINT))(coll, ctypes.byref(count))
+        for i in range(count.value):
+            dev, mgr, sessions = ctypes.c_void_p(), ctypes.c_void_p(), ctypes.c_void_p()
+            try:
+                if method(coll, 4, wintypes.UINT, ctypes.POINTER(ctypes.c_void_p))(coll, i, ctypes.byref(dev)) != 0:
+                    continue
+                # IMMDevice::Activate(IID_IAudioSessionManager2)
+                if method(dev, 3, ctypes.c_void_p, wintypes.DWORD, ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p))(
+                        dev, ctypes.byref(_guid("77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F")), 23, None, ctypes.byref(mgr)) != 0:
+                    continue
+                if method(mgr, 5, ctypes.POINTER(ctypes.c_void_p))(mgr, ctypes.byref(sessions)) != 0:
+                    continue
+                n = ctypes.c_int()
+                method(sessions, 3, ctypes.POINTER(ctypes.c_int))(sessions, ctypes.byref(n))
+                for k in range(n.value):
+                    ctl, ctl2 = ctypes.c_void_p(), ctypes.c_void_p()
+                    try:
+                        if method(sessions, 4, ctypes.c_int, ctypes.POINTER(ctypes.c_void_p))(sessions, k, ctypes.byref(ctl)) != 0:
+                            continue
+                        st = ctypes.c_int()
+                        method(ctl, 3, ctypes.POINTER(ctypes.c_int))(ctl, ctypes.byref(st))
+                        if st.value != 1:  # AudioSessionStateActive
+                            continue
+                        if method(ctl, 0, ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p))(
+                                ctl, ctypes.byref(_guid("BFB7FF88-7239-4FC9-8FA2-07C950BE9C6D")), ctypes.byref(ctl2)) != 0:
+                            continue
+                        pid = wintypes.DWORD()
+                        method(ctl2, 14, ctypes.POINTER(wintypes.DWORD))(ctl2, ctypes.byref(pid))
+                        h = kernel32.OpenProcess(0x1000, False, pid.value)  # PROCESS_QUERY_LIMITED_INFORMATION
+                        if h:
+                            buf, size = ctypes.create_unicode_buffer(1024), wintypes.DWORD(1024)
+                            if kernel32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size)):
+                                name = buf.value.replace("/", "\\").split("\\")[-1].lower()
+                                if name not in names:
+                                    names.append(name)
+                            kernel32.CloseHandle(h)
+                    finally:
+                        release(ctl2)
+                        release(ctl)
+            finally:
+                release(sessions)
+                release(mgr)
+                release(dev)
+    finally:
+        release(coll)
+        release(enum)
+    return names
 
 
 def microphone_records() -> List[Dict[str, object]]:
