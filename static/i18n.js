@@ -1,5 +1,5 @@
 // VerbaScribe UI strings: Russian and English, including all tooltips.
-// Loaded before app.js; `I18N` is read by t() and applyTranslations().
+// Loaded before the page script (static/js); `I18N` is read by t() and applyTranslations().
 // --- Complete Bilingual Dictionary (Russian & English) including all Tooltips ---
 const I18N = {
   ru: {

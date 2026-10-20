@@ -210,7 +210,7 @@ async def local_session_guard(request: Request, call_next):
 
     if path.startswith(_PUBLIC_PREFIXES):
         resp = await call_next(request)
-        # Revalidate (ETag) so an updated app.js/styles.css is never served from a stale cache
+        # Revalidate (ETag) so an updated page script/styles.css is never served from a stale cache
         resp.headers.setdefault("Cache-Control", "no-cache")
         return resp
 

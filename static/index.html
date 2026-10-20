@@ -89,7 +89,7 @@
     <div id="side-library" class="flex-1 min-h-0 flex flex-col">
       <div class="px-3.5 pt-2.5">
       <div class="grid grid-cols-2 gap-2">
-        <!-- One click records with the default preset; the arrow lists the presets (quickRecord in app.js) -->
+        <!-- One click records with the default preset; the arrow lists the presets (quickRecord in static/js/studio.js) -->
         <div class="relative flex h-8">
           <button onclick="quickRecord()" id="record-quick-btn"
             data-i18n-title="tipRecordBtn"
@@ -236,7 +236,7 @@
        ========================================================================= -->
   <main class="flex-1 flex flex-col overflow-hidden bg-apple-bg select-text relative">
 
-    <!-- The parts of the app (switchAppView in app.js): the library, the recording studio, the assistant -->
+    <!-- The parts of the app (switchAppView in static/js/library.js): the library, the recording studio, the assistant -->
     <nav id="app-bar" class="app-bar shrink-0" role="tablist">
       <button onclick="switchAppView('library')" id="nav-library" class="app-tab app-tab-active" data-i18n-title="tipNavLibrary" title="Записи, расшифровки и анализ">
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776"/></svg>
@@ -254,7 +254,7 @@
     </nav>
 
     <!-- =====================================================================
-         STUDIO: recording with large live captions and their translation (studio* in app.js).
+         STUDIO: recording with large live captions and their translation (studio* in static/js/studio.js).
          What is recorded is chosen in the sidebar; how the captions are shown, here.
          ===================================================================== -->
     <div id="studio-view" class="hidden flex-1 min-h-0 flex bg-apple-bg">
@@ -443,7 +443,7 @@
     </div>
 
     <!-- =====================================================================
-         QUESTIONS: answers from one recording, a folder or the whole library (ask* in app.js)
+         QUESTIONS: answers from one recording, a folder or the whole library (ask* in static/js/library.js)
          ===================================================================== -->
     <div id="ask-view" class="hidden flex-1 min-h-0 flex bg-apple-bg">
 <div id="side-ask" class="w-[270px] shrink-0 border-r apple-border bg-apple-sidebar/60 overflow-y-auto px-4 py-4 space-y-3">
@@ -580,7 +580,7 @@
               <span data-i18n="export">Экспорт</span>
             </button>
 
-            <!-- Every export in one place (renderExportMenu in app.js); what is not made yet is made first -->
+            <!-- Every export in one place (renderExportMenu in static/js/menus.js); what is not made yet is made first -->
             <div id="export-menu" class="hidden absolute right-0 mt-1.5 w-80 macos-menu z-40 max-h-[75vh] overflow-y-auto" onclick="event.stopPropagation()"></div>
           </div>
         </div>
@@ -1003,7 +1003,7 @@
     </button>
   </div>
 
-  <!-- Folder menu in the library (openFolderMenu in app.js) -->
+  <!-- Folder menu in the library (openFolderMenu in static/js/library.js) -->
   <div id="folder-context-menu" class="hidden fixed w-52 macos-menu z-50" onclick="event.stopPropagation()">
     <div id="fctx-title" class="px-2.5 py-1 text-[11px] font-semibold text-apple-secondary truncate border-b border-white/10 mb-1"></div>
     <button onclick="fctxRename()" class="macos-menu-item"><span data-i18n="folderRename">Переименовать…</span></button>
@@ -1386,7 +1386,7 @@
         <button onclick="closeModal('settings')" data-i18n-title="tipCloseModal" title="Закрыть окно настроек" class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
       </div>
 
-      <!-- Settings sections as tabs (selectSettingsTab in app.js) -->
+      <!-- Settings sections as tabs (selectSettingsTab in static/js/core.js) -->
       <div class="px-6 pt-3 pb-3 border-b apple-border shrink-0 bg-apple-card">
         <div class="apple-segmented w-full settings-tabs">
           <button onclick="selectSettingsTab('general')" id="stab-general" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabGeneral">Общие</button>
@@ -1985,6 +1985,15 @@
   <div id="toast" class="fixed top-4 left-1/2 -translate-x-1/2 hidden max-w-[80vw] break-all bg-apple-elevated/95 apple-blur border apple-border text-white px-4 py-1.5 rounded-xl shadow-xl text-xs font-medium z-50"></div>
 
   <script src="/static/i18n.js"></script>
-  <script src="/static/app.js"></script>
+  <!-- The page script in parts (static/js), in this order: they share one global scope -->
+  <script src="/static/js/core.js"></script>
+  <script src="/static/js/menus.js"></script>
+  <script src="/static/js/settings.js"></script>
+  <script src="/static/js/library.js"></script>
+  <script src="/static/js/workspace.js"></script>
+  <script src="/static/js/player.js"></script>
+  <script src="/static/js/studio.js"></script>
+  <script src="/static/js/video.js"></script>
+  <script src="/static/js/app.js"></script>
 </body>
 </html>

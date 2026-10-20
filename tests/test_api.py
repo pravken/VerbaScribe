@@ -32,7 +32,7 @@ class SessionAndSearchApiTest(unittest.TestCase):
             main.save_meeting_results(m["id"], segments=[{"id": 1, "start": 1.5, "end": 3, "speaker": "SPEAKER_00", "text": "проверка поиска"}])
             hits = c.get("/api/meetings/search", params={"q": "поиск"}).json()
             self.assertIn(m["id"], [h["meeting_id"] for h in hits])
-            self.assertEqual(c.get("/static/app.js").headers.get("cache-control"), "no-cache")
+            self.assertEqual(c.get("/static/js/app.js").headers.get("cache-control"), "no-cache")
 
 
 @unittest.skipIf(main is None, "fastapi and app dependencies not installed")

@@ -163,7 +163,7 @@ Not every Qwen 2.5 size is Apache 2.0 (the 3B and 72B models use a different lic
 .venv\Scripts\python.exe -m unittest discover -s tests -t .
 ```
 
-Front-end libraries (Tailwind CSS, marked, DOMPurify, fonts) are pinned in `package.json`, and their built copies are committed to `static/vendor/`. The UI is `static/index.html` (markup), `static/app.js` (logic), `static/i18n.js` (Russian and English strings) and `static/styles.css`. You only need Node.js if you change Tailwind classes in `index.html` or `app.js`. In that case, rebuild with:
+Front-end libraries (Tailwind CSS, marked, DOMPurify, fonts) are pinned in `package.json`, and their built copies are committed to `static/vendor/`. The UI is `static/index.html` (markup), `static/js/*.js` (logic, in parts loaded in order: core, menus, settings, library, workspace, player, studio, video, app), `static/i18n.js` (Russian and English strings) and `static/styles.css`. You only need Node.js if you change Tailwind classes in `index.html` or `static/js`. In that case, rebuild with:
 
 ```bash
 npm install
@@ -311,4 +311,4 @@ start.bat
 
 Тесты: `.venv\Scripts\python.exe -m unittest discover -s tests -t .`
 
-Фронтенд-библиотеки (Tailwind CSS, marked, DOMPurify, шрифты) закреплены по версиям в `package.json`, а их собранные копии лежат в `static/vendor/`. Интерфейс: `static/index.html` (разметка), `static/app.js` (логика), `static/i18n.js` (строки на русском и английском), `static/styles.css`. Node.js нужен, только если вы меняете классы Tailwind в `index.html` или `app.js`. После этого пересоберите библиотеки командами `npm install` и `npm run vendor`.
+Фронтенд-библиотеки (Tailwind CSS, marked, DOMPurify, шрифты) закреплены по версиям в `package.json`, а их собранные копии лежат в `static/vendor/`. Интерфейс: `static/index.html` (разметка), `static/js/*.js` (логика, по частям, которые загружаются по порядку: core, menus, settings, library, workspace, player, studio, video, app), `static/i18n.js` (строки на русском и английском), `static/styles.css`. Node.js нужен, только если вы меняете классы Tailwind в `index.html` или `static/js`. После этого пересоберите библиотеки командами `npm install` и `npm run vendor`.
