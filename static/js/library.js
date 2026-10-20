@@ -366,6 +366,56 @@ function askScopePayload(scope) {
   return {};
 }
 
+// --- Digest: one summary of a folder or a period, shown in the thread like an answer ---
+function openDigestMenu(e) {
+  e.stopPropagation();
+  document.getElementById('digest-menu')?.remove();
+  const scope = state.askScope;
+  const menu = document.createElement('div');
+  menu.id = 'digest-menu';
+  menu.className = 'fixed w-56 macos-menu z-50';
+  const where = scope.type === 'folder' ? t('digestScopeFolder') : t('digestScopeAll');
+  menu.innerHTML = `<div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(where)}</div>`
+    + [[7, t('digestWeek')], [30, t('digestMonth')], [0, t('digestEverything')]]
+      .map(([d, label]) => `<button class="macos-menu-item" data-days="${d}"><span>${escapeHtml(label)}</span></button>`).join('');
+  menu.addEventListener('click', (ev) => {
+    const b = ev.target.closest('button[data-days]');
+    ev.stopPropagation();
+    if (!b) return;
+    menu.remove();
+    makeDigest(Number(b.dataset.days) || null);
+  });
+  document.body.appendChild(menu);
+  const r = e.currentTarget.getBoundingClientRect();
+  menu.style.left = `${Math.min(r.left, window.innerWidth - 232)}px`;
+  menu.style.top = `${r.bottom + 4}px`;
+}
+
+document.addEventListener('click', () => document.getElementById('digest-menu')?.remove());
+
+async function makeDigest(days) {
+  const scope = state.askScope.type === 'folder' ? { ...state.askScope } : { type: 'all' };
+  const period = days === 7 ? t('digestWeek') : days === 30 ? t('digestMonth') : t('digestEverything');
+  const item = { id: ++_askSeq, question: `${t('digestBtn')} · ${period}`, scopeLabel: askScopeLabel(scope), status: 'pending', data: null, error: '' };
+  askThread.unshift(item);
+  renderAskThread();
+  try {
+    const res = await fetch('/api/library/digest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder_id: scope.type === 'folder' ? scope.id : null, days: days || null, lang: state.uiLang === 'en' ? 'en' : 'ru' }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || 'Error');
+    item.data = data;
+    item.status = 'done';
+  } catch (e) {
+    item.error = e.message;
+    item.status = 'error';
+  }
+  renderAskThread();
+}
+
 async function askLibrary() {
   const input = document.getElementById('library-question');
   const question = input.value.trim();
@@ -451,7 +501,7 @@ function renderLibraryAnswer(body, item) {
       <div class="text-[10.5px] uppercase tracking-wider text-apple-tertiary mb-1">${escapeHtml(t('libraryAskSources'))}</div>
       ${sources}
     </div>` : ''}
-    ${data.model ? `<div class="mt-2 text-[10.5px] text-apple-tertiary">${data.cloud ? '☁ ' : ''}${escapeHtml(data.cloud ? data.model : formatModelName(data.model))}${data.mode === 'full' ? ' · ' + escapeHtml(t('askModeFull')) : ''}${data.excluded_local ? ' · ' + escapeHtml(t('askExcludedLocal').replace('{n}', data.excluded_local)) : ''}</div>` : ''}`;
+    ${data.model ? `<div class="mt-2 text-[10.5px] text-apple-tertiary">${data.cloud ? '☁ ' : ''}${escapeHtml(data.cloud ? data.model : formatModelName(data.model))}${data.mode === 'full' ? ' · ' + escapeHtml(t('askModeFull')) : ''}${data.mode === 'digest' ? ' · ' + escapeHtml(t('digestCount').replace('{n}', data.count)) : ''}${data.excluded_local ? ' · ' + escapeHtml(t('askExcludedLocal').replace('{n}', data.excluded_local)) : ''}</div>` : ''}`;
 }
 
 function openLibrarySource(itemId, n) {
@@ -601,6 +651,12 @@ async function fctxToggleLocalOnly() {
 
 function fctxNewSubfolder() {
   createFolderPrompt(state.contextFolderId);
+}
+
+function fctxDigest() {
+  hideFolderMenu();
+  openLibraryAsk('', { type: 'folder', id: state.contextFolderId });
+  makeDigest(null);
 }
 
 function fctxAsk() {

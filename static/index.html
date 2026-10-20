@@ -466,6 +466,9 @@
               data-i18n-placeholder="libraryAskPlaceholder" placeholder="Например: что решили по срокам релиза?"
               class="flex-1 h-9 bg-apple-card border apple-border rounded-lg px-3.5 text-[13px] text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
             <button onclick="askLibrary()" id="library-ask-btn" class="ui-btn ui-btn-primary h-9 px-4"><svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg><span data-i18n="askBtn">Спросить</span></button>
+            <button onclick="openDigestMenu(event)" id="library-digest-btn" data-i18n-title="tipDigest"
+              title="Сводка по нескольким записям: главное, решения, задачи и открытые вопросы со ссылками на записи"
+              class="ui-btn ui-btn-subtle h-9 px-3.5"><span data-i18n="digestBtn">Дайджест</span><span class="opacity-60 ml-1">▾</span></button>
           </div>
         </div>
       </div>
@@ -1009,6 +1012,7 @@
     <button onclick="fctxRename()" class="macos-menu-item"><span data-i18n="folderRename">Переименовать…</span></button>
     <button onclick="fctxNewSubfolder()" class="macos-menu-item"><span data-i18n="folderNewSub">Новая вложенная папка…</span></button>
     <button onclick="fctxAsk()" class="macos-menu-item"><span data-i18n="folderAsk">Спросить по папке…</span></button>
+    <button onclick="fctxDigest()" class="macos-menu-item"><span data-i18n="folderDigest">Дайджест папки</span></button>
     <button id="fctx-local" onclick="fctxToggleLocalOnly()" data-i18n-title="tipLocalOnly" title="Не отправлять в облачную модель: анализ, названия и ответы ассистента — только локальной моделью" class="macos-menu-item">
       <span data-i18n="ctxLocalOnly">Только локальный анализ</span><span id="fctx-local-check" class="text-[11px] opacity-70"></span>
     </button>

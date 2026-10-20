@@ -1257,6 +1257,29 @@ def api_library_ask(payload: LibraryAskPayload) -> Dict[str, Any]:
         raise HTTPException(status_code=503, detail=str(e))
 
 
+class DigestPayload(BaseModel):
+    folder_id: Optional[int] = None  # a folder with its subfolders; None: the whole library
+    days: Optional[int] = None       # only what was recorded in the last days
+    lang: str = "ru"
+    model: Optional[str] = None
+
+
+@app.post("/api/library/digest")
+def api_library_digest(payload: DigestPayload) -> Dict[str, Any]:
+    """A digest of a folder or of a period (app/digest.py)."""
+    from app.database import get_folder
+    from app.digest import make_digest
+
+    if payload.folder_id is not None and not get_folder(payload.folder_id):
+        raise HTTPException(status_code=404, detail="Папка не найдена")
+    try:
+        return make_digest(payload.folder_id, payload.days, answer_lang=payload.lang, model_name=payload.model)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+
 @app.get("/api/voice-profiles")
 def api_voice_profiles() -> Dict[str, Any]:
     from app.voice_profiles import enabled, list_profiles

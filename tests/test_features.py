@@ -81,5 +81,64 @@ class CallWatchTest(unittest.TestCase):
         self.assertIsNone(w.active)
 
 
+class DigestTest(unittest.TestCase):
+    def setUp(self):
+        try:
+            from app import digest  # noqa: F401
+        except ImportError:
+            self.skipTest("app dependencies not installed")
+        from app import database as db
+
+        self.db = db
+        db.init_db()
+        self.folder = db.create_folder("Дайджест")
+        self.ids = []
+        for i, (title, when) in enumerate([("Старая", "2001-01-01 10:00:00"), ("Свежая", "2999-01-01 10:00:00")]):
+            mid = db.create_meeting(title, "a.wav", "/tmp/a.wav", folder_id=self.folder["id"], recorded_at=when)["id"]
+            db.save_meeting_results(mid, segments=[{"id": 1, "start": 0, "end": 2, "speaker": "S", "text": f"текст {title}"}],
+                                    summaries={"protocol": f"## Обзор {title}"} if i else None)
+            db.update_meeting_progress(mid, status="completed", progress=100)
+            self.ids.append(mid)
+
+    def tearDown(self):
+        for mid in self.ids:
+            self.db.delete_meeting(mid)
+        self.db.delete_folder(self.folder["id"])
+
+    def _fake(self, cloud=False):
+        from app.llm import Target
+
+        sent = []
+        tgt = Target("anthropic" if cloud else "ollama", "m", 20000, lambda sys_, user: sent.append(user) or "## Главное\n- x [1]")
+        return tgt, sent
+
+    def test_folder_digest_uses_overviews_and_links(self):
+        from unittest import mock
+
+        from app.digest import make_digest
+
+        tgt, sent = self._fake()
+        with mock.patch("app.llm.target", return_value=tgt):
+            out = make_digest(folder_id=self.folder["id"])
+        self.assertEqual(out["count"], 2)
+        self.assertEqual([s["title"] for s in out["sources"]], ["Старая", "Свежая"])  # oldest first
+        self.assertIn("Обзор Свежая", sent[0])          # an overview when there is one
+        self.assertIn("текст Старая", sent[0])          # otherwise the transcript
+        with mock.patch("app.llm.target", return_value=tgt):
+            self.assertEqual(make_digest(folder_id=self.folder["id"], days=30)["count"], 1)  # "future" one only
+
+    def test_local_only_left_out_of_cloud(self):
+        from unittest import mock
+
+        from app.digest import make_digest
+
+        self.db.update_meeting_fields(self.ids[0], local_only=1)
+        tgt, sent = self._fake(cloud=True)
+        with mock.patch("app.llm.target", return_value=tgt):
+            out = make_digest(folder_id=self.folder["id"])
+        self.assertEqual((out["count"], out["excluded_local"]), (1, 1))
+        self.assertNotIn("Старая", sent[0])
+
+
 if __name__ == "__main__":
     unittest.main()
