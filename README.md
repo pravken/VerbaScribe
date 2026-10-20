@@ -30,6 +30,7 @@ Recordings and transcripts are processed and stored locally (NVIDIA GPU via CUDA
 - **Tray icon** that shows what the app is doing and starts or stops a recording from its menu.
 - **Automatic update check** with one-click install from GitHub Releases; the download is verified against the release checksums, and your data, models and settings stay untouched.
 - **Search** across all recordings.
+- **Convenience**: drag files onto the window to import them, keyboard shortcuts (press `?` for the list), and a "Subtitles" player layout with the current phrase under the video.
 - **Custom vocabulary** (names, terms) passed to Whisper as hotwords.
 - **Export** to Word (`.docx`), Markdown, plain text, SRT subtitles and JSON.
 - **Translate & dub (prototype, optional)**: translates a finished recording with Ollama and re-voices it in each speaker's cloned voice over the original background. See [Translate & dub](#translate-dub).
@@ -39,12 +40,15 @@ Recordings and transcripts are processed and stored locally (NVIDIA GPU via CUDA
 
 - Windows 10/11 (64-bit)
 - [FFmpeg](https://ffmpeg.org): either in `PATH` (e.g. `winget install Gyan.FFmpeg`) or downloaded from **Settings → Download FFmpeg** (a pinned build, checked by SHA-256)
-- An NVIDIA GPU with CUDA is recommended; a CPU works but is noticeably slower
-- Disk space for models: about 0.5–3 GB per Whisper model, plus Ollama models if you use summaries
+- An NVIDIA GPU with CUDA and a recent driver is recommended; a CPU works but is noticeably slower
+- An internet connection for the first start, which installs the Python environment
+- Disk space: about 7 GB for the Python environment (`.venv`, mostly PyTorch with CUDA), about 0.5–3 GB per Whisper model, plus Ollama models if you use summaries
 
 ### Getting started
 
 **Option A — release archive.** Download `VerbaScribe-vX.Y.Z.zip` from [Releases](https://github.com/pravken/VerbaScribe/releases), check it against `SHA256SUMS.txt`, unpack it and run `VerbaScribe.exe`. The launcher is built from [`build_exe.py`](build_exe.py) by the [release workflow](.github/workflows/release.yml).
+
+Unpack the archive to a regular folder you can write to, such as `D:\VerbaScribe`, not `Program Files`: the app creates `.venv` and `models` next to itself. The `.exe` alone is not enough, it is only the launcher for the program files in the archive. On the first start the launcher offers to install the Python environment (`setup.bat`). This downloads several gigabytes and usually takes 10–20 minutes, depending on your connection. Later starts take seconds, and new versions are installed from **Settings → General**.
 
 **Option B — from source.**
 
@@ -55,6 +59,8 @@ start.bat
 ```
 
 On first launch `setup.bat` creates a Python virtual environment (`.venv`) and installs the exact package versions from `requirements.txt` (a lock file with SHA-256 hashes, generated from `requirements.in`). The app then opens a setup screen where you choose which Whisper model to download. To build the launcher yourself, run `python build_exe.py`; it uses the C# compiler bundled with the .NET Framework.
+
+In a folder cloned with git the app still reports new versions but never installs them itself: update it with `git pull` (and run `setup.bat` again if `requirements.txt` changed).
 
 <a name="translate-text"></a>
 ### Translate text
@@ -136,6 +142,8 @@ VerbaScribe's own code is released under the [MIT License](LICENSE). Models and 
 | SpeechBrain ECAPA-TDNN (`spkrec-ecapa-voxceleb`) | Apache 2.0 |
 | Qwen 2.5 1.5B / 7B / 14B, Mistral 7B | Apache 2.0 |
 | Ollama, FastAPI, pywebview | MIT / BSD-3 |
+| PyTorch, torchaudio | BSD-3 |
+| SoundCard (system audio recording) | BSD-3 |
 | FFmpeg (optional download, Gyan.dev essentials build) | GPL v3 |
 | Chatterbox Multilingual TTS (optional dubbing) | MIT |
 | Demucs `htdemucs` (optional dubbing) | MIT |
@@ -183,6 +191,7 @@ To update Python dependencies, edit `requirements.in` and regenerate the lock (c
 - **Значок в трее** показывает, чем занято приложение, и запускает или останавливает запись из меню.
 - **Проверка обновлений** и установка в один клик из GitHub Releases; архив сверяется с контрольными суммами релиза, ваши данные, модели и настройки не затрагиваются.
 - **Поиск** по всем записям.
+- **Удобство**: файлы можно перетащить в окно, есть горячие клавиши (список — по клавише `?`) и вид плеера «Субтитры» с текущей фразой под видео.
 - **Словарь** имён и терминов, который передаётся в Whisper как hotwords.
 - **Экспорт** в Word (`.docx`), Markdown, текст, субтитры SRT и JSON.
 - **Перевод и дубляж (прототип, по желанию)**: готовая запись переводится через Ollama и озвучивается клонами голосов участников поверх исходного фона. Подробнее — в разделе [Перевод и дубляж](#дубляж).
@@ -192,12 +201,15 @@ To update Python dependencies, edit `requirements.in` and regenerate the lock (c
 
 - Windows 10/11 (64-bit)
 - [FFmpeg](https://ffmpeg.org): в `PATH` (например, `winget install Gyan.FFmpeg`) или скачанный из **Настройки → Скачать FFmpeg** (закреплённая сборка с проверкой SHA-256)
-- Желательна видеокарта NVIDIA с CUDA; на процессоре работает, но заметно медленнее
-- Место под модели: примерно 0,5–3 ГБ на модель Whisper и ещё место под модели Ollama, если нужны саммари
+- Желательна видеокарта NVIDIA с CUDA и свежим драйвером; на процессоре работает, но заметно медленнее
+- Интернет при первом запуске: в это время устанавливается окружение Python
+- Место на диске: около 7 ГБ под окружение Python (`.venv`, в основном PyTorch с CUDA), примерно 0,5–3 ГБ на модель Whisper и ещё место под модели Ollama, если нужны саммари
 
 ### Как начать
 
 **Вариант А — архив релиза.** Скачайте `VerbaScribe-vX.Y.Z.zip` со страницы [Releases](https://github.com/pravken/VerbaScribe/releases), сверьте его с `SHA256SUMS.txt`, распакуйте и запустите `VerbaScribe.exe`. Лаунчер собирается из [`build_exe.py`](build_exe.py) в [workflow релиза](.github/workflows/release.yml).
+
+Распакуйте архив в обычную папку с правом записи, например `D:\VerbaScribe`, а не в `Program Files`: рядом с программой создаются `.venv` и `models`. Одного `.exe` недостаточно, это лишь лаунчер для файлов программы из архива. При первом запуске лаунчер предложит установить окружение Python (`setup.bat`). Скачивается несколько гигабайт, обычно это занимает 10–20 минут, в зависимости от скорости интернета. Следующие запуски занимают секунды, а новые версии устанавливаются из **Настройки → Общие**.
 
 **Вариант Б — из исходников.**
 
@@ -208,6 +220,8 @@ start.bat
 ```
 
 При первом запуске `setup.bat` создаёт виртуальное окружение Python (`.venv`) и ставит точные версии пакетов из `requirements.txt` (lock-файл с хешами SHA-256, собирается из `requirements.in`). Затем открывается экран настройки, где вы выбираете модель Whisper для скачивания. Чтобы собрать лаунчер самостоятельно, выполните `python build_exe.py`; он использует компилятор C# из комплекта .NET Framework.
+
+В папке, склонированной через git, приложение сообщает о новых версиях, но само их не устанавливает: обновляйте её командой `git pull` (и снова запустите `setup.bat`, если изменился `requirements.txt`).
 
 <a name="дубляж"></a>
 <a name="перевод-текста"></a>
