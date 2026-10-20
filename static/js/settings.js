@@ -657,7 +657,6 @@ async function fillCallSettings(s) {
   sel.innerHTML = recordPresets().map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(presetLabel(p))}</option>`).join('');
   sel.value = [...sel.options].some(o => o.value === s.call_preset) ? s.call_preset : (sel.options[0] || {}).value || '';
   renderCallSettings();
-  if (st.supported) refreshCallMicNow();
 }
 
 // What uses the microphone now, refreshed while the settings are open: during a call it shows
@@ -665,16 +664,18 @@ async function fillCallSettings(s) {
 async function refreshCallMicNow() {
   const box = document.getElementById('call-mic-now');
   const modal = document.getElementById('modal-settings');
-  if (!box || !modal || modal.classList.contains('hidden')) return;
+  const block = document.getElementById('call-record-block');
+  // Only while the recording settings are on screen
+  if (!box || !modal || modal.classList.contains('hidden') || !block || block.classList.contains('hidden') || !block.offsetParent) return;
   const st = await fetch('/api/calls/status').then(r => r.json()).catch(() => null);
   if (st) {
     const names = (st.mic_now || []).map(n => n.replace(/_[a-z0-9]{13}$/, ''));
     box.textContent = `${t('callMicNow')}: ${names.length ? names.join(', ') : t('callMicNobody')}`
       + (st.active ? ` · ${t('callActive').replace('{app}', st.active)}` : '');
   }
-  clearTimeout(window._callMicTimer);
-  window._callMicTimer = setTimeout(refreshCallMicNow, 3000);
 }
+
+setInterval(refreshCallMicNow, 3000);
 
 function renderCallSettings() {
   document.getElementById('call-record-options').classList.toggle('opacity-50', !document.getElementById('set-call-record').checked);
