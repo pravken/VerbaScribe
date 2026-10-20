@@ -1,4 +1,5 @@
 import json
+import re
 import os
 import shutil
 import subprocess
@@ -446,7 +447,9 @@ SYSTEM_GROUNDING_PROMPT = (
     "2. Не выдумывай имена людей, встречи, проекты, решения или задачи, которых нет в исходном тексте.\n"
     "3. Запись может быть любого жанра: интервью, монолог, обзор, лекция, подкаст, бытовой разговор, видеоролик или беседа. "
     "Описывай ровно то, о чём реально говорят спикеры.\n"
-    "4. Не повторяй одну и ту же фразу несколько раз. Пиши грамотно {lang} в формате Markdown без эмодзи."
+    "4. Не повторяй одну и ту же фразу несколько раз. Пиши грамотно {lang} в формате Markdown без эмодзи.\n"
+    "5. Не оформляй цитаты и ответы блоками кода (```): цитируй обычным текстом или через «>». "
+    "Таймкоды пиши в квадратных скобках: [ММ:СС] или диапазоном [ММ:СС–ММ:СС]."
 )
 
 SUMMARY_TEMPLATES: Dict[str, str] = {
@@ -485,24 +488,28 @@ SUMMARY_TEMPLATES: Dict[str, str] = {
 
 
 def _ollama_chat(base_url: str, model: str, system: str, user: str) -> str:
+    from app import idle_unload
+
+    idle_unload.touch(model)
+    payload: Dict[str, Any] = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "stream": False,
+        "options": {
+            "temperature": 0.1,
+            "top_p": 0.85,
+            "repeat_penalty": 1.15,
+            "num_ctx": LLM_NUM_CTX,
+        },
+    }
+    keep_alive = idle_unload.ollama_keep_alive()
+    if keep_alive:
+        payload["keep_alive"] = keep_alive  # Ollama frees the model after the same idle time
     with httpx.Client(timeout=600.0) as client:
-        resp = client.post(
-            f"{base_url}/api/chat",
-            json={
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-                "stream": False,
-                "options": {
-                    "temperature": 0.1,
-                    "top_p": 0.85,
-                    "repeat_penalty": 1.15,
-                    "num_ctx": LLM_NUM_CTX,
-                },
-            },
-        )
+        resp = client.post(f"{base_url}/api/chat", json=payload)
         resp.raise_for_status()
         data = resp.json()
         msg = data.get("message") or {}
@@ -595,3 +602,59 @@ def generate_meeting_summary(
         "Не выдумывай посторонних людей, встреч или проектов."
     )
     return _ollama_chat(base_url, selected_model, system_prompt, user_message)
+
+
+# --- A title for a recording, from its content ---
+_GENERIC_TITLE_WORDS = {
+    "запись", "записи", "аудио", "видео", "звук", "встреча", "созвон", "голосовая", "заметка", "компьютера",
+    "новая", "новый", "без", "названия", "микрофон", "экран",
+    "recording", "record", "rec", "audio", "video", "vid", "voice", "note", "memo", "meeting", "call", "zoom",
+    "teams", "screen", "screencast", "capture", "computer", "new", "untitled", "track", "mic", "system",
+    "img", "mov", "dsc", "gmt", "file", "clip", "output", "export", "final", "copy", "копия",
+}
+
+
+def is_generic_title(title: str) -> bool:
+    """True for titles that say nothing about the content: 'Запись 14-05', 'zoom_0', 'VID_20240512_1302',
+    'Recording (3)'. Such titles may be replaced by one made from the transcript."""
+    words = re.findall(r"[^\W\d_]+", (title or "").casefold())
+    return all(w in _GENERIC_TITLE_WORDS or len(w) <= 1 for w in words)
+
+
+def generate_meeting_title(
+    segments: List[Dict[str, Any]],
+    speakers: Dict[str, Dict[str, Any]],
+    answer_lang: Optional[str] = "ru",
+    model_name: Optional[str] = None,
+) -> str:
+    """A short title (3-8 words) for the recording from the beginning of its transcript."""
+    settings = get_all_settings()
+    base_url = (settings.get("ollama_url") or "http://127.0.0.1:11434").replace("localhost", "127.0.0.1").rstrip("/")
+    status = get_ollama_status(base_url)
+    if not status["running"] or not status["models"]:
+        raise RuntimeError("Ollama не запущена или в ней нет моделей")
+    model = model_name or settings.get("ollama_model") or "qwen2.5:7b"
+    if model not in status["models"]:
+        same = [m for m in status["models"] if m.startswith(model.split(":")[0])]
+        model = same[0] if same else status["models"][0]
+    text = "\n".join(build_transcript_lines(segments, speakers))[:7000]
+    if not text.strip():
+        raise RuntimeError("Транскрипт пуст")
+    lang = _lang_phrase(answer_lang)
+    system = (
+        "Ты придумываешь короткие точные названия для расшифровок встреч, звонков и записей. "
+        f"Отвечай {lang}. Выведи только название: 3–8 слов, без кавычек, без точки в конце, без даты, "
+        "без слов «Встреча», «Запись», «Обсуждение» в начале, если можно обойтись без них."
+    )
+    raw = _ollama_chat(base_url, model, system, f"Расшифровка:\n{text}\n\nНазвание:")
+    return clean_title(raw)
+
+
+def clean_title(raw: str) -> str:
+    line = next((ln.strip() for ln in (raw or "").splitlines() if ln.strip()), "")
+    line = re.sub(r"^(название|title)\s*[:：-]\s*", "", line, flags=re.IGNORECASE)
+    prev = None
+    while line != prev:  # «Title». or "Title." in any order
+        prev = line
+        line = re.sub(r"[.。]+$", "", line.strip().strip("\"'«»“”`*#")).strip()
+    return line[:120]

@@ -81,6 +81,9 @@ function setUILanguage(lang) {
     renderSummaryPanel();
   }
   applyVideoLayout();
+  if (state.appView === 'studio') { renderStudioState(); syncStudioCaptions(); }
+  if (state.appView === 'ask') { renderAskScope(); renderAskThread(); }
+  if (state.activeWorkspaceTab === 'info' && state.activeMeeting) loadMeetingInfo();
 }
 
 function showToast(msg, action) {
@@ -115,7 +118,7 @@ function formatTime(sec) {
 
 // --- Modals & Menus ---
 // Settings are split into tabs; the last one is remembered
-const SETTINGS_TABS = ['general', 'record', 'recognition', 'analysis', 'dub'];
+const SETTINGS_TABS = ['general', 'record', 'recognition', 'analysis', 'export', 'dub'];
 
 function selectSettingsTab(name) {
   if (!SETTINGS_TABS.includes(name)) name = 'general';
@@ -137,9 +140,20 @@ function openModal(name, tab) {
     loadDubInfo();
     populateAudioInputDevices();
     refreshExportDirLabel();
+    refreshRecordingsDirLabel();
+    refreshObsidianStatus();
     setTimeout(() => drawIdleSoundCloudBars('settings-waveform-canvas'), 30);
   }
 }
+// Voice profiles only work with speaker separation: dimmed while it is off
+function syncVoiceProfilesToggle() {
+  const on = document.getElementById('set-diarization')?.checked !== false;
+  const box = document.getElementById('voice-profiles-box');
+  if (!box) return;
+  box.style.opacity = on ? '' : '0.45';
+  document.getElementById('set-voice-profiles').disabled = !on;
+}
+
 // --- Voice profiles (Settings): names remembered from earlier recordings ---
 async function loadVoiceProfiles() {
   const box = document.getElementById('voice-profiles-list');
@@ -191,7 +205,8 @@ function closeModalOnBackdrop(e, name) {
 
 function switchWorkspaceTab(tab) {
   state.activeWorkspaceTab = tab;
-  ['transcript', 'summary', 'speakers'].forEach(k => {
+  if (tab === 'info') loadMeetingInfo();
+  ['transcript', 'summary', 'speakers', 'info'].forEach(k => {
     document.getElementById(`wview-${k}`).classList.toggle('hidden', k !== tab);
     const btn = document.getElementById(`wtab-${k}`);
     btn.className = (k === tab)
@@ -203,7 +218,173 @@ function switchWorkspaceTab(tab) {
 function toggleExportMenu(e) {
   e.stopPropagation();
   hideContextMenu();
-  document.getElementById('export-menu').classList.toggle('hidden');
+  hideTranslateMenu();
+  const menu = document.getElementById('export-menu');
+  if (menu.classList.contains('hidden')) renderExportMenu();
+  menu.classList.toggle('hidden');
+}
+
+function hideExportMenu() {
+  document.getElementById('export-menu')?.classList.add('hidden');
+}
+
+// --- Export: every format in one menu. What the recording does not have yet (a translation, a
+// dub, even the transcript while it is being made) is made first, and the file is then saved into
+// the export folder by itself (app/pending_exports.py). ---
+function exportLangChoices() {
+  const m = state.activeMeeting;
+  const have = Object.keys(meetingTranslations(m));
+  const src = (m && m.language) || '';
+  const all = (_textLangs || TEXT_LANG_FALLBACK).filter(c => c !== src && !have.includes(c))
+    .map(c => ({ c, n: langName(c) })).sort((a, b) => a.n.localeCompare(b.n));
+  return { have, others: all };
+}
+
+function renderExportMenu() {
+  const menu = document.getElementById('export-menu');
+  const m = state.activeMeeting;
+  if (!m) { menu.innerHTML = ''; return; }
+  const isVideo = !!m.is_video;
+  const busy = !DONE_STATUSES.includes(m.status);
+  const { have, others } = exportLangChoices();
+  const src = (m.language || '').toLowerCase();
+  if (!state.exportLang || state.exportLang === src) {
+    state.exportLang = have[0] || (src === 'en' ? 'ru' : 'en');
+  }
+  const trLang = state.exportLang;
+  const trReady = have.includes(trLang);
+  const dubs = availableDubs(m).map(d => d.lang);
+  const dubLangs = Object.keys(I18N.ru.dubLangNames).filter(c => c !== src);
+  if (!state.exportDubLang || !dubLangs.includes(state.exportDubLang)) state.exportDubLang = dubs[0] || (src === 'en' ? 'ru' : 'en');
+  const dubLang = state.exportDubLang;
+  const dubReady = dubs.includes(dubLang);
+
+  const header = (label, extra = '') =>
+    `<div class="px-2.5 pt-2 pb-1 flex items-center justify-between gap-2"><span class="text-[10px] font-semibold uppercase tracking-wider text-apple-secondary">${escapeHtml(label)}</span>${extra}</div>`;
+  const item = (payload, label, tag, hint) =>
+    `<button onclick='runExport(${JSON.stringify(payload)})' class="macos-menu-item gap-3" ${hint ? `title="${escapeHtml(hint)}"` : ''}>`
+    + `<span class="truncate">${escapeHtml(label)}</span><span class="text-[10.5px] opacity-60 shrink-0">${escapeHtml(tag)}</span></button>`;
+  const note = (text, cls = 'text-apple-tertiary') => `<div class="px-2.5 pb-1 text-[10.5px] leading-snug ${cls}">${escapeHtml(text)}</div>`;
+  const sep = '<div class="my-1 border-t border-white/10"></div>';
+  const langSelect = (id, onchange, options) =>
+    `<select id="${id}" onchange="${onchange}" onclick="event.stopPropagation()" class="h-6 max-w-[150px] bg-apple-sidebar border apple-border rounded-md px-1.5 text-[11px] text-white focus:outline-none">${options}</select>`;
+
+  let html = '';
+  if (busy) html += note(t('exportWhileProcessing'), 'text-apple-amber');
+  html += header(t('exportGroupDoc'));
+  html += item({ kind: 'doc', fmt: 'docx' }, 'Word', 'DOCX') + item({ kind: 'doc', fmt: 'md' }, 'Markdown', 'MD')
+    + item({ kind: 'doc', fmt: 'txt' }, t('exportPlainText'), 'TXT') + item({ kind: 'doc', fmt: 'json' }, 'JSON', 'JSON');
+
+  html += sep + header(t('exportGroupSubs'));
+  html += item({ kind: 'doc', fmt: 'srt' }, t('exportSrtFile'), 'SRT');
+  if (isVideo) {
+    html += item({ kind: 'video_soft' }, t('exportVideoSoft'), t('exportTagVideo'), t('tipSubsSoft'))
+      + item({ kind: 'video_burn' }, t('exportVideoBurn'), t('exportTagVideo'), t('tipSubsBurn'));
+  }
+
+  const trOptions = (have.length ? `<optgroup label="${escapeHtml(t('exportLangReady'))}">${have.map(c => `<option value="${c}" ${c === trLang ? 'selected' : ''}>✓ ${escapeHtml(langName(c))}</option>`).join('')}</optgroup>` : '')
+    + `<optgroup label="${escapeHtml(t('exportLangNew'))}">${others.map(o => `<option value="${o.c}" ${o.c === trLang ? 'selected' : ''}>${escapeHtml(o.n)}</option>`).join('')}</optgroup>`;
+  html += sep + header(t('exportGroupTr'), langSelect('export-tr-lang', 'setExportLang(this.value)', trOptions));
+  if (!trReady) html += note(t('exportTrWillRun').replace('{lang}', langName(trLang)));
+  const tr = (fmt, variant, label, tag) => item({ kind: 'doc', fmt, lang: trLang, variant }, label, tag);
+  html += tr('docx', 'translated', 'Word', 'DOCX') + tr('md', 'translated', 'Markdown', 'MD') + tr('txt', 'translated', t('exportPlainText'), 'TXT')
+    + tr('srt', 'translated', t('exportSrtFile'), 'SRT')
+    + tr('docx', 'bilingual', `Word · ${t('exportBilingual')}`, 'DOCX') + tr('srt', 'bilingual', `${t('exportSrtFile')} · ${t('exportBilingual')}`, 'SRT');
+  if (isVideo) {
+    html += item({ kind: 'video_soft', lang: trLang, variant: 'translated' }, t('exportVideoSoftTr'), t('exportTagVideo'), t('tipSubsSoft'))
+      + item({ kind: 'video_burn', lang: trLang, variant: 'translated' }, t('exportVideoBurnTr'), t('exportTagVideo'), t('tipSubsBurn'));
+  }
+
+  const dubOptions = dubLangs.map(c => `<option value="${c}" ${c === dubLang ? 'selected' : ''}>${dubs.includes(c) ? '✓ ' : ''}${escapeHtml(dubLangName(c))}</option>`).join('');
+  html += sep + header(t('exportGroupDub'), langSelect('export-dub-lang', 'setExportDubLang(this.value)', dubOptions));
+  if (!dubReady) html += note(t('exportDubWillRun'));
+  const dubExt = dubReady ? String((availableDubs(m).find(d => d.lang === dubLang) || {}).path || '').split('.').pop().toUpperCase() : (isVideo ? 'MP4' : 'M4A');
+  html += item({ kind: 'dub_media', lang: dubLang }, isVideo ? t('exportDubVideo') : t('exportDubAudio'), dubExt)
+    + item({ kind: 'dub_srt', lang: dubLang }, t('exportDubSrt'), 'SRT');
+
+  const settings = (state.system && state.system.settings) || {};
+  html += sep + header('Obsidian');
+  html += item({ kind: 'obsidian' }, t('exportObsidian'), 'MD', settings.obsidian_vault ? settings.obsidian_vault : t('exportObsidianNoVault'));
+  if (m.obsidian_path) html += note(t('exportObsidianSaved').replace('{name}', String(m.obsidian_path).split(/[\\/]/).pop()));
+
+  html += sep + `<button onclick="hideExportMenu(); openExportDir()" class="macos-menu-item"><span>${escapeHtml(t('exportOpenFolder'))}</span></button>`;
+  menu.innerHTML = html;
+}
+
+function setExportLang(lang) {
+  state.exportLang = lang;
+  renderExportMenu();
+}
+
+function setExportDubLang(lang) {
+  state.exportDubLang = lang;
+  renderExportMenu();
+}
+
+async function runExport(item) {
+  hideExportMenu();
+  const m = state.activeMeeting;
+  if (!m) return;
+  if (item.kind === 'obsidian') { await exportToObsidian(m.id); return; }
+  let res, data;
+  try {
+    res = await fetch(`/api/meetings/${m.id}/export-request`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(item),
+    });
+    data = await res.json().catch(() => ({}));
+  } catch (e) {
+    showToast(t('exportFailed'));
+    return;
+  }
+  if (!res.ok) { showToast(data.detail || t('exportFailed')); return; }
+  if (data.status === 'needs_dub') {
+    state.pendingDubExport = { kind: item.kind, lang: item.lang };
+    openDubModal(item.lang);
+    return;
+  }
+  if (data.status === 'queued') {
+    const what = t(`exportWaiting_${data.waiting_for}`) || '';
+    showToast(t('exportQueued').replace('{what}', what).replace('{dir}', data.folder || ''), { label: t('showInFolder'), onClick: () => revealPath(data.folder) });
+    await loadMeetingsList();
+    return;
+  }
+  // Everything the export needs is there: save it now, asking where
+  if (item.kind === 'doc') await exportMeetingById(m.id, item.fmt, item.lang ? { lang: item.lang, variant: item.variant } : undefined);
+  else if (item.kind === 'video_soft' || item.kind === 'video_burn') await requestVideoSubtitles(item.lang || '', item.variant || 'translated', item.kind === 'video_soft' ? 'soft' : 'burn', true);
+  else if (item.kind === 'dub_media') await saveDubFile(item.lang, 'media');
+  else if (item.kind === 'dub_srt') await saveDubFile(item.lang, 'srt');
+}
+
+async function exportToObsidian(id) {
+  const settings = (state.system && state.system.settings) || {};
+  if (!settings.obsidian_vault) {
+    showToast(t('exportObsidianNoVault'));
+    openModal('settings', 'export');
+    return;
+  }
+  showToast(t('obsidianSaving'));
+  try {
+    const res = await fetch(`/api/meetings/${id}/obsidian`, { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { showToast(data.detail || t('exportFailed')); return; }
+    if (state.activeMeeting && state.activeMeeting.id === id) state.activeMeeting.obsidian_path = data.path;
+    showToast(`${t('obsidianSaved')} ${data.filename}`, { label: t('showInFolder'), onClick: () => revealPath(data.path) });
+  } catch (e) {
+    showToast(t('exportFailed'));
+  }
+}
+
+// An export that waited for a job has been written (or could not be)
+function onExportedEvent(ev) {
+  const files = ev.files || [];
+  if (files.length) {
+    const name = String(files[0]).split(/[\\/]/).pop();
+    showToast(`${t('exportSavedTo')} ${name}${files.length > 1 ? ` (+${files.length - 1})` : ''}`,
+      { label: t('showInFolder'), onClick: () => revealPath(files[0]) });
+  } else if ((ev.queued || []).length) {
+    showToast(t('subsBurnQueued').replace('{name}', ''));
+  }
+  if ((ev.errors || []).length) setTimeout(() => showToast(ev.errors.join('; ')), files.length ? 3000 : 0);
 }
 
 // --- Right-Click Context Menu on Sidebar Recording Items ---
@@ -235,6 +416,7 @@ function hideContextMenu() {
 
 document.addEventListener('click', () => {
   hideContextMenu();
+  hideFolderMenu();
   document.getElementById('export-menu')?.classList.add('hidden');
   hideTranslateMenu();
   hideTxViewMenu();
@@ -434,6 +616,7 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     document.getElementById('set-compute-type').value = s.compute_type || 'float16';
     document.getElementById('set-diarization').checked = s.diarization_enabled !== 'false';
     document.getElementById('set-voice-profiles').checked = s.voice_profiles !== 'false';
+    syncVoiceProfilesToggle();
     document.getElementById('set-update-check').checked = s.update_check !== 'false';
     document.getElementById('set-vad').checked = s.vad_filter !== 'false';
     if (document.getElementById('set-audio-enhance')) {
@@ -444,7 +627,12 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     }
     document.getElementById('set-ollama-model').value = s.ollama_model || 'qwen2.5:7b';
     document.getElementById('set-auto-summary').checked = s.auto_summary !== 'false';
+    document.getElementById('set-auto-title').checked = s.auto_title !== 'false';
+    const idleSel = document.getElementById('set-idle-unload');
+    idleSel.value = [...idleSel.options].some(o => o.value === String(s.idle_unload_minutes)) ? String(s.idle_unload_minutes) : '10';
+    fillObsidianSettings(s);
     fillDubSettings(s);
+    renderRecordSaveHint();
 
     const srcMode = s.record_source_mode || 'both';
     if (document.getElementById('set-record-source')) {
@@ -512,12 +700,41 @@ function vramChipTitle(c) {
   return c.can_preload ? t('tipVramPreload').replace('{name}', vramChipLabel(c)) : t('tipVramNotLoaded');
 }
 
+function renderSystemLoad(sys) {
+  const row = document.getElementById('sys-row');
+  if (!row) return;
+  const cpu = sys && sys.cpu_percent;
+  const ram = sys && sys.ram;
+  row.classList.toggle('hidden', cpu == null && !ram);
+  if (cpu != null) {
+    document.getElementById('cpu-text').textContent = `${Math.round(cpu)}%`;
+    document.getElementById('cpu-bar').style.width = `${Math.min(100, cpu)}%`;
+    document.getElementById('cpu-bar').className = `h-full transition-all duration-500 ${cpu > 85 ? 'bg-apple-red/80' : 'bg-apple-green/70'}`;
+  }
+  if (ram) {
+    const pct = (100 * ram.used_gb) / Math.max(0.1, ram.total_gb);
+    document.getElementById('ram-text').textContent = `${ram.used_gb}/${ram.total_gb} ${t('unitGB')}`;
+    document.getElementById('ram-bar').style.width = `${Math.min(100, pct)}%`;
+    document.getElementById('ram-bar').className = `h-full transition-all duration-500 ${pct > 90 ? 'bg-apple-red/80' : 'bg-apple-amber/70'}`;
+    document.getElementById('ram-cell').title = t('tipRamUsage').replace('{free}', ram.free_gb);
+  }
+}
+
+function renderIdleStatus(idle) {
+  const el = document.getElementById('idle-unload-status');
+  if (!el || !idle) return;
+  const loaded = (vram.chips || []).some(c => c.loaded && c.kind !== 'dub');
+  el.textContent = idle.minutes && loaded && idle.unload_in_sec != null
+    ? t('idleUnloadIn').replace('{min}', Math.max(1, Math.ceil(idle.unload_in_sec / 60))) : '';
+}
+
 function renderVram(data) {
   vram.data = data;
+  renderSystemLoad(data.system);
   const row = document.getElementById('vram-row');
   const gpu = data.gpu;
   row.classList.toggle('hidden', !gpu);
-  if (!gpu) return;
+  if (!gpu) { vram.chips = data.chips || []; renderIdleStatus(data.idle); return; }
   document.getElementById('vram-text').textContent = `${gpu.used_gb} / ${gpu.total_gb} ${t('unitGB')}`;
   document.getElementById('vram-bar').style.width = `${Math.min(100, (100 * gpu.used_gb) / Math.max(1, gpu.total_gb))}%`;
   row.firstElementChild.title = t('tipVramUsage').replace('{free}', gpu.free_gb);
@@ -549,6 +766,7 @@ function renderVram(data) {
     vram.html = html;
   }
   vram.chips = chips;
+  renderIdleStatus(data.idle);
 }
 
 async function vramChipClick(index) {
@@ -957,6 +1175,9 @@ async function saveAllSettings() {
       clean_fillers: String(document.getElementById('set-clean-fillers')?.checked !== false),
       ollama_model: document.getElementById('set-ollama-model').value.trim(),
       auto_summary: String(document.getElementById('set-auto-summary').checked),
+      auto_title: String(document.getElementById('set-auto-title').checked),
+      idle_unload_minutes: document.getElementById('set-idle-unload').value,
+      ...obsidianSettingsPayload(),
       record_source_mode: document.getElementById('set-record-source')?.value || 'both',
       record_mic_device: document.getElementById('set-record-mic')?.value || '',
       ...dubSettingsPayload(),
@@ -1098,14 +1319,21 @@ async function deleteDictItem(id) {
 
 // --- Meetings List, Global Search & Sidebar ---
 async function loadMeetingsList() {
-  const res = await fetch('/api/meetings');
+  const [res] = await Promise.all([fetch('/api/meetings'), loadFolders()]);
   state.meetings = await res.json();
   if (!state.globalSearchQuery) {
     renderMeetingsSidebar();
   }
+  if (state.appView === 'ask') renderAskScope();
 
   if (state.activeMeeting) {
     const updated = state.meetings.find(m => m.id === state.activeMeeting.id);
+    if (updated && updated.title !== state.activeMeeting.title) {
+      // Renamed elsewhere (e.g. a title made from the content after processing)
+      state.activeMeeting.title = updated.title;
+      const input = document.getElementById('meeting-title-input');
+      if (document.activeElement !== input) input.value = updated.title;
+    }
     if (updated && updated.status !== state.activeMeeting.status) {
       // Segments and speakers only change when a processing stage finishes
       const finished = updated.status === 'completed';
@@ -1269,6 +1497,7 @@ function handleLiveEvent(ev) {
   }
   if (ev.type === 'list') { scheduleListReload(); return; }
   if (ev.type === 'queue') { scheduleQueueReload(); scheduleVramRefresh(800); return; }
+  if (ev.type === 'exported') { onExportedEvent(ev); scheduleListReload(); return; }
   if (ev.type !== 'progress') return;
 
   const m = state.meetings.find(x => x.id === ev.id);
@@ -1319,76 +1548,231 @@ async function handleGlobalSidebarSearch(rawVal) {
   }, 180);
 }
 
-// --- Questions about the whole library (answers cite transcript fragments) ---
-const SVG_SPARK = '<svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>';
-let _libraryAnswer = null;
+// --- App parts: library, recording studio, questions ---
+const APP_VIEWS = ['library', 'studio', 'ask'];
+state.appView = 'library';
 
-function openLibraryAsk(question) {
-  openModal('library');
+function switchAppView(view) {
+  if (!APP_VIEWS.includes(view)) view = 'library';
+  if (state.theatre && view !== 'library') exitTheatre();
+  state.appView = view;
+  for (const v of APP_VIEWS) {
+    document.getElementById(`side-${v}`).classList.toggle('hidden', v !== view);
+    document.getElementById(`${v}-view`).classList.toggle('hidden', v !== view);
+    document.getElementById(`nav-${v}`).className =
+      `apple-segment-btn ${v === view ? 'apple-segment-active' : 'text-apple-secondary hover:text-white'}`;
+  }
+  hideContextMenu();
+  hideFolderMenu();
+  if (view === 'studio') {
+    prepareStudio();
+    syncStudioCaptions();
+  } else if (studio.focus) {
+    toggleStudioFocus(false);
+  }
+  if (view === 'ask') {
+    renderAskScope();
+    renderAskThread();
+    setTimeout(() => document.getElementById('library-question').focus(), 30);
+  }
+  updateRecordButtonState();
+}
+
+// --- Questions: about one recording, a folder (with its subfolders) or the whole library ---
+const SVG_SPARK = '<svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>';
+state.askScope = { type: 'all' };
+const askThread = [];
+let _askSeq = 0;
+
+function openLibraryAsk(question, scope) {
+  if (scope) state.askScope = scope;
+  switchAppView('ask');
   const input = document.getElementById('library-question');
   if (question) input.value = question;
   input.focus();
-  if (!_libraryAnswer) document.getElementById('library-answer').innerHTML = '';
+}
+
+function folderById(id) {
+  return (state.folders || []).find(f => f.id === id) || null;
+}
+
+function folderName(f) {
+  if (!f) return '';
+  return f.system_key ? t(`folderSystem_${f.system_key}`) : f.name;
+}
+
+// Ids of a folder and all folders inside it
+function folderSubtreeIds(id) {
+  const out = new Set([id]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const f of state.folders || []) {
+      if (f.parent_id != null && out.has(f.parent_id) && !out.has(f.id)) { out.add(f.id); grew = true; }
+    }
+  }
+  return out;
+}
+
+function meetingsInFolderTree(id) {
+  const ids = folderSubtreeIds(id);
+  return state.meetings.filter(m => ids.has(m.folder_id));
+}
+
+function askScopeValid(scope) {
+  if (scope.type === 'folder') return !!folderById(scope.id);
+  if (scope.type === 'meeting') return state.meetings.some(m => m.id === scope.id);
+  return true;
+}
+
+function askScopeLabel(scope) {
+  if (scope.type === 'folder') {
+    const f = folderById(scope.id);
+    return `${t('askScopeFolder')}: ${folderName(f)} · ${t('askRecordingsCount').replace('{n}', meetingsInFolderTree(scope.id).length)}`;
+  }
+  if (scope.type === 'meeting') {
+    const m = state.meetings.find(x => x.id === scope.id);
+    return `${t('askScopeMeeting')}: ${m ? m.title : ''}`;
+  }
+  return `${t('askScopeAll')} · ${t('askRecordingsCount').replace('{n}', state.meetings.length)}`;
+}
+
+function renderAskScope() {
+  if (!askScopeValid(state.askScope)) state.askScope = { type: 'all' };
+  const box = document.getElementById('ask-scope-list');
+  const sc = state.askScope;
+  const item = (scope, label, count, depth, icon) => {
+    const on = scope.type === sc.type && scope.id === sc.id;
+    return `<button onclick='setAskScope(${JSON.stringify(scope)})'
+      class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[12px] transition ${on ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'}"
+      style="padding-left:${8 + depth * 14}px">
+      <span class="shrink-0 ${on ? 'text-white' : 'text-apple-tertiary'}">${icon}</span>
+      <span class="truncate flex-1">${escapeHtml(label)}</span>
+      ${count != null ? `<span class="text-[10.5px] font-mono ${on ? 'text-white/80' : 'text-apple-tertiary'}">${count}</span>` : ''}
+    </button>`;
+  };
+  let html = item({ type: 'all' }, t('askScopeAll'), state.meetings.length, 0, ICON_LIBRARY);
+  const walk = (parentId, depth) => {
+    for (const f of sortedFolders(parentId)) {
+      html += item({ type: 'folder', id: f.id }, folderName(f), meetingsInFolderTree(f.id).length, depth, folderIcon(f));
+      walk(f.id, depth + 1);
+    }
+  };
+  walk(null, 0);
+  const m = state.activeMeeting;
+  if (m) {
+    html += '<div class="h-px bg-white/10 my-1.5"></div>'
+      + item({ type: 'meeting', id: m.id }, `${t('askScopeMeeting')}: ${m.title}`, null, 0, ICON_FILE);
+  }
+  box.innerHTML = html;
+  document.getElementById('ask-scope-label').textContent = askScopeLabel(sc);
+}
+
+function setAskScope(scope) {
+  state.askScope = scope;
+  renderAskScope();
+  document.getElementById('library-question').focus();
+}
+
+function askScopePayload(scope) {
+  if (scope.type === 'folder') return { folder_id: scope.id };
+  if (scope.type === 'meeting') return { meeting_ids: [scope.id] };
+  return {};
 }
 
 async function askLibrary() {
   const input = document.getElementById('library-question');
   const question = input.value.trim();
   if (!question) return;
-  const box = document.getElementById('library-answer');
   const btn = document.getElementById('library-ask-btn');
+  const scope = { ...state.askScope };
+  const item = { id: ++_askSeq, question, scopeLabel: askScopeLabel(scope), status: 'pending', data: null, error: '' };
+  askThread.unshift(item);
+  input.value = '';
   btn.disabled = true;
-  box.innerHTML = `<div class="py-8 text-center text-xs text-apple-secondary animate-pulse">${escapeHtml(t('libraryAskWorking'))}</div>`;
+  renderAskThread();
   try {
     const res = await fetch('/api/library/ask', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question, lang: state.uiLang === 'en' ? 'en' : 'ru' }),
+      body: JSON.stringify({ question, lang: state.uiLang === 'en' ? 'en' : 'ru', ...askScopePayload(scope) }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.detail || 'Error');
-    _libraryAnswer = data;
-    renderLibraryAnswer(data);
+    item.data = data;
+    item.status = 'done';
   } catch (e) {
-    box.innerHTML = `<div class="py-6 text-center text-xs text-apple-red">${escapeHtml(e.message)}</div>`;
+    item.error = e.message;
+    item.status = 'error';
   } finally {
     btn.disabled = false;
+    renderAskThread();
   }
 }
 
-function renderLibraryAnswer(data) {
-  const box = document.getElementById('library-answer');
+function renderAskThread() {
+  const box = document.getElementById('ask-thread');
+  if (!askThread.length) {
+    box.innerHTML = `<div class="py-16 text-center text-xs text-apple-tertiary">${escapeHtml(t('askEmpty'))}</div>`;
+    return;
+  }
+  box.innerHTML = askThread.map(item => `
+    <div class="rounded-2xl border apple-border bg-apple-sidebar/60 overflow-hidden" data-ask="${item.id}">
+      <div class="px-5 py-3 border-b apple-border flex items-start justify-between gap-3">
+        <div class="text-[13px] font-semibold text-white min-w-0">${escapeHtml(item.question)}</div>
+        <div class="text-[10.5px] text-apple-tertiary shrink-0 max-w-[45%] truncate" title="${escapeHtml(item.scopeLabel)}">${escapeHtml(item.scopeLabel)}</div>
+      </div>
+      <div class="px-5 py-4 ask-body"></div>
+    </div>`).join('');
+  for (const item of askThread) {
+    const body = box.querySelector(`[data-ask="${item.id}"] .ask-body`);
+    if (item.status === 'pending') {
+      body.innerHTML = `<div class="py-4 text-center text-xs text-apple-secondary animate-pulse">${escapeHtml(t('libraryAskWorking'))}</div>`;
+    } else if (item.status === 'error') {
+      body.innerHTML = `<div class="text-xs text-apple-red">${escapeHtml(item.error)}</div>`;
+    } else {
+      renderLibraryAnswer(body, item);
+    }
+  }
+}
+
+function renderLibraryAnswer(body, item) {
+  const data = item.data || {};
   if (!data.found) {
-    box.innerHTML = `<div class="py-6 text-center text-xs text-apple-secondary">${escapeHtml(t('libraryAskNothing'))}</div>`;
+    body.innerHTML = `<div class="text-xs text-apple-secondary">${escapeHtml(t('libraryAskNothing'))}</div>`;
     return;
   }
   const byN = Object.fromEntries((data.sources || []).map(s => [s.n, s]));
-  // The answer comes from a model reading the recordings' speech: sanitized like any other LLM output
-  let html = DOMPurify.sanitize(marked.parse(data.answer || ''), { FORBID_TAGS: ['style', 'form', 'input'], FORBID_ATTR: ['style'] });
-  html = html.replace(/\[(\d{1,2})\]/g, (m, n) => byN[n]
-    ? `<button class="lib-cite" onclick="openLibrarySource(${Number(n)})" title="${escapeHtml(byN[n].title)} · ${formatTime(byN[n].start)}">${n}</button>`
+  let html = sanitizedMarkdown(data.answer || '');
+  html = html.replace(/\[(\d{1,3})\]/g, (m, n) => byN[n]
+    ? `<button class="lib-cite" onclick="openLibrarySource(${item.id}, ${Number(n)})" title="${escapeHtml(byN[n].title)} · ${formatTime(byN[n].start)}">${n}</button>`
     : m);
-  const sources = (data.sources || []).map(s => `
-    <button onclick="openLibrarySource(${s.n})" class="w-full text-left px-2.5 py-1.5 rounded-md hover:bg-white/5 transition">
-      <div class="flex items-center gap-2 text-[11px]">
+  // Only the fragments the answer refers to; all of them if it cites none
+  const cited = new Set([...(data.answer || '').matchAll(/\[(\d{1,3})\]/g)].map(x => Number(x[1])));
+  const shown = (data.sources || []).filter(s => !cited.size || cited.has(s.n)).slice(0, 20);
+  const sources = shown.map(s => `
+    <button onclick="openLibrarySource(${item.id}, ${s.n})" class="w-full text-left px-2.5 py-1.5 rounded-md hover:bg-white/5 transition">
+      <div class="flex items-center gap-2 text-[11px] min-w-0">
         <span class="lib-cite">${s.n}</span>
         <span class="text-white truncate">${escapeHtml(s.title)}</span>
-        <span class="text-apple-tertiary font-mono shrink-0">${escapeHtml(s.date)} · ${formatTime(s.start)}</span>
+        <span class="text-apple-tertiary font-mono shrink-0 ml-auto">${escapeHtml(s.date)} · ${formatTime(s.start)}</span>
       </div>
-      <div class="text-[11px] text-apple-secondary truncate mt-0.5 pl-7">${escapeHtml(s.speaker || '')}: ${escapeHtml(s.text)}</div>
+      <div class="text-[11px] text-apple-secondary truncate mt-0.5 pl-7">${s.speaker ? escapeHtml(s.speaker) + ': ' : ''}${escapeHtml(s.text)}</div>
     </button>`).join('');
-  box.innerHTML = `
+  body.innerHTML = `
     <div class="markdown-body text-[13px]">${html}</div>
-    <div class="mt-4 pt-3 border-t apple-border">
+    ${sources ? `<div class="mt-4 pt-3 border-t apple-border">
       <div class="text-[10.5px] uppercase tracking-wider text-apple-tertiary mb-1">${escapeHtml(t('libraryAskSources'))}</div>
       ${sources}
-    </div>`;
+    </div>` : ''}
+    ${data.model ? `<div class="mt-2 text-[10.5px] text-apple-tertiary">${escapeHtml(formatModelName(data.model))}${data.mode === 'full' ? ' · ' + escapeHtml(t('askModeFull')) : ''}</div>` : ''}`;
 }
 
-function openLibrarySource(n) {
-  const s = ((_libraryAnswer && _libraryAnswer.sources) || []).find(x => x.n === n);
+function openLibrarySource(itemId, n) {
+  const item = askThread.find(x => x.id === itemId);
+  const s = ((item && item.data && item.data.sources) || []).find(x => x.n === n);
   if (!s) return;
-  closeModal('library');
+  switchAppView('library');
   selectMeetingAndSeek(s.meeting_id, s.start);
 }
 
@@ -1398,12 +1782,257 @@ async function selectMeetingAndSeek(meetingId, startSec) {
   setTimeout(() => seekPlayer(startSec), 220);
 }
 
+// --- Library: recordings in folders, sorted by dragging ---
+const ICON_LIBRARY = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z"/></svg>';
+const ICON_FILE = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>';
+const ICON_FOLDER = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>';
+const ICON_MIC = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"/></svg>';
+const ICON_IMPORT = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>';
+const ICON_CHEVRON = '<svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>';
+
+function folderIcon(f) {
+  return f.system_key === 'recordings' ? ICON_MIC : f.system_key === 'imports' ? ICON_IMPORT : ICON_FOLDER;
+}
+
+// System folders first (recordings, then imports), then the user's folders by name
+function sortedFolders(parentId) {
+  const order = { recordings: 0, imports: 1 };
+  return (state.folders || []).filter(f => (f.parent_id ?? null) === parentId).sort((a, b) => {
+    const sa = a.system_key ? order[a.system_key] ?? 2 : 3, sb = b.system_key ? order[b.system_key] ?? 2 : 3;
+    return sa - sb || folderName(a).localeCompare(folderName(b), undefined, { numeric: true });
+  });
+}
+
+function collapsedFolders() {
+  try { return new Set(JSON.parse(localStorage.getItem('verbascribe_folders_collapsed') || '[]')); } catch (e) { return new Set(); }
+}
+
+function toggleFolderCollapsed(id) {
+  const set = collapsedFolders();
+  if (set.has(id)) set.delete(id); else set.add(id);
+  try { localStorage.setItem('verbascribe_folders_collapsed', JSON.stringify([...set])); } catch (e) {}
+  renderMeetingsSidebar();
+}
+
+async function loadFolders() {
+  try {
+    const res = await fetch('/api/folders');
+    if (res.ok) state.folders = await res.json();
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function createFolderPrompt(parentId) {
+  hideFolderMenu();
+  const name = (prompt(t('folderNamePrompt'), '') || '').trim();
+  if (!name) return;
+  const res = await fetch('/api/folders', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, parent_id: parentId }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  if (parentId != null) {
+    const set = collapsedFolders();
+    if (set.delete(parentId)) try { localStorage.setItem('verbascribe_folders_collapsed', JSON.stringify([...set])); } catch (e) {}
+  }
+  await loadFolders();
+  renderMeetingsSidebar();
+}
+
+async function patchFolder(id, body) {
+  const res = await fetch(`/api/folders/${id}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { showToast(data.detail || 'Error'); return false; }
+  await loadFolders();
+  renderMeetingsSidebar();
+  return true;
+}
+
+async function moveMeetingToFolder(meetingId, folderId) {
+  const m = state.meetings.find(x => x.id === meetingId);
+  if (!m || (m.folder_id ?? null) === folderId) return;
+  const res = await fetch(`/api/meetings/${meetingId}/folder`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ folder_id: folderId }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  m.folder_id = folderId;
+  if (state.activeMeeting && state.activeMeeting.id === meetingId) state.activeMeeting.folder_id = folderId;
+  renderMeetingsSidebar();
+}
+
+// Folder menu (right click or •••)
+function openFolderMenu(e, id) {
+  e.preventDefault();
+  e.stopPropagation();
+  hideContextMenu();
+  const f = folderById(id);
+  if (!f) return;
+  state.contextFolderId = id;
+  const menu = document.getElementById('folder-context-menu');
+  document.getElementById('fctx-title').textContent = folderName(f);
+  document.getElementById('fctx-delete').classList.toggle('hidden', !!f.system_key);
+  menu.classList.remove('hidden');
+  menu.style.left = `${Math.min(e.clientX, window.innerWidth - 230)}px`;
+  menu.style.top = `${Math.min(e.clientY, window.innerHeight - 190)}px`;
+}
+
+function hideFolderMenu() {
+  document.getElementById('folder-context-menu')?.classList.add('hidden');
+}
+
+async function fctxRename() {
+  hideFolderMenu();
+  const f = folderById(state.contextFolderId);
+  if (!f) return;
+  const name = (prompt(t('folderRenamePrompt'), folderName(f)) || '').trim();
+  if (!name || name === folderName(f)) return;
+  await patchFolder(f.id, { name });
+}
+
+function fctxNewSubfolder() {
+  createFolderPrompt(state.contextFolderId);
+}
+
+function fctxAsk() {
+  hideFolderMenu();
+  openLibraryAsk('', { type: 'folder', id: state.contextFolderId });
+}
+
+async function fctxDelete() {
+  hideFolderMenu();
+  const f = folderById(state.contextFolderId);
+  if (!f || f.system_key) return;
+  if (!confirm(t('folderDeleteConfirm').replace('{name}', folderName(f)))) return;
+  const res = await fetch(`/api/folders/${f.id}`, { method: 'DELETE' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  await Promise.all([loadFolders(), loadMeetingsList()]);
+  renderMeetingsSidebar();
+}
+
+// Drag and drop inside the library: a recording or a folder onto a folder, or onto the list (top level)
+let _libDrag = null;
+
+function libraryDragStart(e, type, id) {
+  _libDrag = { type, id };
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', `${type}:${id}`);
+  e.stopPropagation();
+  requestAnimationFrame(() => document.getElementById('meetings-list').classList.add('lib-dragging'));
+}
+
+function libraryDropAllowed(folderId) {
+  if (!_libDrag) return false;
+  if (_libDrag.type === 'f') {
+    if (folderId === _libDrag.id) return false;
+    if (folderId != null && folderSubtreeIds(_libDrag.id).has(folderId)) return false;  // into itself
+  }
+  return true;
+}
+
+function libraryDragOver(e, folderId) {
+  if (!libraryDropAllowed(folderId)) return;
+  e.preventDefault();
+  e.stopPropagation();
+  e.dataTransfer.dropEffect = 'move';
+  document.querySelectorAll('#meetings-list .drop-target').forEach(el => { if (el !== e.currentTarget) el.classList.remove('drop-target'); });
+  e.currentTarget.classList.add('drop-target');
+}
+
+function libraryDragLeave(e) {
+  if (e.currentTarget.contains(e.relatedTarget)) return;
+  e.currentTarget.classList.remove('drop-target');
+}
+
+function clearLibraryDrag() {
+  _libDrag = null;
+  document.querySelectorAll('#meetings-list .drop-target').forEach(el => el.classList.remove('drop-target'));
+  document.getElementById('meetings-list')?.classList.remove('drop-target', 'lib-dragging');
+}
+
+async function libraryDrop(e, folderId) {
+  if (!libraryDropAllowed(folderId)) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const d = _libDrag;
+  clearLibraryDrag();
+  if (d.type === 'm') await moveMeetingToFolder(d.id, folderId);
+  else await patchFolder(d.id, { parent_id: folderId });
+}
+
+document.addEventListener('dragend', clearLibraryDrag);
+
+function meetingRowHtml(m, depth) {
+  const isSelected = state.activeMeeting && state.activeMeeting.id === m.id;
+  const isBusy = !DONE_STATUSES.includes(m.status);
+  const spkCount = Object.keys(m.speakers || {}).length;
+  const thumb = m.is_video
+    ? `<img src="/api/meetings/${m.id}/thumb" loading="lazy" alt="" draggable="false" onerror="this.remove()"
+        class="w-12 h-[27px] rounded object-cover bg-black/60 shrink-0 border border-white/10" />`
+    : '';
+  const status = m.status === 'failed' ? t('statusFailed') : m.status === 'cancelled' ? t('statusCancelled')
+    : `${spkCount || 1} ${t('spkShort')} · ${(m.language || 'ru').toUpperCase()}`;
+  return `
+    <div onclick="selectMeeting(${m.id}, true)"
+         oncontextmenu="openRecordingContextMenu(event, ${m.id})"
+         draggable="true" ondragstart="libraryDragStart(event, 'm', ${m.id})"
+         class="group cursor-pointer pr-2 py-1.5 rounded-lg transition relative flex items-center gap-2 ${
+           isSelected ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'
+         }" style="padding-left:${10 + depth * 14}px">
+      ${thumb}
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center justify-between gap-2">
+          <span title="${escapeHtml(m.title)}" class="text-[12.5px] font-medium truncate">${escapeHtml(m.title)}</span>
+          <button onclick="openRecordingContextMenu(event, ${m.id})" title="${escapeHtml(t('tipItemMenu'))}"
+            class="opacity-0 group-hover:opacity-100 px-1 rounded hover:bg-black/20 text-xs shrink-0 transition">•••</button>
+        </div>
+        <div class="flex items-center justify-between gap-2 text-[11px] mt-0.5 ${isSelected ? 'text-white/80' : 'text-apple-secondary'}">
+          <span class="font-mono shrink-0">${isBusy ? `${m.progress}%` : formatTime(m.duration)}</span>
+          <span class="truncate">${escapeHtml(shortDate(m.recorded_at || m.created_at))} · ${escapeHtml(status)}</span>
+        </div>
+        ${isBusy ? `
+          <div class="w-full h-1 bg-black/25 rounded-full overflow-hidden mt-1">
+            <div class="h-full bg-white transition-all duration-300" style="width: ${m.progress}%"></div>
+          </div>` : ''}
+      </div>
+    </div>`;
+}
+
+function shortDate(s) {
+  const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return '';
+  const thisYear = String(new Date().getFullYear()) === m[1];
+  return thisYear ? `${m[3]}.${m[2]}` : `${m[3]}.${m[2]}.${m[1].slice(2)}`;
+}
+
+function folderRowHtml(f, depth, collapsed) {
+  const count = meetingsInFolderTree(f.id).length;
+  const open = !collapsed.has(f.id);
+  return `
+    <div onclick="toggleFolderCollapsed(${f.id})" oncontextmenu="openFolderMenu(event, ${f.id})"
+         ${f.system_key ? '' : `draggable="true" ondragstart="libraryDragStart(event, 'f', ${f.id})"`}
+         ondragover="libraryDragOver(event, ${f.id})" ondragleave="libraryDragLeave(event)" ondrop="libraryDrop(event, ${f.id})"
+         class="folder-row group flex items-center gap-1.5 pr-2 py-1.5 rounded-lg cursor-pointer text-apple-label hover:bg-white/5 transition"
+         style="padding-left:${6 + depth * 14}px" title="${escapeHtml(folderName(f))}">
+      <span class="shrink-0 text-apple-tertiary transition-transform ${open ? 'rotate-90' : ''}">${ICON_CHEVRON}</span>
+      <span class="shrink-0 ${f.system_key ? 'text-apple-blue' : 'text-apple-secondary'}">${folderIcon(f)}</span>
+      <span class="text-[12px] font-semibold truncate flex-1">${escapeHtml(folderName(f))}</span>
+      <span class="text-[10.5px] font-mono text-apple-tertiary">${count}</span>
+      <button onclick="openFolderMenu(event, ${f.id})" title="${escapeHtml(t('tipFolderMenu'))}"
+        class="opacity-0 group-hover:opacity-100 px-1 rounded hover:bg-black/20 text-xs shrink-0 transition">•••</button>
+    </div>`;
+}
+
 function renderMeetingsSidebar() {
   const listEl = document.getElementById('meetings-list');
 
   if (state.globalSearchQuery && state.globalSearchResults) {
     const askHtml = `
-      <button onclick="openLibraryAsk(state.globalSearchQuery)" title="${escapeHtml(t('tipLibraryAsk'))}"
+      <button onclick="openLibraryAsk(state.globalSearchQuery, {type: 'all'})" title="${escapeHtml(t('tipLibraryAsk'))}"
         class="w-full mb-1.5 px-2.5 py-2 rounded-lg border border-apple-blue/30 bg-apple-blue/10 hover:bg-apple-blue/20 text-left text-[11.5px] text-white transition flex items-center gap-2">
         ${SVG_SPARK}<span class="truncate">${escapeHtml(t('libraryAskFromSearch'))}</span>
       </button>`;
@@ -1434,42 +2063,34 @@ function renderMeetingsSidebar() {
     return;
   }
 
-  if (state.meetings.length === 0) {
+  const folders = state.folders || [];
+  if (state.meetings.length === 0 && !folders.some(f => !f.system_key)) {
     listEl.innerHTML = `<div class="px-3 py-8 text-center text-xs text-apple-tertiary">${t('noRecordings')}</div>`;
     return;
   }
 
-  listEl.innerHTML = state.meetings.map(m => {
-    const isSelected = state.activeMeeting && state.activeMeeting.id === m.id;
-    const isBusy = !DONE_STATUSES.includes(m.status);
-    const spkCount = Object.keys(m.speakers || {}).length;
-
-    return `
-      <div onclick="selectMeeting(${m.id}, true)"
-           oncontextmenu="openRecordingContextMenu(event, ${m.id})"
-           class="group cursor-pointer px-3 py-2 rounded-lg transition relative ${
-             isSelected ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'
-           }">
-        <div class="flex items-center justify-between gap-2">
-          <span title="${escapeHtml(m.title)}" class="text-[12.5px] font-medium truncate">${escapeHtml(m.title)}</span>
-          <button onclick="openRecordingContextMenu(event, ${m.id})"
-            title="${escapeHtml(t('tipItemMenu'))}"
-            class="opacity-0 group-hover:opacity-100 px-1 rounded hover:bg-black/20 text-xs shrink-0 transition">
-            •••
-          </button>
-        </div>
-        <div class="flex items-center justify-between text-[11px] mt-0.5 ${isSelected ? 'text-white/80' : 'text-apple-secondary'}">
-          <span class="font-mono">${isBusy ? `${m.progress}%` : formatTime(m.duration)}</span>
-          <span>${m.status === 'failed' ? (state.uiLang === 'en' ? 'Error' : 'Ошибка') : m.status === 'cancelled' ? t('statusCancelled') : `${spkCount || 1} ${t('spkShort')} · ${(m.language || 'ru').toUpperCase()}`}</span>
-        </div>
-        ${isBusy ? `
-          <div class="w-full h-1 bg-black/25 rounded-full overflow-hidden mt-1.5">
-            <div class="h-full bg-white transition-all duration-300" style="width: ${m.progress}%"></div>
-          </div>
-        ` : ''}
-      </div>
-    `;
-  }).join('');
+  const known = new Set(folders.map(f => f.id));
+  const byFolder = new Map();
+  for (const m of state.meetings) {
+    const key = known.has(m.folder_id) ? m.folder_id : null;
+    if (!byFolder.has(key)) byFolder.set(key, []);
+    byFolder.get(key).push(m);
+  }
+  const collapsed = collapsedFolders();
+  let html = '';
+  const walk = (parentId, depth) => {
+    for (const f of sortedFolders(parentId)) {
+      // An empty system folder only takes room
+      if (f.system_key && !meetingsInFolderTree(f.id).length && !sortedFolders(f.id).length) continue;
+      html += folderRowHtml(f, depth, collapsed);
+      if (collapsed.has(f.id)) continue;
+      walk(f.id, depth + 1);
+      for (const m of byFolder.get(f.id) || []) html += meetingRowHtml(m, depth + 1);
+    }
+  };
+  walk(null, 0);
+  for (const m of byFolder.get(null) || []) html += meetingRowHtml(m, 0);
+  listEl.innerHTML = html;
 }
 
 // --- Files dragged onto the window: a full-window overlay shows that they can be dropped ---
@@ -1546,31 +2167,47 @@ function handleFileDrop(e) {
   dropMediaFiles(e);
 }
 
+// Sends files to the server; `source` tells a recording made here from an imported file (they go to
+// different folders on disk and in the library). The file dates are sent too: for an imported file
+// the date it was last modified is the closest to when the meeting took place.
+async function uploadFiles(fileList, opts = {}) {
+  const fd = new FormData();
+  for (const f of fileList) {
+    fd.append('files', f);
+    fd.append('last_modified', String(f.lastModified || 0));
+  }
+  fd.append('model_name', document.getElementById('upload-model').value);
+  fd.append('language', document.getElementById('upload-language').value);
+  fd.append('num_speakers', opts.source === 'recording' ? '0' : document.getElementById('upload-speakers').value);
+  fd.append('source', opts.source || 'import');
+  if (opts.title) fd.append('title', opts.title);
+  if (opts.folderId != null) fd.append('folder_id', String(opts.folderId));
+  const res = await fetch('/api/meetings/upload', { method: 'POST', body: fd });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+  return data.created || [];
+}
+
 async function handleFileSelect(fileList) {
   if (!fileList || fileList.length === 0) return;
   const statusEl = document.getElementById('upload-status-text');
   statusEl.classList.remove('hidden');
   statusEl.textContent = t('uploadingFiles').replace('{n}', fileList.length);
-
-  const fd = new FormData();
-  for (const f of fileList) fd.append('files', f);
-  fd.append('model_name', document.getElementById('upload-model').value);
-  fd.append('language', document.getElementById('upload-language').value);
-  fd.append('num_speakers', document.getElementById('upload-speakers').value);
+  switchAppView('library');
 
   try {
-    const res = await fetch('/api/meetings/upload', { method: 'POST', body: fd });
-    const data = await res.json();
+    const created = await uploadFiles(Array.from(fileList), { source: 'import' });
     statusEl.classList.add('hidden');
     document.getElementById('file-input').value = '';
     closeModal('import');
     await loadMeetingsList();
-    if (data.created && data.created.length > 0) {
-      await selectMeeting(data.created[0].id, true);
-      return data.created;
+    if (created.length > 0) {
+      await selectMeeting(created[0].id, true);
+      return created;
     }
   } catch (err) {
-    statusEl.textContent = 'Error: ' + err;
+    statusEl.textContent = 'Error: ' + err.message;
+    showToast(String(err.message || err));
   }
 }
 
@@ -1641,6 +2278,8 @@ async function selectMeeting(id, reloadPlayer = true) {
   renderTranscript();
   renderSummaryPanel();
   renderMeetingsSidebar();
+  if (state.activeWorkspaceTab === 'info' && (prevId !== m.id || reloadPlayer)) loadMeetingInfo();
+  if (state.appView === 'ask') renderAskScope();
 }
 
 function updateProcessingBanner(m) {
@@ -1711,17 +2350,7 @@ function setAudioTrack(key) {
 }
 
 function renderDubExportMenu() {
-  const box = document.getElementById('export-dub-section');
-  if (!box) return;
-  const dubs = availableDubs(state.activeMeeting);
-  box.innerHTML = dubs.map(d => {
-    const lang = escapeHtml(d.lang);
-    const ext = String(d.path || '').split('.').pop().toUpperCase();
-    return `
-      <div class="px-2.5 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-apple-amber">${escapeHtml(t('exportDubHeader').replace('{lang}', d.lang.toUpperCase()))}</div>
-      <button onclick="saveDubFile('${lang}', 'media')" title="${escapeHtml(t('tipExportDubMedia'))}" class="macos-menu-item"><span>${escapeHtml(t('exportDubMedia'))}</span><span class="text-[11px] opacity-60">${escapeHtml(ext)}</span></button>
-      <button onclick="saveDubFile('${lang}', 'srt')" title="${escapeHtml(t('tipExportDubSrt'))}" class="macos-menu-item"><span>${escapeHtml(t('exportDubSrt'))}</span><span class="text-[11px] opacity-60">SRT</span></button>`;
-  }).join('');
+  if (!document.getElementById('export-menu').classList.contains('hidden')) renderExportMenu();
 }
 
 async function saveDubFile(lang, kind) {
@@ -1746,9 +2375,11 @@ function dubLangName(code) {
   return (names && names[code]) || String(code).toUpperCase();
 }
 
-async function openDubModal() {
+async function openDubModal(preferLang) {
   const m = state.activeMeeting;
   if (!m) return;
+  // Opened from the export menu: the file is saved after the dub; from the Translate menu: nothing pending
+  if (!preferLang) state.pendingDubExport = null;
   document.getElementById('dub-consent').checked = false;
   const ds = (state.system && state.system.settings) || {};
   document.getElementById('dub-denoise').checked = ds.dub_denoise === 'true';
@@ -1767,6 +2398,7 @@ async function openDubModal() {
     .map(c => ({ c, n: dubLangName(c) }))
     .sort((a, b) => (a.c === preferred ? -1 : b.c === preferred ? 1 : a.n.localeCompare(b.n)))
     .map(({ c, n }) => `<option value="${c}">${escapeHtml(n)} (${c.toUpperCase()})</option>`).join('');
+  if (preferLang) document.getElementById('dub-lang').value = preferLang;
 
   // The server reports a failed dub in stage_text and puts the recording back to "completed"
   const st = m.stage_text || '';
@@ -2114,7 +2746,22 @@ async function startDub() {
     return;
   }
   closeModal('dub');
-  showToast(t('dubQueued'));
+  const pending = state.pendingDubExport;
+  state.pendingDubExport = null;
+  if (pending && pending.lang === document.getElementById('dub-lang').value) {
+    // The export that asked for this dub is saved when the dub is ready
+    try {
+      const r = await fetch(`/api/meetings/${m.id}/export-request`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(pending),
+      });
+      const d = await r.json().catch(() => ({}));
+      showToast(r.ok && d.status === 'queued' ? t('exportQueued').replace('{what}', t('exportWaiting_dub')).replace('{dir}', d.folder || '') : t('dubQueued'));
+    } catch (e) {
+      showToast(t('dubQueued'));
+    }
+  } else {
+    showToast(t('dubQueued'));
+  }
   await loadMeetingsList();
 }
 
@@ -2324,26 +2971,34 @@ async function makeSubtitles(mode) {
     await exportMeetingById(m.id, 'srt', { lang, variant });
     return;
   }
-  if (mode === 'burn' && !confirm(t('subsBurnConfirm'))) return;
+  const done = await requestVideoSubtitles(lang, variant, mode, document.getElementById('subs-ask-path').checked);
+  if (done) closeModal('translate');
+}
+
+// A copy of the video with subtitles: "soft" adds a subtitle track at once, "burn" re-encodes in the queue
+async function requestVideoSubtitles(lang, variant, mode, askPath) {
+  const m = state.activeMeeting;
+  if (!m) return false;
+  if (mode === 'burn' && !confirm(t('subsBurnConfirm'))) return false;
   showToast(mode === 'soft' ? t('subsSoftWorking') : t('subsBurnWorking'));
   const res = await fetch(`/api/meetings/${m.id}/subtitles`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ lang: lang || null, variant, mode, ask_path: document.getElementById('subs-ask-path').checked }),
+    body: JSON.stringify({ lang: lang || null, variant, mode, ask_path: !!askPath }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     showToast(data.detail || 'Error');
-    return;
+    return false;
   }
-  if (data.cancelled) return;
+  if (data.cancelled) return false;
   if (data.queued) {
-    closeModal('translate');
     showToast(t('subsBurnQueued').replace('{name}', data.filename));
     await loadMeetingsList();
-    return;
+    return true;
   }
   showToast(`${t('exportSavedTo')} ${data.filename}`, { label: t('dubReveal'), onClick: () => revealPath(data.path) });
+  return true;
 }
 
 // Transcript view: original / translation / both
@@ -2428,18 +3083,7 @@ function activeSegmentTranslation(seg) {
 }
 
 function renderExportTranslatedMenu() {
-  const box = document.getElementById('export-menu-translated');
-  if (!box) return;
-  const langs = Object.keys(meetingTranslations(state.activeMeeting));
-  box.innerHTML = langs.map(lang => {
-    const L = escapeHtml(lang.toUpperCase());
-    const item = (fmt, variant, label) =>
-      `<button onclick="exportCurrentMeeting('${fmt}', {lang: '${lang}', variant: '${variant}'})" class="macos-menu-item"><span>${label}</span><span class="text-[11px] opacity-60">${fmt.toUpperCase()}</span></button>`;
-    return `<div class="my-1 border-t border-white/10"></div>
-      <div class="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-apple-secondary">${escapeHtml(t('exportTranslated').replace('{lang}', L))}</div>
-      ${item('docx', 'translated', 'Word (.docx)')}${item('md', 'translated', 'Markdown (.md)')}${item('txt', 'translated', 'Text (.txt)')}${item('srt', 'translated', 'Subtitles (.srt)')}
-      ${item('docx', 'bilingual', escapeHtml(t('exportBilingual')) + ' (.docx)')}${item('srt', 'bilingual', escapeHtml(t('exportBilingual')) + ' (.srt)')}`;
-  }).join('');
+  renderDubExportMenu();
 }
 
 async function cancelActiveProcessing() {
@@ -3620,35 +4264,57 @@ function hideRecordPresetMenu() {
 }
 
 // Record at once with a preset (the default one without an argument)
+function isRecording() {
+  return !!(_mediaRecorder && _mediaRecorder.state === 'recording') || !!_recCaptureId;
+}
+
 async function quickRecord(presetId) {
-  if (_mediaRecorder && _mediaRecorder.state === 'recording' || _recCaptureId) {
-    openStudio();  // already recording: back to the studio
+  if (isRecording()) {
+    switchAppView('studio');  // already recording: back to the studio
     return;
   }
   await openRecordModal(presetId || defaultRecordPresetId());
   startLiveRecording();
 }
 
+// The recording controls live in the studio tab (they used to be a separate window)
 async function openRecordModal(presetId) {
-  openModal('record');
+  switchAppView('studio');
+  await prepareStudio(presetId);
+}
+
+let _studioPrepared = false;
+
+async function prepareStudio(presetId) {
+  if (isRecording()) { renderStudioState(); return; }
   await initLiveCaptionControls();
   await populateAudioInputDevices();
+  if (!_studioPrepared) {
+    const savedSource = (state.system && state.system.settings && state.system.settings.record_source_mode) || 'both';
+    document.getElementById('record-source-select').value = savedSource;
+  }
+  if (!_studioPrepared || presetId) applyRecordPreset(presetId || state.recPresetId || defaultRecordPresetId());
+  else renderRecordPresetSelect(state.recPresetId || defaultRecordPresetId());
+  renderRecordSaveHint();
 
-  const savedSource = (state.system && state.system.settings && state.system.settings.record_source_mode) || 'both';
-  document.getElementById('record-source-select').value = savedSource;
-  applyRecordPreset(presetId || state.recPresetId || defaultRecordPresetId());
-  const dataDir = state.system && state.system.paths && state.system.paths.data;
-  document.getElementById('record-save-hint').textContent = dataDir ? t('recordSaveHint').replace('{dir}', `${dataDir}\\uploads`) : '';
-
-  const nowStr = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }).replace(':', '-');
-  document.getElementById('record-title-input').value = `Запись ${nowStr}`;
+  const titleInput = document.getElementById('record-title-input');
+  if (!titleInput.value.trim()) {
+    const nowStr = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }).replace(':', '-');
+    titleInput.value = `${t('recordDefaultTitle')} ${nowStr}`;
+  }
   document.getElementById('record-timer-display').textContent = '00:00';
   document.getElementById('record-level-bar').style.width = '2%';
   document.getElementById('record-db-display').textContent = '-60 dB';
-  document.getElementById('record-signal-badge').textContent = state.uiLang === 'en' ? 'Ready' : 'Готов к записи';
+  document.getElementById('record-signal-badge').textContent = t('recReady');
   document.getElementById('record-signal-badge').className = 'px-2 py-0.5 rounded-full text-[11px] font-medium bg-white/5 text-apple-secondary';
-
+  _studioPrepared = true;
+  renderStudioState();
   setTimeout(() => drawIdleSoundCloudBars('record-waveform-canvas'), 40);
+}
+
+function renderRecordSaveHint() {
+  const dir = state.system && state.system.paths && state.system.paths.recordings;
+  document.getElementById('record-save-hint').textContent = dir ? t('recordSaveHint').replace('{dir}', dir) : '';
 }
 
 // --- Live captions while recording ---
@@ -3670,17 +4336,18 @@ function saveLiveCaptionPrefs() {
 }
 
 async function initLiveCaptionControls() {
+  if (liveCap.session) return;
   const prefs = liveCaptionPrefs();
   const codes = await textLanguages();
   const sel = document.getElementById('live-translate-select');
-  sel.innerHTML = `<option value="">${escapeHtml(t('liveNoTranslation'))}</option>`
-    + codes.map(c => ({ c, n: langName(c) })).sort((a, b) => a.n.localeCompare(b.n))
-      .map(({ c, n }) => `<option value="${c}">${escapeHtml(t('liveTranslateTo').replace('{lang}', n))}</option>`).join('');
+  sel.innerHTML = `<option value="">${escapeHtml(t('liveNoTranslation'))}</option>` + textLangOptions(codes, false);
   sel.value = prefs.translate || '';
+  // Speech: Whisper language codes (no script variants)
+  const speech = document.getElementById('studio-speech');
+  speech.innerHTML = `<option value="auto">${escapeHtml(t('studioSpeechAuto'))}</option>` + textLangOptions(codes, true);
+  speech.value = studio.speech;
   document.getElementById('live-captions-toggle').checked = !!prefs.on;
-  const box = document.getElementById('live-captions');
-  box.classList.add('hidden');
-  box.innerHTML = '';
+  renderStudioControls();
 }
 
 function downsampleTo16k(input, rate) {
@@ -3699,25 +4366,31 @@ function downsampleTo16k(input, rate) {
 async function startLiveCaptions(ctx, stream) {
   liveCap.lines = new Map();
   liveCap.partial = '';
+  liveCap.partialTranslation = '';
   liveCap.lastId = 0;
   liveCap.pcm = [];
   liveCap.pcmLen = 0;
-  const box = document.getElementById('live-captions');
-  box.classList.remove('hidden');
-  box.innerHTML = `<div class="text-[11.5px] text-apple-tertiary">${escapeHtml(t('liveStarting'))}</div>`;
-  const res = await fetch('/api/live/start', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      lang: studio.speech || 'auto',
-      translate_to: document.getElementById('live-translate-select').value || null,
-      capture_id: _recCaptureId,
-      speed: studio.speed,
-    }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.detail || 'Error');
-  liveCap.session = data.session;
+  liveCap.error = '';
+  liveCap.starting = true;
+  capReset();
+  syncStudioCaptions();
+  try {
+    const res = await fetch('/api/live/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        lang: studio.speech || 'auto',
+        translate_to: document.getElementById('live-translate-select').value || null,
+        capture_id: _recCaptureId,
+        speed: studio.speed,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || 'Error');
+    liveCap.session = data.session;
+  } finally {
+    liveCap.starting = false;
+  }
   await ctx.audioWorklet.addModule('/static/live-capture-worklet.js');
   liveCap.node = new AudioWorkletNode(ctx, 'pcm-capture');
   ctx.createMediaStreamSource(stream).connect(liveCap.node);
@@ -3731,6 +4404,7 @@ async function startLiveCaptions(ctx, stream) {
     liveCap.pcmLen += pcm.length;
   };
   liveCap.timer = setInterval(sendLiveAudio, 1000);
+  syncStudioCaptions();
 }
 
 async function sendLiveAudio() {
@@ -3766,8 +4440,7 @@ async function sendLiveAudio() {
     liveCap.translationReady = !!data.translation_ready;
     liveCap.lang = data.lang || liveCap.lang;
     liveCap.error = data.error || '';
-    renderLiveCaptions(data.error);
-    renderStudioCaptions();
+    syncStudioCaptions();
   } catch (e) {
     renderLiveCaptionsError(e.message);
   } finally {
@@ -3775,26 +4448,9 @@ async function sendLiveAudio() {
   }
 }
 
-function renderLiveCaptions(error) {
-  const box = document.getElementById('live-captions');
-  const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
-  const translating = !!document.getElementById('live-translate-select').value;
-  const lines = [...liveCap.lines.values()].sort((a, b) => a.id - b.id).map(ln => `
-    <div>
-      <div class="text-white">${escapeHtml(ln.text)}</div>
-      ${translating ? `<div class="text-apple-blue/90 text-[12.5px]">${ln.translation ? escapeHtml(ln.translation) : '<span class="text-apple-tertiary">…</span>'}</div>` : ''}
-    </div>`).join('');
-  box.innerHTML = (lines || '')
-    + (liveCap.partial ? `<div class="text-apple-secondary italic">${escapeHtml(liveCap.partial)}</div>` : '')
-    + (!lines && !liveCap.partial ? `<div class="text-[11.5px] text-apple-tertiary">${escapeHtml(t('liveListening'))}</div>` : '')
-    + (error ? `<div class="text-[11px] text-apple-amber">${escapeHtml(error)}</div>` : '');
-  if (nearBottom) box.scrollTop = box.scrollHeight;
-}
-
 function renderLiveCaptionsError(msg) {
-  const box = document.getElementById('live-captions');
-  box.classList.remove('hidden');
-  box.insertAdjacentHTML('beforeend', `<div class="text-[11px] text-apple-red">${escapeHtml(t('liveFailed'))}: ${escapeHtml(msg || '')}</div>`);
+  liveCap.error = `${t('liveFailed')}: ${msg || ''}`;
+  syncStudioCaptions();
 }
 
 function stopLiveCaptions() {
@@ -3820,13 +4476,14 @@ function reportRecordingState(active) {
 // Commands from the tray menu (run.py TrayController); the window is already shown
 window.trayCommand = function (cmd, arg) {
   if (cmd === 'record') {
-    if (_mediaRecorder && _mediaRecorder.state === 'recording') {
+    if (isRecording()) {
       stopAndTranscribeRecording();
       return;
     }
     // System audio is recorded by the app, so recording can start without a click in the window
     quickRecord(arg);
   } else if (cmd === 'import') {
+    switchAppView('library');
     openModal('import');
   } else if (cmd === 'ask') {
     openLibraryAsk('');
@@ -3835,8 +4492,8 @@ window.trayCommand = function (cmd, arg) {
   }
 };
 
-// --- Recording studio: the whole window while recording, large captions and translation ---
-const studio = { open: false, view: 'under', speed: 'quality', font: 26, speech: 'auto' };
+// --- Recording studio: large captions and their translation ---
+const studio = { view: 'under', speed: 'quality', font: 26, speech: 'auto', focus: false };
 try {
   const saved = JSON.parse(localStorage.getItem('verbascribe_studio') || '{}');
   Object.assign(studio, {
@@ -3855,61 +4512,56 @@ function langCode(code) {
   return (code || '').toUpperCase();
 }
 
-function openStudio() {
-  studio.open = true;
-  closeModal('record');
-  document.getElementById('studio-vram-chips').innerHTML = (typeof vram !== 'undefined' && vram.html) || '';
-  scheduleVramRefresh(300);
+// Buttons, heading and locked inputs follow whether a recording is running
+function renderStudioState() {
+  const rec = isRecording();
   const sourceName = { mic: t('sourceMic'), system: t('sourceSystem'), both: t('sourceBoth') };
   const p = recordPresets().find(x => x.id === state.recPresetId);
   document.getElementById('studio-source').textContent =
     [p ? presetLabel(p) : '', sourceName[document.getElementById('record-source-select').value] || ''].filter(Boolean).join(' · ');
-  // The language list of the record window is reused
-  const sel = document.getElementById('studio-translate');
-  const codes = _textLangs || TEXT_LANG_FALLBACK;
-  sel.innerHTML = `<option value="">${escapeHtml(t('liveNoTranslation'))}</option>` + textLangOptions(codes, false);
-  sel.value = document.getElementById('live-translate-select').value;
-  // Speech: Whisper language codes (no script variants)
-  const speech = document.getElementById('studio-speech');
-  speech.innerHTML = `<option value="auto">${escapeHtml(t('studioSpeechAuto'))}</option>` + textLangOptions(codes, true);
-  speech.value = studio.speech;
-  document.getElementById('studio-captions-toggle').checked = !!liveCap.session || document.getElementById('live-captions-toggle').checked;
-  renderStudioControls();
-  document.getElementById('studio').classList.remove('hidden');
-  renderStudioCaptions();
+  document.getElementById('studio-heading').textContent = t(rec ? 'studioRecording' : 'studioIdle');
+  document.getElementById('studio-rec-dot').classList.toggle('studio-idle', !rec);
+  for (const id of ['studio-start-btn', 'btn-start-rec']) document.getElementById(id).classList.toggle('hidden', rec);
+  for (const id of ['studio-stop-btn', 'studio-cancel-btn', 'btn-stop-rec', 'btn-cancel-rec']) document.getElementById(id).classList.toggle('hidden', !rec);
+  // What is recorded cannot change mid-recording; how captions look can
+  for (const id of ['record-preset-select', 'record-source-select', 'record-mic-select', 'record-title-input']) {
+    document.getElementById(id).disabled = rec;
+  }
+  document.getElementById('rec-dot-indicator').classList.toggle('animate-ping', rec);
   updateRecordButtonState();
 }
 
-function minimizeStudio() {
-  studio.open = false;
-  document.getElementById('studio').classList.add('hidden');
-  updateRecordButtonState();
+function toggleStudioFocus(on) {
+  studio.focus = on === undefined ? !studio.focus : !!on;
+  document.getElementById('studio-view').classList.toggle('studio-focus', studio.focus);
+  document.getElementById('studio-focus-label').textContent = t(studio.focus ? 'studioFocusExit' : 'studioFocus');
+  if (studio.focus) {
+    document.getElementById('studio-vram-chips').innerHTML = vram.html || '';
+    scheduleVramRefresh(300);
+  }
 }
 
-function closeStudio() {
-  studio.open = false;
-  document.getElementById('studio')?.classList.add('hidden');
-  updateRecordButtonState();
-}
-
-// While recording, the sidebar button shows the time and returns to the studio
+// While recording, the sidebar button and the Studio tab show the time
 function updateRecordButtonState() {
   const btn = document.getElementById('record-quick-btn');
   if (!btn) return;
-  const recording = !!(_mediaRecorder && _mediaRecorder.state === 'recording') || !!_recCaptureId;
+  const recording = isRecording();
+  const timer = document.getElementById('studio-timer').textContent;
   const label = btn.querySelector('[data-i18n="recordBtn"]');
-  if (recording && !studio.open) {
-    label.textContent = `${t('studioRecordingShort')} ${document.getElementById('studio-timer').textContent}`;
+  if (recording) {
+    label.textContent = `${t('studioRecordingShort')} ${timer}`;
     btn.classList.add('animate-pulse');
   } else {
     label.textContent = t('recordBtn');
     btn.classList.remove('animate-pulse');
   }
+  document.getElementById('nav-studio-dot').classList.toggle('hidden', !recording);
+  document.getElementById('nav-studio-label').textContent = recording && state.appView !== 'studio' ? timer : t('navStudio');
 }
 
 function renderStudioControls() {
   document.getElementById('studio-fast').checked = studio.speed === 'fast';
-  document.getElementById('studio-tr-options').classList.toggle('hidden', !document.getElementById('studio-translate').value);
+  document.getElementById('studio-tr-options').classList.toggle('hidden', !document.getElementById('live-translate-select').value);
   // "Auto" shows the language heard last
   const autoOpt = document.querySelector('#studio-speech option[value="auto"]');
   if (autoOpt) autoOpt.textContent = t('studioSpeechAuto') + (liveCap.lang && studio.speech === 'auto' ? ` · ${langCode(liveCap.lang)}` : '');
@@ -3919,85 +4571,230 @@ function renderStudioControls() {
   document.getElementById('studio-captions-inner').style.setProperty('--cap-size', `${studio.font}px`);
 }
 
-function studioSetView(v) { studio.view = v; saveStudioPrefs(); renderStudioControls(); renderStudioCaptions(); }
+function studioSetView(v) { studio.view = v; saveStudioPrefs(); renderStudioControls(); syncStudioCaptions(); }
 function studioFont(d) { studio.font = Math.max(16, Math.min(56, studio.font + d)); saveStudioPrefs(); renderStudioControls(); }
 function studioSetSpeed(s) { studio.speed = s; saveStudioPrefs(); renderStudioControls(); studioConfigure(); }
 
 // Language or model changed while recording: the session translates the last lines again
 async function studioConfigure(speechChanged) {
-  const target = document.getElementById('studio-translate').value || null;
-  document.getElementById('live-translate-select').value = target || '';
+  const target = document.getElementById('live-translate-select').value || null;
+  const targetChanged = target !== (studio.lastTarget ?? target);
+  studio.lastTarget = target;
   studio.speech = document.getElementById('studio-speech').value || 'auto';
   saveStudioPrefs();
   saveLiveCaptionPrefs();
   renderStudioControls();
-  if (!liveCap.session) return;
+  if (targetChanged) capResetTranslations();
+  if (!liveCap.session) { syncStudioCaptions(); return; }
   try {
     await fetch(`/api/live/${liveCap.session}/config`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ translate_to: target, speed: studio.speed, speech_lang: speechChanged ? studio.speech : null }),
     });
   } catch (e) { console.error(e); }
-  renderStudioCaptions();
+  syncStudioCaptions();
 }
 
 async function studioToggleCaptions(on) {
-  document.getElementById('live-captions-toggle').checked = on;
   saveLiveCaptionPrefs();
   if (on && !liveCap.session && _recAudioCtx && window._recMixedStream) {
     try { await startLiveCaptions(_recAudioCtx, window._recMixedStream); } catch (e) { renderLiveCaptionsError(e.message); }
   } else if (!on) {
     stopLiveCaptions();
   }
-  renderStudioCaptions();
+  syncStudioCaptions();
 }
 
-function renderStudioCaptions() {
-  if (!studio.open) return;
+// --- Studio captions without flicker ---
+// Every caption line keeps its own element for as long as it is shown, and its text is typed in
+// towards what the server sent last: a revision keeps the common beginning and retypes only the
+// rest, and a translation that is not ready yet never blanks the one already shown. When the draft
+// phrase becomes final, the same element carries on as that line together with the draft's
+// translation, until the final translation arrives and replaces it in place.
+const CAP_MIN_CPS = 45;        // typing speed, characters per second
+const CAP_CATCHUP_SEC = 0.45;  // a longer backlog is typed faster, so text never lags far behind
+const CAP_MAX_ROWS = 150;
+const capView = { rows: new Map(), draftKey: null, draftSeq: 0, raf: 0, lastT: 0, stick: true };
+const _reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+class CapTyper {
+  constructor(el) { this.el = el; this.shown = ''; this.target = ''; this.acc = 0; }
+
+  set(text) {
+    text = text || '';
+    if (text === this.target) return;
+    this.target = text;
+    if (_reduceMotion) this.jump();
+    else capKick();
+  }
+
+  jump() { this.shown = this.target; this.el.textContent = this.shown; }
+
+  step(dt) {
+    if (this.shown === this.target) return false;
+    if (!this.target.startsWith(this.shown)) {
+      const a = this.shown, b = this.target;
+      let p = 0;
+      while (p < a.length && p < b.length && a[p] === b[p]) p++;
+      this.shown = a.slice(0, p);
+    }
+    const backlog = this.target.length - this.shown.length;
+    this.acc += Math.max(CAP_MIN_CPS, backlog / CAP_CATCHUP_SEC) * dt;
+    const n = Math.floor(this.acc);
+    if (n > 0) {
+      this.acc -= n;
+      this.shown = this.target.slice(0, this.shown.length + n);
+    }
+    this.el.textContent = this.shown;
+    return this.shown !== this.target;
+  }
+}
+
+function capKick() {
+  if (capView.raf) return;
+  capView.lastT = performance.now();
+  capView.raf = requestAnimationFrame(capFrame);
+}
+
+function capFrame(now) {
+  const dt = Math.min(0.1, Math.max(0, (now - capView.lastT) / 1000));
+  capView.lastT = now;
+  let busy = false;
+  for (const row of capView.rows.values()) {
+    if (row.orig.step(dt)) busy = true;
+    if (row.tr.step(dt)) busy = true;
+  }
+  capFollowBottom();
+  capView.raf = busy ? requestAnimationFrame(capFrame) : 0;
+}
+
+function capFollowBottom() {
+  if (!capView.stick) return;
   const box = document.getElementById('studio-captions');
-  const inner = document.getElementById('studio-captions-inner');
-  const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
-  const target = document.getElementById('studio-translate').value;
+  box.scrollTop = box.scrollHeight;
+}
+
+function capReset() {
+  capView.rows.clear();
+  capView.draftKey = null;
+  document.getElementById('studio-cap-rows').innerHTML = '';
+  capView.stick = true;
+}
+
+function capResetTranslations() {
+  for (const row of capView.rows.values()) {
+    row.provisional = '';
+    row.tr.target = '';
+    row.tr.jump();
+  }
+}
+
+function createCapRow(key) {
+  const el = document.createElement('div');
+  el.className = 'cap-row';
+  el.innerHTML = '<div class="cap-o"><span class="lang-tag cap-o-tag"></span><span class="cap-orig"></span></div>'
+    + '<div class="cap-t"><span class="lang-tag cap-t-tag"></span><span class="cap-tr"></span></div>';
+  document.getElementById('studio-cap-rows').appendChild(el);
+  const row = { key, el, orig: new CapTyper(el.querySelector('.cap-orig')), tr: new CapTyper(el.querySelector('.cap-tr')), provisional: '' };
+  capView.rows.set(key, row);
+  return row;
+}
+
+function setCapTags(row, lang, target) {
+  const o = row.el.querySelector('.cap-o-tag');
+  const tt = row.el.querySelector('.cap-t-tag');
+  if (o.textContent !== langCode(lang)) o.textContent = langCode(lang);
+  if (tt.textContent !== langCode(target)) tt.textContent = langCode(target);
+}
+
+// The part of the draft's translation that belongs to the line it became, by length; the rest
+// stays with the next draft until that one is translated
+function splitTranslation(tr, share) {
+  if (!tr || share >= 0.85) return [tr || '', ''];
+  let cut = Math.round(tr.length * share);
+  const space = tr.indexOf(' ', cut);
+  cut = space < 0 ? tr.length : space;
+  return [tr.slice(0, cut).trim(), tr.slice(cut).trim()];
+}
+
+function syncStudioCaptions() {
+  const target = document.getElementById('live-translate-select').value;
   const view = target ? studio.view : 'orig';
-  const names = t('dubLangNames') || {};
-  const tag = (code) => (code ? `<span class="lang-tag">${escapeHtml(langCode(code))}</span>` : '');
-  const big = 'font-size: var(--cap-size); line-height: 1.35';
-  const small = 'font-size: calc(var(--cap-size) * 0.82); line-height: 1.35';
-  const trText = (tr, draft) => (tr ? escapeHtml(tr) : `<span class="text-apple-tertiary">…</span>`);
+  const rowsBox = document.getElementById('studio-cap-rows');
+  const viewCls = `cap-rows cap-view-${view}`;
+  if (rowsBox.className !== viewCls) rowsBox.className = viewCls;
 
-  const row = (ln, draft) => {
-    const same = !!ln.translation && ln.translation === ln.text;  // already in the target language
-    const origCls = draft ? 'text-apple-secondary italic' : 'text-white';
-    const trCls = draft ? 'text-apple-blue/60 italic' : 'text-apple-blue';
-    const orig = `<div class="${origCls}" style="${big}">${tag(ln.lang)}${escapeHtml(ln.text)}</div>`;
-    if (view === 'orig') return `<div>${orig}</div>`;
-    if (view === 'tr') {
-      return `<div class="${trCls}" style="${big}">${same ? escapeHtml(ln.text) : trText(ln.translation, draft)}</div>`;
+  const lines = [...liveCap.lines.values()].sort((a, b) => a.id - b.id);
+  const fresh = lines.filter(ln => !capView.rows.has(ln.id));
+  let carry = '';
+  fresh.forEach((ln, i) => {
+    const draftRow = i === 0 && capView.draftKey ? capView.rows.get(capView.draftKey) : null;
+    if (draftRow) {
+      capView.rows.delete(capView.draftKey);
+      capView.draftKey = null;
+      draftRow.key = ln.id;
+      capView.rows.set(ln.id, draftRow);
+      draftRow.el.classList.remove('cap-draft');
+      // How much of the old draft this line is: usually all of it (the next draft is new speech)
+      const share = ln.text.length / Math.max(1, draftRow.orig.target.length);
+      [draftRow.provisional, carry] = splitTranslation(draftRow.tr.target, share);
+    } else {
+      createCapRow(ln.id);
     }
-    if (view === 'side') {
-      return `<div class="grid grid-cols-2 gap-8"><div class="${origCls}" style="${big}">${escapeHtml(ln.text)}</div>`
-        + `<div class="${trCls}" style="${big}">${same ? '<span class="text-apple-tertiary">—</span>' : trText(ln.translation, draft)}</div></div>`;
-    }
-    // under: the translation in smaller blue type right below its phrase
-    return `<div>${orig}${same ? '' : `<div class="${trCls} mt-0.5" style="${small}">${tag(target)}${trText(ln.translation, draft)}</div>`}</div>`;
-  };
-
-  const lines = [...liveCap.lines.values()].sort((a, b) => a.id - b.id).slice(-80);
-  let html = '';
-  if (view === 'side' && (lines.length || liveCap.partial)) {
-    html += `<div class="grid grid-cols-2 gap-8 text-[11px] uppercase tracking-wider text-apple-tertiary sticky top-0 bg-apple-bg/95 py-1">`
-      + `<div>${escapeHtml(t('studioOriginalCol'))}${liveCap.lang ? ` · ${escapeHtml(langName(liveCap.lang))}` : ''}</div>`
-      + `<div>${escapeHtml(langName(target))}</div></div>`;
+  });
+  for (const ln of lines) {
+    const row = capView.rows.get(ln.id);
+    if (!row) continue;
+    row.orig.set(ln.text);
+    row.el.classList.toggle('cap-same', !!ln.translation && ln.translation === ln.text);
+    // Never blank a translation that is already on screen
+    row.tr.set(ln.translation || row.provisional || row.tr.target);
+    setCapTags(row, ln.lang, target);
   }
-  html += lines.map(ln => row(ln, false)).join('');
+
   if (liveCap.partial) {
-    html += row({ text: liveCap.partial, translation: liveCap.partialTranslation || '', lang: liveCap.lang }, true);
+    let row = capView.draftKey ? capView.rows.get(capView.draftKey) : null;
+    if (!row) {
+      capView.draftKey = `d${++capView.draftSeq}`;
+      row = createCapRow(capView.draftKey);
+      row.el.classList.add('cap-draft');
+      if (carry) row.tr.set(carry);
+    }
+    row.orig.set(liveCap.partial);
+    if (liveCap.partialTranslation) row.tr.set(liveCap.partialTranslation);
+    row.el.classList.toggle('cap-same', !!liveCap.partialTranslation && liveCap.partialTranslation === liveCap.partial);
+    setCapTags(row, liveCap.lang, target);
+  } else if (capView.draftKey) {
+    // The draft ended without becoming a line (noise taken for speech)
+    capView.rows.get(capView.draftKey)?.el.remove();
+    capView.rows.delete(capView.draftKey);
+    capView.draftKey = null;
   }
-  if (!lines.length && !liveCap.partial) {
-    html = `<div class="text-center text-apple-tertiary text-sm pt-16">${escapeHtml(liveCap.session ? t('liveListening') : t('studioCaptionsOff'))}</div>`;
+
+  // Only the most recent lines stay in the document
+  for (const [key, row] of capView.rows) {
+    if (capView.rows.size <= CAP_MAX_ROWS) break;
+    if (key === capView.draftKey) continue;
+    row.el.remove();
+    capView.rows.delete(key);
   }
-  inner.innerHTML = html;
-  if (nearBottom) box.scrollTop = box.scrollHeight;
+
+  const has = capView.rows.size > 0;
+  const head = document.getElementById('studio-cap-head');
+  head.classList.toggle('hidden', !(view === 'side' && has));
+  if (view === 'side') {
+    document.getElementById('studio-cap-head-orig').textContent = t('studioOriginalCol') + (liveCap.lang ? ` · ${langName(liveCap.lang)}` : '');
+    document.getElementById('studio-cap-head-tr').textContent = langName(target);
+  }
+  const empty = document.getElementById('studio-cap-empty');
+  empty.classList.toggle('hidden', has);
+  if (!has) {
+    empty.textContent = liveCap.starting ? t('liveStarting')
+      : liveCap.session ? t('liveListening')
+      : isRecording() ? t('studioCaptionsOff')
+      : t('studioIdleHint');
+  }
+  capFollowBottom();
   renderStudioControls();
   const status = document.getElementById('studio-status');
   status.textContent = liveCap.error ? liveCap.error
@@ -4006,6 +4803,7 @@ function renderStudioCaptions() {
 }
 
 async function startLiveRecording() {
+  if (isRecording()) return;
   try {
     const sourceMode = document.getElementById('record-source-select').value || 'mic';
     const micId = document.getElementById('record-mic-select').value || '';
@@ -4049,6 +4847,10 @@ async function startLiveRecording() {
         } catch (e) {}
       }, 200);
     }
+    liveCap.lines = new Map();
+    liveCap.partial = '';
+    liveCap.error = '';
+    capReset();
     if (document.getElementById('live-captions-toggle').checked) {
       startLiveCaptions(ctx, mixedStream).catch(err => {
         console.error(err);
@@ -4077,28 +4879,26 @@ async function startLiveRecording() {
       _recWaveHistory.push(visualAmp);
       if (_recWaveHistory.length > 68) _recWaveHistory.shift();
 
-      drawLiveSoundCloudBars('record-waveform-canvas', _recWaveHistory, '#FF453A');
+      if (state.appView === 'studio') drawLiveSoundCloudBars('record-waveform-canvas', _recWaveHistory, '#FF453A');
 
       const pct = Math.min(100, Math.max(2, Math.round(((db + 60) / 60) * 100)));
-      const levelBar = document.getElementById('record-level-bar');
-      levelBar.style.width = `${pct}%`;
-      levelBar.className = db > -6
+      const levelCls = db > -6
         ? 'h-full bg-apple-red transition-all duration-75'
         : (db > -42 ? 'h-full bg-apple-green transition-all duration-75' : 'h-full bg-apple-secondary transition-all duration-75');
-
-      document.getElementById('record-db-display').textContent = `${db} dB`;
-      if (studio.open) {
-        document.getElementById('studio-level').style.width = `${pct}%`;
-        document.getElementById('studio-level').className = levelBar.className;
-        document.getElementById('studio-db').textContent = `${db} dB`;
+      for (const id of ['record-level-bar', 'studio-level']) {
+        const bar = document.getElementById(id);
+        bar.style.width = `${pct}%`;
+        bar.className = levelCls;
       }
+      document.getElementById('record-db-display').textContent = `${db} dB`;
+      document.getElementById('studio-db').textContent = `${db} dB`;
 
       const badge = document.getElementById('record-signal-badge');
       if (db > -44) {
-        badge.textContent = state.uiLang === 'en' ? 'Audio Active · Recording' : 'Звук есть · Идёт запись';
+        badge.textContent = t('recSignalActive');
         badge.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-apple-green/20 text-apple-green';
       } else {
-        badge.textContent = state.uiLang === 'en' ? 'Silence' : 'Тишина на входе';
+        badge.textContent = t('recSignalSilence');
         badge.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-white/5 text-apple-secondary';
       }
 
@@ -4117,24 +4917,19 @@ async function startLiveRecording() {
 
     reportRecordingState(true);
     window._recMixedStream = mixedStream;
-    openStudio();
-    document.getElementById('btn-start-rec').classList.add('hidden');
-    document.getElementById('btn-stop-rec').classList.remove('hidden');
-    document.getElementById('rec-dot-indicator').classList.add('animate-ping');
-    document.getElementById('record-status-hint').textContent =
-      state.uiLang === 'en'
-        ? 'Recording live audio waveform…'
-        : 'Звуковая дорожка записывается в реальном времени…';
+    switchAppView('studio');
+    renderStudioState();
+    syncStudioCaptions();
+    document.getElementById('record-status-hint').textContent = t('recStatusRecording');
   } catch (err) {
     _cleanupRecordingResources();
-    alert((state.uiLang === 'en' ? 'Audio capture error: ' : 'Не удалось начать запись звука: ') + err.message);
+    alert(t('recCaptureError') + err.message);
   }
 }
 
 function _cleanupRecordingResources() {
   reportRecordingState(false);
   window._recMixedStream = null;
-  setTimeout(closeStudio, 0);
   clearInterval(_recSysTimer);
   _recSysTimer = null;
   stopLiveCaptions();
@@ -4149,13 +4944,23 @@ function _cleanupRecordingResources() {
     try { _recAudioCtx.close(); } catch (e) {}
     _recAudioCtx = null;
   }
-  document.getElementById('btn-start-rec').classList.remove('hidden');
-  document.getElementById('btn-stop-rec').classList.add('hidden');
-  document.getElementById('rec-dot-indicator').classList.remove('animate-ping');
+  _mediaRecorder = null;
+  document.getElementById('studio-timer').textContent = '00:00';
+  document.getElementById('studio-level').style.width = '2%';
+  document.getElementById('record-status-hint').textContent = t('recordWaveHint');
+  // The next recording gets a fresh default title; the captions stay readable until then
+  document.getElementById('record-title-input').value = '';
+  if (studio.focus) toggleStudioFocus(false);
+  renderStudioState();
+  syncStudioCaptions();
+  setTimeout(() => drawIdleSoundCloudBars('record-waveform-canvas'), 0);
 }
 
 function cancelLiveRecording() {
+  if (!isRecording()) return;
+  if (!confirm(t('recCancelConfirm'))) return;
   if (_mediaRecorder && _mediaRecorder.state !== 'inactive') {
+    _mediaRecorder.onstop = null;
     _mediaRecorder.stop();
   }
   if (_recCaptureId) {
@@ -4163,28 +4968,27 @@ function cancelLiveRecording() {
     _recCaptureId = null;
   }
   _cleanupRecordingResources();
-  closeModal('record');
+  prepareStudio();
 }
 
 async function stopAndTranscribeRecording() {
   if (!_mediaRecorder && !_recCaptureId) return;
-  document.getElementById('record-status-hint').textContent =
-    state.uiLang === 'en' ? 'Saving and queuing transcription…' : 'Сохранение и отправка на расшифровку…';
+  document.getElementById('record-status-hint').textContent = t('recStatusSaving');
 
-  if (_mediaRecorder) {
+  const recorder = _mediaRecorder;
+  if (recorder && recorder.state !== 'inactive') {
     await new Promise(resolve => {
-      _mediaRecorder.onstop = resolve;
-      _mediaRecorder.stop();
+      recorder.onstop = resolve;
+      recorder.stop();
     });
   }
 
-  const blob = _mediaRecorder ? new Blob(_recChunks, { type: 'audio/webm' }) : null;
+  const blob = recorder ? new Blob(_recChunks, { type: 'audio/webm' }) : null;
   const captureId = _recCaptureId;
   _recCaptureId = null;
+  const rawTitle = (document.getElementById('record-title-input').value || t('recordDefaultTitle')).trim();
   _cleanupRecordingResources();
-  closeModal('record');
 
-  const rawTitle = (document.getElementById('record-title-input').value || 'Запись').trim();
   const safeName = rawTitle.replace(/[\\/:*?"<>|]/g, '_') + '.webm';
 
   let created;
@@ -4200,15 +5004,15 @@ async function stopAndTranscribeRecording() {
       return;
     }
     created = data.created;
-    await loadMeetingsList();
-    if (created && created[0]) await selectMeeting(created[0].id, true);
   } else {
-    created = await handleFileSelect([new File([blob], safeName, { type: 'audio/webm' })]);
+    created = await uploadFiles([new File([blob], safeName, { type: 'audio/webm' })], { source: 'recording', title: rawTitle });
   }
-  const savedPath = created && created[0] && created[0].media_path;
+  await loadMeetingsList();
+  prepareStudio();
+  const first = created && created[0];
   showToast(
     t('recordSavedQueued'),
-    savedPath ? { label: t('showInFolder'), title: savedPath, onClick: () => revealPath(savedPath) } : undefined
+    first ? { label: t('recordOpen'), title: first.media_path || '', onClick: () => { switchAppView('library'); selectMeeting(first.id, true); } } : undefined
   );
 }
 
@@ -4563,9 +5367,12 @@ document.addEventListener('keydown', (e) => {
     // Closes the dialog on top; the recording window stays open while it records
     const open = [...document.querySelectorAll('[id^="modal-"]')].filter(m => !m.classList.contains('hidden'));
     const top = open[open.length - 1];
-    if (top && top.id !== 'modal-record' && !isTypingTarget(e.target)) {
+    if (top && !isTypingTarget(e.target)) {
       e.preventDefault();
       closeModal(top.id.slice('modal-'.length));
+    } else if (!top && studio.focus) {
+      e.preventDefault();
+      toggleStudioFocus(false);
     }
     return;
   }
@@ -4581,7 +5388,7 @@ document.addEventListener('keydown', (e) => {
   }
   if (isTypingTarget(e.target) || anyModalOpen()) return;
   const player = document.getElementById('media-player');
-  const hasMedia = !!state.activeMeeting && !!player && !!player.src;
+  const hasMedia = state.appView === 'library' && !!state.activeMeeting && !!player && !!player.src;
   if (e.key === '?' || (e.code === 'Slash' && e.shiftKey)) {
     e.preventDefault();
     openModal('shortcuts');
@@ -4596,7 +5403,7 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     const step = e.shiftKey ? 15 : 5;
     skipPlayer(e.code === 'ArrowLeft' ? -step : step);
-  } else if (e.code === 'KeyF' && !e.shiftKey && state.hasVideo) {
+  } else if (e.code === 'KeyF' && !e.shiftKey && state.hasVideo && state.appView === 'library') {
     e.preventDefault();
     toggleTheatre();
   } else if (e.code === 'KeyR' && !e.shiftKey) {
@@ -4904,13 +5711,80 @@ function renderSummaryPanel() {
     return;
   }
 
-  // LLM output is derived from the recording's speech, so it is treated as untrusted HTML
-  let html = DOMPurify.sanitize(marked.parse(md), { FORBID_TAGS: ['style', 'form', 'input'], FORBID_ATTR: ['style'] });
-  html = html.replace(/\[(\d{1,2}):(\d{2})(?::(\d{2}))?\]/g, (match, p1, p2, p3) => {
-    const secs = p3 ? (Number(p1)*3600 + Number(p2)*60 + Number(p3)) : (Number(p1)*60 + Number(p2));
-    return `<button onclick="seekPlayer(${secs})" title="${escapeHtml(t('tipSeekTimestamp'))}" class="text-apple-blue hover:underline font-mono text-xs">[${p1}:${p2}${p3 ? ':'+p3 : ''}]</button>`;
-  });
-  box.innerHTML = html;
+  renderMarkdownWithTimestamps(box, md, state.activeMeeting.duration);
+}
+
+// LLM output is derived from the recording's speech, so it is treated as untrusted HTML
+function sanitizedMarkdown(md) {
+  return DOMPurify.sanitize(marked.parse(md || ''), { FORBID_TAGS: ['style', 'form', 'input'], FORBID_ATTR: ['style'] });
+}
+
+function renderMarkdownWithTimestamps(box, md, durationSec) {
+  box.innerHTML = sanitizedMarkdown(md);
+  linkifyTimestamps(box, Number(durationSec) || 0, (sec) => seekPlayer(sec));
+}
+
+// Time stamps in model answers come in many shapes: [03:14], [03:14-05:06], (1:02:03), "03:14 — …"
+// at the start of a line, inside `code`. Each one becomes a button that seeks there. Text nodes are
+// rewritten (never the HTML string), so attributes and entities are left alone. A bare "10:30" in
+// the middle of a sentence is more likely a clock time and stays text, as does anything past the end
+// of the recording.
+const TS_RE = /([\[(])?(\d{1,2}):([0-5]\d)(?::([0-5]\d))?(?:(\s*[-–—]\s*)(\d{1,2}):([0-5]\d)(?::([0-5]\d))?)?([\])])?/g;
+
+function tsSeconds(a, b, c) {
+  return c !== undefined ? Number(a) * 3600 + Number(b) * 60 + Number(c) : Number(a) * 60 + Number(b);
+}
+
+function linkifyTimestamps(root, maxSec, onSeek) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) {
+    const n = walker.currentNode;
+    if (/\d:[0-5]\d/.test(n.nodeValue) && !n.parentElement.closest('button, a')) nodes.push(n);
+  }
+  const fits = (sec) => !maxSec || sec <= maxSec + 2;
+  const makeBtn = (label, sec) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'ts-link';
+    b.textContent = label;
+    b.title = t('tipSeekTimestamp');
+    b.dataset.ts = String(sec);
+    b.addEventListener('click', (e) => { e.preventDefault(); onSeek(sec); });
+    return b;
+  };
+  for (const node of nodes) {
+    const text = node.nodeValue;
+    const frag = document.createDocumentFragment();
+    let last = 0;
+    let changed = false;
+    TS_RE.lastIndex = 0;
+    let m;
+    while ((m = TS_RE.exec(text))) {
+      const before = text[m.index - 1] || '';
+      const after = text[m.index + m[0].length] || '';
+      if (/[\d:.]/.test(before) || /\d/.test(after)) continue;  // part of a longer number or a date
+      const range = m[6] !== undefined;
+      const bracketed = !!(m[1] && m[9]);
+      const atLineStart = !text.slice(0, m.index).trim() && !node.previousSibling;
+      if (!(bracketed || range || atLineStart || m[4] !== undefined)) continue;
+      const s1 = tsSeconds(m[2], m[3], m[4]);
+      if (!fits(s1)) continue;
+      const label1 = `${m[2]}:${m[3]}${m[4] !== undefined ? ':' + m[4] : ''}`;
+      frag.append(text.slice(last, m.index), m[1] || '', makeBtn(label1, s1));
+      if (range) {
+        const label2 = `${m[6]}:${m[7]}${m[8] !== undefined ? ':' + m[8] : ''}`;
+        const s2 = tsSeconds(m[6], m[7], m[8]);
+        frag.append(m[5], fits(s2) ? makeBtn(label2, s2) : label2);
+      }
+      frag.append(m[9] || '');
+      last = m.index + m[0].length;
+      changed = true;
+    }
+    if (!changed) continue;
+    frag.append(text.slice(last));
+    node.replaceWith(frag);
+  }
 }
 
 async function generateSummaryForActiveTab() {
@@ -5080,6 +5954,126 @@ async function pickExportDir() {
   } catch (e) {}
 }
 
+// --- Folder for recordings made in the app ---
+async function refreshRecordingsDirLabel() {
+  try {
+    const data = await (await fetch('/api/recordings-dir')).json();
+    const el = document.getElementById('set-recordings-dir');
+    el.textContent = data.folder || '';
+    el.title = data.folder || '';
+    document.getElementById('recdir-reset-btn').classList.toggle('hidden', !data.folder || data.folder === data.default);
+    const uploads = state.system && state.system.paths && state.system.paths.uploads;
+    document.getElementById('set-imports-dir').textContent = uploads ? t('recDirImports').replace('{dir}', uploads) : '';
+  } catch (e) {}
+}
+
+async function pickRecordingsDir() {
+  const res = await fetch('/api/recordings-dir/pick', { method: 'POST' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  if (data.ok) await afterRecordingsDirChange();
+}
+
+async function resetRecordingsDir() {
+  await fetch('/api/recordings-dir/reset', { method: 'POST' });
+  await afterRecordingsDirChange();
+}
+
+async function afterRecordingsDirChange() {
+  await loadSystemInfo();
+  refreshRecordingsDirLabel();
+  renderRecordSaveHint();
+  showToast(t('recDirChanged'));
+}
+
+function openRecordingsDir() {
+  const el = document.getElementById('set-recordings-dir');
+  if (el && el.textContent) revealPath(el.textContent);
+}
+
+// --- Obsidian settings ---
+const OBSIDIAN_TOGGLES = ['auto', 'generate', 'summary', 'tasks', 'chapters', 'transcript'];
+
+function fillObsidianSettings(s) {
+  for (const k of OBSIDIAN_TOGGLES) {
+    document.getElementById(`set-obsidian-${k}`).checked = (s[`obsidian_${k}`] || (k === 'auto' ? 'false' : 'true')) === 'true';
+  }
+  document.getElementById('set-obsidian-subfolder').value = s.obsidian_subfolder ?? 'VerbaScribe';
+  document.getElementById('set-obsidian-filename').value = s.obsidian_filename || '{date} {title}';
+  const vault = document.getElementById('set-obsidian-vault');
+  vault.textContent = s.obsidian_vault || t('obsVaultNone');
+  vault.title = s.obsidian_vault || '';
+  vault.dataset.path = s.obsidian_vault || '';
+  updateObsidianPreview();
+}
+
+function obsidianSettingsPayload() {
+  const out = {
+    obsidian_subfolder: document.getElementById('set-obsidian-subfolder').value.trim(),
+    obsidian_filename: document.getElementById('set-obsidian-filename').value.trim() || '{date} {title}',
+  };
+  for (const k of OBSIDIAN_TOGGLES) out[`obsidian_${k}`] = String(document.getElementById(`set-obsidian-${k}`).checked);
+  return out;
+}
+
+function updateObsidianPreview() {
+  const vault = document.getElementById('set-obsidian-vault').dataset.path || '';
+  const sub = document.getElementById('set-obsidian-subfolder').value.trim();
+  const tpl = document.getElementById('set-obsidian-filename').value.trim() || '{date} {title}';
+  const m = state.activeMeeting;
+  const d = new Date();
+  const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const name = tpl.replace('{date}', date).replace('{time}', `${String(d.getHours()).padStart(2, '0')}-${String(d.getMinutes()).padStart(2, '0')}`)
+    .replace('{title}', (m && m.title) || t('obsExampleTitle')).replace('{lang}', ((m && m.language) || 'ru').toUpperCase());
+  const sep = vault.includes('/') && !vault.includes('\\') ? '/' : '\\';
+  document.getElementById('obs-preview').textContent = vault
+    ? `${t('obsPreview')}: ${[vault, sub, name + '.md'].filter(Boolean).join(sep)}`
+    : t('obsPreviewNoVault');
+}
+
+async function refreshObsidianStatus() {
+  try {
+    const st = await (await fetch('/api/obsidian/status')).json();
+    const pill = document.getElementById('obs-pill');
+    const [text, cls] = !st.vault ? [t('obsPillNone'), 'bg-white/5 text-apple-secondary']
+      : !st.exists ? [t('obsPillMissing'), 'bg-apple-red/15 text-apple-red']
+      : st.is_vault ? [t('obsPillVault'), 'bg-apple-green/15 text-apple-green']
+      : [t('obsPillFolder'), 'bg-apple-amber/15 text-apple-amber'];
+    pill.textContent = text;
+    pill.className = `text-[10px] font-mono px-2.5 py-0.5 rounded-full shrink-0 ${cls}`;
+    pill.title = st.is_vault || !st.vault ? '' : t('tipObsNotVault');
+  } catch (e) {}
+}
+
+async function pickObsidianVault() {
+  const res = await fetch('/api/obsidian/pick-vault', { method: 'POST' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) return;
+  if (state.system && state.system.settings) state.system.settings.obsidian_vault = data.folder;
+  const vault = document.getElementById('set-obsidian-vault');
+  vault.textContent = data.folder;
+  vault.title = data.folder;
+  vault.dataset.path = data.folder;
+  updateObsidianPreview();
+  refreshObsidianStatus();
+  if (!data.is_vault) showToast(t('tipObsNotVault'));
+}
+
+async function openObsidianFolder() {
+  try {
+    const st = await (await fetch('/api/obsidian/status')).json();
+    if (st.folder || st.vault) revealPath(st.exists ? st.vault : '');
+  } catch (e) {}
+}
+
+async function unloadAllModelsNow() {
+  const res = await fetch('/api/vram/unload-all', { method: 'POST' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  renderVram(data);
+  showToast((data.released || []).length ? t('idleUnloadedNow') : t('idleNothingLoaded'));
+}
+
 function openExportDir() {
   const el = document.getElementById('set-export-dir');
   if (el && el.textContent) revealPath(el.textContent);
@@ -5101,4 +6095,115 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+// --- "Details" tab: where the file is, what it is, and what was done with it ---
+async function loadMeetingInfo() {
+  const box = document.getElementById('info-content');
+  const m = state.activeMeeting;
+  if (!m) return;
+  const id = m.id;
+  box.innerHTML = `<div class="py-10 text-center text-xs text-apple-secondary animate-pulse">…</div>`;
+  try {
+    const res = await fetch(`/api/meetings/${id}/info`);
+    const info = await res.json();
+    if (!res.ok) throw new Error(info.detail || 'Error');
+    if (!state.activeMeeting || state.activeMeeting.id !== id) return;
+    renderMeetingInfo(info);
+  } catch (e) {
+    box.innerHTML = `<div class="py-6 text-xs text-apple-red">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function formatDateTime(s) {
+  const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  if (!m) return s ? String(s) : '—';
+  try {
+    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]))
+      .toLocaleString(state.uiLang === 'en' ? 'en-GB' : 'ru-RU', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  } catch (e) {
+    return String(s);
+  }
+}
+
+function copyText(text) {
+  navigator.clipboard.writeText(text).then(() => showToast(t('copied')), () => {});
+}
+
+function renderMeetingInfo(info) {
+  const box = document.getElementById('info-content');
+  const row = (label, value, opts = {}) => value == null || value === '' ? '' : `
+    <div class="flex items-start gap-4 px-4 py-2.5 text-xs">
+      <div class="w-40 shrink-0 text-apple-secondary">${escapeHtml(label)}</div>
+      <div class="flex-1 min-w-0 text-apple-label ${opts.mono ? 'font-mono text-[11.5px]' : ''} break-all select-text">${opts.html ? value : escapeHtml(String(value))}</div>
+    </div>`;
+  const card = (title, rows, actions = '') => rows.trim() ? `
+    <div class="rounded-xl border apple-border bg-apple-sidebar overflow-hidden">
+      <div class="px-4 py-2.5 border-b apple-border flex items-center justify-between gap-2">
+        <h4 class="text-xs font-semibold text-white">${escapeHtml(title)}</h4>
+        <div class="flex items-center gap-1.5">${actions}</div>
+      </div>
+      <div class="divide-y divide-white/5">${rows}</div>
+    </div>` : '';
+  const pathActions = (p) => p ? `
+    <button onclick="revealPath(this.dataset.p)" data-p="${escapeHtml(p)}" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]">${escapeHtml(t('showInFolder'))}</button>
+    <button onclick="copyText(this.dataset.p)" data-p="${escapeHtml(p)}" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]">${escapeHtml(t('copyPath'))}</button>` : '';
+
+  const media = info.media || {};
+  const probe = info.probe || {};
+  const v = probe.video;
+  const a = probe.audio;
+  const sourceName = t(`infoSource_${info.source || 'import'}`);
+  const folderPath = (info.folders || []).map(f => f.system_key ? t(`folderSystem_${f.system_key}`) : f.name).join(' / ');
+
+  let html = card(t('infoFile'),
+    row(t('infoName'), media.name || info.filename)
+    + row(t('infoLocation'), media.path, { mono: true })
+    + (media.exists === false ? row(t('infoState'), `<span class="text-apple-red">${escapeHtml(t('infoMissing'))}</span>`, { html: true }) : '')
+    + row(t('infoSize'), media.size != null ? formatBytes(media.size) : '')
+    + row(t('infoSourceLabel'), sourceName + (info.owns_media ? '' : ` · ${t('infoInPlace')}`))
+    + row(t('infoFolder'), folderPath || t('infoNoFolder')),
+    pathActions(media.exists ? media.path : ''));
+
+  html += card(t('infoDates'),
+    row(t('infoRecordedAt'), formatDateTime(info.recorded_at))
+    + row(t('infoAddedAt'), formatDateTime(info.created_at))
+    + row(t('infoFileModified'), media.modified ? formatDateTime(media.modified) : '')
+    + row(t('infoProcessedAt'), info.completed_at ? formatDateTime(info.completed_at) : ''));
+
+  html += card(t('infoFormat'),
+    row(t('infoContainer'), probe.container)
+    + row(t('infoDuration'), formatTime(probe.duration || info.duration))
+    + (v ? row(t('infoVideo'), [v.codec && v.codec.toUpperCase(), v.width && v.height ? `${v.width}×${v.height}` : '', v.fps ? `${v.fps} fps` : ''].filter(Boolean).join(' · ')) : '')
+    + (a ? row(t('infoAudio'), [a.codec && a.codec.toUpperCase(), a.sample_rate ? `${(a.sample_rate / 1000).toFixed(1)} kHz` : '', a.layout || (a.channels ? `${a.channels} ch` : ''), a.bitrate_kbps ? `${a.bitrate_kbps} kbps` : ''].filter(Boolean).join(' · ')) : '')
+    + row(t('infoBitrate'), probe.bitrate_kbps ? `${probe.bitrate_kbps} kbps` : ''));
+
+  html += card(t('infoProcessing'),
+    row(t('infoStatus'), t(`status_${info.status}`) || info.status)
+    + row(t('infoModel'), formatModelName(info.model_name))
+    + row(t('infoLanguage'), info.language ? `${langName(info.language)} (${String(info.language).toUpperCase()})` : '')
+    + row(t('infoCounts'), t('infoCountsValue').replace('{spk}', info.speakers).replace('{seg}', info.segments).replace('{words}', info.words))
+    + row(t('infoAnalyses'), (info.summaries || []).map(k => t(`summaryName_${k}`) || k).join(', '))
+    + row(t('infoTranslations'), (info.translations || []).map(c => langName(c)).join(', '))
+    + row(t('infoWorkAudio'), info.audio && info.audio.exists ? `${info.audio.path} · ${formatBytes(info.audio.size)}` : '', { mono: true }));
+
+  const dubs = (info.dubs || []).filter(Boolean);
+  if (dubs.length || info.obsidian) {
+    html += card(t('infoOutputs'),
+      dubs.map(d => row(t('infoDubFile'), `${d.path}${d.size != null ? ' · ' + formatBytes(d.size) : ''}`, { mono: true })).join('')
+      + (info.obsidian ? row('Obsidian', info.obsidian.path + (info.obsidian.exists ? '' : ` (${t('infoMissing')})`), { mono: true }) : ''),
+      info.obsidian && info.obsidian.exists ? pathActions(info.obsidian.path) : '');
+  }
+  if ((info.pending_exports || []).length) {
+    html += `<div class="rounded-xl border border-apple-amber/40 bg-apple-amber/10 px-4 py-3 text-xs text-apple-amber flex items-center justify-between gap-3">
+      <span>${escapeHtml(t('infoPendingExports').replace('{n}', info.pending_exports.length))}</span>
+      <button onclick="cancelPendingExports(${info.id})" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]">${escapeHtml(t('cancel'))}</button>
+    </div>`;
+  }
+  box.innerHTML = html;
+}
+
+async function cancelPendingExports(id) {
+  await fetch(`/api/meetings/${id}/pending-exports`, { method: 'DELETE' });
+  loadMeetingInfo();
 }

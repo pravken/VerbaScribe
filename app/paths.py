@@ -238,8 +238,26 @@ UPLOADS_DIR = DATA_DIR / "uploads"
 AUDIO_DIR = DATA_DIR / "audio"
 EXPORTS_DIR = DATA_DIR / "exports"
 BIN_DIR = DATA_DIR / "bin"
+# Recordings made in the app (the folder can be changed in the settings, see recordings_dir())
+DEFAULT_RECORDINGS_DIR = DATA_DIR / "recordings"
+THUMBS_DIR = DATA_DIR / "thumbs"
 DB_PATH = DATA_DIR / "meetings.db"
 SESSION_TOKEN_FILE = DATA_DIR / ".session_token"
 
 for _d in (DATA_DIR, UPLOADS_DIR, AUDIO_DIR, EXPORTS_DIR, MODELS_DIR):
     _d.mkdir(parents=True, exist_ok=True)
+
+
+def recordings_dir(configured: str = "") -> Path:
+    """The folder for recordings made in the app: the one chosen in the settings if it can be
+    used, otherwise <data>/recordings."""
+    if configured:
+        p = Path(configured).expanduser()
+        try:
+            p.mkdir(parents=True, exist_ok=True)
+            if p.is_dir():
+                return p.resolve()
+        except OSError:
+            pass
+    DEFAULT_RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
+    return DEFAULT_RECORDINGS_DIR

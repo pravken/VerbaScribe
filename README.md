@@ -23,16 +23,21 @@ Recordings and transcripts are processed and stored locally (NVIDIA GPU via CUDA
 - **Local summaries and Q&A** via Ollama (default models: Qwen 2.5 and Mistral 7B). Language models can make mistakes; treat summaries as a draft, not a source of truth. Long recordings are summarized in parts.
 - **Transcript editor and player**: click a word to jump to it, edit segments, merge them, rename speakers, waveform, playback speed.
 - **Recording** from a microphone, system audio, or both, with saved presets for one-click starts. System audio is captured directly (WASAPI loopback), without a screen-share prompt.
-- **Recording studio**: a full-screen view for recording with live captions and real-time translation; the speech language is detected automatically.
+- **Three parts of the app**: the **Library** (recordings, transcripts, analysis), the **Studio** (recording with live captions and real-time translation that is typed in without flicker; can fill the whole window) and **Ask** (questions about one recording, a folder or the whole library).
 - **Live captions** during recording, optionally translated as you speak.
-- **Chapters** with titles generated for long recordings, and **Q&A across the whole library**.
+- **Chapters** with titles generated for long recordings, and **Q&A across a folder or the whole library**: a small folder is read in full, a large one is searched; answers cite moments of the recordings.
+- **Folders in the library**: recordings made in the app go to *Recordings*, imported files to *Imported*; create nested folders and sort by dragging. Videos show a thumbnail; the **Details** tab shows where the file is, its format, dates and processing state.
+- **Names from the content**: a recording with a generic title ("Recording 14-05", "zoom_0") gets one from its transcript after processing.
 - **Voice profiles**: once you name a speaker, their voice is recognised in new recordings (stored only in the local database).
 - **Tray icon** that shows what the app is doing and starts or stops a recording from its menu.
 - **Automatic update check** with one-click install from GitHub Releases; the download is verified against the release checksums, and your data, models and settings stay untouched.
 - **Search** across all recordings.
+- **Memory and load**: CPU, RAM and VRAM meters in the sidebar; models are unloaded after a configurable time without use (Settings → General).
+- **Recordings folder** of your choice (Settings → Recording); imported copies and files added by their path are kept apart.
 - **Convenience**: drag files onto the window to import them, keyboard shortcuts (press `?` for the list), and a "Subtitles" player layout with the current phrase under the video.
 - **Custom vocabulary** (names, terms) passed to Whisper as hotwords.
-- **Export** to Word (`.docx`), Markdown, plain text, SRT subtitles and JSON.
+- **Export** to Word (`.docx`), Markdown, plain text, SRT subtitles, JSON and video with subtitles, all from one menu. A translated or dubbed export that does not exist yet is made first and then saved to the export folder by itself.
+- **Obsidian**: a note per meeting (properties, summary, overview, tasks as a checklist, transcript) named `{date} {title}`, saved by hand or automatically after processing (Settings → Export).
 - **Translate & dub (prototype, optional)**: translates a finished recording with Ollama and re-voices it in each speaker's cloned voice over the original background. See [Translate & dub](#translate-dub).
 - **Translate text**: machine translation of a transcript with your local Ollama model, shown under or instead of the original, exported as translated or bilingual files and as video subtitles. See [Translate text](#translate-text).
 
@@ -184,16 +189,21 @@ To update Python dependencies, edit `requirements.in` and regenerate the lock (c
 - **Локальные саммари и ответы на вопросы** через Ollama (модели по умолчанию — Qwen 2.5 и Mistral 7B). Языковые модели могут ошибаться, поэтому считайте саммари черновиком, а не источником истины. Длинные записи обрабатываются по частям.
 - **Редактор расшифровки и плеер**: клик по слову перематывает к нему, реплики можно править и склеивать, спикеров — переименовывать; есть звуковая дорожка и выбор скорости.
 - **Запись** с микрофона, системного звука или обоих источников, с пресетами для запуска в один клик. Системный звук захватывается напрямую (WASAPI loopback), без запроса на показ экрана.
-- **Студия записи**: полноэкранный режим с живыми субтитрами и переводом в реальном времени; язык речи определяется автоматически.
+- **Три раздела программы**: **Медиатека** (записи, расшифровки, анализ), **Студия** (запись с живыми субтитрами и переводом в реальном времени, текст печатается без мерцания; можно развернуть на всё окно) и **Вопросы** (к одной записи, к папке или ко всей медиатеке).
 - **Живые субтитры** во время записи, по желанию — сразу с переводом.
-- **Главы** с заголовками для длинных записей и **вопросы по всей библиотеке** записей.
+- **Главы** с заголовками для длинных записей и **вопросы к папке или ко всей медиатеке**: небольшая папка читается целиком, большая — через поиск; в ответе есть ссылки на моменты записей.
+- **Папки в медиатеке**: записи из программы попадают в «Записи», импортированные файлы — в «Импорт»; можно создавать вложенные папки и раскладывать записи перетаскиванием. У видео есть превью, а на вкладке **«Сведения»** видно, где лежит файл, его формат, даты и состояние обработки.
+- **Названия по содержанию**: запись с безликим названием («Запись 14-05», «zoom_0») после обработки получает название по тексту.
 - **Профили голосов**: стоит один раз назвать участника по имени, и в новых записях его голос узнаётся автоматически (хранится только в локальной базе).
 - **Значок в трее** показывает, чем занято приложение, и запускает или останавливает запись из меню.
 - **Проверка обновлений** и установка в один клик из GitHub Releases; архив сверяется с контрольными суммами релиза, ваши данные, модели и настройки не затрагиваются.
 - **Поиск** по всем записям.
+- **Память и нагрузка**: индикаторы CPU, RAM и VRAM в боковой панели; модели выгружаются из памяти через заданное время простоя (Настройки → Общие).
+- **Папка для записей** на ваш выбор (Настройки → Запись); импортированные копии и файлы, добавленные по пути, хранятся отдельно.
 - **Удобство**: файлы можно перетащить в окно, есть горячие клавиши (список — по клавише `?`) и вид плеера «Субтитры» с текущей фразой под видео.
 - **Словарь** имён и терминов, который передаётся в Whisper как hotwords.
-- **Экспорт** в Word (`.docx`), Markdown, текст, субтитры SRT и JSON.
+- **Экспорт** в Word (`.docx`), Markdown, текст, субтитры SRT, JSON и видео с субтитрами — всё в одном меню. Если нужного перевода или дубляжа ещё нет, он сначала выполняется, а файл затем сам сохраняется в папку экспорта.
+- **Obsidian**: заметка на каждую встречу (свойства, резюме, обзор, задачи чек-листом, расшифровка) с именем `{дата} {название}` — вручную или автоматически после обработки (Настройки → Экспорт).
 - **Перевод и дубляж (прототип, по желанию)**: готовая запись переводится через Ollama и озвучивается клонами голосов участников поверх исходного фона. Подробнее — в разделе [Перевод и дубляж](#дубляж).
 - **Перевод текста**: машинный перевод расшифровки локальной моделью Ollama — под оригиналом или вместо него, экспорт переведённых и двуязычных файлов, субтитры для видео. Подробнее — в разделе [Перевод текста](#перевод-текста).
 

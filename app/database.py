@@ -69,6 +69,25 @@ def init_db() -> None:
             cur.execute("ALTER TABLE meetings ADD COLUMN dubs_json TEXT DEFAULT '[]'")
         if "translations_json" not in existing_cols:
             cur.execute("ALTER TABLE meetings ADD COLUMN translations_json TEXT DEFAULT '{}'")
+        # Library folders, where a recording came from and who owns its file (see _MEETING_EXTRA_COLUMNS)
+        for col, ddl in _MEETING_EXTRA_COLUMNS.items():
+            if col not in existing_cols:
+                cur.execute(f"ALTER TABLE meetings ADD COLUMN {col} {ddl}")
+
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS folders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                parent_id INTEGER DEFAULT NULL,
+                system_key TEXT DEFAULT NULL,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        _ensure_system_folders(cur)
+        if "folder_id" not in existing_cols:
+            _sort_existing_meetings(cur)
 
         cur.execute(
             """
@@ -110,6 +129,18 @@ def init_db() -> None:
             "keep_model_loaded": "true",  # reuse Whisper between queued recordings if VRAM allows
             "voice_profiles": "true",  # name known voices automatically (app/voice_profiles.py)
             "update_check": "true",  # look for a new release on GitHub at start (app/updater.py)
+            "idle_unload_minutes": "10",  # free models from memory after this long unused; 0 = never
+            "recordings_dir": "",  # where recordings made in the app are saved; "" = <data>/recordings
+            "auto_title": "true",  # name recordings by their content (LLM) when the title is generic
+            "obsidian_auto": "false",  # save a note to the Obsidian vault after processing
+            "obsidian_vault": "",
+            "obsidian_subfolder": "VerbaScribe",
+            "obsidian_filename": "{date} {title}",
+            "obsidian_summary": "true",
+            "obsidian_tasks": "true",
+            "obsidian_chapters": "true",
+            "obsidian_transcript": "true",
+            "obsidian_generate": "true",  # make the overview and tasks for the note if they are missing
         }
 
         for k, v in default_settings.items():
@@ -146,6 +177,54 @@ def init_db() -> None:
 
 
 _FTS_SCHEMA_VERSION = 1
+
+# Columns added after the first release, with their SQL type and default
+_MEETING_EXTRA_COLUMNS = {
+    "folder_id": "INTEGER DEFAULT NULL",
+    "source": "TEXT DEFAULT 'import'",  # 'recording' (made in the app), 'import' (copied in), 'local' (used in place)
+    "owns_media": "INTEGER DEFAULT 0",  # 1: the media file was created by the app and is deleted with the recording
+    "recorded_at": "TEXT DEFAULT ''",  # when the meeting took place (file date for imports)
+    "title_is_default": "INTEGER DEFAULT 0",  # 1: the title came from a file name and may be replaced
+    "obsidian_path": "TEXT DEFAULT ''",
+    "pending_exports_json": "TEXT DEFAULT '[]'",
+}
+
+SYSTEM_FOLDERS = {"recordings": "Записи", "imports": "Импорт"}
+_VIDEO_EXTS = {".mp4", ".mkv", ".mov", ".avi", ".m4v", ".webm", ".wmv", ".flv", ".mpg", ".mpeg", ".ts", ".mts", ".3gp"}
+
+
+def _ensure_system_folders(cur: sqlite3.Cursor) -> None:
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    for key, name in SYSTEM_FOLDERS.items():
+        if not cur.execute("SELECT 1 FROM folders WHERE system_key = ?", (key,)).fetchone():
+            cur.execute("INSERT INTO folders (name, parent_id, system_key, created_at) VALUES (?, NULL, ?, ?)", (name, key, now))
+
+
+def _sort_existing_meetings(cur: sqlite3.Cursor) -> None:
+    """First start with folders: recordings made in the app go to "Recordings", everything else to
+    "Imports". Older versions did not store the origin, so it is told from the file."""
+    rec_id = cur.execute("SELECT id FROM folders WHERE system_key = 'recordings'").fetchone()[0]
+    imp_id = cur.execute("SELECT id FROM folders WHERE system_key = 'imports'").fetchone()[0]
+    uploads = str(UPLOADS_DIR.resolve()).casefold()
+    for row in cur.execute("SELECT id, media_path, filename, created_at FROM meetings").fetchall():
+        media = str(row[1] or "")
+        in_uploads = media.casefold().startswith(uploads)
+        name = Path(media).name
+        # Recordings: the app's own mix ("<8 hex>_<title>.m4a") or the page's microphone file (.webm)
+        recorded = in_uploads and (
+            (name.lower().endswith(".m4a") and re.match(r"^[0-9a-f]{8}_", name))
+            or (name.lower().endswith(".webm") and (row[2] or "").lower().endswith(".webm")
+                and re.match(r"^[0-9a-f]{8}_(запись|recording)", name, re.IGNORECASE))
+        )
+        cur.execute(
+            "UPDATE meetings SET folder_id = ?, source = ?, owns_media = ?, recorded_at = ? WHERE id = ?",
+            (rec_id if recorded else imp_id, "recording" if recorded else ("import" if in_uploads else "local"),
+             1 if in_uploads else 0, row[3] or "", row[0]),
+        )
+
+
+def is_video_path(path: str) -> bool:
+    return Path(path or "").suffix.lower() in _VIDEO_EXTS
 
 
 def _loads_list(raw: Optional[str]) -> List[Dict[str, Any]]:
@@ -262,19 +341,31 @@ def create_meeting(
     language: str = "auto",
     model_name: str = "large-v3-turbo",
     num_speakers_hint: int = 0,
+    source: str = "import",
+    folder_id: Optional[int] = None,
+    owns_media: bool = False,
+    recorded_at: str = "",
+    title_is_default: bool = False,
 ) -> Dict[str, Any]:
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with _db_lock:
         conn = get_connection()
         cur = conn.cursor()
+        if folder_id is None or not cur.execute("SELECT 1 FROM folders WHERE id = ?", (folder_id,)).fetchone():
+            # New recordings land in the system folder of their kind
+            key = "recordings" if source == "recording" else "imports"
+            row = cur.execute("SELECT id FROM folders WHERE system_key = ?", (key,)).fetchone()
+            folder_id = row[0] if row else None
         cur.execute(
             """
             INSERT INTO meetings (
                 title, filename, media_path, status, progress, stage_text,
-                language, model_name, num_speakers_hint, created_at
-            ) VALUES (?, ?, ?, 'queued', 0, 'В очереди на обработку...', ?, ?, ?, ?)
+                language, model_name, num_speakers_hint, created_at,
+                folder_id, source, owns_media, recorded_at, title_is_default
+            ) VALUES (?, ?, ?, 'queued', 0, 'В очереди на обработку...', ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (title, filename, media_path, language, model_name, num_speakers_hint, now),
+            (title, filename, media_path, language, model_name, num_speakers_hint, now,
+             folder_id, source, 1 if owns_media else 0, recorded_at or now, 1 if title_is_default else 0),
         )
         meeting_id = cur.lastrowid
         conn.commit()
@@ -407,7 +498,7 @@ def restore_segments_backup(meeting_id: int) -> bool:
 
 
 def update_meeting_fields(meeting_id: int, **fields: Any) -> None:
-    allowed = {"title", "model_name", "language", "num_speakers_hint"}
+    allowed = {"title", "model_name", "language", "num_speakers_hint", "folder_id", "title_is_default", "obsidian_path"}
     items = [(k, v) for k, v in fields.items() if k in allowed]
     if not items:
         return
@@ -525,9 +616,9 @@ def list_meetings() -> List[Dict[str, Any]]:
         conn = get_connection()
         rows = conn.execute(
             """
-            SELECT id, title, filename, duration, status, progress, stage_text,
+            SELECT id, title, filename, media_path, duration, status, progress, stage_text,
                    error_message, language, model_name, num_speakers_hint,
-                   speakers_json, created_at, completed_at
+                   speakers_json, created_at, completed_at, folder_id, source, recorded_at
             FROM meetings
             ORDER BY id DESC
             """
@@ -540,6 +631,7 @@ def list_meetings() -> List[Dict[str, Any]]:
                 d["speakers"] = json.loads(d.pop("speakers_json", "{}") or "{}")
             except Exception:
                 d["speakers"] = {}
+            d["is_video"] = d.get("source") != "recording" and is_video_path(d.pop("media_path", ""))
             result.append(d)
         return result
 
@@ -550,14 +642,19 @@ def delete_meeting(meeting_id: int) -> bool:
         return False
 
     dub_paths = [d.get(k) for d in meeting.get("dubs") or [] for k in ("path", "srt_path")]
+    owned = [meeting.get("media_path")] if meeting.get("owns_media") else []
     for p_str in [meeting.get("media_path"), meeting.get("audio_path"), *dub_paths]:
         if p_str:
             p = Path(p_str)
-            if p.exists() and DATA_DIR in p.resolve().parents:
+            # Files in the data folder, and the app's own recordings wherever the recordings folder is;
+            # a file used in place (added by its path) is never touched
+            if p.exists() and (DATA_DIR in p.resolve().parents or p_str in owned):
                 try:
                     p.unlink()
                 except Exception:
                     pass
+    thumb = DATA_DIR / "thumbs" / f"{meeting_id}.jpg"
+    thumb.unlink(missing_ok=True)
 
     with _db_lock:
         conn = get_connection()
@@ -571,6 +668,8 @@ def delete_meeting(meeting_id: int) -> bool:
 
 def _deserialize_meeting(d: Dict[str, Any]) -> Dict[str, Any]:
     d["has_segments_backup"] = bool(d.pop("segments_backup_json", ""))
+    d["pending_exports"] = _loads_list(d.pop("pending_exports_json", None))
+    d["is_video"] = d.get("source") != "recording" and is_video_path(d.get("media_path") or "")
     for key, target in (
         ("speakers_json", "speakers"),
         ("segments_json", "segments"),
@@ -725,3 +824,138 @@ def merge_segment_with_previous(meeting_id: int, segment_id: int) -> Optional[Di
     save_meeting_results(meeting_id, segments=segments)
     return get_meeting(meeting_id)
 
+
+
+# --- Library folders ---
+def list_folders() -> List[Dict[str, Any]]:
+    with _db_lock:
+        conn = get_connection()
+        rows = conn.execute("SELECT id, name, parent_id, system_key FROM folders ORDER BY id").fetchall()
+        conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_folder(folder_id: int) -> Optional[Dict[str, Any]]:
+    return next((f for f in list_folders() if f["id"] == folder_id), None)
+
+
+def system_folder_id(key: str) -> Optional[int]:
+    return next((f["id"] for f in list_folders() if f.get("system_key") == key), None)
+
+
+def folder_subtree_ids(folder_id: int) -> List[int]:
+    """The folder and every folder inside it."""
+    folders = list_folders()
+    out = [folder_id]
+    i = 0
+    while i < len(out):
+        out.extend(f["id"] for f in folders if f["parent_id"] == out[i] and f["id"] not in out)
+        i += 1
+    return out
+
+
+def create_folder(name: str, parent_id: Optional[int] = None) -> Dict[str, Any]:
+    name = (name or "").strip()[:120]
+    if not name:
+        raise ValueError("Название папки не может быть пустым")
+    if parent_id is not None and not get_folder(parent_id):
+        raise ValueError("Родительская папка не найдена")
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with _db_lock:
+        conn = get_connection()
+        cur = conn.execute(
+            "INSERT INTO folders (name, parent_id, system_key, created_at) VALUES (?, ?, NULL, ?)", (name, parent_id, now)
+        )
+        folder_id = cur.lastrowid
+        conn.commit()
+        conn.close()
+    events.publish({"type": "list"})
+    return get_folder(folder_id) or {}
+
+
+_UNSET = object()
+
+
+def update_folder(folder_id: int, name: Optional[str] = None, parent_id: Any = _UNSET) -> Dict[str, Any]:
+    folder = get_folder(folder_id)
+    if not folder:
+        raise LookupError("Папка не найдена")
+    fields: Dict[str, Any] = {}
+    if name is not None:
+        name = name.strip()[:120]
+        if not name:
+            raise ValueError("Название папки не может быть пустым")
+        fields["name"] = name
+    if parent_id is not _UNSET:
+        if folder.get("system_key") and parent_id is not None:
+            raise ValueError("Системную папку нельзя вложить в другую")
+        if parent_id is not None:
+            if not get_folder(parent_id):
+                raise ValueError("Папка назначения не найдена")
+            if parent_id in folder_subtree_ids(folder_id):
+                raise ValueError("Папку нельзя переместить внутрь неё самой")
+        fields["parent_id"] = parent_id
+    if fields:
+        with _db_lock:
+            conn = get_connection()
+            conn.execute(
+                f"UPDATE folders SET {', '.join(f'{k} = ?' for k in fields)} WHERE id = ?",
+                (*fields.values(), folder_id),
+            )
+            conn.commit()
+            conn.close()
+        events.publish({"type": "list"})
+    return get_folder(folder_id) or {}
+
+
+def delete_folder(folder_id: int) -> None:
+    """Removes a folder; what it contained (recordings and folders) moves up one level."""
+    folder = get_folder(folder_id)
+    if not folder:
+        raise LookupError("Папка не найдена")
+    if folder.get("system_key"):
+        raise ValueError("Системную папку удалить нельзя")
+    with _db_lock:
+        conn = get_connection()
+        conn.execute("UPDATE folders SET parent_id = ? WHERE parent_id = ?", (folder["parent_id"], folder_id))
+        conn.execute("UPDATE meetings SET folder_id = ? WHERE folder_id = ?", (folder["parent_id"], folder_id))
+        conn.execute("DELETE FROM folders WHERE id = ?", (folder_id,))
+        conn.commit()
+        conn.close()
+    events.publish({"type": "list"})
+
+
+def set_meeting_folder(meeting_id: int, folder_id: Optional[int]) -> None:
+    if folder_id is not None and not get_folder(folder_id):
+        raise ValueError("Папка не найдена")
+    update_meeting_fields(meeting_id, folder_id=folder_id)
+
+
+def meeting_ids_in_folder(folder_id: int) -> List[int]:
+    ids = folder_subtree_ids(folder_id)
+    with _db_lock:
+        conn = get_connection()
+        rows = conn.execute(
+            f"SELECT id FROM meetings WHERE folder_id IN ({','.join('?' * len(ids))}) ORDER BY id DESC", ids
+        ).fetchall()
+        conn.close()
+    return [int(r[0]) for r in rows]
+
+
+# --- Exports waiting for a job (a translation, a dub) to finish ---
+def get_pending_exports(meeting_id: int) -> List[Dict[str, Any]]:
+    with _db_lock:
+        conn = get_connection()
+        row = conn.execute("SELECT pending_exports_json FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+        conn.close()
+    return _loads_list(row[0] if row else None)
+
+
+def set_pending_exports(meeting_id: int, items: List[Dict[str, Any]]) -> None:
+    with _db_lock:
+        conn = get_connection()
+        conn.execute(
+            "UPDATE meetings SET pending_exports_json = ? WHERE id = ?", (json.dumps(items, ensure_ascii=False), meeting_id)
+        )
+        conn.commit()
+        conn.close()

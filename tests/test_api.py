@@ -47,5 +47,58 @@ class ConnectionResetFilterTest(unittest.TestCase):
         self.assertFalse(main._is_proactor_connection_reset({"exception": ValueError(), "handle": Handle()}))
 
 
+@unittest.skipIf(main is None, "fastapi and app dependencies not installed")
+class LibraryApiTest(unittest.TestCase):
+    def _client(self):
+        c = TestClient(main.app, base_url="http://127.0.0.1:8791")
+        c.__enter__()
+        c.get(f"/?token={main.SESSION_TOKEN}")
+        self.addCleanup(c.__exit__, None, None, None)
+        return c
+
+    def test_recording_upload_goes_to_the_recordings_folder(self):
+        from unittest import mock
+
+        c = self._client()
+        with mock.patch.object(main, "enqueue_meeting_job"):
+            r = c.post("/api/meetings/upload", files={"files": ("Запись 10-15.webm", b"webm", "audio/webm")},
+                       data={"source": "recording", "title": "Созвон с командой"})
+            self.assertEqual(r.status_code, 200, r.text)
+            m = r.json()["created"][0]
+            imp = c.post("/api/meetings/upload", files={"files": ("talk.mp4", b"mp4", "video/mp4")},
+                         data={"last_modified": "1715504400000"}).json()["created"][0]
+        self.assertEqual(m["title"], "Созвон с командой")
+        self.assertEqual(m["source"], "recording")
+        self.assertTrue(m["media_path"].startswith(str(main._recordings_dir())))
+        self.assertTrue(imp["recorded_at"].startswith("2024-05-1"))
+        self.assertTrue(imp["media_path"].startswith(str(main.UPLOADS_DIR)))
+        folders = {f["system_key"]: f["id"] for f in c.get("/api/folders").json() if f["system_key"]}
+        self.assertEqual(m["folder_id"], folders["recordings"])
+        self.assertEqual(imp["folder_id"], folders["imports"])
+
+    def test_folder_endpoints_and_details(self):
+        c = self._client()
+        f = c.post("/api/folders", json={"name": "Клиенты"}).json()
+        sub = c.post("/api/folders", json={"name": "Акме", "parent_id": f["id"]}).json()
+        self.assertEqual(c.patch(f"/api/folders/{f['id']}", json={"parent_id": sub["id"]}).status_code, 400)
+        m = main.create_meeting(title="Звонок", filename="c.wav", media_path="c.wav")
+        self.assertEqual(c.patch(f"/api/meetings/{m['id']}/folder", json={"folder_id": sub["id"]}).status_code, 200)
+        info = c.get(f"/api/meetings/{m['id']}/info").json()
+        self.assertEqual([x["name"] for x in info["folders"]], ["Клиенты", "Акме"])
+        self.assertFalse(info["media"]["exists"])
+        self.assertEqual(c.delete(f"/api/folders/{f['id']}").status_code, 200)
+        self.assertEqual(c.get(f"/api/meetings/{m['id']}").json()["folder_id"], sub["id"])
+
+    def test_export_request_and_vram_system_load(self):
+        c = self._client()
+        m = main.create_meeting(title="Ещё обрабатывается", filename="d.wav", media_path="d.wav")
+        r = c.post(f"/api/meetings/{m['id']}/export-request", json={"kind": "doc", "fmt": "docx"})
+        self.assertEqual(r.status_code, 409)  # not transcribed and nothing running
+        self.assertEqual(c.post(f"/api/meetings/{m['id']}/export-request", json={"kind": "bogus"}).status_code, 409)
+        snap = c.get("/api/vram").json()
+        self.assertIn("system", snap)
+        self.assertIn("idle", snap)
+
+
 if __name__ == "__main__":
     unittest.main()

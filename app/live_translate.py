@@ -145,6 +145,11 @@ class LiveTranslator:
                 self.draft_translation = ""
             self._cond.notify()
 
+    def reset_draft(self) -> None:
+        with self._cond:
+            self.draft_translation = ""
+            self._draft_done_for = ""
+
     def configure(self, target: Optional[str] = None, speed: Optional[str] = None,
                   retranslate: Optional[List[Dict[str, Any]]] = None) -> None:
         with self._cond:
@@ -206,8 +211,11 @@ class LiveTranslator:
             system += f" Do not use any Chinese, Japanese or Korean characters. Use only {dst}."
         # No surrounding lines: given as context, models mix them into the translation
         user = text
+        from app import idle_unload
+
+        idle_unload.touch(model or self._model)
         payload = {
-            "model": model or self._model, "stream": False, "keep_alive": KEEP_ALIVE,
+            "model": model or self._model, "stream": False, "keep_alive": idle_unload.ollama_keep_alive() or KEEP_ALIVE,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
             "options": {"temperature": 0.0 if strict else 0.1, "num_ctx": NUM_CTX, "num_predict": 200,
                         "repeat_penalty": 1.15},

@@ -216,6 +216,25 @@ input[type="range"].volume-slider::-webkit-slider-thumb:hover {
 .markdown-body li { margin-bottom: 0.3rem; line-height: 1.6; }
 .markdown-body strong { color: #FFFFFF; font-weight: 600; }
 .markdown-body code { background: #242426; padding: 0.12rem 0.35rem; border-radius: 5px; font-size: 0.84em; color: #64D2FF; font-family: 'JetBrains Mono', monospace; }
+/* Models often quote the transcript in a code block: it wraps inside the card instead of
+   running past its edge, and long words or links never widen the column */
+.markdown-body { min-width: 0; overflow-wrap: anywhere; }
+.markdown-body pre {
+  margin: 0.4rem 0 0.85rem; padding: 0.7rem 0.85rem; border-radius: 8px;
+  background: #1f1f22; border: 1px solid rgba(255, 255, 255, 0.06);
+  white-space: pre-wrap; word-break: break-word; overflow-x: auto; max-width: 100%;
+}
+.markdown-body pre code { background: none; padding: 0; color: #D1D1D6; font-size: 0.82em; line-height: 1.6; white-space: inherit; }
+.markdown-body table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin-bottom: 0.85rem; font-size: 0.92em; }
+.markdown-body th, .markdown-body td { border: 1px solid rgba(255, 255, 255, 0.1); padding: 0.3rem 0.55rem; text-align: left; vertical-align: top; }
+.markdown-body blockquote { border-left: 3px solid rgba(255, 255, 255, 0.15); padding-left: 0.8rem; color: #AEAEB2; margin-bottom: 0.8rem; }
+.markdown-body a { color: #64B5FF; text-decoration: underline; }
+/* Time stamps in analysis answers: every one opens the recording at that moment */
+.ts-link {
+  font-family: 'JetBrains Mono Variable', ui-monospace, monospace; font-size: 0.86em;
+  color: #0A84FF; border-radius: 4px; padding: 0 2px; cursor: pointer; white-space: nowrap;
+}
+.ts-link:hover { text-decoration: underline; background: rgba(10, 132, 255, 0.12); }
 
 /* Live progress: moving stripes on the running bar and a pulsing status dot */
 .progress-live {
@@ -365,6 +384,10 @@ select option, select optgroup {
 }
 .lib-cite:hover { background: rgba(10, 132, 255, 0.35); color: #fff; }
 
+/* Settings: every on/off option sits on its own row with the same height and spacing */
+.settings-toggle { padding: 7px 0; }
+label.settings-toggle { display: flex; }
+
 /* Settings tabs fill the bar evenly */
 .settings-tabs { display: flex; }
 .settings-tabs .apple-segment-btn { flex: 1 1 0; justify-content: center; text-align: center; }
@@ -408,6 +431,42 @@ select option, select optgroup {
   padding: 3px 5px; border-radius: 4px;
   background: rgba(255, 255, 255, 0.08); color: #98989d;
 }
+
+/* App parts in the sidebar header: three equal tabs */
+.app-nav { display: flex; }
+.app-nav .apple-segment-btn { flex: 1 1 0; padding: 0 6px; font-size: 11.5px; }
+
+/* Studio covering the whole window (presenting captions) */
+#studio-view.studio-focus { position: fixed; inset: 0; z-index: 40; }
+.studio-focus-only { display: none; }
+#studio-view.studio-focus .studio-focus-only { display: flex; }
+#studio-rec-dot.studio-idle .studio-ping { display: none; }
+#studio-rec-dot.studio-idle > span:last-child { background: #636366; }
+
+/* Studio captions: rows keep their elements; text is typed in (see CapTyper in app.js) */
+.cap-rows { display: flex; flex-direction: column; gap: 1rem; }
+.cap-row .cap-o { font-size: var(--cap-size, 26px); line-height: 1.35; color: #fff; transition: color 0.5s ease; overflow-wrap: anywhere; }
+.cap-row.cap-draft .cap-o { color: #AEAEB2; }
+.cap-row .cap-t { color: #0A84FF; font-size: calc(var(--cap-size, 26px) * 0.82); line-height: 1.35; margin-top: 2px; transition: color 0.5s ease; overflow-wrap: anywhere; }
+.cap-row.cap-draft .cap-t { color: rgba(10, 132, 255, 0.7); }
+.cap-tr:empty::before { content: '…'; color: #636366; animation: cap-wait 1.4s ease-in-out infinite; }
+@keyframes cap-wait { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+.lang-tag:empty { display: none; }
+.cap-view-orig .cap-t { display: none; }
+.cap-view-tr .cap-o { display: none; }
+.cap-view-tr .cap-t { font-size: var(--cap-size, 26px); margin-top: 0; }
+.cap-view-tr .lang-tag, .cap-view-side .lang-tag { display: none; }
+.cap-view-under .cap-same .cap-t { display: none; }
+.cap-view-side .cap-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 2rem; }
+.cap-view-side .cap-t { font-size: var(--cap-size, 26px); margin-top: 0; }
+.cap-view-side .cap-same .cap-tr { display: none; }
+.cap-view-side .cap-same .cap-t::after { content: '—'; color: #636366; }
+@media (prefers-reduced-motion: reduce) { .cap-tr:empty::before { animation: none; } }
+
+/* Library: drop targets while a recording or a folder is dragged */
+#meetings-list .drop-target { background: rgba(10, 132, 255, 0.22) !important; box-shadow: inset 0 0 0 1px rgba(10, 132, 255, 0.7); }
+#meetings-list.drop-target { box-shadow: inset 0 0 0 1px rgba(10, 132, 255, 0.45); border-radius: 10px; }
+#meetings-list.lib-dragging .folder-row { outline: 1px dashed rgba(255, 255, 255, 0.12); outline-offset: -1px; }
 
 /* Transcript toolbar: when the column is narrow the text buttons keep only their icons (their
    titles explain them), so the speaker pills keep enough room instead of stacking up */

@@ -183,7 +183,9 @@ def vram_snapshot() -> Dict[str, Any]:
         chips.append({"kind": "dub", "name": "Chatterbox / Demucs", "loaded": True, "count": len(workers),
                       "can_unload": False, "can_preload": False})
 
-    return {"gpu": gpu_memory(), "chips": chips, "busy": busy}
+    from app import idle_unload, sysinfo
+
+    return {"gpu": gpu_memory(), "chips": chips, "busy": busy, "system": sysinfo.snapshot(), "idle": idle_unload.status()}
 
 
 def unload(kind: str, name: str = "") -> Dict[str, Any]:
@@ -222,7 +224,9 @@ def unload(kind: str, name: str = "") -> Dict[str, Any]:
 
 
 def preload(kind: str, name: str = "") -> Dict[str, Any]:
-    from app import transcriber
+    from app import idle_unload, transcriber
+
+    idle_unload.touch(name if kind == "ollama" else None)
 
     if kind == "whisper":
         from app.model_manager import is_whisper_model_installed
@@ -244,7 +248,7 @@ def preload(kind: str, name: str = "") -> Dict[str, Any]:
         try:
             with httpx.Client(timeout=120.0) as client:
                 # An empty prompt only loads the model; it stays for Ollama's usual keep-alive time
-                client.post(f"{base}/api/generate", json={"model": model, "keep_alive": "10m"}).raise_for_status()
+                client.post(f"{base}/api/generate", json={"model": model, "keep_alive": idle_unload.ollama_keep_alive() or "10m"}).raise_for_status()
         finally:
             _ollama_loading.clear()
     else:

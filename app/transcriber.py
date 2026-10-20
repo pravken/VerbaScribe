@@ -74,6 +74,9 @@ def _queue_add(meeting_id: int, kind: str, lang: Optional[str] = None) -> None:
 
 def _queue_start(meeting_id: int) -> None:
     global _running_id
+    from app import idle_unload
+
+    idle_unload.touch()
     with _jobs_lock:
         _running_id = meeting_id
         for q in _queue:
@@ -84,6 +87,9 @@ def _queue_start(meeting_id: int) -> None:
 
 def _queue_finish(meeting_id: int) -> None:
     global _running_id
+    from app import idle_unload
+
+    idle_unload.touch()
     with _jobs_lock:
         _queue[:] = [q for q in _queue if q["id"] != meeting_id]
         if _running_id == meeting_id:
@@ -168,6 +174,17 @@ def _run_job(meeting_id: int) -> None:
             queue_empty = not _active_jobs
         if queue_empty:
             release_whisper_model()
+        _run_pending_exports(meeting_id)
+
+
+def _run_pending_exports(meeting_id: int) -> None:
+    """Exports that waited for this recording's job (see app/pending_exports.py)."""
+    try:
+        from app.pending_exports import process
+
+        process(meeting_id)
+    except Exception:
+        traceback.print_exc()
 
 
 def enqueue_dub_job(meeting_id: int, target_lang: str) -> bool:
@@ -228,6 +245,7 @@ def _run_dub_job(meeting_id: int, target_lang: str) -> None:
         with _jobs_lock:
             _active_jobs.discard(meeting_id)
             _cancel_requested.discard(meeting_id)
+        _run_pending_exports(meeting_id)
 
 
 def _enqueue_side_job(meeting_id: int, kind: str, lang: str, status: str, queued_text: str, runner, *args) -> bool:
@@ -267,6 +285,7 @@ def _run_side_job(meeting_id: int, runner, *args) -> None:
         with _jobs_lock:
             _active_jobs.discard(meeting_id)
             _cancel_requested.discard(meeting_id)
+        _run_pending_exports(meeting_id)
 
 
 def _translate_runner(meeting_id: int, target_lang: str, model: Optional[str], only_changed: bool) -> str:
@@ -575,6 +594,46 @@ def _collect_segments(meeting_id: int, segments_iter, total_dur: float) -> List[
     return raw_segments
 
 
+def _after_transcription(
+    meeting_id: int,
+    segments: List[Dict[str, Any]],
+    speakers: Dict[str, Any],
+    lang: str,
+    settings: Dict[str, str],
+) -> List[str]:
+    """Optional steps that must never fail the transcription; returns short notes for the status."""
+    from app import obsidian
+    from app.database import update_meeting_fields
+    from app.ollama_client import generate_meeting_title, is_generic_title
+
+    notes: List[str] = []
+    meeting = get_meeting(meeting_id) or {}
+    if (
+        segments
+        and settings.get("auto_title", "true").lower() == "true"
+        and meeting.get("title_is_default")
+        and is_generic_title(meeting.get("title") or "")
+    ):
+        ollama_st = get_ollama_status()
+        if ollama_st["running"] and ollama_st["models"]:
+            update_meeting_progress(meeting_id, progress=94, stage_text="Название записи по содержанию (Ollama)...")
+            try:
+                title = generate_meeting_title(segments, speakers, answer_lang=lang)
+                if title:
+                    update_meeting_fields(meeting_id, title=title, title_is_default=0)
+            except Exception as e:
+                print(f"[title] meeting {meeting_id}: {e}", flush=True)
+    if obsidian.auto_export_enabled(settings):
+        update_meeting_progress(meeting_id, progress=97, stage_text="Сохранение заметки в Obsidian...")
+        try:
+            # The job is not "completed" yet: the note is written for the finished transcript
+            path = obsidian.export_meeting(meeting_id, generate=True, in_job=True)
+            notes.append(f"заметка Obsidian: {path.name}")
+        except Exception as e:
+            notes.append(f"Obsidian: {str(e)[:120]}")
+    return notes
+
+
 def _process_meeting_job(meeting_id: int) -> None:
     meeting = get_meeting(meeting_id)
     if not meeting:
@@ -760,11 +819,14 @@ def _process_meeting_job(meeting_id: int) -> None:
 
         clear_vram()
 
+        # 5. A title from the content instead of a file name, and the note in Obsidian
+        notes = _after_transcription(meeting_id, merged_segments, speakers_meta, detected_lang, settings)
+
         update_meeting_progress(
             meeting_id,
             status="completed",
             progress=100,
-            stage_text=f"Готово! Участников: {len(speakers_meta)}, реплик: {len(merged_segments)}",
+            stage_text=f"Готово! Участников: {len(speakers_meta)}, реплик: {len(merged_segments)}" + "".join(f"; {n}" for n in notes),
         )
 
     except JobCancelled:

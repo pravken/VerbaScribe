@@ -26,78 +26,6 @@
 
 
   <!-- =========================================================================
-       RECORDING STUDIO: the whole window while recording, with large live captions and their
-       translation (openStudio in app.js). The small record window is only for the settings.
-       ========================================================================= -->
-  <div id="studio" class="hidden fixed inset-0 z-40 bg-apple-bg flex flex-col">
-    <div class="h-14 px-5 flex items-center gap-4 border-b apple-border shrink-0 bg-apple-sidebar/95">
-      <span class="relative flex w-3 h-3 shrink-0"><span class="absolute inset-0 rounded-full bg-apple-red animate-ping opacity-60"></span><span class="relative w-3 h-3 rounded-full bg-apple-red"></span></span>
-      <div class="min-w-0">
-        <div class="text-[13px] font-semibold text-white leading-tight" data-i18n="studioRecording">Идёт запись</div>
-        <div id="studio-source" class="text-[11px] text-apple-secondary truncate"></div>
-      </div>
-      <div id="studio-timer" class="text-2xl font-mono font-semibold text-white tracking-wider ml-2">00:00</div>
-      <div class="flex-1 flex items-center gap-2 min-w-[90px] max-w-[220px]">
-        <div class="flex-1 h-1.5 bg-black/50 rounded-full overflow-hidden border border-white/5">
-          <div id="studio-level" class="h-full bg-apple-green transition-all duration-75" style="width: 2%"></div>
-        </div>
-        <span id="studio-db" class="text-[11px] font-mono text-apple-secondary w-14 text-right whitespace-nowrap">-60 dB</span>
-      </div>
-      <div class="flex items-center gap-2 shrink-0 ml-auto">
-        <button onclick="minimizeStudio()" class="ui-btn ui-btn-subtle h-8" data-i18n-title="tipStudioMinimize" title="Вернуться к программе; запись продолжается" data-i18n="studioMinimize">← К программе</button>
-        <button onclick="cancelLiveRecording()" class="ui-btn ui-btn-subtle h-8" data-i18n-title="tipStudioCancel" title="Остановить запись без сохранения" data-i18n="studioCancel">Отменить</button>
-        <button onclick="stopAndTranscribeRecording()" class="ui-btn h-8 px-4 bg-apple-red hover:bg-apple-red/85 text-white font-semibold">
-          <svg class="w-3 h-3" viewBox="0 0 12 12" fill="currentColor"><rect x="2" y="2" width="8" height="8" rx="1.5"/></svg>
-          <span data-i18n="stopRecBtn">Остановить и расшифровать</span>
-        </button>
-      </div>
-    </div>
-
-    <div class="px-5 py-2.5 flex items-center gap-4 flex-wrap border-b apple-border shrink-0 bg-apple-bg/95">
-      <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label">
-        <input type="checkbox" id="studio-captions-toggle" onchange="studioToggleCaptions(this.checked)" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
-        <span data-i18n="liveCaptionsToggle">Субтитры в реальном времени</span>
-      </label>
-      <label class="flex items-center gap-1.5 text-xs text-apple-secondary">
-        <span data-i18n="studioSpeechLang">Речь</span>
-        <select id="studio-speech" onchange="studioConfigure(true)" data-i18n-title="tipStudioSpeech" title="Язык речи; «Авто» определяет его по каждой фразе"
-          class="h-7 w-[150px] bg-apple-sidebar border apple-border rounded-lg px-2 text-[11.5px] text-white focus:outline-none"></select>
-      </label>
-      <label class="flex items-center gap-1.5 text-xs text-apple-secondary">
-        <span data-i18n="studioTranslateTo">Перевод</span>
-        <select id="studio-translate" onchange="studioConfigure()" class="h-7 w-[150px] bg-apple-sidebar border apple-border rounded-lg px-2 text-[11.5px] text-white focus:outline-none"></select>
-      </label>
-      <!-- Only while translating: how the translation is shown and which model makes it -->
-      <div id="studio-tr-options" class="flex items-center gap-3">
-        <div class="apple-segmented" style="height: 26px;">
-          <button onclick="studioSetView('under')" id="studio-view-under" class="apple-segment-btn text-[11px]" data-i18n="studioViewUnder">Под фразой</button>
-          <button onclick="studioSetView('side')" id="studio-view-side" class="apple-segment-btn text-[11px]" data-i18n="studioViewSide">Рядом</button>
-          <button onclick="studioSetView('tr')" id="studio-view-tr" class="apple-segment-btn text-[11px]" data-i18n="studioViewTr">Только перевод</button>
-        </div>
-        <label class="flex items-center gap-1.5 cursor-pointer text-xs text-apple-label" data-i18n-title="tipStudioSpeed" title="Небольшая модель: быстрее, но перевод проще">
-          <input type="checkbox" id="studio-fast" onchange="studioSetSpeed(this.checked ? 'fast' : 'quality')" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
-          <span data-i18n="studioFastTranslation">Быстрый перевод</span>
-        </label>
-      </div>
-      <div class="flex items-center gap-1">
-        <button onclick="studioFont(-2)" class="ui-btn ui-btn-subtle h-7 !px-2 text-[11px]" data-i18n-title="tipStudioFontSmaller" title="Мельче">A−</button>
-        <button onclick="studioFont(2)" class="ui-btn ui-btn-subtle h-7 !px-2 text-[13px]" data-i18n-title="tipStudioFontLarger" title="Крупнее">A+</button>
-      </div>
-      <span id="studio-status" class="text-[11px] text-apple-tertiary ml-auto"></span>
-    </div>
-
-    <!-- Models in memory (same chips as in the sidebar, which the studio covers) -->
-    <div class="px-5 py-1.5 flex items-center gap-2 border-b apple-border shrink-0 bg-apple-bg/95">
-      <span class="text-[10px] font-mono text-apple-tertiary shrink-0">VRAM</span>
-      <div id="studio-vram-chips" class="flex flex-wrap gap-1"></div>
-    </div>
-
-    <div id="studio-captions" class="flex-1 min-h-0 overflow-y-auto px-8 py-6">
-      <div id="studio-captions-inner" class="max-w-6xl mx-auto space-y-4"></div>
-    </div>
-  </div>
-
-  <!-- =========================================================================
        LEFT SIDEBAR (Willow Brand Header + Action Buttons + Recordings List)
        ========================================================================= -->
   <aside class="bg-apple-sidebar border-r apple-border flex flex-col shrink-0 overflow-hidden" style="width: 312px;">
@@ -134,6 +62,24 @@
         </button>
       </div>
 
+      <!-- Processor and memory load of the computer (app/sysinfo.py) -->
+      <div id="sys-row" class="hidden grid grid-cols-2 gap-x-3">
+        <div class="flex items-center gap-2 min-w-0" data-i18n-title="tipCpuUsage" title="Загрузка процессора всеми программами">
+          <span class="text-[10px] font-mono text-apple-tertiary shrink-0 w-7">CPU</span>
+          <div class="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
+            <div id="cpu-bar" class="h-full bg-apple-green/70 transition-all duration-500" style="width: 0%"></div>
+          </div>
+          <span id="cpu-text" class="text-[10px] font-mono text-apple-secondary shrink-0 w-8 text-right"></span>
+        </div>
+        <div class="flex items-center gap-2 min-w-0" id="ram-cell">
+          <span class="text-[10px] font-mono text-apple-tertiary shrink-0">RAM</span>
+          <div class="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
+            <div id="ram-bar" class="h-full bg-apple-amber/70 transition-all duration-500" style="width: 0%"></div>
+          </div>
+          <span id="ram-text" class="text-[10px] font-mono text-apple-secondary shrink-0"></span>
+        </div>
+      </div>
+
       <!-- Models currently in video memory; click a chip to unload it (or to load it in advance) -->
       <div id="vram-row" class="hidden space-y-1.5">
         <div class="flex items-center gap-2" data-i18n-title="tipVramUsage" title="Видеопамять, занятая всеми программами">
@@ -146,7 +92,23 @@
         <div id="vram-chips" class="flex flex-wrap gap-1"></div>
       </div>
 
-      <!-- Sidebar Header Row 2: Symmetrical Record & Import Buttons -->
+      <!-- The three parts of the app: the library, the recording studio and questions about recordings -->
+      <div class="apple-segmented w-full app-nav" role="tablist">
+        <button onclick="switchAppView('library')" id="nav-library" class="apple-segment-btn apple-segment-active" data-i18n-title="tipNavLibrary" title="Записи, расшифровки и анализ">
+          <span data-i18n="navLibrary">Медиатека</span>
+        </button>
+        <button onclick="switchAppView('studio')" id="nav-studio" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n-title="tipNavStudio" title="Запись звука с субтитрами и переводом в реальном времени">
+          <span id="nav-studio-dot" class="hidden w-1.5 h-1.5 rounded-full bg-apple-red animate-pulse mr-1.5"></span><span id="nav-studio-label" data-i18n="navStudio">Студия</span>
+        </button>
+        <button onclick="switchAppView('ask')" id="nav-ask" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n-title="tipNavAsk" title="Вопросы к одной записи, к папке или ко всей медиатеке">
+          <span data-i18n="navAsk">Вопросы</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ===== Sidebar: library ===== -->
+    <div id="side-library" class="flex-1 min-h-0 flex flex-col">
+      <div class="px-3.5 pt-2.5">
       <div class="grid grid-cols-2 gap-2">
         <!-- One click records with the default preset; the arrow lists the presets (quickRecord in app.js) -->
         <div class="relative flex h-8">
@@ -175,7 +137,7 @@
           <span data-i18n="add">Импорт</span>
         </button>
       </div>
-    </div>
+      </div>
 
     <!-- Global Full-Text Search Across All Recordings -->
     <div class="px-3 pt-2.5 pb-1">
@@ -204,14 +166,115 @@
     </div>
 
     <!-- Sidebar Section Header -->
-    <div class="px-4 pt-2 pb-1 flex items-center justify-between">
+    <div class="px-4 pt-2 pb-1 flex items-center justify-between gap-2">
       <span class="text-[11px] font-semibold text-apple-secondary uppercase tracking-wider" data-i18n="recordings">Медиатека</span>
-      <span class="text-[10px] text-apple-tertiary" data-i18n="rightClickHint">Правый клик — меню</span>
+      <span class="flex items-center gap-1.5 min-w-0">
+        <span class="text-[10px] text-apple-tertiary truncate" data-i18n="rightClickHint">Правый клик — меню</span>
+        <button onclick="createFolderPrompt(null)" data-i18n-title="tipNewFolder" title="Новая папка"
+          class="shrink-0 p-1 rounded-md text-apple-secondary hover:text-white hover:bg-white/10 transition">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10.5v6m3-3H9m4.06-7.19l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
+        </button>
+      </span>
     </div>
 
-    <!-- Recordings List (Supports Left-Click to select, Right-Click for Context Menu) -->
-    <div id="meetings-list" class="flex-1 overflow-y-auto px-2.5 py-1 space-y-0.5">
+    <!-- Recordings in folders (drag recordings and folders to sort them; right-click for the menu) -->
+    <div id="meetings-list" class="flex-1 overflow-y-auto px-2.5 py-1 space-y-0.5"
+      ondragover="libraryDragOver(event, null)" ondragleave="libraryDragLeave(event)" ondrop="libraryDrop(event, null)">
       <!-- Populated dynamically -->
+    </div>
+    </div>
+
+    <!-- ===== Sidebar: studio (what is recorded) ===== -->
+    <div id="side-studio" class="hidden flex-1 min-h-0 overflow-y-auto px-3.5 py-3 space-y-3.5">
+      <div>
+        <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="recPresetLabel">Пресет</label>
+        <div class="flex items-center gap-1">
+          <select id="record-preset-select" onchange="applyRecordPreset(this.value)"
+            class="flex-1 min-w-0 h-8 bg-apple-card border apple-border rounded-lg px-2 text-xs text-white focus:outline-none"></select>
+          <button onclick="setDefaultRecordPreset()" id="rec-preset-default-btn" class="ui-btn ui-btn-subtle h-8 !px-2" data-i18n-title="tipPresetDefault" title="Сделать пресетом по умолчанию для кнопки «Запись»">★</button>
+          <button onclick="saveRecordPresetAs()" class="ui-btn ui-btn-subtle h-8 !px-2" data-i18n-title="tipPresetSaveAs" title="Сохранить текущие параметры как новый пресет">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+          </button>
+          <button onclick="updateRecordPreset()" id="rec-preset-update-btn" class="ui-btn ui-btn-subtle h-8 !px-2" data-i18n-title="tipPresetUpdate" title="Записать текущие параметры в выбранный пресет">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+          </button>
+          <button onclick="deleteRecordPreset()" id="rec-preset-delete-btn" class="ui-btn ui-btn-subtle h-8 !px-2 text-apple-red" data-i18n-title="tipPresetDelete" title="Удалить пресет">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="recSourceModeLabel">Источник записи</label>
+        <select id="record-source-select" onchange="syncRecordModalToSettings()"
+          data-i18n-title="tipRecordSourceSelect" title="Выберите источник записи: микрофон, системный звук (динамики) или оба канала"
+          class="w-full h-8 bg-apple-card border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
+          <option value="mic" data-i18n="sourceMic">Только микрофон</option>
+          <option value="system" data-i18n="sourceSystem">Системный звук</option>
+          <option value="both" data-i18n="sourceBoth">Микрофон и системный звук</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="recMicDeviceLabel">Микрофон</label>
+        <select id="record-mic-select" onchange="syncRecordModalToSettings()"
+          data-i18n-title="tipRecordMicSelect" title="Выберите микрофон для записи"
+          class="w-full h-8 bg-apple-card border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none"></select>
+      </div>
+
+      <div>
+        <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="recTitleLabel">Название записи</label>
+        <input id="record-title-input" type="text"
+          data-i18n-title="tipRecordTitleInput" title="Введите название для новой записи"
+          placeholder="Созвон / Голосовая заметка"
+          class="w-full h-8 bg-apple-card border apple-border rounded-lg px-3 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
+      </div>
+
+      <div class="rounded-xl border apple-border bg-black/20 p-3 space-y-2.5">
+        <div class="flex items-center justify-between">
+          <div id="record-timer-display" class="text-xl font-mono font-semibold text-white tracking-wider">00:00</div>
+          <div class="flex items-center gap-2">
+            <span id="record-signal-badge" class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-white/5 text-apple-secondary"></span>
+            <span id="record-db-display" class="text-[11px] font-mono text-apple-secondary w-12 text-right">-60 dB</span>
+          </div>
+        </div>
+        <canvas id="record-waveform-canvas" class="w-full h-12 block"></canvas>
+        <div class="w-full h-1.5 bg-black/50 rounded-full overflow-hidden border border-white/5">
+          <div id="record-level-bar" class="h-full bg-apple-green transition-all duration-75" style="width: 2%"></div>
+        </div>
+        <p id="record-status-hint" class="text-[11px] text-apple-secondary text-center leading-snug" data-i18n="recordWaveHint">Индикатор показывает уровень сигнала выбранного источника в реальном времени</p>
+      </div>
+
+      <div class="space-y-2">
+        <button id="btn-start-rec" onclick="startLiveRecording()"
+          data-i18n-title="tipStartRecBtn" title="Начать запись звука с выбранного источника"
+          class="ui-btn h-9 w-full rounded-lg bg-apple-red hover:bg-apple-red/90 text-white font-semibold shadow-lg">
+          <span id="rec-dot-indicator" class="w-2.5 h-2.5 rounded-full bg-white shrink-0"></span>
+          <span data-i18n="startRecBtn">Начать запись</span>
+        </button>
+        <button id="btn-stop-rec" onclick="stopAndTranscribeRecording()"
+          data-i18n-title="tipStopRecBtn" title="Остановить запись и сразу отправить аудио на распознавание речи"
+          class="hidden ui-btn h-9 w-full rounded-lg bg-apple-blue hover:bg-apple-blueHover text-white font-semibold shadow-lg">
+          <svg class="w-3 h-3 shrink-0" viewBox="0 0 12 12" fill="currentColor"><rect x="2" y="2" width="8" height="8" rx="1.5" /></svg>
+          <span data-i18n="stopRecBtn">Остановить и расшифровать</span>
+        </button>
+        <button id="btn-cancel-rec" onclick="cancelLiveRecording()" data-i18n-title="tipStudioCancel" title="Остановить запись без сохранения"
+          class="hidden ui-btn ui-btn-subtle h-8 w-full" data-i18n="studioCancel">Отменить</button>
+      </div>
+
+      <div class="text-[11px] text-apple-tertiary leading-snug space-y-1">
+        <p id="record-save-hint" class="break-all"></p>
+        <button onclick="openModal('settings', 'record')" class="text-apple-blue hover:underline" data-i18n="recordChangeFolder">Изменить папку для записей…</button>
+      </div>
+    </div>
+
+    <!-- ===== Sidebar: questions (what is asked about) ===== -->
+    <div id="side-ask" class="hidden flex-1 min-h-0 overflow-y-auto px-3.5 py-3 space-y-3">
+      <div>
+        <div class="text-[11px] font-semibold text-apple-secondary uppercase tracking-wider mb-1.5" data-i18n="askScopeTitle">Где искать ответ</div>
+        <div id="ask-scope-list" class="space-y-0.5"></div>
+      </div>
+      <p class="text-[11px] text-apple-tertiary leading-snug" data-i18n="libraryAskIntro">Ответ формирует локальная модель Ollama только по найденным фрагментам расшифровок. Ссылки в ответе открывают запись на нужном моменте.</p>
     </div>
 
     <!-- Background Model Download Widget (Docked in Sidebar so user can work freely while downloading) -->
@@ -283,6 +346,118 @@
        ========================================================================= -->
   <main class="flex-1 flex flex-col overflow-hidden bg-apple-bg select-text relative">
 
+    <!-- =====================================================================
+         STUDIO: recording with large live captions and their translation (studio* in app.js).
+         What is recorded is chosen in the sidebar; how the captions are shown, here.
+         ===================================================================== -->
+    <div id="studio-view" class="hidden flex-1 min-h-0 flex flex-col bg-apple-bg">
+      <div class="h-14 px-5 flex items-center gap-4 border-b apple-border shrink-0 bg-apple-sidebar/95">
+        <span id="studio-rec-dot" class="relative flex w-3 h-3 shrink-0"><span class="studio-ping absolute inset-0 rounded-full bg-apple-red animate-ping opacity-60"></span><span class="relative w-3 h-3 rounded-full bg-apple-red"></span></span>
+        <div class="min-w-0">
+          <div id="studio-heading" class="text-[13px] font-semibold text-white leading-tight" data-i18n="studioIdle">Студия записи</div>
+          <div id="studio-source" class="text-[11px] text-apple-secondary truncate"></div>
+        </div>
+        <div id="studio-timer" class="text-2xl font-mono font-semibold text-white tracking-wider ml-2">00:00</div>
+        <div class="flex-1 flex items-center gap-2 min-w-[90px] max-w-[220px]">
+          <div class="flex-1 h-1.5 bg-black/50 rounded-full overflow-hidden border border-white/5">
+            <div id="studio-level" class="h-full bg-apple-green transition-all duration-75" style="width: 2%"></div>
+          </div>
+          <span id="studio-db" class="text-[11px] font-mono text-apple-secondary w-14 text-right whitespace-nowrap">-60 dB</span>
+        </div>
+        <div class="flex items-center gap-2 shrink-0 ml-auto">
+          <button onclick="toggleStudioFocus()" id="studio-focus-btn" class="ui-btn ui-btn-subtle h-8" data-i18n-title="tipStudioFocus" title="Субтитры на всё окно (Esc — выход)">
+            <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"/></svg>
+            <span id="studio-focus-label" data-i18n="studioFocus">На всё окно</span>
+          </button>
+          <button onclick="cancelLiveRecording()" id="studio-cancel-btn" class="hidden ui-btn ui-btn-subtle h-8" data-i18n-title="tipStudioCancel" title="Остановить запись без сохранения" data-i18n="studioCancel">Отменить</button>
+          <button onclick="stopAndTranscribeRecording()" id="studio-stop-btn" class="hidden ui-btn h-8 px-4 bg-apple-red hover:bg-apple-red/85 text-white font-semibold">
+            <svg class="w-3 h-3" viewBox="0 0 12 12" fill="currentColor"><rect x="2" y="2" width="8" height="8" rx="1.5"/></svg>
+            <span data-i18n="stopRecBtn">Остановить и расшифровать</span>
+          </button>
+          <button onclick="startLiveRecording()" id="studio-start-btn" class="ui-btn h-8 px-4 bg-apple-red hover:bg-apple-red/85 text-white font-semibold">
+            <svg class="w-3 h-3" viewBox="0 0 12 12" fill="currentColor"><circle cx="6" cy="6" r="4"/></svg>
+            <span data-i18n="startRecBtn">Начать запись</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="px-5 py-2.5 flex items-center gap-4 flex-wrap border-b apple-border shrink-0 bg-apple-bg/95">
+        <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label" data-i18n-title="tipLiveCaptions"
+          title="Показывать текст речи во время записи. После остановки запись, как обычно, расшифровывается полностью и точнее">
+          <input type="checkbox" id="live-captions-toggle" onchange="studioToggleCaptions(this.checked)" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <span data-i18n="liveCaptionsToggle">Субтитры в реальном времени</span>
+        </label>
+        <label class="flex items-center gap-1.5 text-xs text-apple-secondary">
+          <span data-i18n="studioSpeechLang">Речь</span>
+          <select id="studio-speech" onchange="studioConfigure(true)" data-i18n-title="tipStudioSpeech" title="Язык речи; «Авто» определяет его по каждой фразе"
+            class="h-7 w-[150px] bg-apple-sidebar border apple-border rounded-lg px-2 text-[11.5px] text-white focus:outline-none"></select>
+        </label>
+        <label class="flex items-center gap-1.5 text-xs text-apple-secondary">
+          <span data-i18n="studioTranslateTo">Перевод</span>
+          <select id="live-translate-select" onchange="studioConfigure()" data-i18n-title="tipLiveTranslate" title="Переводить субтитры на другой язык через локальную модель Ollama"
+            class="h-7 w-[150px] bg-apple-sidebar border apple-border rounded-lg px-2 text-[11.5px] text-white focus:outline-none"></select>
+        </label>
+        <!-- Only while translating: how the translation is shown and which model makes it -->
+        <div id="studio-tr-options" class="flex items-center gap-3">
+          <div class="apple-segmented" style="height: 26px;">
+            <button onclick="studioSetView('under')" id="studio-view-under" class="apple-segment-btn text-[11px]" data-i18n="studioViewUnder">Под фразой</button>
+            <button onclick="studioSetView('side')" id="studio-view-side" class="apple-segment-btn text-[11px]" data-i18n="studioViewSide">Рядом</button>
+            <button onclick="studioSetView('tr')" id="studio-view-tr" class="apple-segment-btn text-[11px]" data-i18n="studioViewTr">Только перевод</button>
+          </div>
+          <label class="flex items-center gap-1.5 cursor-pointer text-xs text-apple-label" data-i18n-title="tipStudioSpeed" title="Небольшая модель: быстрее, но перевод проще">
+            <input type="checkbox" id="studio-fast" onchange="studioSetSpeed(this.checked ? 'fast' : 'quality')" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <span data-i18n="studioFastTranslation">Быстрый перевод</span>
+          </label>
+        </div>
+        <div class="flex items-center gap-1">
+          <button onclick="studioFont(-2)" class="ui-btn ui-btn-subtle h-7 !px-2 text-[11px]" data-i18n-title="tipStudioFontSmaller" title="Мельче">A−</button>
+          <button onclick="studioFont(2)" class="ui-btn ui-btn-subtle h-7 !px-2 text-[13px]" data-i18n-title="tipStudioFontLarger" title="Крупнее">A+</button>
+        </div>
+        <span id="studio-status" class="text-[11px] text-apple-tertiary ml-auto"></span>
+      </div>
+
+      <!-- Models in memory: shown here when the studio covers the whole window -->
+      <div class="studio-focus-only px-5 py-1.5 flex items-center gap-2 border-b apple-border shrink-0 bg-apple-bg/95">
+        <span class="text-[10px] font-mono text-apple-tertiary shrink-0">VRAM</span>
+        <div id="studio-vram-chips" class="flex flex-wrap gap-1"></div>
+      </div>
+
+      <div id="studio-captions" class="flex-1 min-h-0 overflow-y-auto px-8 py-6">
+        <div id="studio-captions-inner" class="max-w-6xl mx-auto">
+          <div id="studio-cap-head" class="hidden grid grid-cols-2 gap-8 text-[11px] uppercase tracking-wider text-apple-tertiary sticky top-0 bg-apple-bg/95 py-1 mb-2 z-10">
+            <div id="studio-cap-head-orig"></div><div id="studio-cap-head-tr"></div>
+          </div>
+          <div id="studio-cap-rows" class="cap-rows"></div>
+          <div id="studio-cap-empty" class="text-center text-apple-tertiary text-sm pt-16"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- =====================================================================
+         QUESTIONS: answers from one recording, a folder or the whole library (ask* in app.js)
+         ===================================================================== -->
+    <div id="ask-view" class="hidden flex-1 min-h-0 flex flex-col bg-apple-bg">
+      <div class="px-6 pt-5 pb-4 border-b apple-border shrink-0 bg-apple-sidebar/60">
+        <div class="max-w-3xl mx-auto space-y-2.5">
+          <div class="flex items-baseline justify-between gap-3">
+            <h2 class="text-[15px] font-semibold text-white" data-i18n="askTitle">Вопросы по записям</h2>
+            <span id="ask-scope-label" class="text-[11px] text-apple-secondary truncate"></span>
+          </div>
+          <div class="flex items-center gap-2">
+            <input id="library-question" type="text" onkeydown="if(event.key==='Enter') askLibrary()"
+              data-i18n-placeholder="libraryAskPlaceholder" placeholder="Например: что решили по срокам релиза?"
+              class="flex-1 h-9 bg-apple-card border apple-border rounded-lg px-3.5 text-[13px] text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
+            <button onclick="askLibrary()" id="library-ask-btn" class="ui-btn ui-btn-primary h-9 px-4"><svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg><span data-i18n="askBtn">Спросить</span></button>
+          </div>
+        </div>
+      </div>
+      <div id="library-answer" class="flex-1 min-h-0 overflow-y-auto px-6 py-5">
+        <div id="ask-thread" class="max-w-3xl mx-auto space-y-4"></div>
+      </div>
+    </div>
+
+    <div id="library-view" class="flex-1 min-h-0 flex flex-col overflow-hidden">
+
     <!-- EMPTY STATE: Shown when no recording is selected -->
     <div id="workspace-empty" class="flex-1 flex flex-col items-center justify-center p-10">
       <div class="w-full max-w-2xl text-center">
@@ -345,6 +520,10 @@
             data-i18n-title="tipTabSpeakers"
             title="Управление участниками, прослушивание образцов голоса и переименование"
             class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="tabSpeakers">Участники</button>
+          <button onclick="switchWorkspaceTab('info')" id="wtab-info"
+            data-i18n-title="tipTabInfo"
+            title="Где лежит файл, его формат, даты и состояние обработки"
+            class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="tabInfo">Сведения</button>
         </div>
 
         <!-- Right: Translation menu (text translation / voice dub) + Document Export Menu -->
@@ -382,17 +561,8 @@
               <span data-i18n="export">Экспорт</span>
             </button>
 
-            <div id="export-menu" class="hidden absolute right-0 mt-1.5 w-48 macos-menu z-40">
-              <div class="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-apple-secondary" data-i18n="exportFormat">Сохранить как</div>
-              <button onclick="exportCurrentMeeting('docx')" data-i18n-title="tipExportDocx" title="Сохранить как документ Microsoft Word (.docx)" class="macos-menu-item"><span>Word (.docx)</span><span class="text-[11px] opacity-60">DOCX</span></button>
-              <button onclick="exportCurrentMeeting('md')" data-i18n-title="tipExportMd" title="Сохранить в формате Markdown (.md)" class="macos-menu-item"><span>Markdown (.md)</span><span class="text-[11px] opacity-60">MD</span></button>
-              <button onclick="exportCurrentMeeting('txt')" data-i18n-title="tipExportTxt" title="Сохранить как обычный текст (.txt)" class="macos-menu-item"><span>Text (.txt)</span><span class="text-[11px] opacity-60">TXT</span></button>
-              <button onclick="exportCurrentMeeting('srt')" data-i18n-title="tipExportSrt" title="Сохранить субтитры с таймкодами (.srt)" class="macos-menu-item"><span>Subtitles (.srt)</span><span class="text-[11px] opacity-60">SRT</span></button>
-              <button onclick="exportCurrentMeeting('json')" data-i18n-title="tipExportJson" title="Сохранить структурированные данные (.json)" class="macos-menu-item"><span>JSON (.json)</span><span class="text-[11px] opacity-60">JSON</span></button>
-              <!-- Filled by renderDubExportMenu() when the recording has dubs -->
-              <div id="export-dub-section"></div>
-              <div id="export-menu-translated"></div>
-            </div>
+            <!-- Every export in one place (renderExportMenu in app.js); what is not made yet is made first -->
+            <div id="export-menu" class="hidden absolute right-0 mt-1.5 w-80 macos-menu z-40 max-h-[75vh] overflow-y-auto" onclick="event.stopPropagation()"></div>
           </div>
         </div>
       </header>
@@ -589,6 +759,11 @@
         </div>
       </div>
 
+      <!-- TAB 4: FILE DETAILS -->
+      <div id="wview-info" class="hidden flex-1 overflow-y-auto px-6 py-6 tab-pane-anim">
+        <div id="info-content" class="max-w-2xl mx-auto space-y-4"></div>
+      </div>
+
       <!-- =====================================================================
            UNIFIED BOTTOM MEDIA DOCK:
            1. Attached Video Frame (directly above transport controls)
@@ -733,6 +908,7 @@
       </footer>
 
     </div>
+    </div>
   </main>
 
   <!-- =========================================================================
@@ -801,6 +977,16 @@
     <button onclick="ctxDeleteRecording()" data-i18n-title="tipCtxDelete" title="Безвозвратно удалить запись из списка" class="macos-menu-item macos-menu-item-danger">
       <span data-i18n="ctxDelete">Удалить запись</span>
     </button>
+  </div>
+
+  <!-- Folder menu in the library (openFolderMenu in app.js) -->
+  <div id="folder-context-menu" class="hidden fixed w-52 macos-menu z-50" onclick="event.stopPropagation()">
+    <div id="fctx-title" class="px-2.5 py-1 text-[11px] font-semibold text-apple-secondary truncate border-b border-white/10 mb-1"></div>
+    <button onclick="fctxRename()" class="macos-menu-item"><span data-i18n="folderRename">Переименовать…</span></button>
+    <button onclick="fctxNewSubfolder()" class="macos-menu-item"><span data-i18n="folderNewSub">Новая вложенная папка…</span></button>
+    <button onclick="fctxAsk()" class="macos-menu-item"><span data-i18n="folderAsk">Спросить по папке…</span></button>
+    <div class="my-1 border-t border-white/10"></div>
+    <button id="fctx-delete" onclick="fctxDelete()" class="macos-menu-item macos-menu-item-danger"><span data-i18n="folderDelete">Удалить папку</span></button>
   </div>
 
   <!-- =========================================================================
@@ -876,28 +1062,6 @@
           </div>
         </div>
       </div>
-    </div>
-  </div>
-
-  <!-- =========================================================================
-       MODAL 2: PER-FILE RECONFIGURE & RE-RUN
-       ========================================================================= -->
-  <div id="modal-library" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4" onclick="closeModalOnBackdrop(event, 'library')">
-    <div class="w-full max-w-2xl bg-apple-card border apple-border rounded-2xl shadow-2xl overflow-hidden modal-card flex flex-col max-h-[85vh]">
-      <div class="p-6 pb-4 space-y-3 shrink-0">
-        <div class="flex items-center justify-between">
-          <h3 class="text-sm font-semibold text-white" data-i18n="libraryAskTitle">Вопрос по медиатеке</h3>
-          <button onclick="closeModal('library')" data-i18n-title="tipCloseModal" title="Закрыть окно" class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
-        </div>
-        <p class="text-[11.5px] text-apple-secondary leading-snug" data-i18n="libraryAskIntro">Ответ формирует локальная модель Ollama только по найденным фрагментам расшифровок. Ссылки в ответе открывают запись на нужном моменте.</p>
-        <div class="flex items-center gap-2">
-          <input id="library-question" type="text" onkeydown="if(event.key==='Enter') askLibrary()"
-            data-i18n-placeholder="libraryAskPlaceholder" placeholder="Например: что решили по срокам релиза?"
-            class="flex-1 h-8 bg-apple-sidebar border apple-border rounded-lg px-3 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
-          <button onclick="askLibrary()" id="library-ask-btn" class="ui-btn ui-btn-primary h-8 px-4"><svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg><span data-i18n="askBtn">Спросить</span></button>
-        </div>
-      </div>
-      <div id="library-answer" class="px-6 pb-6 overflow-y-auto min-h-0"></div>
     </div>
   </div>
 
@@ -1198,6 +1362,7 @@
           <button onclick="selectSettingsTab('record')" id="stab-record" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabRecord">Запись</button>
           <button onclick="selectSettingsTab('recognition')" id="stab-recognition" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabRecognition">Распознавание</button>
           <button onclick="selectSettingsTab('analysis')" id="stab-analysis" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabAnalysis">Анализ</button>
+          <button onclick="selectSettingsTab('export')" id="stab-export" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabExport">Экспорт</button>
           <button onclick="selectSettingsTab('dub')" id="stab-dub" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabDub">Дубляж</button>
         </div>
       </div>
@@ -1246,23 +1411,44 @@
           <button id="ffmpeg-download-btn" onclick="installFfmpeg()" class="hidden ui-btn ui-btn-primary shrink-0" data-i18n="ffmpegDownloadBtn">Скачать FFmpeg</button>
         </div>
 
-        <!-- Export Folder -->
+        <!-- Memory: models are freed after a while without use (app/idle_unload.py) -->
         <div class="space-y-2 pb-4 border-b apple-border">
           <div>
-            <h4 class="text-xs font-semibold text-white" data-i18n="exportDirTitle">Папка для экспорта</h4>
-            <p class="text-[11px] text-apple-secondary leading-snug" data-i18n="exportDirDesc">При каждом экспорте открывается окно «Сохранить как». Эта папка предлагается первой и автоматически запоминается последняя выбранная.</p>
+            <h4 class="text-xs font-semibold text-white" data-i18n="idleUnloadTitle">Освобождение памяти</h4>
+            <p class="text-[11px] text-apple-secondary leading-snug" data-i18n="idleUnloadDesc">Модели распознавания и анализа выгружаются из видеопамяти и ОЗУ, если программа ими не пользуется указанное время. При следующей задаче они загрузятся снова — это занимает несколько секунд.</p>
           </div>
           <div class="flex items-center gap-2">
-            <div id="set-export-dir" class="flex-1 min-w-0 h-8 leading-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono truncate"></div>
-            <button onclick="pickExportDir()" data-i18n-title="tipExportDirPick" title="Выбрать папку, которая предлагается по умолчанию при сохранении файлов"
-              class="ui-btn ui-btn-subtle h-8 px-3 text-[11px] shrink-0" data-i18n="exportDirPickBtn">Выбрать…</button>
-            <button onclick="openExportDir()" data-i18n-title="tipExportDirOpen" title="Открыть папку экспорта в проводнике"
-              class="ui-btn ui-btn-subtle h-8 px-3 text-[11px] shrink-0" data-i18n="exportDirOpenBtn">Открыть</button>
+            <select id="set-idle-unload" class="h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
+              <option value="0" data-i18n="idleUnloadNever">Не выгружать</option>
+              <option value="1">1 min</option>
+              <option value="5">5 min</option>
+              <option value="10">10 min</option>
+              <option value="15">15 min</option>
+              <option value="30">30 min</option>
+              <option value="60">60 min</option>
+            </select>
+            <button onclick="unloadAllModelsNow()" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px]" data-i18n="idleUnloadNow">Выгрузить сейчас</button>
+            <span id="idle-unload-status" class="text-[11px] text-apple-tertiary"></span>
           </div>
         </div>
         </div>
 
         <div data-stab="record" class="space-y-5 hidden">
+        <!-- Where recordings made in the app are kept -->
+        <div class="space-y-2 pb-4 border-b apple-border">
+          <div>
+            <h4 class="text-xs font-semibold text-white" data-i18n="recDirTitle">Папка для записей</h4>
+            <p class="text-[11px] text-apple-secondary leading-snug" data-i18n="recDirDesc">Сюда сохраняются записи, сделанные в студии. Импортированные файлы копируются в папку данных программы, а файлы, добавленные по пути, остаются на своём месте.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <div id="set-recordings-dir" class="flex-1 min-w-0 h-8 leading-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono truncate"></div>
+            <button onclick="pickRecordingsDir()" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px] shrink-0" data-i18n="exportDirPickBtn">Выбрать…</button>
+            <button onclick="openRecordingsDir()" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px] shrink-0" data-i18n="exportDirOpenBtn">Открыть</button>
+            <button onclick="resetRecordingsDir()" id="recdir-reset-btn" class="hidden ui-btn ui-btn-subtle h-8 px-2.5 text-[11px] shrink-0" data-i18n-title="tipRecDirReset" title="Вернуть папку по умолчанию" data-i18n="recDirReset">Сбросить</button>
+          </div>
+          <p id="set-imports-dir" class="text-[11px] text-apple-tertiary break-all"></p>
+        </div>
+
         <!-- Section 1: Audio Recording & Input Source Settings -->
         <div class="space-y-3 pb-4 border-b apple-border">
           <div>
@@ -1375,28 +1561,34 @@
               <option value="int8">int8 (Compact / CPU)</option>
             </select>
           </div>
-          <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label" data-i18n-title="tipDiarizationToggle" title="Автоматически разделять участников разговора по тембру голоса">
-            <input type="checkbox" id="set-diarization" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
-            <span data-i18n="diarizationToggle">Разделение участников по голосам</span>
-          </label>
-          <div class="rounded-lg border apple-border bg-white/[0.02] px-3 py-2.5 space-y-2">
-            <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label" data-i18n-title="tipVoiceProfilesToggle"
-              title="Когда вы называете участника по имени, его голос запоминается, и в новых записях он получает это имя автоматически">
-              <input type="checkbox" id="set-voice-profiles" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
-              <span data-i18n="voiceProfilesToggle">Запоминать голоса участников</span>
+        </div>
+
+        <!-- Processing options: one column, the same spacing everywhere; voice profiles belong to speaker separation -->
+        <div class="pt-3 border-t apple-border space-y-1">
+          <div class="settings-toggle">
+            <label class="flex items-center gap-2.5 cursor-pointer text-xs text-apple-label" data-i18n-title="tipDiarizationToggle" title="Автоматически разделять участников разговора по тембру голоса">
+              <input type="checkbox" id="set-diarization" checked onchange="syncVoiceProfilesToggle()" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+              <span data-i18n="diarizationToggle">Разделение участников по голосам</span>
             </label>
-            <p class="text-[11px] text-apple-tertiary leading-snug" data-i18n="voiceProfilesHint">Голос запоминается, когда вы указываете имя участника. В новых записях похожий голос получает это имя автоматически. Отпечатки голосов хранятся только в базе на этом компьютере.</p>
-            <div id="voice-profiles-list" class="space-y-1"></div>
+            <div id="voice-profiles-box" class="mt-2 ml-6 rounded-lg border apple-border bg-white/[0.02] px-3 py-2.5 space-y-2">
+              <label class="flex items-center gap-2.5 cursor-pointer text-xs text-apple-label" data-i18n-title="tipVoiceProfilesToggle"
+                title="Когда вы называете участника по имени, его голос запоминается, и в новых записях он получает это имя автоматически">
+                <input type="checkbox" id="set-voice-profiles" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+                <span data-i18n="voiceProfilesToggle">Запоминать голоса участников</span>
+              </label>
+              <p class="text-[11px] text-apple-tertiary leading-snug" data-i18n="voiceProfilesHint">Голос запоминается, когда вы указываете имя участника. В новых записях похожий голос получает это имя автоматически. Отпечатки голосов хранятся только в базе на этом компьютере.</p>
+              <div id="voice-profiles-list" class="space-y-1"></div>
+            </div>
           </div>
-          <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label" data-i18n-title="tipVadToggle" title="Отсекать пустые паузы и тишину нейросетью Silero VAD">
+          <label class="settings-toggle flex items-center gap-2.5 cursor-pointer text-xs text-apple-label" data-i18n-title="tipVadToggle" title="Отсекать пустые паузы и тишину нейросетью Silero VAD">
             <input type="checkbox" id="set-vad" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
             <span data-i18n="vadToggle">Фильтр тишины (Silero VAD)</span>
           </label>
-          <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label" data-i18n-title="tipAudioEnhanceToggle" title="Применять фильтр подавления фонового шума, щелчков и выравнивания громкости перед распознаванием">
+          <label class="settings-toggle flex items-center gap-2.5 cursor-pointer text-xs text-apple-label" data-i18n-title="tipAudioEnhanceToggle" title="Применять фильтр подавления фонового шума, щелчков и выравнивания громкости перед распознаванием">
             <input type="checkbox" id="set-audio-enhance" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
             <span data-i18n="audioEnhanceToggle">Шумоподавление и выравнивание громкости</span>
           </label>
-          <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label" data-i18n-title="tipCleanFillersToggle" title="Автоматически убирать звуки «э-э», «ммм», «ну типа» и повторы при расшифровке">
+          <label class="settings-toggle flex items-center gap-2.5 cursor-pointer text-xs text-apple-label" data-i18n-title="tipCleanFillersToggle" title="Автоматически убирать звуки «э-э», «ммм», «ну типа» и повторы при расшифровке">
             <input type="checkbox" id="set-clean-fillers" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
             <span data-i18n="cleanFillersToggle">Удалять слова-паразиты и запинки</span>
           </label>
@@ -1456,10 +1648,84 @@
             </div>
           </div>
 
-          <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-secondary pt-1" data-i18n-title="tipAutoSummaryToggle" title="Генерировать структурированный протокол автоматически сразу после завершения транскрибации">
+          <label class="settings-toggle flex items-center gap-2.5 cursor-pointer text-xs text-apple-label" data-i18n-title="tipAutoSummaryToggle" title="Генерировать структурированный протокол автоматически сразу после завершения транскрибации">
             <input type="checkbox" id="set-auto-summary" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
             <span data-i18n="autoSummaryToggle">Создавать обзор автоматически после расшифровки</span>
           </label>
+          <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
+            <input type="checkbox" id="set-auto-title" checked class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <span><span data-i18n="autoTitleToggle">Называть записи по содержанию</span>
+              <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="autoTitleHint">Если у записи безликое название («Запись 14-05», «zoom_0», «VID_2024…»), после расшифровки модель придумает его по тексту. Названия, которые вы ввели сами, не меняются.</span></span>
+          </label>
+        </div>
+        </div>
+
+        <div data-stab="export" class="space-y-5 hidden">
+        <!-- Export Folder -->
+        <div class="space-y-2 pb-4 border-b apple-border">
+          <div>
+            <h4 class="text-xs font-semibold text-white" data-i18n="exportDirTitle">Папка для экспорта</h4>
+            <p class="text-[11px] text-apple-secondary leading-snug" data-i18n="exportDirDesc">При каждом экспорте открывается окно «Сохранить как». Эта папка предлагается первой и автоматически запоминается последняя выбранная.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <div id="set-export-dir" class="flex-1 min-w-0 h-8 leading-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono truncate"></div>
+            <button onclick="pickExportDir()" data-i18n-title="tipExportDirPick" title="Выбрать папку, которая предлагается по умолчанию при сохранении файлов"
+              class="ui-btn ui-btn-subtle h-8 px-3 text-[11px] shrink-0" data-i18n="exportDirPickBtn">Выбрать…</button>
+            <button onclick="openExportDir()" data-i18n-title="tipExportDirOpen" title="Открыть папку экспорта в проводнике"
+              class="ui-btn ui-btn-subtle h-8 px-3 text-[11px] shrink-0" data-i18n="exportDirOpenBtn">Открыть</button>
+          </div>
+        </div>
+
+        <!-- Obsidian vault (app/obsidian.py) -->
+        <div class="space-y-3">
+          <div class="flex items-center justify-between gap-2">
+            <div>
+              <h4 class="text-xs font-semibold text-white" data-i18n="obsTitle">Obsidian</h4>
+              <p class="text-[11px] text-apple-secondary leading-snug" data-i18n="obsDesc">Заметка на каждую встречу в формате Markdown: свойства (дата, участники, длительность), резюме, обзор, задачи чек-листом и расшифровка с таймкодами.</p>
+            </div>
+            <span id="obs-pill" class="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-white/5 text-apple-secondary shrink-0"></span>
+          </div>
+          <div>
+            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="obsVaultLabel">Папка хранилища (vault)</label>
+            <div class="flex items-center gap-2">
+              <div id="set-obsidian-vault" class="flex-1 min-w-0 h-8 leading-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono truncate"></div>
+              <button onclick="pickObsidianVault()" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px] shrink-0" data-i18n="exportDirPickBtn">Выбрать…</button>
+              <button onclick="openObsidianFolder()" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px] shrink-0" data-i18n="exportDirOpenBtn">Открыть</button>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="obsSubfolderLabel">Папка внутри хранилища</label>
+              <input id="set-obsidian-subfolder" type="text" placeholder="VerbaScribe" oninput="updateObsidianPreview()"
+                class="w-full h-8 bg-apple-sidebar border apple-border rounded-lg px-3 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="obsFilenameLabel">Имя файла</label>
+              <input id="set-obsidian-filename" type="text" placeholder="{date} {title}" oninput="updateObsidianPreview()"
+                class="w-full h-8 bg-apple-sidebar border apple-border rounded-lg px-3 text-xs text-white font-mono placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
+            </div>
+          </div>
+          <p id="obs-preview" class="text-[11px] text-apple-tertiary leading-snug break-all"></p>
+          <div class="space-y-0.5">
+            <label class="settings-toggle flex items-center gap-2.5 cursor-pointer text-xs text-apple-label">
+              <input type="checkbox" id="set-obsidian-auto" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+              <span data-i18n="obsAutoToggle">Сохранять заметку автоматически после обработки</span>
+            </label>
+            <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
+              <input type="checkbox" id="set-obsidian-generate" checked class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+              <span><span data-i18n="obsGenerateToggle">Создавать обзор и задачи для заметки, если их ещё нет</span>
+                <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="obsGenerateHint">Через локальную модель Ollama; без неё заметка сохранится с тем, что уже есть.</span></span>
+            </label>
+          </div>
+          <div>
+            <div class="text-[11px] text-apple-secondary mb-1" data-i18n="obsIncludeLabel">Что включать в заметку</div>
+            <div class="grid grid-cols-2 gap-x-3">
+              <label class="settings-toggle flex items-center gap-2.5 cursor-pointer text-xs text-apple-label"><input type="checkbox" id="set-obsidian-summary" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" /><span data-i18n="obsIncSummary">Резюме и обзор</span></label>
+              <label class="settings-toggle flex items-center gap-2.5 cursor-pointer text-xs text-apple-label"><input type="checkbox" id="set-obsidian-tasks" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" /><span data-i18n="obsIncTasks">Задачи</span></label>
+              <label class="settings-toggle flex items-center gap-2.5 cursor-pointer text-xs text-apple-label"><input type="checkbox" id="set-obsidian-chapters" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" /><span data-i18n="obsIncChapters">Главы</span></label>
+              <label class="settings-toggle flex items-center gap-2.5 cursor-pointer text-xs text-apple-label"><input type="checkbox" id="set-obsidian-transcript" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" /><span data-i18n="obsIncTranscript">Расшифровка</span></label>
+            </div>
+          </div>
         </div>
         </div>
 
@@ -1589,145 +1855,6 @@
             data-i18n-title="tipSaveSettingsBtn"
             title="Сохранить все настройки приложения и закрыть окно"
             class="ui-btn ui-btn-primary h-8 px-5" data-i18n="save">Сохранить</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- =========================================================================
-       MODAL 5: LIVE RECORDER WITH SOUNDCLOUD WAVEFORM & SOURCE PICKER
-       ========================================================================= -->
-  <div id="modal-record" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4" onclick="closeModalOnBackdrop(event, 'record')">
-    <div class="w-full max-w-lg bg-apple-card border apple-border rounded-2xl shadow-2xl overflow-hidden modal-card">
-      <div class="p-6 space-y-4">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-2">
-            <span id="rec-dot-indicator" class="w-2.5 h-2.5 rounded-full bg-apple-red"></span>
-            <h3 class="text-sm font-semibold text-white" data-i18n="recordModalTitle">Запись звука</h3>
-          </div>
-          <button onclick="cancelLiveRecording()" data-i18n-title="tipCloseModal" title="Отменить и закрыть окно записи" class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
-        </div>
-
-        <!-- Recording presets: source, microphone, live captions and their language -->
-        <div>
-          <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="recPresetLabel">Пресет</label>
-          <div class="flex items-center gap-1.5">
-            <select id="record-preset-select" onchange="applyRecordPreset(this.value)"
-              class="flex-1 min-w-0 h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none"></select>
-            <button onclick="setDefaultRecordPreset()" id="rec-preset-default-btn" class="ui-btn ui-btn-subtle h-8 !px-2" data-i18n-title="tipPresetDefault" title="Сделать пресетом по умолчанию для кнопки «Запись»">★</button>
-            <button onclick="saveRecordPresetAs()" class="ui-btn ui-btn-subtle h-8 !px-2" data-i18n-title="tipPresetSaveAs" title="Сохранить текущие параметры как новый пресет">
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
-            </button>
-            <button onclick="updateRecordPreset()" id="rec-preset-update-btn" class="ui-btn ui-btn-subtle h-8 !px-2" data-i18n-title="tipPresetUpdate" title="Записать текущие параметры в выбранный пресет">
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
-            </button>
-            <button onclick="deleteRecordPreset()" id="rec-preset-delete-btn" class="ui-btn ui-btn-subtle h-8 !px-2 text-apple-red" data-i18n-title="tipPresetDelete" title="Удалить пресет">
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
-            </button>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="recSourceModeLabel">Источник записи</label>
-            <select id="record-source-select" onchange="syncRecordModalToSettings()"
-              data-i18n-title="tipRecordSourceSelect"
-              title="Выберите источник записи: микрофон, системный звук (динамики) или оба канала"
-              class="w-full h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
-              <option value="mic" data-i18n="sourceMic">Только микрофон</option>
-              <option value="system" data-i18n="sourceSystem">Системный звук</option>
-              <option value="both" data-i18n="sourceBoth">Микрофон и системный звук</option>
-            </select>
-          </div>
-
-          <div>
-            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="recMicDeviceLabel">Микрофон</label>
-            <select id="record-mic-select" onchange="syncRecordModalToSettings()"
-              data-i18n-title="tipRecordMicSelect"
-              title="Выберите микрофон для записи"
-              class="w-full h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
-            </select>
-          </div>
-        </div>
-
-        <div>
-          <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="recTitleLabel">Название записи</label>
-          <input id="record-title-input" type="text"
-            data-i18n-title="tipRecordTitleInput"
-            title="Введите название для новой записи"
-            placeholder="Созвон / Голосовая заметка"
-            class="w-full h-8 bg-apple-sidebar border apple-border rounded-lg px-3 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
-          <p id="record-save-hint" class="mt-1.5 text-[11px] text-apple-tertiary leading-snug break-all"></p>
-        </div>
-
-        <!-- SoundCloud Live Waveform + Real-time dB Scale Meter -->
-        <div class="bg-apple-sidebar border apple-border rounded-2xl p-4 space-y-3">
-          <div class="flex items-center justify-between">
-            <div id="record-timer-display" class="text-2xl font-mono font-semibold text-white tracking-wider">00:00</div>
-            <div class="flex items-center gap-2">
-              <span id="record-signal-badge" class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-white/5 text-apple-secondary">
-                Ожидание
-              </span>
-              <span id="record-db-display" class="text-xs font-mono text-apple-secondary w-14 text-right">-60 dB</span>
-            </div>
-          </div>
-
-          <!-- SoundCloud Scrolling Bar Waveform Canvas -->
-          <div class="relative rounded-xl bg-black/40 border apple-border p-2">
-            <canvas id="record-waveform-canvas" class="w-full h-20 block"></canvas>
-          </div>
-
-          <!-- Studio Peak Meter Bar with dB Scale -->
-          <div class="space-y-1">
-            <div class="w-full h-2 bg-black/50 rounded-full overflow-hidden border border-white/5">
-              <div id="record-level-bar" class="h-full bg-apple-green transition-all duration-75" style="width: 2%"></div>
-            </div>
-            <div class="flex justify-between text-[9px] font-mono text-apple-tertiary px-0.5">
-              <span>-60 dB</span>
-              <span>-36 dB</span>
-              <span>-18 dB</span>
-              <span>-6 dB</span>
-              <span>0 dB</span>
-            </div>
-          </div>
-
-          <p id="record-status-hint" class="text-[11px] text-apple-secondary text-center" data-i18n="recordWaveHint">Индикатор показывает уровень сигнала выбранного источника в реальном времени</p>
-        </div>
-
-        <!-- Live captions while recording (app/live.py); the full transcription still runs afterwards -->
-        <div class="rounded-xl border apple-border bg-white/[0.02] px-3 py-2.5 space-y-2">
-          <div class="flex items-center justify-between gap-3">
-            <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label" data-i18n-title="tipLiveCaptions"
-              title="Показывать текст речи во время записи. После остановки запись, как обычно, расшифровывается полностью и точнее">
-              <input type="checkbox" id="live-captions-toggle" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" onchange="saveLiveCaptionPrefs()" />
-              <span data-i18n="liveCaptionsToggle">Субтитры в реальном времени</span>
-            </label>
-            <select id="live-translate-select" onchange="saveLiveCaptionPrefs()" data-i18n-title="tipLiveTranslate" title="Переводить субтитры на другой язык через локальную модель Ollama"
-              class="h-7 w-[150px] bg-apple-sidebar border apple-border rounded-lg px-2 text-[11.5px] text-white focus:outline-none"></select>
-          </div>
-          <div id="live-captions" class="hidden max-h-56 overflow-y-auto space-y-1.5 pr-1 text-[13px] leading-snug"></div>
-        </div>
-
-        <div class="flex items-center justify-center gap-3 pt-1">
-          <button id="btn-start-rec" onclick="startLiveRecording()"
-            data-i18n-title="tipStartRecBtn"
-            title="Начать запись звука с выбранного источника"
-            class="ui-btn h-9 px-5 rounded-full bg-apple-red hover:bg-apple-red/90 text-white font-semibold shadow-lg">
-            <svg class="w-3 h-3 shrink-0" viewBox="0 0 12 12" fill="currentColor">
-              <circle cx="6" cy="6" r="4" />
-            </svg>
-            <span data-i18n="startRecBtn">Начать запись</span>
-          </button>
-
-          <button id="btn-stop-rec" onclick="stopAndTranscribeRecording()"
-            data-i18n-title="tipStopRecBtn"
-            title="Остановить запись и сразу отправить аудио на распознавание речи"
-            class="hidden ui-btn h-9 px-5 rounded-full bg-apple-blue hover:bg-apple-blueHover text-white font-semibold shadow-lg">
-            <svg class="w-3 h-3 shrink-0" viewBox="0 0 12 12" fill="currentColor">
-              <rect x="2" y="2" width="8" height="8" rx="1.5" />
-            </svg>
-            <span data-i18n="stopRecBtn">Остановить и расшифровать</span>
-          </button>
         </div>
       </div>
     </div>

@@ -185,6 +185,9 @@ class LiveSession:
         self.audio = np.concatenate([self.audio, chunk])
         self.received += chunk.size / SR
         self.touched = time.time()
+        from app import idle_unload
+
+        idle_unload.touch()
 
     # -------------------------------------------------------------- decoding
     def step(self) -> None:
@@ -240,6 +243,10 @@ class LiveSession:
         if self.translator:
             if new_lines:
                 self.translator.add_lines(new_lines)
+                # The draft translation belonged to the phrase that is final now: the next draft
+                # must not be shown with it (the page keeps it on the final line until its own
+                # translation arrives)
+                self.translator.reset_draft()
             self.translator.set_draft(self.partial)
 
     def configure(self, translate_to: Optional[str], speed: Optional[str], speech_lang: Optional[str] = None) -> None:

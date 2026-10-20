@@ -5,6 +5,12 @@ The question's keywords are looked up in the full-text index of all transcripts 
 ranked by bm25); the best fragments, each with its neighbouring lines and the recording's date,
 go to the local Ollama model, which answers only from them and cites fragments as [n]. The
 answer comes back with the list of fragments, so every citation opens the recording at that moment.
+
+A question can be limited to some recordings (a folder with its subfolders, or one recording).
+When the transcripts of such a scope fit the model's context together, the model reads them in
+full, cut into numbered fragments, instead of only the lines the search found: questions like
+"what were these meetings about?" have no keywords to search for. A larger scope is searched as
+usual, and the overviews of its recordings are added when the search finds little.
 """
 
 import re
@@ -16,6 +22,9 @@ from app.database import _db_lock, get_all_settings, get_connection, get_meeting
 
 MAX_FRAGMENTS = 14
 MAX_CONTEXT_CHARS = 11000
+FULL_MODE_MAX_CHARS = 26000   # a scope this small is given to the model in full
+FULL_FRAGMENT_CHARS = 1100    # size of one numbered fragment in full mode
+SUMMARY_FRAGMENT_CHARS = 1500
 _STOPWORDS = set(
     """
     что как где когда кто какой какая какие каких чем это этот эта эти тот там тут был была были было
@@ -42,21 +51,25 @@ def _terms(question: str) -> List[str]:
     return out[:10]
 
 
-def retrieve(question: str) -> List[Dict[str, Any]]:
+def retrieve(question: str, meeting_ids: Optional[List[int]] = None) -> List[Dict[str, Any]]:
     terms = _terms(question)
-    if not terms:
+    if not terms or meeting_ids == []:
         return []
     match = " OR ".join(f'"{t}"*' for t in terms)
+    scope_sql, scope_args = "", []
+    if meeting_ids is not None:
+        scope_sql = f" AND meeting_id IN ({','.join('?' * len(meeting_ids))})"
+        scope_args = [int(i) for i in meeting_ids]
     with _db_lock:
         conn = get_connection()
         try:
             rows = conn.execute(
-                """
+                f"""
                 SELECT meeting_id, segment_id, start, bm25(segments_fts) AS score
-                FROM segments_fts WHERE segments_fts MATCH ?
+                FROM segments_fts WHERE segments_fts MATCH ?{scope_sql}
                 ORDER BY score LIMIT ?
                 """,
-                (match, MAX_FRAGMENTS * 3),
+                (match, *scope_args, MAX_FRAGMENTS * 3),
             ).fetchall()
         except sqlite3.OperationalError:
             rows = []
@@ -91,7 +104,7 @@ def retrieve(question: str) -> List[Dict[str, Any]]:
         fragments.append({
             "meeting_id": mid,
             "title": m.get("title") or "",
-            "date": (m.get("created_at") or "")[:10],
+            "date": _meeting_date(m),
             "start": float(seg.get("start") or 0.0),
             "speaker": (speakers.get(seg.get("speaker")) or {}).get("name") or seg.get("speaker"),
             "text": (seg.get("text") or "").strip(),
@@ -102,15 +115,91 @@ def retrieve(question: str) -> List[Dict[str, Any]]:
     return fragments
 
 
-def ask_library(question: str, answer_lang: str = "ru", model_name: Optional[str] = None) -> Dict[str, Any]:
+def _speaker_name(speakers: Dict[str, Any], spk: Any) -> str:
+    return (speakers.get(spk) or {}).get("name") or str(spk or "")
+
+
+def full_fragments(meetings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """All lines of the recordings, cut into consecutive fragments of about FULL_FRAGMENT_CHARS."""
+    out: List[Dict[str, Any]] = []
+    for m in meetings:
+        speakers = m.get("speakers") or {}
+        segs = [s for s in m.get("segments") or [] if (s.get("text") or "").strip()]
+        i = 0
+        while i < len(segs):
+            lines, size, j = [], 0, i
+            while j < len(segs) and (not lines or size + len(segs[j].get("text") or "") < FULL_FRAGMENT_CHARS):
+                seg = segs[j]
+                line = f"[{format_timestamp(seg.get('start') or 0.0)}] {_speaker_name(speakers, seg.get('speaker'))}: {(seg.get('text') or '').strip()}"
+                lines.append(line)
+                size += len(line) + 1
+                j += 1
+            first = segs[i]
+            out.append({
+                "meeting_id": int(m["id"]), "title": m.get("title") or "", "date": _meeting_date(m),
+                "start": float(first.get("start") or 0.0), "speaker": _speaker_name(speakers, first.get("speaker")),
+                "text": (first.get("text") or "").strip(), "context": "\n".join(lines),
+            })
+            i = j
+    return out
+
+
+def summary_fragments(meetings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """The overview (or short summary) of each recording, for questions about a whole folder."""
+    out = []
+    for m in meetings:
+        summ = m.get("summaries") or {}
+        text = (summ.get("tldr") or summ.get("protocol") or "").strip()
+        if not text:
+            continue
+        out.append({
+            "meeting_id": int(m["id"]), "title": m.get("title") or "", "date": _meeting_date(m), "start": 0.0,
+            "speaker": "", "text": text.splitlines()[0][:200], "context": "Обзор записи:\n" + text[:SUMMARY_FRAGMENT_CHARS],
+        })
+    return out
+
+
+def _meeting_date(m: Dict[str, Any]) -> str:
+    return (m.get("recorded_at") or m.get("created_at") or "")[:10]
+
+
+def _transcript_chars(m: Dict[str, Any]) -> int:
+    return sum(len(s.get("text") or "") + 24 for s in m.get("segments") or [])
+
+
+def ask_library(
+    question: str,
+    answer_lang: str = "ru",
+    model_name: Optional[str] = None,
+    meeting_ids: Optional[List[int]] = None,
+) -> Dict[str, Any]:
     from app.ollama_client import _lang_phrase, _ollama_chat, ensure_ollama_running, get_ollama_status
 
     question = (question or "").strip()[:1000]
     if not question:
         raise ValueError("Пустой вопрос")
-    fragments = retrieve(question)
+    if meeting_ids is not None and not meeting_ids:
+        raise ValueError("В выбранной папке нет записей")
+
+    mode = "search"
+    max_chars = MAX_CONTEXT_CHARS
+    fragments: List[Dict[str, Any]] = []
+    scope_meetings: List[Dict[str, Any]] = []
+    if meeting_ids is not None:
+        scope_meetings = [m for m in (get_meeting(i) for i in meeting_ids) if m and m.get("segments")]
+        if not scope_meetings:
+            return {"answer": "", "sources": [], "found": False, "mode": mode}
+        if sum(_transcript_chars(m) for m in scope_meetings) <= FULL_MODE_MAX_CHARS:
+            mode = "full"
+            max_chars = FULL_MODE_MAX_CHARS + 4000
+            fragments = full_fragments(scope_meetings)
+    if mode == "search":
+        fragments = retrieve(question, meeting_ids)
+        if meeting_ids is not None and len(fragments) < 3:
+            # Few keyword hits in a folder: its overviews still say what the recordings are about
+            fragments = summary_fragments(scope_meetings)[:MAX_FRAGMENTS] + fragments
     if not fragments:
-        return {"answer": "", "sources": [], "found": False}
+        return {"answer": "", "sources": [], "found": False, "mode": mode}
 
     settings = get_all_settings()
     base_url = (settings.get("ollama_url") or "http://127.0.0.1:11434").replace("localhost", "127.0.0.1").rstrip("/")
@@ -126,18 +215,22 @@ def ask_library(question: str, answer_lang: str = "ru", model_name: Optional[str
     blocks, used = [], 0
     for n, f in enumerate(fragments, start=1):
         block = f"[{n}] «{f['title']}», {f['date']}, {format_timestamp(f['start'])}\n{f['context']}"
-        if used + len(block) > MAX_CONTEXT_CHARS:
+        if used + len(block) > max_chars:
             fragments = fragments[: n - 1]
             break
         blocks.append(block)
         used += len(block)
 
     lang = _lang_phrase(answer_lang)
+    scope_note = (
+        "Ниже — полные расшифровки выбранных записей, разбитые на пронумерованные фрагменты. "
+        if mode == "full" else ""
+    )
     system = (
         "Ты отвечаешь на вопросы по медиатеке расшифровок записей в программе VerbaScribe. "
-        "Используй ТОЛЬКО приведённые фрагменты. Ничего не додумывай. "
+        f"{scope_note}Используй ТОЛЬКО приведённые фрагменты. Ничего не додумывай. "
         "После каждого утверждения ставь ссылку на фрагмент в квадратных скобках, например [2] или [1][3]. "
-        "Если во фрагментах нет ответа, прямо так и скажи. "
+        "Если во фрагментах нет ответа, прямо так и скажи. Не оформляй ответ блоками кода. "
         f"Отвечай {lang}, кратко и по делу, в формате Markdown без эмодзи."
     )
     user = "Фрагменты расшифровок:\n\n" + "\n\n".join(blocks) + f"\n\nВопрос: {question}"
@@ -146,4 +239,4 @@ def ask_library(question: str, answer_lang: str = "ru", model_name: Optional[str
         {k: f[k] for k in ("meeting_id", "title", "date", "start", "speaker", "text")} | {"n": n}
         for n, f in enumerate(fragments, start=1)
     ]
-    return {"answer": answer, "sources": sources, "found": True, "model": model}
+    return {"answer": answer, "sources": sources, "found": True, "model": model, "mode": mode}
