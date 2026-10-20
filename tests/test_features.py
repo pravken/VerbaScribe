@@ -311,3 +311,36 @@ class WatchFolderTest(unittest.TestCase):
         self.assertEqual([p.name for p in added], ["new.m4a"])
         self.assertEqual(wf.scan_once(added.append, now=1000), 0)  # never twice
         db.update_settings({"watch_folder": "", "watch_folder_baseline": ""})
+
+
+class MediaCutTest(unittest.TestCase):
+    def test_speech_intervals_shorten_pauses(self):
+        from app.media_cut import PAD_SEC, speech_intervals
+
+        w = lambda a, b: {"word": " x", "start": a, "end": b}
+        segs = [{"text": "a b", "words": [w(1.0, 1.4), w(1.6, 2.0)]}, {"text": "c", "words": [w(10.0, 10.5)]}]
+        self.assertEqual(speech_intervals(segs, 20.0), [(1.0 - PAD_SEC, 2.0 + PAD_SEC), (10.0 - PAD_SEC, 10.5 + PAD_SEC)])
+
+    def test_parse_moments(self):
+        from app.media_cut import parse_moments
+
+        got = parse_moments("1. 01:05-01:40 | Решили перенести релиз\n- 1:02:00 - 1:02:03 | Задача\nмусор", 4000)
+        self.assertEqual(got[0], {"start": 65.0, "end": 100.0, "title": "Решили перенести релиз"})
+        self.assertEqual((got[1]["start"], got[1]["end"]), (3720.0, 3728.0))  # stretched to the minimum length
+
+    @unittest.skipUnless(__import__("shutil").which("ffmpeg"), "no ffmpeg on PATH")
+    def test_cut_joins_the_kept_parts(self):
+        import subprocess
+        import tempfile
+        from pathlib import Path
+
+        from app.media_cut import run_cut
+
+        d = Path(tempfile.mkdtemp())
+        src = d / "talk.wav"
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=440", "-t", "10", str(src)], check=True)
+        seen = []
+        out = run_cut("ffmpeg", src, [(1.0, 3.0), (6.0, 7.5)], False, d / "out.m4a", seen.append, lambda: None)
+        dur = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(out)],
+                                   capture_output=True, text=True).stdout)
+        self.assertAlmostEqual(dur, 3.5, delta=0.15)

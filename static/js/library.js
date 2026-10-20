@@ -134,6 +134,7 @@ function queueKindLabel(q) {
   if (q.kind === 'dub') return `${t('queueKindDub')} → ${lang}`;
   if (q.kind === 'translate') return `${t('queueKindTranslate')} → ${lang}`;
   if (q.kind === 'burn_subs') return `${t('queueKindBurnSubs')} (${lang})`;
+  if (q.kind === 'cut') return t('queueKindCut');
   return t('queueKindTranscribe');
 }
 

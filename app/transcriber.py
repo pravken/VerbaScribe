@@ -330,8 +330,33 @@ def _burn_runner(meeting_id: int, lang: str, srt_text: str, out_path: str) -> st
     return f"Видео с субтитрами ({lang.upper()}) готово: {out}"
 
 
+def _cut_runner(meeting_id: int, kind: str, intervals: List[Tuple[float, float]], has_video: bool, out_path: str) -> str:
+    from app.ffmpeg_manager import tool_cmd
+    from app.media_cut import run_cut
+
+    meeting = get_meeting(meeting_id)
+    if not meeting:
+        raise RuntimeError("Запись не найдена")
+    media = Path(meeting["media_path"])
+    if not media.exists():
+        raise RuntimeError(f"Исходный файл не найден: {media}")
+    label = "Нарезка ключевых моментов" if kind == "highlights" else "Запись без пауз и слов-паразитов"
+    update_meeting_progress(meeting_id, progress=1, stage_text=f"{label}: подготовка...")
+    out = run_cut(tool_cmd("ffmpeg"), media, intervals, has_video, Path(out_path),
+                  lambda r: update_meeting_progress(meeting_id, progress=max(1, int(99 * r)), stage_text=f"{label}: {int(100 * r)}%"),
+                  lambda: _check_cancel(meeting_id))
+    return f"{label} готова: {out}"
+
+
+def enqueue_cut_job(meeting_id: int, kind: str, intervals: List[Tuple[float, float]], has_video: bool, out_path: str) -> bool:
+    return _enqueue_side_job(
+        meeting_id, "cut", kind, "rendering", "Нарезка в очереди...", _cut_runner, kind, intervals, has_video, out_path,
+    )
+
+
 # runner -> (name for error messages, text after a cancel)
 _SIDE_JOB_NAMES = {
+    _cut_runner: ("нарезка записи", "Нарезка отменена"),
     _translate_runner: ("перевод", "Перевод отменён"),
     _burn_runner: ("встраивание субтитров", "Встраивание субтитров отменено"),
 }

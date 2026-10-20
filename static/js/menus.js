@@ -76,6 +76,12 @@ function renderExportMenu() {
   html += item({ kind: 'dub_media', lang: dubLang }, isVideo ? t('exportDubVideo') : t('exportDubAudio'), dubExt)
     + item({ kind: 'dub_srt', lang: dubLang }, t('exportDubSrt'), 'SRT');
 
+  // A shorter copy of the recording (app/media_cut.py)
+  html += sep + header(t('exportGroupCut'));
+  if (!(m.segments || []).length) html += note(t('exportCutNeedsText'));
+  else html += item({ kind: 'cut_clean' }, t('exportCutClean'), isVideo ? 'MP4' : 'M4A', t('tipCutClean'))
+    + item({ kind: 'cut_highlights' }, t('exportCutHighlights'), isVideo ? 'MP4' : 'M4A', t('tipCutHighlights'));
+
   const settings = (state.system && state.system.settings) || {};
   html += sep + header('Obsidian');
   html += item({ kind: 'obsidian' }, t('exportObsidian'), 'MD', settings.obsidian_vault ? settings.obsidian_vault : t('exportObsidianNoVault'));
@@ -95,11 +101,29 @@ function setExportDubLang(lang) {
   renderExportMenu();
 }
 
+async function requestCut(kind) {
+  const m = state.activeMeeting;
+  if (!m) return;
+  if (kind === 'highlights') showToast(t('cutPicking'));
+  const res = await fetch(`/api/meetings/${m.id}/cut`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kind, lang: state.uiLang === 'en' ? 'en' : 'ru' }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  if (data.cancelled) return;
+  const saved = Math.max(0, Math.round((data.duration || 0) - (data.kept_seconds || 0)));
+  showToast(t('cutQueued').replace('{name}', data.filename).replace('{kept}', formatTime(data.kept_seconds || 0))
+    + (kind === 'clean' && saved ? ` · −${formatTime(saved)}` : ''));
+  await loadMeetingsList();
+}
+
 async function runExport(item) {
   hideExportMenu();
   const m = state.activeMeeting;
   if (!m) return;
   if (item.kind === 'obsidian') { await exportToObsidian(m.id); return; }
+  if (item.kind === 'cut_clean' || item.kind === 'cut_highlights') { await requestCut(item.kind === 'cut_clean' ? 'clean' : 'highlights'); return; }
   let res, data;
   try {
     res = await fetch(`/api/meetings/${m.id}/export-request`, {

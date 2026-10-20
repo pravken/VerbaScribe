@@ -1821,6 +1821,59 @@ class SubtitlesRequestPayload(BaseModel):
     ask_path: bool = False  # True: native Save dialog, otherwise DATA_DIR/exports
 
 
+class CutPayload(BaseModel):
+    kind: str = "clean"  # "clean": no pauses and fillers; "highlights": the key moments
+    lang: str = "ru"
+    model: Optional[str] = None
+
+
+@app.post("/api/meetings/{meeting_id}/cut")
+def api_meeting_cut(meeting_id: int, payload: CutPayload) -> Dict[str, Any]:
+    """A shorter copy of the recording (app/media_cut.py), saved where the user picks."""
+    from app.media_cut import kept_seconds, merge, pick_highlights, speech_intervals
+    from app.naming import base_name
+    from app.transcriber import enqueue_cut_job
+    from app.video_subtitles import output_extension, probe_media
+
+    m = get_meeting(meeting_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    if payload.kind not in ("clean", "highlights"):
+        raise HTTPException(status_code=400, detail="Неизвестный вид нарезки")
+    _ensure_not_processing(meeting_id)
+    media = Path(m.get("media_path") or "")
+    if not media.is_file():
+        raise HTTPException(status_code=404, detail="Исходный файл не найден")
+    duration = float(m.get("duration") or 0)
+    moments: List[Dict[str, Any]] = []
+    if payload.kind == "clean":
+        intervals = speech_intervals(m.get("segments") or [], duration)
+    else:
+        try:
+            moments = pick_highlights(m, payload.model, payload.lang)
+        except (ValueError, RuntimeError) as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        intervals = merge([(x["start"], x["end"]) for x in moments])
+    if not intervals:
+        raise HTTPException(status_code=400, detail="В записи не найдено речи")
+    has_video = bool(probe_media(media)["has_video"])
+    ext = output_extension(media) if has_video else ".m4a"
+    suffix = ".highlights" if payload.kind == "highlights" else ".clean"
+    chosen = _pick_path_native("save", _default_export_dir(), f"{base_name(m)}{suffix}{ext}", ext.lstrip("."))
+    if not chosen:
+        return {"ok": False, "cancelled": True}
+    out = Path(chosen)
+    if out.suffix.lower() != ext:
+        out = out.with_name(out.name + ext)
+    if out.resolve() == media.resolve():
+        raise HTTPException(status_code=400, detail="Нельзя сохранить результат поверх исходного файла")
+    update_settings({"export_dir": str(out.parent)})
+    if not enqueue_cut_job(meeting_id, payload.kind, intervals, has_video, str(out)):
+        raise HTTPException(status_code=409, detail="Запись сейчас обрабатывается")
+    return {"ok": True, "queued": True, "filename": out.name, "path": str(out), "kept_seconds": round(kept_seconds(intervals), 1),
+            "duration": duration, "moments": moments}
+
+
 @app.post("/api/meetings/{meeting_id}/subtitles")
 def api_video_subtitles(meeting_id: int, payload: SubtitlesRequestPayload) -> Dict[str, Any]:
     """Makes a copy of the recording's video with subtitles; the original file is never touched."""
