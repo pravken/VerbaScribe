@@ -86,6 +86,9 @@ def init_db() -> None:
             )
             """
         )
+        folder_cols = {r["name"] for r in cur.execute("PRAGMA table_info(folders)").fetchall()}
+        if "local_only" not in folder_cols:
+            cur.execute("ALTER TABLE folders ADD COLUMN local_only INTEGER DEFAULT 0")
         _ensure_system_folders(cur)
         if "folder_id" not in existing_cols:
             _sort_existing_meetings(cur)
@@ -192,6 +195,7 @@ _MEETING_EXTRA_COLUMNS = {
     "obsidian_path": "TEXT DEFAULT ''",
     "pending_exports_json": "TEXT DEFAULT '[]'",
     "has_video": "INTEGER DEFAULT NULL",  # NULL: told from the file extension (see is_video)
+    "local_only": "INTEGER DEFAULT 0",  # 1: never sent to a cloud model (see is_local_only)
 }
 
 SYSTEM_FOLDERS = {"recordings": "Записи", "imports": "Импорт"}
@@ -521,7 +525,8 @@ def restore_segments_backup(meeting_id: int) -> bool:
 
 
 def update_meeting_fields(meeting_id: int, **fields: Any) -> None:
-    allowed = {"title", "model_name", "language", "num_speakers_hint", "folder_id", "title_is_default", "obsidian_path"}
+    allowed = {"title", "model_name", "language", "num_speakers_hint", "folder_id", "title_is_default", "obsidian_path",
+               "local_only"}
     items = [(k, v) for k, v in fields.items() if k in allowed]
     if not items:
         return
@@ -636,7 +641,7 @@ def get_meeting(meeting_id: int) -> Optional[Dict[str, Any]]:
 
 _LIST_COLUMNS = """id, title, filename, media_path, duration, status, progress, stage_text,
     error_message, language, model_name, num_speakers_hint,
-    speakers_json, created_at, completed_at, folder_id, source, recorded_at, has_video,
+    speakers_json, created_at, completed_at, folder_id, source, recorded_at, has_video, local_only,
     segments_json NOT IN ('', '[]') AS has_transcript,
     summaries_json NOT IN ('', '{}') AS has_summary"""
 
@@ -667,6 +672,7 @@ def list_meetings() -> List[Dict[str, Any]]:
             d["translations_langs"] = [x for x in (d.pop("tr_langs") or "").split(",") if x]
             d["dub_langs"] = [x for x in (d.pop("dub_langs") or "").split(",") if x and x != "None"]
             d["has_transcript"] = bool(d["has_transcript"])
+            d["local_only"] = bool(d.get("local_only"))
             d["has_summary"] = bool(d["has_summary"])
             try:
                 d["speakers"] = json.loads(d.pop("speakers_json", "{}") or "{}")
@@ -716,6 +722,7 @@ def _deserialize_meeting(d: Dict[str, Any]) -> Dict[str, Any]:
     d["has_segments_backup"] = bool(d.pop("segments_backup_json", ""))
     d["pending_exports"] = _loads_list(d.pop("pending_exports_json", None))
     d["is_video"] = is_video(d)
+    d["local_only"] = bool(d.get("local_only"))
     for key, target in (
         ("speakers_json", "speakers"),
         ("segments_json", "segments"),
@@ -876,9 +883,9 @@ def merge_segment_with_previous(meeting_id: int, segment_id: int) -> Optional[Di
 def list_folders() -> List[Dict[str, Any]]:
     with _db_lock:
         conn = get_connection()
-        rows = conn.execute("SELECT id, name, parent_id, system_key FROM folders ORDER BY id").fetchall()
+        rows = conn.execute("SELECT id, name, parent_id, system_key, local_only FROM folders ORDER BY id").fetchall()
         conn.close()
-    return [dict(r) for r in rows]
+    return [{**dict(r), "local_only": bool(r["local_only"])} for r in rows]
 
 
 def get_folder(folder_id: int) -> Optional[Dict[str, Any]]:
@@ -887,6 +894,43 @@ def get_folder(folder_id: int) -> Optional[Dict[str, Any]]:
 
 def system_folder_id(key: str) -> Optional[int]:
     return next((f["id"] for f in list_folders() if f.get("system_key") == key), None)
+
+
+def is_local_only(meeting: Optional[Dict[str, Any]]) -> bool:
+    """A recording that must not be sent to a cloud model: marked itself, or in a folder (at any
+    depth) that is marked."""
+    if not meeting:
+        return False
+    if meeting.get("local_only"):
+        return True
+    folders = {f["id"]: f for f in list_folders()}
+    fid, seen = meeting.get("folder_id"), set()
+    while fid is not None and fid in folders and fid not in seen:
+        seen.add(fid)
+        if folders[fid].get("local_only"):
+            return True
+        fid = folders[fid].get("parent_id")
+    return False
+
+
+def local_only_ids() -> set:
+    """Ids of every recording that must not go to a cloud model (see is_local_only)."""
+    folders = {f["id"]: f for f in list_folders()}
+
+    def marked(fid: Any) -> bool:
+        seen = set()
+        while fid is not None and fid in folders and fid not in seen:
+            seen.add(fid)
+            if folders[fid].get("local_only"):
+                return True
+            fid = folders[fid].get("parent_id")
+        return False
+
+    with _db_lock:
+        conn = get_connection()
+        rows = conn.execute("SELECT id, folder_id, local_only FROM meetings").fetchall()
+        conn.close()
+    return {int(r["id"]) for r in rows if r["local_only"] or marked(r["folder_id"])}
 
 
 def folder_subtree_ids(folder_id: int) -> List[int]:
@@ -922,11 +966,14 @@ def create_folder(name: str, parent_id: Optional[int] = None) -> Dict[str, Any]:
 _UNSET = object()
 
 
-def update_folder(folder_id: int, name: Optional[str] = None, parent_id: Any = _UNSET) -> Dict[str, Any]:
+def update_folder(folder_id: int, name: Optional[str] = None, parent_id: Any = _UNSET,
+                  local_only: Optional[bool] = None) -> Dict[str, Any]:
     folder = get_folder(folder_id)
     if not folder:
         raise LookupError("Папка не найдена")
     fields: Dict[str, Any] = {}
+    if local_only is not None:
+        fields["local_only"] = 1 if local_only else 0
     if name is not None:
         name = name.strip()[:120]
         if not name:

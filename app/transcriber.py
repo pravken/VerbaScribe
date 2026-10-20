@@ -615,11 +615,13 @@ def _after_transcription(
         and is_generic_title(meeting.get("title") or "")
     ):
         from app import llm
+        from app.database import is_local_only
 
-        if llm.available(settings):
+        local_only = is_local_only(meeting)
+        if llm.available(settings, local_only=local_only):
             update_meeting_progress(meeting_id, progress=94, stage_text="Название записи по содержанию...")
             try:
-                title = generate_meeting_title(segments, speakers, answer_lang=lang)
+                title = generate_meeting_title(segments, speakers, answer_lang=lang, local_only=local_only)
                 if title:
                     update_meeting_fields(meeting_id, title=title, title_is_default=0)
             except Exception as e:
@@ -797,8 +799,11 @@ def _process_meeting_job(meeting_id: int) -> None:
         if auto_summary and merged_segments:
             from app import llm
 
-            if llm.available(settings):
-                cloud = llm.uses_cloud(settings)
+            from app.database import is_local_only
+
+            local_only = is_local_only(get_meeting(meeting_id))
+            if llm.available(settings, local_only=local_only):
+                cloud = llm.uses_cloud(settings) and not local_only
                 if not cloud and device == "cuda" and _free_vram_gb() < _SUMMARY_MIN_FREE_VRAM_GB:
                     release_whisper_model()
                 update_meeting_progress(
@@ -813,6 +818,7 @@ def _process_meeting_job(meeting_id: int) -> None:
                         speakers=speakers_meta,
                         template_key="protocol",
                         answer_lang=detected_lang,
+                        local_only=local_only,
                     )
                     summaries["protocol"] = summary_md
                     save_meeting_results(meeting_id, summaries=summaries)

@@ -739,6 +739,8 @@
               </button>
             </div>
           </div>
+          <!-- Where the analysis goes and how big the cloud request is -->
+          <div id="analysis-estimate" class="hidden text-[11px] -mt-1 flex items-center gap-1.5"></div>
 
           <!-- Ask AI Input -->
           <div class="flex gap-2">
@@ -976,6 +978,9 @@
     <button id="ctx-restore-item" onclick="ctxRestoreSegments()" data-i18n-title="tipCtxRestore" title="Вернуть исходный текст распознавания" class="macos-menu-item hidden">
       <span data-i18n="ctxRestore">Вернуть текст до очистки</span>
     </button>
+<button id="ctx-local-item" onclick="ctxToggleLocalOnly()" data-i18n-title="tipLocalOnly" title="Не отправлять в облачную модель: анализ, названия и ответы ассистента — только локальной моделью" class="macos-menu-item">
+      <span data-i18n="ctxLocalOnly">Только локальный анализ</span><span id="ctx-local-item-check" class="text-[11px] opacity-70"></span>
+    </button>
     <button onclick="ctxRevealInExplorer()" data-i18n-title="tipCtxReveal" title="Открыть папку с исходным медиафайлом в Проводнике Windows" class="macos-menu-item">
       <span data-i18n="ctxReveal">Показать файл в папке</span>
     </button>
@@ -1000,6 +1005,9 @@
     <button onclick="fctxRename()" class="macos-menu-item"><span data-i18n="folderRename">Переименовать…</span></button>
     <button onclick="fctxNewSubfolder()" class="macos-menu-item"><span data-i18n="folderNewSub">Новая вложенная папка…</span></button>
     <button onclick="fctxAsk()" class="macos-menu-item"><span data-i18n="folderAsk">Спросить по папке…</span></button>
+    <button id="fctx-local" onclick="fctxToggleLocalOnly()" data-i18n-title="tipLocalOnly" title="Не отправлять в облачную модель: анализ, названия и ответы ассистента — только локальной моделью" class="macos-menu-item">
+      <span data-i18n="ctxLocalOnly">Только локальный анализ</span><span id="fctx-local-check" class="text-[11px] opacity-70"></span>
+    </button>
     <div class="my-1 border-t border-white/10"></div>
     <button id="fctx-delete" onclick="fctxDelete()" class="macos-menu-item macos-menu-item-danger"><span data-i18n="folderDelete">Удалить папку</span></button>
   </div>

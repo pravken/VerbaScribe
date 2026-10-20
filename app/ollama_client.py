@@ -565,11 +565,12 @@ def generate_meeting_summary(
     model_name: Optional[str] = None,
     base_url: Optional[str] = None,
     answer_lang: Optional[str] = "ru",
+    local_only: bool = False,
 ) -> str:
     from app.llm import target
 
     # Ollama, or the cloud model chosen in Settings → Analysis ("cloud" asks for it explicitly)
-    llm = target(model_name)
+    llm = target(model_name, local_only=local_only)
     lines = build_transcript_lines(segments, speakers)
     transcript_text = "\n".join(lines)
     if not transcript_text.strip():
@@ -647,11 +648,12 @@ def generate_meeting_title(
     speakers: Dict[str, Dict[str, Any]],
     answer_lang: Optional[str] = "ru",
     model_name: Optional[str] = None,
+    local_only: bool = False,
 ) -> str:
     """A short title (3-8 words) for the recording from the beginning of its transcript."""
     from app.llm import target
 
-    llm = target(model_name, start_ollama=False)
+    llm = target(model_name, start_ollama=False, local_only=local_only)
     text = "\n".join(build_transcript_lines(segments, speakers))[:7000]
     if not text.strip():
         raise RuntimeError("Транскрипт пуст")

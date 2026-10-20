@@ -114,19 +114,34 @@ class Target:
         return self.chat_fn(system, user)
 
 
-def target(model: Optional[str] = None, start_ollama: bool = True) -> Target:
+def estimate_tokens(text: str) -> int:
+    """Rough token count of a text for the size shown before a cloud request: Cyrillic takes about
+    one token per 2.5 characters in current tokenizers, Latin text about one per 4."""
+    cyr = sum(1 for ch in text if "\u0400" <= ch <= "\u04ff")
+    return int(cyr / 2.5 + (len(text) - cyr) / 4) + 1
+
+
+LOCAL_ONLY_ERROR = ("Запись помечена «только локальный анализ»: она не отправляется в облачную модель. "
+                    "Выберите модель Ollama или снимите пометку в меню записи.")
+
+
+def target(model: Optional[str] = None, start_ollama: bool = True, local_only: bool = False) -> Target:
     """The model to use. `model`: "cloud" forces the cloud model, an Ollama tag forces Ollama with
-    that model, None follows the settings. Raises LlmError when it cannot be used."""
+    that model, None follows the settings. `local_only`: the text is from a recording marked "local
+    analysis only" (app.database.is_local_only), so the settings' cloud choice gives way to Ollama.
+    Raises LlmError when it cannot be used."""
     settings = _settings()
-    if model == "cloud" or (model is None and uses_cloud(settings)):
+    if local_only and model == "cloud":
+        raise LlmError(LOCAL_ONLY_ERROR)
+    if model == "cloud" or (model is None and uses_cloud(settings) and not local_only):
         return _cloud_target(settings)
     return _ollama_target(model, settings, start_ollama)
 
 
-def available(settings: Optional[Dict[str, str]] = None) -> bool:
+def available(settings: Optional[Dict[str, str]] = None, local_only: bool = False) -> bool:
     """Whether analysis can run now without starting anything (for automatic steps after a job)."""
     settings = settings or _settings()
-    if uses_cloud(settings):
+    if uses_cloud(settings) and not local_only:
         p = cloud_provider(settings)
         return bool(secret_store.get_secret(key_name(p))) and bool(cloud_base_url(p, settings)) and bool(cloud_model(p, settings))
     from app.ollama_client import get_ollama_status

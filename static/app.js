@@ -209,6 +209,7 @@ function closeModalOnBackdrop(e, name) {
 function switchWorkspaceTab(tab) {
   state.activeWorkspaceTab = tab;
   if (tab === 'info') loadMeetingInfo();
+  if (tab === 'summary') renderAnalysisEstimate();
   ['transcript', 'summary', 'speakers', 'info'].forEach(k => {
     document.getElementById(`wview-${k}`).classList.toggle('hidden', k !== tab);
     const btn = document.getElementById(`wtab-${k}`);
@@ -404,6 +405,12 @@ function openRecordingContextMenu(e, meetingId) {
   document.getElementById('ctx-cancel-item').classList.toggle('hidden', DONE_STATUSES.includes(m.status));
   const hasBackup = state.activeMeeting && state.activeMeeting.id === m.id && state.activeMeeting.has_segments_backup;
   document.getElementById('ctx-restore-item').classList.toggle('hidden', !hasBackup);
+  // Inherited from a folder: shown as on, and changed on that folder
+  const inherited = !m.local_only && folderLocalOnly(m.folder_id);
+  document.getElementById('ctx-local-item-check').textContent = m.local_only || inherited ? '✓' : '';
+  document.getElementById('ctx-local-item').disabled = inherited;
+  document.getElementById('ctx-local-item').style.opacity = inherited ? '.5' : '';
+  document.getElementById('ctx-local-item').title = inherited ? t('tipLocalOnlyInherited') : t('tipLocalOnly');
   const menu = document.getElementById('recording-context-menu');
   menu.classList.remove('hidden');
 
@@ -411,6 +418,39 @@ function openRecordingContextMenu(e, meetingId) {
   const y = Math.min(e.clientY, window.innerHeight - 265);
   menu.style.left = `${x}px`;
   menu.style.top = `${y}px`;
+}
+
+// "Local analysis only" set on a folder covers everything inside it, at any depth
+function folderLocalOnly(folderId) {
+  const seen = new Set();
+  let f = folderById(folderId);
+  while (f && !seen.has(f.id)) {
+    if (f.local_only) return true;
+    seen.add(f.id);
+    f = folderById(f.parent_id);
+  }
+  return false;
+}
+
+function meetingLocalOnly(m) {
+  return !!m && (m.local_only || folderLocalOnly(m.folder_id));
+}
+
+async function ctxToggleLocalOnly() {
+  hideContextMenu();
+  const m = state.meetings.find(x => x.id === state.contextMeetingId);
+  if (!m) return;
+  const res = await fetch(`/api/meetings/${m.id}/local-only`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ local_only: !m.local_only }),
+  });
+  if (!res.ok) return;
+  m.local_only = !m.local_only;
+  if (state.activeMeeting && state.activeMeeting.id === m.id) {
+    state.activeMeeting.local_only = m.local_only;
+    renderAnalysisEstimate();
+  }
+  showToast(m.local_only ? t('localOnlyOn') : t('localOnlyOff'));
+  renderMeetingsSidebar();
 }
 
 function hideContextMenu() {
@@ -1151,6 +1191,31 @@ function updateOllamaUI(ollama) {
 }
 
 // The model choice above the analysis: the cloud model (when set up) and the Ollama models
+// Before the analysis runs: a cloud request shows its model and its size in tokens; a recording
+// marked "local analysis only" says it stays on this computer
+let _estimateSeq = 0;
+async function renderAnalysisEstimate() {
+  const box = document.getElementById('analysis-estimate');
+  const m = state.activeMeeting;
+  if (!box) return;
+  if (!m || !(m.segments || []).length) { box.classList.add('hidden'); return; }
+  const seq = ++_estimateSeq;
+  const est = await fetch(`/api/meetings/${m.id}/llm-estimate`).then(r => r.ok ? r.json() : null).catch(() => null);
+  if (seq !== _estimateSeq || !est || !state.activeMeeting || state.activeMeeting.id !== m.id) return;
+  const cloudSelected = !!(state.llm && state.llm.mode === 'cloud');
+  let html = '';
+  if (est.local_only) {
+    html = `<span class="text-apple-green">${ICON_LOCK}</span><span class="text-apple-secondary">${escapeHtml(cloudSelected ? t('estLocalOnlyCloud') : t('estLocalOnly'))}</span>`;
+  } else if (est.cloud) {
+    const tokens = est.tokens >= 1000 ? `${(est.tokens / 1000).toFixed(est.tokens >= 10000 ? 0 : 1)} ${t('estThousand')}` : String(est.tokens);
+    html = `<span class="text-apple-amber">☁</span><span class="text-apple-secondary">${escapeHtml(t('estCloud').replace('{model}', est.label || '').replace('{tokens}', tokens))}</span>`;
+  }
+  box.innerHTML = html;
+  box.classList.toggle('hidden', !html);
+}
+
+const ICON_LOCK = '<svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/></svg>';
+
 function renderSummaryModelSelect() {
   const summarySelect = document.getElementById('summary-llm-select');
   const ollama = state.lastOllama;
@@ -1430,8 +1495,10 @@ async function selectActiveOllamaModel(modelId) {
     await saveLlmSettingsNow({ llm_provider: 'cloud' });
     const c = cloudLlmChoice();
     showToast(c ? `${t('llmModeCloudOn')} · ${c.label}` : t('llmModeCloudOn'));
+    renderAnalysisEstimate();
     return;
   }
+  setTimeout(renderAnalysisEstimate, 300);
   if (state.llm && state.llm.mode === 'cloud') await saveLlmSettingsNow({ llm_provider: 'ollama' });
   document.getElementById('set-ollama-model').value = modelId;
   const summarySelect = document.getElementById('summary-llm-select');
@@ -2060,7 +2127,7 @@ function renderLibraryAnswer(body, item) {
       <div class="text-[10.5px] uppercase tracking-wider text-apple-tertiary mb-1">${escapeHtml(t('libraryAskSources'))}</div>
       ${sources}
     </div>` : ''}
-    ${data.model ? `<div class="mt-2 text-[10.5px] text-apple-tertiary">${data.cloud ? '☁ ' : ''}${escapeHtml(data.cloud ? data.model : formatModelName(data.model))}${data.mode === 'full' ? ' · ' + escapeHtml(t('askModeFull')) : ''}</div>` : ''}`;
+    ${data.model ? `<div class="mt-2 text-[10.5px] text-apple-tertiary">${data.cloud ? '☁ ' : ''}${escapeHtml(data.cloud ? data.model : formatModelName(data.model))}${data.mode === 'full' ? ' · ' + escapeHtml(t('askModeFull')) : ''}${data.excluded_local ? ' · ' + escapeHtml(t('askExcludedLocal').replace('{n}', data.excluded_local)) : ''}</div>` : ''}`;
 }
 
 function openLibrarySource(itemId, n) {
@@ -2176,6 +2243,10 @@ function openFolderMenu(e, id) {
   const menu = document.getElementById('folder-context-menu');
   document.getElementById('fctx-title').textContent = folderName(f);
   document.getElementById('fctx-delete').classList.toggle('hidden', !!f.system_key);
+  const inherited = !f.local_only && folderLocalOnly(f.parent_id);
+  document.getElementById('fctx-local-check').textContent = f.local_only || inherited ? '✓' : '';
+  document.getElementById('fctx-local').disabled = inherited;
+  document.getElementById('fctx-local').style.opacity = inherited ? '.5' : '';
   menu.classList.remove('hidden');
   menu.style.left = `${Math.min(e.clientX, window.innerWidth - 230)}px`;
   menu.style.top = `${Math.min(e.clientY, window.innerHeight - 190)}px`;
@@ -2192,6 +2263,16 @@ async function fctxRename() {
   const name = (prompt(t('folderRenamePrompt'), folderName(f)) || '').trim();
   if (!name || name === folderName(f)) return;
   await patchFolder(f.id, { name });
+}
+
+async function fctxToggleLocalOnly() {
+  hideFolderMenu();
+  const f = folderById(state.contextFolderId);
+  if (!f) return;
+  if (await patchFolder(f.id, { local_only: !f.local_only })) {
+    showToast(!f.local_only ? t('localOnlyFolderOn') : t('localOnlyOff'));
+    renderAnalysisEstimate();
+  }
 }
 
 function fctxNewSubfolder() {
@@ -2294,7 +2375,8 @@ function recordingBadgesHtml(m) {
   };
   const trLangs = m.translations_langs || [];
   const dubLangs = m.dub_langs || [];
-  return badge('transcript', m.has_transcript, t('recBadgeTranscript'))
+  const lock = meetingLocalOnly(m) ? `<span class="rec-badge" title="${escapeHtml(t('tipLocalOnly'))}">${ICON_LOCK}</span>` : '';
+  return lock + badge('transcript', m.has_transcript, t('recBadgeTranscript'))
     + badge('summary', m.has_summary, t('recBadgeSummary'))
     + badge('translation', trLangs.length > 0, `${t('recBadgeTranslation')}${trLangs.length ? ': ' + trLangs.map(langName).join(', ') : ''}`, trLangs.map(langCode).join(' '))
     + badge('dub', dubLangs.length > 0, `${t('recBadgeDub')}${dubLangs.length ? ': ' + dubLangs.map(langName).join(', ') : ''}`, dubLangs.map(langCode).join(' '));
@@ -2740,6 +2822,7 @@ async function selectMeeting(id, reloadPlayer = true) {
 
   updateProcessingBanner(m);
   renderAudioTrackSwitch();
+  if (prevId !== m.id || state.activeWorkspaceTab === 'summary') renderAnalysisEstimate();
 
   if (reloadPlayer || prevId !== m.id) {
     const player = document.getElementById('media-player');
@@ -5401,6 +5484,21 @@ async function startLiveRecording() {
       });
     }
 
+    // Free space: a recording that fills the disk can lose the file it was writing
+    const disk = await fetch('/api/disk').then(r => r.json()).catch(() => null);
+    if (disk && disk.critical) {
+      _recVideoStream?.getTracks().forEach(tr => tr.stop());
+      throw new Error(t('diskFullError').replace('{free}', formatSize(Math.max(0, disk.free_bytes))));
+    }
+    if (disk && disk.low && !confirm(t('diskLowConfirm')
+      .replace('{free}', formatSize(disk.free_bytes))
+      .replace('{min}', recMinutesLeft(disk.free_bytes, !!_recVideoStream)))) {
+      _recVideoStream?.getTracks().forEach(tr => tr.stop());
+      document.getElementById('record-video-preview').classList.add('hidden');
+      return;
+    }
+    _recDiskWarned = false;
+
     // System audio: recorded by the app (no prompt); the browser's screen share is only a fallback
     _recCaptureId = null;
     _recSysLevel = 0;
@@ -5505,6 +5603,8 @@ async function startLiveRecording() {
     updateMeter();
 
     _recStartTime = Date.now();
+    clearInterval(_recDiskTimer);
+    _recDiskTimer = setInterval(checkRecordingDisk, 15000);
     clearInterval(_recTimerInterval);
     _recTimerInterval = setInterval(() => {
       const elapsed = Math.floor((Date.now() - _recStartTime) / 1000);
@@ -5551,7 +5651,33 @@ function sendRecordingChunk(page, blob) {
   });
 }
 
+// About how many minutes of recording fit into this much space (video ~25 MB/min with the system
+// audio capture, sound only ~12 MB/min: the system audio is captured uncompressed)
+function recMinutesLeft(bytes, video) {
+  return Math.max(0, Math.floor((bytes - 300 * 1048576) / ((video ? 25 : 12) * 1048576)));
+}
+
+let _recDiskTimer = null;
+let _recDiskWarned = false;
+
+async function checkRecordingDisk() {
+  if (!isRecording()) return;
+  const disk = await fetch('/api/disk').then(r => r.json()).catch(() => null);
+  if (!disk || disk.free_bytes < 0) return;
+  if (disk.critical) {
+    // Stopped while there is still room to finish the file and save it
+    showToast(t('diskStopped'));
+    stopAndTranscribeRecording();
+  } else if (disk.low && !_recDiskWarned) {
+    _recDiskWarned = true;
+    showToast(t('diskLowWarn').replace('{free}', formatSize(disk.free_bytes))
+      .replace('{min}', recMinutesLeft(disk.free_bytes, !!_recVideoStream)));
+  }
+}
+
 function _cleanupRecordingResources() {
+  clearInterval(_recDiskTimer);
+  _recDiskTimer = null;
   reportRecordingState(false);
   window._recMixedStream = null;
   clearInterval(_recSysTimer);

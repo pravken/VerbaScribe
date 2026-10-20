@@ -32,6 +32,7 @@ from app.database import (
     get_all_settings,
     get_meeting,
     init_db,
+    is_local_only,
     list_dictionary,
     list_meetings,
     save_meeting_results,
@@ -434,11 +435,72 @@ def api_get_meeting(meeting_id: int) -> Dict[str, Any]:
     m = get_meeting(meeting_id)
     if not m:
         raise HTTPException(status_code=404, detail="Встреча не найдена")
-    return m
+    return {**m, "local_only_effective": is_local_only(m)}
+
+
+@app.get("/api/meetings/{meeting_id}/llm-estimate")
+def api_llm_estimate(meeting_id: int, model: str = "") -> Dict[str, Any]:
+    """Where the analysis of a recording would go and how big the request is, shown before it runs."""
+    from app import llm
+    from app.ollama_client import build_transcript_lines
+
+    m = get_meeting(meeting_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    local_only = is_local_only(m)
+    settings = get_all_settings()
+    cloud = (model == "cloud" or (not model and llm.uses_cloud(settings))) and not local_only
+    text = "\n".join(build_transcript_lines(m.get("segments") or [], m.get("speakers") or {}))
+    out: Dict[str, Any] = {"cloud": cloud, "local_only": local_only, "chars": len(text),
+                           "tokens": llm.estimate_tokens(text) + 600}  # + the instructions
+    if cloud:
+        p = llm.cloud_provider(settings)
+        out["label"] = f"{llm.PROVIDERS[p]['name']} · {llm.cloud_model(p, settings)}"
+    return out
+
+
+class LocalOnlyPayload(BaseModel):
+    local_only: bool
+
+
+@app.patch("/api/meetings/{meeting_id}/local-only")
+def api_meeting_local_only(meeting_id: int, payload: LocalOnlyPayload) -> Dict[str, Any]:
+    """Marks a recording "local analysis only": it is never sent to a cloud model."""
+    if not get_meeting(meeting_id):
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    update_meeting_fields(meeting_id, local_only=1 if payload.local_only else 0)
+    return api_get_meeting(meeting_id)
 
 
 def _recordings_dir() -> Path:
     return recordings_dir(get_all_settings().get("recordings_dir") or "")
+
+
+# Recording stops by itself below this much free space, so the file and the database stay intact
+DISK_STOP_BYTES = 300 * 1024 * 1024
+DISK_WARN_BYTES = 2 * 1024 * 1024 * 1024
+
+
+def _free_bytes(path: Path) -> int:
+    try:
+        return shutil.disk_usage(str(path)).free
+    except OSError:
+        return -1
+
+
+def disk_state() -> Dict[str, Any]:
+    """Free space where recordings are written (the recordings folder and the data folder, which
+    holds the system-audio capture)."""
+    rec, data = _recordings_dir(), UPLOADS_DIR
+    free = [b for b in (_free_bytes(rec), _free_bytes(data)) if b >= 0]
+    low = min(free) if free else -1
+    return {"free_bytes": low, "recordings_dir": str(rec), "warn_bytes": DISK_WARN_BYTES,
+            "stop_bytes": DISK_STOP_BYTES, "low": 0 <= low < DISK_WARN_BYTES, "critical": 0 <= low < DISK_STOP_BYTES}
+
+
+@app.get("/api/disk")
+def api_disk() -> Dict[str, Any]:
+    return disk_state()
 
 
 def _local_time(ts: float) -> str:
@@ -741,6 +803,8 @@ def api_record_start(payload: RecordStartPayload) -> Dict[str, Any]:
 
     if not payload.system:
         return {"capture_id": None}
+    if disk_state()["critical"]:
+        raise HTTPException(status_code=507, detail="Недостаточно места на диске для записи")
     try:
         cap = start_capture(UPLOADS_DIR / f"system_{uuid.uuid4().hex[:8]}.wav")
     except Exception as e:  # the page falls back to the browser's screen-share capture
@@ -785,6 +849,8 @@ def _page_part(page_id: str) -> Path:
 
 @app.post("/api/record/page/start")
 def api_record_page_start() -> Dict[str, Any]:
+    if disk_state()["critical"]:
+        raise HTTPException(status_code=507, detail="Недостаточно места на диске для записи")
     page_id = uuid.uuid4().hex
     part = _recordings_dir() / f".page_{page_id[:12]}.webm.part"
     part.write_bytes(b"")
@@ -801,7 +867,7 @@ async def api_record_page_chunk(page_id: str, request: Request) -> Dict[str, Any
         raise HTTPException(status_code=413, detail="Слишком большой фрагмент записи")
     with part.open("ab") as f:
         f.write(data)
-    return {"ok": True, "size": part.stat().st_size}
+    return {"ok": True, "size": part.stat().st_size, "free_bytes": _free_bytes(part.parent)}
 
 
 @app.post("/api/record/page/{page_id}/cancel")
@@ -1175,6 +1241,7 @@ def api_generate_summary(meeting_id: int, payload: SummaryRequestPayload) -> Dic
             custom_prompt=payload.custom_prompt,
             model_name=payload.model or None,
             answer_lang=payload.lang or m.get("language") or "ru",
+            local_only=is_local_only(m),
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -1798,6 +1865,8 @@ def api_update_folder(folder_id: int, payload: Dict[str, Any]) -> Dict[str, Any]
     if "parent_id" in payload:
         pid = payload.get("parent_id")
         kwargs["parent_id"] = None if pid is None else int(pid)
+    if "local_only" in payload:
+        kwargs["local_only"] = bool(payload.get("local_only"))
     try:
         return update_folder(folder_id, **kwargs)
     except LookupError as e:

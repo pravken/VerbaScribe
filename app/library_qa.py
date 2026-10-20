@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional
 
 from app.audio_utils import format_timestamp
 from app.ollama_client import _segment_parts
-from app.database import _db_lock, get_connection, get_meeting
+from app.database import _db_lock, get_connection, get_meeting, list_meetings, local_only_ids
 
 MAX_FRAGMENTS = 14
 MAX_CONTEXT_CHARS = 11000
@@ -187,6 +187,20 @@ def ask_library(
 
     try:
         llm = target(model_name)  # an explicit user action: Ollama may be started
+        # Recordings marked "local analysis only" never reach a cloud model: they are left out of
+        # what is sent, and a scope made only of them is answered by the local model
+        excluded = 0
+        if llm.is_cloud:
+            private = local_only_ids()
+            if private:
+                all_ids = meeting_ids if meeting_ids is not None else [int(m["id"]) for m in list_meetings()]
+                allowed = [i for i in all_ids if int(i) not in private]
+                excluded = len(all_ids) - len(allowed)
+                if not allowed:
+                    llm = target(None if model_name == "cloud" else model_name, local_only=True)
+                    excluded = 0
+                elif excluded:
+                    meeting_ids = allowed
     except LlmError as e:
         raise RuntimeError(str(e)) from e
     # A cloud model reads far more at once: bigger folders are read in full, more fragments fit
@@ -238,4 +252,5 @@ def ask_library(
         {k: f[k] for k in ("meeting_id", "title", "date", "start", "speaker", "text")} | {"n": n}
         for n, f in enumerate(fragments, start=1)
     ]
-    return {"answer": answer, "sources": sources, "found": True, "model": llm.label, "mode": mode, "cloud": llm.is_cloud}
+    return {"answer": answer, "sources": sources, "found": True, "model": llm.label, "mode": mode, "cloud": llm.is_cloud,
+            "excluded_local": excluded}
