@@ -860,7 +860,7 @@ function recordingBadgesHtml(m) {
 }
 
 function meetingRowHtml(m, depth) {
-  const isSelected = state.activeMeeting && state.activeMeeting.id === m.id;
+  const isSelected = libIsSelected(m);
   const isBusy = !DONE_STATUSES.includes(m.status);
   const spkCount = Object.keys(m.speakers || {}).length;
   const thumb = m.is_video
@@ -870,7 +870,7 @@ function meetingRowHtml(m, depth) {
   const status = m.status === 'failed' ? t('statusFailed') : m.status === 'cancelled' ? t('statusCancelled')
     : `${spkCount || 1} ${t('spkShort')} · ${(m.language || 'ru').toUpperCase()}`;
   return `
-    <div onclick="openMeeting(${m.id}, true)"
+    <div onclick="libRowClick(event, ${m.id})" data-mid="${m.id}"
          oncontextmenu="openRecordingContextMenu(event, ${m.id})"
          draggable="true" ondragstart="libraryDragStart(event, 'm', ${m.id})"
          class="group cursor-pointer pr-2 py-1.5 rounded-lg transition relative flex items-center gap-2 ${
@@ -1051,11 +1051,147 @@ function libSortValue(m) {
   return shortDate(m.recorded_at || m.created_at);
 }
 
+// --- Several recordings selected: Ctrl+click adds or removes one, Shift+click takes a range ---
+state.multi = new Set();
+let _libAnchor = null;
+
+function libIsSelected(m) {
+  return state.multi.size ? state.multi.has(m.id) : !!(state.activeMeeting && state.activeMeeting.id === m.id);
+}
+
+function libVisibleIds() {
+  return [...document.querySelectorAll('#meetings-list [data-mid]')].map(el => Number(el.dataset.mid));
+}
+
+function libRowClick(e, id) {
+  if (e.ctrlKey || e.metaKey) {
+    if (!state.multi.size && state.activeMeeting) state.multi.add(state.activeMeeting.id);
+    if (state.multi.has(id)) state.multi.delete(id); else state.multi.add(id);
+    _libAnchor = id;
+  } else if (e.shiftKey) {
+    const ids = libVisibleIds();
+    const from = ids.indexOf(_libAnchor ?? (state.activeMeeting && state.activeMeeting.id));
+    const to = ids.indexOf(id);
+    state.multi = new Set(from < 0 ? [id] : ids.slice(Math.min(from, to), Math.max(from, to) + 1));
+    document.getSelection()?.removeAllRanges();
+  } else {
+    state.multi.clear();
+    _libAnchor = id;
+    openMeeting(id, true);
+    return;
+  }
+  if (state.multi.size === 1 && state.multi.has(state.activeMeeting && state.activeMeeting.id)) state.multi.clear();
+  renderMeetingsSidebar();
+  renderLibSelectionBar();
+}
+
+function clearLibSelection() {
+  if (!state.multi.size) return;
+  state.multi.clear();
+  renderMeetingsSidebar();
+  renderLibSelectionBar();
+}
+
+// A bar over the list while several recordings are selected
+function renderLibSelectionBar() {
+  let bar = document.getElementById('lib-selection-bar');
+  const n = state.multi.size;
+  if (!n) { bar?.remove(); return; }
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'lib-selection-bar';
+    bar.className = 'mx-1 mb-1.5 px-2 py-1.5 rounded-lg bg-apple-blue/15 border border-apple-blue/30 flex items-center gap-1.5 text-[11.5px] text-white';
+    const list = document.getElementById('meetings-list');
+    list.parentNode.insertBefore(bar, list);
+  }
+  bar.innerHTML = `<span class="flex-1 min-w-0 truncate">${escapeHtml(t('libSelected').replace('{n}', n))}</span>
+    <button onclick="bulkRename()" class="ui-btn ui-btn-subtle h-6 !px-2 text-[11px]" title="${escapeHtml(t('tipBulkRename'))}">${escapeHtml(t('bulkRename'))}</button>
+    <button onclick="bulkAutoTitles()" class="ui-btn ui-btn-subtle h-6 !px-2 text-[11px]" title="${escapeHtml(t('tipBulkAutoTitle'))}">${escapeHtml(t('bulkAutoTitle'))}</button>
+    <button onclick="bulkDelete()" class="ui-btn h-6 !px-2 text-[11px] bg-apple-red/80 text-white hover:bg-apple-red">${escapeHtml(t('ctxDelete'))}</button>
+    <button onclick="clearLibSelection()" class="ui-btn ui-btn-subtle h-6 !px-1.5 text-[11px]" title="${escapeHtml(t('cancel'))} (Esc)">✕</button>`;
+}
+
+function libSelectedInOrder() {
+  const ids = libVisibleIds().filter(id => state.multi.has(id));
+  for (const id of state.multi) if (!ids.includes(id)) ids.push(id);
+  return ids.map(id => state.meetings.find(m => m.id === id)).filter(Boolean);
+}
+
+async function bulkDelete() {
+  const list = libSelectedInOrder();
+  if (!list.length) return;
+  const choice = await confirmDeleteDialog(list);
+  if (!choice) return;
+  let failed = 0;
+  for (const m of list) {
+    const res = await fetch(`/api/meetings/${m.id}${deleteQuery(choice, m)}`, { method: 'DELETE' });
+    if (!res.ok) failed++;
+    else if (state.activeMeeting && state.activeMeeting.id === m.id) {
+      state.activeMeeting = null;
+      document.getElementById('workspace-content').classList.add('hidden');
+      document.getElementById('workspace-empty').classList.remove('hidden');
+    }
+  }
+  state.multi.clear();
+  renderLibSelectionBar();
+  await loadMeetingsList();
+  showToast(failed ? t('bulkSomeFailed').replace('{n}', failed) : t('bulkDeleted').replace('{n}', list.length));
+}
+
+// One name for all, numbered: "Interview {n}" -> "Interview 1", "Interview 2"…; {title} and {date} too
+async function bulkRename() {
+  const list = libSelectedInOrder();
+  if (!list.length) return;
+  const tpl = prompt(t('bulkRenamePrompt'), `${list[0].title} {n}`);
+  if (!tpl || !tpl.trim()) return;
+  const width = String(list.length).length;
+  let failed = 0;
+  for (const [i, m] of list.entries()) {
+    const d = meetingDate(m);
+    const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const title = tpl.replaceAll('{n}', String(i + 1).padStart(width, '0')).replaceAll('{title}', m.title || '').replaceAll('{date}', ymd).trim();
+    const res = await fetch(`/api/meetings/${m.id}/title`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
+    });
+    if (!res.ok) failed++;
+  }
+  await loadMeetingsList();
+  if (state.activeMeeting && state.multi.has(state.activeMeeting.id)) openMeeting(state.activeMeeting.id);
+  if (failed) showToast(t('bulkSomeFailed').replace('{n}', failed));
+}
+
+// Titles made by the analysis model from each transcript
+async function bulkAutoTitles() {
+  const list = libSelectedInOrder().filter(m => m.status === 'completed');
+  if (!list.length) { showToast(t('bulkNoTranscripts')); return; }
+  let failed = 0;
+  for (const [i, m] of list.entries()) {
+    showToast(t('bulkAutoTitleWorking').replace('{i}', i + 1).replace('{n}', list.length));
+    const res = await fetch(`/api/meetings/${m.id}/title/generate`, { method: 'POST' });
+    if (!res.ok) failed++;
+    await loadMeetingsList();
+  }
+  if (state.activeMeeting && state.multi.has(state.activeMeeting.id)) openMeeting(state.activeMeeting.id);
+  showToast(failed ? t('bulkSomeFailed').replace('{n}', failed) : t('bulkAutoTitleDone'));
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && state.multi.size && !document.querySelector('.modal-backdrop:not(.hidden)')) clearLibSelection();
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a' && document.activeElement?.closest?.('#meetings-list')) {
+    e.preventDefault();
+    state.multi = new Set(libVisibleIds());
+    renderMeetingsSidebar();
+    renderLibSelectionBar();
+  }
+  if (e.key === 'Delete' && state.multi.size && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '')
+      && !document.activeElement?.isContentEditable) bulkDelete();
+});
+
 function meetingCompactRowHtml(m, depth) {
-  const isSelected = state.activeMeeting && state.activeMeeting.id === m.id;
+  const isSelected = libIsSelected(m);
   const isBusy = !DONE_STATUSES.includes(m.status);
   return `
-    <div onclick="openMeeting(${m.id}, true)" oncontextmenu="openRecordingContextMenu(event, ${m.id})"
+    <div onclick="libRowClick(event, ${m.id})" data-mid="${m.id}" oncontextmenu="openRecordingContextMenu(event, ${m.id})"
          draggable="true" ondragstart="libraryDragStart(event, 'm', ${m.id})" title="${escapeHtml(m.title)}"
          class="group cursor-pointer pr-2 py-1 rounded-md transition flex items-center gap-2 text-[12px] ${
            isSelected ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'
@@ -1068,13 +1204,13 @@ function meetingCompactRowHtml(m, depth) {
 }
 
 function meetingTileHtml(m) {
-  const isSelected = state.activeMeeting && state.activeMeeting.id === m.id;
+  const isSelected = libIsSelected(m);
   const isBusy = !DONE_STATUSES.includes(m.status);
   const cover = m.is_video
     ? `<img src="/api/meetings/${m.id}/thumb" loading="lazy" alt="" draggable="false" onerror="this.replaceWith(Object.assign(document.createElement('span'), {className: 'lib-tile-icon', innerHTML: ICON_FILE_VIDEO}))" class="w-full h-full object-cover" />`
     : `<span class="lib-tile-icon">${ICON_FILE_AUDIO}</span>`;
   return `
-    <div onclick="openMeeting(${m.id}, true)" oncontextmenu="openRecordingContextMenu(event, ${m.id})"
+    <div onclick="libRowClick(event, ${m.id})" data-mid="${m.id}" oncontextmenu="openRecordingContextMenu(event, ${m.id})"
          draggable="true" ondragstart="libraryDragStart(event, 'm', ${m.id})" title="${escapeHtml(m.title)}"
          class="lib-tile group ${isSelected ? 'lib-tile-on' : ''}">
       <div class="lib-tile-cover">

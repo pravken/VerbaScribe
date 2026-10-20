@@ -279,3 +279,24 @@ class DateFolderTest(unittest.TestCase):
                 d = in_date_folder(Path(tmp) / "2026-10-20", dt)
             self.assertEqual(d, Path(tmp) / "2026-10-21")
             self.assertTrue(d.is_dir())
+
+
+class DeleteWithFilesTest(unittest.TestCase):
+    def test_exports_and_note_deleted_on_request(self):
+        import tempfile
+        from pathlib import Path
+        from app.database import add_export_path, create_meeting, delete_meeting, get_meeting, init_db, update_meeting_fields
+
+        init_db()
+        with tempfile.TemporaryDirectory() as tmp:
+            files = [Path(tmp) / n for n in ("a.md", "b.srt", "note.md", "src.m4a")]
+            for f in files:
+                f.write_text("x")
+            m = create_meeting("Del", "src.m4a", str(files[3]), source="local")
+            add_export_path(m["id"], str(files[0]))
+            add_export_path(m["id"], str(files[1]))
+            update_meeting_fields(m["id"], obsidian_path=str(files[2]))
+            self.assertEqual(len(get_meeting(m["id"])["exports"]), 2)
+            delete_meeting(m["id"], with_exports=True)
+            self.assertFalse(files[0].exists() or files[1].exists())
+            self.assertTrue(files[2].exists() and files[3].exists())  # not asked for

@@ -743,6 +743,30 @@ class MeetingTitlePayload(BaseModel):
     title: str
 
 
+@app.post("/api/meetings/{meeting_id}/title/generate")
+def api_generate_title(meeting_id: int) -> Dict[str, Any]:
+    """A title made from the transcript by the analysis model (for several recordings at once)."""
+    from app.database import is_local_only
+    from app.llm import LlmError
+    from app.naming import rename_recording_file
+    from app.obsidian import refresh_if_exported
+    from app.ollama_client import generate_meeting_title
+
+    m = get_meeting(meeting_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    lang = m.get("language") if m.get("language") not in (None, "", "auto") else "ru"
+    try:
+        title = generate_meeting_title(m.get("segments") or [], m.get("speakers") or {}, answer_lang=lang,
+                                       local_only=is_local_only(m))
+    except (LlmError, RuntimeError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e)[:300])
+    update_meeting_fields(meeting_id, title=title[:300], title_is_default=0)
+    rename_recording_file(meeting_id)
+    refresh_if_exported(meeting_id)
+    return get_meeting(meeting_id)
+
+
 @app.patch("/api/meetings/{meeting_id}/title")
 def api_rename_meeting(meeting_id: int, payload: MeetingTitlePayload) -> Dict[str, Any]:
     from app.obsidian import refresh_if_exported
@@ -841,11 +865,12 @@ def api_reveal_meeting_file(meeting_id: int) -> Dict[str, Any]:
 
 
 @app.delete("/api/meetings/{meeting_id}")
-def api_delete_meeting(meeting_id: int, with_source: bool = False) -> Dict[str, Any]:
+def api_delete_meeting(meeting_id: int, with_source: bool = False, with_exports: bool = False,
+                       with_note: bool = False) -> Dict[str, Any]:
     if is_job_active(meeting_id):
         request_cancel(meeting_id)
         raise HTTPException(status_code=409, detail="Запись обрабатывается: обработка отменяется, удалите её через несколько секунд.")
-    ok = delete_meeting(meeting_id, with_source=with_source)
+    ok = delete_meeting(meeting_id, with_source=with_source, with_exports=with_exports, with_note=with_note)
     if not ok:
         raise HTTPException(status_code=404, detail="Встреча не найдена")
     return {"ok": True}
@@ -1902,7 +1927,7 @@ def api_dub_save(meeting_id: int, lang: str, kind: str) -> Dict[str, Any]:
         out_path = out_path.with_name(out_path.name + src.suffix)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, out_path)
-    update_settings({"export_dir": str(_export_base(out_path.parent))})
+    _remember_export(meeting_id, out_path)
     return {"ok": True, "path": str(out_path), "filename": out_path.name, "folder": str(out_path.parent)}
 
 
@@ -2012,7 +2037,7 @@ def api_meeting_cut(meeting_id: int, payload: CutPayload) -> Dict[str, Any]:
         out = out.with_name(out.name + ext)
     if out.resolve() == media.resolve():
         raise HTTPException(status_code=400, detail="Нельзя сохранить результат поверх исходного файла")
-    update_settings({"export_dir": str(_export_base(out.parent))})
+    _remember_export(meeting_id, out)
     if not enqueue_cut_job(meeting_id, payload.kind, intervals, has_video, str(out)):
         raise HTTPException(status_code=409, detail="Запись сейчас обрабатывается")
     return {"ok": True, "queued": True, "filename": out.name, "path": str(out), "kept_seconds": round(kept_seconds(intervals), 1),
@@ -2066,7 +2091,7 @@ def api_video_subtitles(meeting_id: int, payload: SubtitlesRequestPayload) -> Di
         out_path = Path(chosen)
         if out_path.suffix.lower() != ext:
             out_path = out_path.with_name(out_path.name + ext)
-        update_settings({"export_dir": str(_export_base(out_path.parent))})
+        _remember_export(meeting_id, out_path)
     try:
         check_output_path(media, out_path)
     except ValueError as e:
@@ -2162,6 +2187,14 @@ def _default_export_dir() -> Path:
     return default_export_dir()
 
 
+def _remember_export(meeting_id: int, path: Path) -> None:
+    """The folder is offered next time; the file is listed with the recording (deleted with it on request)."""
+    from app.database import add_export_path
+
+    update_settings({"export_dir": str(_export_base(path.parent))})
+    add_export_path(meeting_id, str(path))
+
+
 def _export_base(folder: Path) -> Path:
     from app.naming import without_date_folders
 
@@ -2245,7 +2278,7 @@ def api_save_export_to_disk(
         out_path = out_path.with_name(out_path.name + ext)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_bytes(content)
-    update_settings({"export_dir": str(_export_base(out_path.parent))})
+    _remember_export(meeting_id, out_path)
 
     return {"ok": True, "path": str(out_path), "filename": out_path.name, "folder": str(out_path.parent)}
 

@@ -223,6 +223,7 @@ _MEETING_EXTRA_COLUMNS = {
     "title_is_default": "INTEGER DEFAULT 0",  # 1: the title came from a file name and may be replaced
     "obsidian_path": "TEXT DEFAULT ''",
     "pending_exports_json": "TEXT DEFAULT '[]'",
+    "exports_json": "TEXT DEFAULT '[]'",  # files saved by exports (Save as), deleted with the recording on request
     "has_video": "INTEGER DEFAULT NULL",  # NULL: told from the file extension (see is_video)
     "local_only": "INTEGER DEFAULT 0",  # 1: never sent to a cloud model (see is_local_only)
     "media_size": "INTEGER DEFAULT NULL",  # bytes of the media file; NULL: not measured yet
@@ -709,6 +710,7 @@ def get_meeting(meeting_id: int) -> Optional[Dict[str, Any]]:
 _LIST_COLUMNS = """id, title, filename, media_path, duration, status, progress, stage_text,
     error_message, language, model_name, num_speakers_hint,
     speakers_json, created_at, completed_at, folder_id, source, recorded_at, has_video, local_only, media_size, series_id,
+    obsidian_path, exports_json,
     segments_json NOT IN ('', '[]') AS has_transcript,
     summaries_json NOT IN ('', '{}') AS has_summary"""
 
@@ -747,6 +749,7 @@ def list_meetings() -> List[Dict[str, Any]]:
             except Exception:
                 d["speakers"] = {}
             d["is_video"] = is_video(d)
+            d["exports"] = [p for p in _loads_list(d.pop("exports_json", None)) if isinstance(p, str)]
             # Measured once and kept: the list must not touch every file (a network drive is slow)
             if d.get("media_size") is None:
                 d["media_size"] = _file_size(d.get("media_path") or "")
@@ -764,11 +767,33 @@ def list_meetings() -> List[Dict[str, Any]]:
     return result
 
 
-def delete_meeting(meeting_id: int, with_source: bool = False) -> bool:
-    """with_source: the media file used in place (added by its path) is deleted too."""
+def add_export_path(meeting_id: int, path: str) -> None:
+    with _db_lock:
+        conn = get_connection()
+        row = conn.execute("SELECT exports_json FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+        if row is not None:
+            items = [p for p in _loads_list(row[0]) if p != path] + [path]
+            conn.execute("UPDATE meetings SET exports_json = ? WHERE id = ?",
+                         (json.dumps(items[-200:], ensure_ascii=False), meeting_id))
+            conn.commit()
+        conn.close()
+
+
+def delete_meeting(meeting_id: int, with_source: bool = False, with_exports: bool = False,
+                   with_note: bool = False) -> bool:
+    """with_source: the media file used in place (added by its path) is deleted too; with_exports: the
+    files its exports saved; with_note: its Obsidian note."""
     meeting = get_meeting(meeting_id)
     if not meeting:
         return False
+    extra = (meeting.get("exports") or []) if with_exports else []
+    if with_note and meeting.get("obsidian_path"):
+        extra.append(meeting["obsidian_path"])
+    for p_str in extra:
+        try:
+            Path(p_str).unlink(missing_ok=True)
+        except OSError as e:
+            print(f"[delete] {p_str}: {e}", flush=True)
     if with_source and meeting.get("source") == "local" and meeting.get("media_path"):
         try:
             Path(meeting["media_path"]).unlink(missing_ok=True)
@@ -805,6 +830,7 @@ def delete_meeting(meeting_id: int, with_source: bool = False) -> bool:
 def _deserialize_meeting(d: Dict[str, Any]) -> Dict[str, Any]:
     d["has_segments_backup"] = bool(d.pop("segments_backup_json", ""))
     d["pending_exports"] = _loads_list(d.pop("pending_exports_json", None))
+    d["exports"] = [p for p in _loads_list(d.pop("exports_json", None)) if isinstance(p, str)]
     d["is_video"] = is_video(d)
     d["local_only"] = bool(d.get("local_only"))
     for key, target in (

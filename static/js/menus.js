@@ -191,6 +191,9 @@ function openRecordingContextMenu(e, meetingId) {
   e.stopPropagation();
   document.getElementById('export-menu')?.classList.add('hidden');
 
+  // Right-click on one of several selected recordings: the actions for all of them
+  if (state.multi && state.multi.size > 1 && state.multi.has(meetingId)) { openBulkMenu(e); return; }
+  if (state.multi && state.multi.size) clearLibSelection();
   state.contextMeetingId = meetingId;
   const m = state.meetings.find(x => x.id === meetingId);
   if (!m) return;
@@ -213,6 +216,27 @@ function openRecordingContextMenu(e, meetingId) {
   const y = Math.min(e.clientY, window.innerHeight - 265);
   menu.style.left = `${x}px`;
   menu.style.top = `${y}px`;
+}
+
+function openBulkMenu(e) {
+  document.getElementById('bulk-menu')?.remove();
+  const menu = document.createElement('div');
+  menu.id = 'bulk-menu';
+  menu.className = 'fixed w-56 macos-menu z-50';
+  const item = (fn, label, cls = '') => `<button class="macos-menu-item ${cls}" data-fn="${fn}"><span>${escapeHtml(label)}</span></button>`;
+  menu.innerHTML = `<div class="px-2.5 py-1 text-[11px] font-semibold text-apple-secondary border-b border-white/10 mb-1">${escapeHtml(t('libSelected').replace('{n}', state.multi.size))}</div>`
+    + item('bulkRename', t('bulkRename') + '…') + item('bulkAutoTitles', t('bulkAutoTitle'))
+    + '<div class="my-1 h-px bg-white/10"></div>' + item('bulkDelete', t('ctxDelete'), 'text-apple-red');
+  menu.addEventListener('click', ev => {
+    const b = ev.target.closest('button[data-fn]');
+    if (!b) return;
+    menu.remove();
+    window[b.dataset.fn]();
+  });
+  document.body.appendChild(menu);
+  menu.style.left = `${Math.min(e.clientX, window.innerWidth - 232)}px`;
+  menu.style.top = `${Math.min(e.clientY, window.innerHeight - 140)}px`;
+  setTimeout(() => document.addEventListener('click', () => menu.remove(), { once: true }), 0);
 }
 
 // "Local analysis only" set on a folder covers everything inside it, at any depth
@@ -420,32 +444,58 @@ async function ctxExport(fmt) {
   await exportMeetingById(state.contextMeetingId, fmt);
 }
 
-// Delete confirmation; for a file used in place it can also delete that file from the disk
-function confirmDeleteDialog(m) {
+// Delete confirmation for one or several recordings: what is always deleted, and the files on the
+// disk that can go too (the source used in place, saved exports, the Obsidian note)
+function confirmDeleteDialog(list) {
+  if (!Array.isArray(list)) list = [list];
   return new Promise(resolve => {
-    const local = m.source === 'local';
+    const sources = list.filter(m => m.source === 'local');
+    const exportsN = list.reduce((n, m) => n + (m.exports || []).length, 0);
+    const notes = list.filter(m => m.obsidian_path);
+    const opt = (id, label, detail) => `<label class="flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
+        <input type="checkbox" id="${id}" class="del-opt mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-red" />
+        <span>${escapeHtml(label)}${detail ? `<span class="block text-[11px] text-apple-tertiary mt-0.5 break-all line-clamp-2">${escapeHtml(detail)}</span>` : ''}</span></label>`;
+    const options = [
+      sources.length ? opt('del-with-source', t('deleteWithSource'), sources.map(m => m.filename).join(', ')) : '',
+      exportsN ? opt('del-with-exports', t('deleteWithExports').replace('{n}', exportsN), list.flatMap(m => m.exports || []).slice(0, 3).join(', ')) : '',
+      notes.length ? opt('del-with-note', t('deleteWithNote').replace('{n}', notes.length), notes.map(m => m.obsidian_path).slice(0, 2).join(', ')) : '',
+    ].filter(Boolean);
+    const what = list.length === 1 ? t('confirmDeleteOne').replace('{title}', list[0].title) : t('confirmDeleteMany').replace('{n}', list.length);
     const wrap = document.createElement('div');
     wrap.className = 'fixed inset-0 modal-backdrop z-[70] flex items-center justify-center p-4';
     wrap.innerHTML = `<div class="w-full max-w-md bg-apple-card border apple-border rounded-2xl shadow-2xl p-5 space-y-4 modal-card">
       <div class="text-sm font-semibold text-white">${escapeHtml(t('deleteTitle'))}</div>
-      <p class="text-xs text-apple-secondary leading-relaxed">${escapeHtml(t('confirmDelete').replace('{title}', m.title))}</p>
-      ${local ? `<label class="flex items-start gap-2.5 cursor-pointer text-xs text-apple-label"><input type="checkbox" id="del-with-source" class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-red" />
-        <span>${escapeHtml(t('deleteWithSource'))}<span class="block text-[11px] text-apple-tertiary mt-0.5 break-all">${escapeHtml(m.filename || '')}</span></span></label>` : ''}
+      <p class="text-xs text-apple-secondary leading-relaxed">${escapeHtml(what)}</p>
+      <p class="text-[11px] text-apple-tertiary leading-relaxed">${escapeHtml(t('deleteAlways'))}</p>
+      ${options.length ? `<div class="space-y-2.5"><div class="text-[11px] text-apple-secondary">${escapeHtml(t('deleteAlsoFiles'))}</div>${options.join('')}</div>` : ''}
       <div class="flex justify-end gap-2">
+        ${options.length > 1 ? `<button data-a="all" class="ui-btn ui-btn-subtle mr-auto">${escapeHtml(t('deleteSelectAll'))}</button>` : ''}
         <button data-a="no" class="ui-btn ui-btn-subtle">${escapeHtml(t('cancel'))}</button>
         <button data-a="yes" class="ui-btn bg-apple-red text-white hover:opacity-90">${escapeHtml(t('ctxDelete'))}</button>
       </div></div>`;
     const done = (v) => { wrap.remove(); document.removeEventListener('keydown', onKey, true); resolve(v); };
     const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); done(null); } };
+    const checked = id => !!wrap.querySelector('#' + id)?.checked;
     wrap.addEventListener('click', (e) => {
       const a = e.target.closest('button[data-a]');
       if (e.target === wrap || (a && a.dataset.a === 'no')) done(null);
-      else if (a) done({ withSource: !!wrap.querySelector('#del-with-source')?.checked });
+      else if (a && a.dataset.a === 'all') wrap.querySelectorAll('.del-opt').forEach(c => { c.checked = true; });
+      else if (a) done({ withSource: checked('del-with-source'), withExports: checked('del-with-exports'), withNote: checked('del-with-note') });
     });
     document.addEventListener('keydown', onKey, true);
     document.body.appendChild(wrap);
     wrap.querySelector('button[data-a="yes"]').focus();
   });
+}
+
+// The query of DELETE /api/meetings/{id} for the options chosen in the dialog
+function deleteQuery(choice, m) {
+  const q = new URLSearchParams();
+  if (choice.withSource && m.source === 'local') q.set('with_source', 'true');
+  if (choice.withExports) q.set('with_exports', 'true');
+  if (choice.withNote) q.set('with_note', 'true');
+  const s = q.toString();
+  return s ? `?${s}` : '';
 }
 
 async function ctxDeleteRecording() {
@@ -455,7 +505,7 @@ async function ctxDeleteRecording() {
   const choice = await confirmDeleteDialog(m);
   if (!choice) return;
 
-  const delRes = await fetch(`/api/meetings/${m.id}${choice.withSource ? '?with_source=true' : ''}`, { method: 'DELETE' });
+  const delRes = await fetch(`/api/meetings/${m.id}${deleteQuery(choice, m)}`, { method: 'DELETE' });
   if (!delRes.ok) {
     const data = await delRes.json().catch(() => ({}));
     showToast(data.detail || 'Error');
