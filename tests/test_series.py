@@ -35,7 +35,7 @@ class OnnxEnsurePackageTest(unittest.TestCase):
         from unittest import mock
         from app import asr_onnx
 
-        with mock.patch("importlib.import_module", side_effect=ImportError), \
-             mock.patch("subprocess.run", return_value=mock.Mock(returncode=0)) as run:
+        with mock.patch("subprocess.run", return_value=mock.Mock(returncode=0)) as run, \
+             mock.patch("importlib.import_module", side_effect=ImportError):
             asr_onnx.ensure_package()
         self.assertIn(asr_onnx.ONNX_ASR_PIN, run.call_args[0][0])
