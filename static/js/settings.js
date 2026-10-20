@@ -272,6 +272,7 @@ async function vramChipClick(index) {
 }
 
 const MODEL_DISPLAY_NAMES = {
+  'gigaam-v3': 'GigaAM v3',
   'gigaam-v2': 'GigaAM v2',
   'parakeet-v3': 'Parakeet TDT v3',
   'large-v3-turbo': 'Whisper Turbo',

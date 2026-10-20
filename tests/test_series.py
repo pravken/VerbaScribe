@@ -82,6 +82,7 @@ class LiveOnnxChoiceTest(unittest.TestCase):
     def test_auto(self):
         both = {"gigaam-v2", "parakeet-v3"}
         self.assertEqual(self._pick("auto", "ru", both), "gigaam-v2")
+        self.assertEqual(self._pick("auto", "ru", both | {"gigaam-v3"}), "gigaam-v3")
         self.assertEqual(self._pick("auto", "en", both), "parakeet-v3")
         self.assertEqual(self._pick("auto", None, both), "parakeet-v3")
         self.assertIsNone(self._pick("auto", None, {"gigaam-v2"}))

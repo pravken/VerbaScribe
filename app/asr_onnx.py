@@ -19,14 +19,23 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 from app.paths import MODELS_DIR
 
 ONNX_MODELS: Dict[str, Dict[str, Any]] = {
+    "gigaam-v3": {
+        "onnx_name": "gigaam-v3-e2e-rnnt",
+        "name": "GigaAM v3",
+        "size_mb": 900,
+        "license": "MIT",
+        "languages": ["ru"],
+        "desc_ru": "Новая модель Сбера для русского языка: сразу пишет со знаками препинания и заглавными буквами, числа цифрами. Только русский, работает на процессоре.",
+        "desc_en": "Sber's new model for Russian: writes with punctuation and capital letters, numbers as digits. Russian only, runs on the CPU.",
+    },
     "gigaam-v2": {
         "onnx_name": "gigaam-v2-rnnt",
         "name": "GigaAM v2",
         "size_mb": 900,
         "license": "MIT",
         "languages": ["ru"],
-        "desc_ru": "Самая точная модель для русского языка (Сбер). Только русский. Работает на процессоре быстрее Whisper на видеокарте.",
-        "desc_en": "The most accurate model for Russian (Sber). Russian only. On the CPU it is faster than Whisper on a GPU.",
+        "desc_ru": "Модель Сбера для русского языка, без знаков препинания и заглавных букв (их пишет GigaAM v3). Только русский, работает на процессоре.",
+        "desc_en": "Sber's model for Russian, without punctuation and capital letters (GigaAM v3 writes them). Russian only, runs on the CPU.",
     },
     "parakeet-v3": {
         "onnx_name": "nemo-parakeet-tdt-0.6b-v3",
