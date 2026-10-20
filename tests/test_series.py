@@ -237,3 +237,23 @@ class TitleCleanTest(unittest.TestCase):
         self.assertEqual(clean_title("Планирование 发布 релиза.", "ru"), "Планирование релиза")
         self.assertEqual(clean_title("<think>x</think>«Итоги квартала»", "ru"), "Итоги квартала")
         self.assertEqual(clean_title("会议总结", "zh"), "会议总结")
+
+
+class SpaceTokenTest(unittest.TestCase):
+    def test_separate_space_tokens(self):
+        from app.asr_onnx import words_from_tokens
+        toks = ["в", "▁", "той", "▁", "ста", "дии", ",", "▁", "8", ":", "00", " "]
+        words = words_from_tokens(toks, [i * 0.1 for i in range(len(toks))], 0, 2)
+        self.assertEqual("".join(w["word"] for w in words).strip(), "в той стадии, 8:00")
+
+    def test_prefixed_tokens_unchanged(self):
+        from app.asr_onnx import words_from_tokens
+        words = words_from_tokens(["▁При", "вет", ".", "▁Да"], [0, 0.1, 0.2, 0.3], 0, 1)
+        self.assertEqual([w["word"] for w in words], [" Привет.", " Да"])
+
+    def test_words_follow_model_text(self):
+        from app.asr_onnx import words_from_text
+        toks = ["в", "той", "ста", "дии", ",", "8", ":", "00"]  # no space tokens at all
+        words = words_from_text("в той стадии, 8:00", toks, [i * 0.1 for i in range(len(toks))], 1.0, 2.0)
+        self.assertEqual([w["word"] for w in words], [" в", " той", " стадии,", " 8:00"])
+        self.assertEqual(words[2]["start"], 1.2)

@@ -212,7 +212,7 @@ def recognize_array(model_id: str, audio: Any) -> List[Tuple[float, float, str]]
         start, end = float(res.start), float(res.end)
         if res.tokens and res.timestamps:
             seg = {"start": start, "end": end, "text": text,
-                   "words": words_from_tokens(res.tokens, res.timestamps, start, end)}
+                   "words": words_from_text(text, res.tokens, res.timestamps, start, end)}
             out.extend((p["start"], p["end"], p["text"]) for p in split_sentences_words(seg))
         else:
             out.extend(split_sentences_text(start, end, text))
@@ -250,19 +250,45 @@ def delete_model(model_id: str) -> bool:
     return False
 
 
+def words_from_text(text: str, tokens: List[str], timestamps: List[float], offset: float, end: float) -> List[Dict[str, Any]]:
+    """Words exactly as in the model's text (its spaces), each starting at the time of the token that
+    holds its first letter: tokens are matched to the text by their non-space characters."""
+    starts: List[float] = []  # time of every non-space character of the token stream
+    for tok, ts in zip(tokens, timestamps):
+        starts.extend([float(ts)] * sum(1 for ch in tok.replace("▁", " ") if not ch.isspace()))
+    words: List[Dict[str, Any]] = []
+    pos = 0
+    for w in text.split():
+        if pos >= len(starts):
+            return words_from_tokens(tokens, timestamps, offset, end)  # text and tokens differ
+        words.append({"word": " " + w, "start": round(offset + starts[pos], 2)})
+        pos += len(w)
+    if pos != len(starts):
+        return words_from_tokens(tokens, timestamps, offset, end)
+    for i, w in enumerate(words):
+        nxt = words[i + 1]["start"] if i + 1 < len(words) else end
+        w["end"] = round(max(w["start"] + 0.05, min(nxt, w["start"] + 2.0)), 2)
+        w["prob"] = 1.0
+    return words
+
+
 def words_from_tokens(tokens: List[str], timestamps: List[float], offset: float, end: float) -> List[Dict[str, Any]]:
     """Joins sub-word tokens into words: a token starting with a space (or "▁") starts a new word.
     A word lasts until the next word starts (the last one until the end of the phrase)."""
     words: List[Dict[str, Any]] = []
+    space = True  # a space before the next piece (GigaAM v3 gives it as a separate "▁" token)
     for tok, ts in zip(tokens, timestamps):
         piece = tok.replace("▁", " ")
         if not piece:
             continue
-        if piece[0].isspace() or not words:
-            if piece.strip():
-                words.append({"word": " " + piece.strip(), "start": round(offset + float(ts), 2)})
+        if not piece.strip():
+            space = True
+            continue
+        if space or piece[0].isspace() or not words:
+            words.append({"word": " " + piece.strip(), "start": round(offset + float(ts), 2)})
         else:
-            words[-1]["word"] += piece
+            words[-1]["word"] += piece.rstrip()
+        space = piece[-1].isspace()
     for i, w in enumerate(words):
         nxt = words[i + 1]["start"] if i + 1 < len(words) else end
         w["end"] = round(max(w["start"] + 0.05, min(nxt, w["start"] + 2.0)), 2)
@@ -321,7 +347,7 @@ def transcribe(model_id: str, wav_path: Path, total_dur: float, on_progress: Cal
         if not text:
             continue
         start, end = float(res.start), float(res.end)
-        words = words_from_tokens(res.tokens or [], res.timestamps or [], start, end) if res.tokens and res.timestamps else []
+        words = words_from_text(text, res.tokens, res.timestamps, start, end) if res.tokens and res.timestamps else []
         seg = {"start": round(start, 2), "end": round(end, 2), "text": text, "words": words}
         segments.extend(split_sentences_words(seg) if words else
                         [{"start": a, "end": b, "text": t, "words": []} for a, b, t in split_sentences_text(start, end, text)])
