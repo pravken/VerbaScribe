@@ -14,7 +14,7 @@ Models are downloaded from Hugging Face (the ONNX exports in istupakov/*) into <
 import threading
 import traceback
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, List, Optional
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 from app.paths import MODELS_DIR
 
@@ -172,9 +172,39 @@ def fetch(model_id: str) -> None:
     create_vad_resolver(VAD_NAME, _vad_dir(), offline=False).resolve_model()
 
 
-def release() -> None:
+def release(model_id: Optional[str] = None) -> None:
     with _lock:
-        _loaded.clear()
+        if model_id:
+            _loaded.pop(model_id, None)
+        else:
+            _loaded.clear()
+
+
+def preload(model_id: str) -> None:
+    try:
+        _load(model_id)
+    except Exception:
+        traceback.print_exc()
+
+
+def loaded_models() -> List[str]:
+    return list(_loaded)
+
+
+def guess_language(text: str) -> str:
+    cyr = sum(1 for ch in text if "\u0400" <= ch <= "\u04ff")
+    return "ru" if cyr > len(text) * 0.3 else "en"
+
+
+def recognize_array(model_id: str, audio: Any) -> List[Tuple[float, float, str]]:
+    """Phrases of a short 16 kHz float32 window (live captions): [(start, end, text)]."""
+    asr = _load(model_id)
+    out = []
+    for res in asr.recognize(audio, sample_rate=16000):
+        text = " ".join((res.text or "").split())
+        if text:
+            out.append((float(res.start), float(res.end), text))
+    return out
 
 
 def start_download(model_id: str) -> Dict[str, Any]:

@@ -7,6 +7,7 @@ processes. Unloading frees VRAM; preloading saves the load time of the next job.
 import ctypes
 import sys
 import threading
+import traceback
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
@@ -158,10 +159,28 @@ def vram_snapshot() -> Dict[str, Any]:
         if worker is not None and worker.proc is not None and worker.proc.poll() is None:
             with live._sessions_lock:
                 active = bool(live._sessions)
-            chips.append({"kind": "live", "name": wanted_whisper, "label": format_whisper_model_name(wanted_whisper),
+            cap = worker.model_name or wanted_whisper
+            chips.append({"kind": "live", "name": cap, "label": format_whisper_model_name(cap),
                           "loaded": True, "can_unload": not active, "can_preload": False})
     except Exception:
         pass
+
+    # GigaAM / Parakeet (app/asr_onnx.py) live in this process, in RAM
+    try:
+        from app import asr_onnx, live
+
+        loaded = set(asr_onnx.loaded_models())
+        with live._sessions_lock:
+            live_onnx = {s.onnx_model for s in live._sessions.values() if s.onnx_model}
+        for mid in asr_onnx.ONNX_MODELS:
+            if mid in loaded or asr_onnx.is_installed(mid):
+                in_use = mid in live_onnx or (busy == "transcribe" and wanted_whisper == mid)
+                chips.append({"kind": "onnx", "name": mid, "label": asr_onnx.ONNX_MODELS[mid]["name"],
+                              "default": mid == wanted_whisper, "loaded": mid in loaded,
+                              "live": mid in live_onnx, "device": "cpu",
+                              "can_unload": mid in loaded and not in_use, "can_preload": mid not in loaded})
+    except Exception:
+        traceback.print_exc()
 
     loaded_ollama = {m["name"]: m for m in ollama_loaded()}
     installed = ollama_installed()
@@ -216,6 +235,15 @@ def unload(kind: str, name: str = "") -> Dict[str, Any]:
         if live._worker is not None:
             with live._worker.lock:
                 live._worker._kill()
+    elif kind == "onnx":
+        from app import asr_onnx, live
+
+        with live._sessions_lock:
+            if any(s.onnx_model == name for s in live._sessions.values()):
+                raise RuntimeError("Модель сейчас пишет субтитры")
+        if busy == "transcribe" and (get_all_settings().get("whisper_model") or "") == name:
+            raise RuntimeError("Модель сейчас распознаёт запись")
+        asr_onnx.release(name)
     elif kind == "dub":
         raise RuntimeError("Процессы дубляжа завершаются вместе с задачей — отмените её в очереди")
     else:
@@ -251,6 +279,12 @@ def preload(kind: str, name: str = "") -> Dict[str, Any]:
                 client.post(f"{base}/api/generate", json={"model": model, "keep_alive": idle_unload.ollama_keep_alive() or "10m"}).raise_for_status()
         finally:
             _ollama_loading.clear()
+    elif kind == "onnx":
+        from app import asr_onnx
+
+        if not asr_onnx.is_onnx_model(name) or not asr_onnx.is_installed(name):
+            raise ValueError("Эта модель не скачана")
+        threading.Thread(target=asr_onnx.preload, args=(name,), daemon=True).start()
     else:
         raise ValueError(f"Модель {kind!r} нельзя загрузить заранее")
     return vram_snapshot()

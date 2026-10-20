@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
+from app.database import get_all_settings
 from app.paths import APP_DIR
 
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
@@ -57,6 +58,7 @@ class _CaptionWorker:
         self.lock = threading.Lock()
         self.last_used = 0.0
         self.stderr_tail: List[str] = []
+        self.model_name = ""
         threading.Thread(target=self._reaper, daemon=True, name="live_worker_reaper").start()
 
     def _start(self) -> None:
@@ -69,7 +71,7 @@ class _CaptionWorker:
         line = self.proc.stdout.readline()
         if not line:
             raise RuntimeError("процесс распознавания не запустился: " + " | ".join(self.stderr_tail[-3:]))
-        json.loads(line)
+        self.model_name = json.loads(line).get("model") or ""
 
     def _drain(self, proc) -> None:
         for raw in proc.stderr:
@@ -150,6 +152,7 @@ class LiveSession:
         # between languages); self.lang is the language heard last, for translation and the UI
         self.speech_lang = lang if lang and lang != "auto" else None
         self.lang = self.speech_lang
+        self.onnx_model = caption_onnx_model(get_all_settings(), self.speech_lang)
         self.translate_to = translate_to or None
         self.pair = list(pair or ["ru", "en"])[:2]  # the two languages of translate_to="auto"
         self.audio = np.zeros(0, dtype=np.float32)
@@ -209,7 +212,15 @@ class LiveSession:
         win_sec = window.size / SR
         if win_sec < 0.8:
             return
-        segs, language, prob = _caption_worker().transcribe(window, self.speech_lang)
+        onnx_id = self.onnx_model
+        if onnx_id:
+            from app import asr_onnx
+
+            segs = [_Seg(a, b, t) for a, b, t in asr_onnx.recognize_array(onnx_id, window)]
+            language = asr_onnx.guess_language(" ".join(x.text for x in segs)) if segs else None
+            prob = 1.0 if segs and not self.speech_lang else 0.0
+        else:
+            segs, language, prob = _caption_worker().transcribe(window, self.speech_lang)
         if self.speech_lang:
             self.lang = self.speech_lang
         elif language and prob > 0.5:
@@ -261,6 +272,7 @@ class LiveSession:
             self.speech_lang = None if speech_lang in ("", "auto") else speech_lang
             if self.speech_lang:
                 self.lang = self.speech_lang
+            self.onnx_model = caption_onnx_model(get_all_settings(), self.speech_lang)
         if not translate_to:
             if self.translator:
                 self.translator.stop()
@@ -300,8 +312,13 @@ def start_session(lang: Optional[str], translate_to: Optional[str], capture_id: 
     s = LiveSession(lang, translate_to, capture_id, speed, pair)
     with _sessions_lock:
         _sessions[s.id] = s
-    # Start the caption worker now, so the first captions do not wait for the model to load
-    threading.Thread(target=_caption_worker().preload, daemon=True).start()
+    # Load the caption model now, so the first captions do not wait for it
+    if s.onnx_model:
+        from app import asr_onnx
+
+        threading.Thread(target=asr_onnx.preload, args=(s.onnx_model,), daemon=True).start()
+    else:
+        threading.Thread(target=_caption_worker().preload, daemon=True).start()
     return s
 
 
@@ -310,6 +327,23 @@ def active_session_count() -> int:
     _drop_idle()
     with _sessions_lock:
         return len(_sessions)
+
+
+def caption_onnx_model(settings: Dict[str, str], speech_lang: Optional[str]) -> Optional[str]:
+    """GigaAM / Parakeet for live captions, or None for Whisper. They run in this process on the CPU
+    (ONNX Runtime does not abort the process like CUDA can), so they leave the GPU to the queue.
+    "auto": GigaAM for Russian, Parakeet for its other languages and for "auto" speech (it is
+    multilingual), Whisper when neither fits or is downloaded."""
+    from app import asr_onnx
+
+    chosen = (settings.get("live_whisper_model") or "auto").strip()
+    lang = (speech_lang or "")[:2] or None
+    if asr_onnx.is_onnx_model(chosen):
+        return chosen if asr_onnx.is_installed(chosen) and asr_onnx.supports_language(chosen, lang) else None
+    if chosen != "auto":
+        return None
+    order = ["gigaam-v2", "parakeet-v3"] if lang == "ru" else ["parakeet-v3"]
+    return next((m for m in order if asr_onnx.is_installed(m) and asr_onnx.supports_language(m, lang)), None)
 
 
 def caption_model(settings: Dict[str, str], hw: Dict[str, Any]) -> str:
@@ -325,6 +359,8 @@ def caption_model(settings: Dict[str, str], hw: Dict[str, Any]) -> str:
         # Captions stay on Whisper (they are decoded in short windows by app/live_worker.py)
         main = next((m for m in ("large-v3-turbo", "medium", "small", "large-v3") if is_whisper_model_installed(m)), "small")
     chosen = (settings.get("live_whisper_model") or "auto").strip()
+    if is_onnx_model(chosen):
+        chosen = "auto"  # the Whisper fallback when GigaAM / Parakeet does not fit the language
     if chosen != "auto":
         return chosen if is_whisper_model_installed(chosen) else main
     device = settings.get("device") or hw.get("recommended_device") or "cpu"

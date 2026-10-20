@@ -156,6 +156,7 @@ function vramChipLabel(c) {
   if (c.kind === 'dub') return `${t('vramChipDub')}${c.count > 1 ? ' ×' + c.count : ''}`;
   if (c.kind === 'speakers') return t('vramChipSpeakers');
   if (c.kind === 'live') return `${t('vramChipLive')} · ${c.label || c.name}`;
+  if (c.kind === 'onnx') return `${c.label || c.name}${c.live ? ' · ' + t('vramChipLive') : ''}`;
   if (c.kind === 'ollama') return `${c.label || c.name}${c.size_gb ? ' · ' + c.size_gb + ' ' + t('unitGB') : ''}`;
   return c.label || c.name;
 }
@@ -402,6 +403,7 @@ function updateWhisperModelsUI(models) {
   const catalogBox = document.getElementById('whisper-catalog-list');
   const whisperList = models.whisper_catalog || models.whisper || [];
   state.whisperInstalled = whisperList.filter(i => i.installed && i.engine !== 'onnx').map(i => i.id);
+  state.onnxInstalled = whisperList.filter(i => i.installed && i.engine === 'onnx').map(i => i.id);
   renderLiveModelSelect();
 
   if (catalogBox && whisperList.length > 0) {
@@ -787,7 +789,7 @@ function renderLiveModelSelect() {
   const sel = document.getElementById('set-live-model');
   if (!sel) return;
   const value = sel.dataset.touched ? sel.value : (state.liveModelSetting || 'auto');
-  const ids = state.whisperInstalled || [];
+  const ids = [...(state.onnxInstalled || []), ...(state.whisperInstalled || [])];
   sel.innerHTML = `<option value="auto">${escapeHtml(t('liveModelAuto'))}</option>`
     + ids.map(id => `<option value="${escapeHtml(id)}">${escapeHtml(formatModelName(id))}</option>`).join('');
   sel.value = [...sel.options].some(o => o.value === value) ? value : 'auto';

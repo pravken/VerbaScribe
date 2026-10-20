@@ -69,3 +69,42 @@ class OnnxEnsurePackageTest(unittest.TestCase):
                 asr_onnx.fetch("gigaam-v2")
             self.assertIn(False, calls)
             self.assertTrue(list(d.glob("*.onnx")))
+
+
+class LiveOnnxChoiceTest(unittest.TestCase):
+    def _pick(self, setting, lang, installed):
+        from unittest import mock
+        from app import asr_onnx, live
+
+        with mock.patch.object(asr_onnx, "is_installed", side_effect=lambda m: m in installed):
+            return live.caption_onnx_model({"live_whisper_model": setting}, lang)
+
+    def test_auto(self):
+        both = {"gigaam-v2", "parakeet-v3"}
+        self.assertEqual(self._pick("auto", "ru", both), "gigaam-v2")
+        self.assertEqual(self._pick("auto", "en", both), "parakeet-v3")
+        self.assertEqual(self._pick("auto", None, both), "parakeet-v3")
+        self.assertIsNone(self._pick("auto", None, {"gigaam-v2"}))
+        self.assertIsNone(self._pick("auto", "ja", both))
+        self.assertIsNone(self._pick("auto", "ru", set()))
+
+    def test_explicit(self):
+        self.assertEqual(self._pick("gigaam-v2", "ru", {"gigaam-v2"}), "gigaam-v2")
+        self.assertIsNone(self._pick("gigaam-v2", "en", {"gigaam-v2"}))
+        self.assertEqual(self._pick("gigaam-v2", None, {"gigaam-v2"}), "gigaam-v2")
+        self.assertIsNone(self._pick("small", "ru", {"gigaam-v2"}))
+
+
+class LiveOnnxWindowTest(unittest.TestCase):
+    def test_window_goes_to_onnx(self):
+        from unittest import mock
+        import numpy as np
+        from app import asr_onnx, live
+
+        with mock.patch.object(live, "caption_onnx_model", return_value="gigaam-v2"):
+            s = live.LiveSession("ru", None)
+        s.audio = np.zeros(live.SR * 6, dtype=np.float32)
+        with mock.patch.object(asr_onnx, "recognize_array", return_value=[(0.2, 1.5, "Привет всем"), (4.8, 5.9, "дальше")]):
+            s._transcribe_window()
+        self.assertEqual([l["text"] for l in s.lines], ["Привет всем"])
+        self.assertEqual(s.partial, "дальше")

@@ -810,8 +810,7 @@ def _process_meeting_job(meeting_id: int) -> None:
             raw_segments = asr_onnx.transcribe(model_name, wav_path, total_dur, _onnx_progress_and_partial,
                                                lambda: _check_cancel(meeting_id), out=onnx_done)
             text_all = " ".join(s["text"] for s in raw_segments)
-            cyr = sum(1 for ch in text_all if "\u0400" <= ch <= "\u04ff")
-            detected_lang = language or ("ru" if cyr > len(text_all) * 0.3 else "en")
+            detected_lang = language or asr_onnx.guess_language(text_all)
             whisper_model = None
             reused = False
         else:
