@@ -140,3 +140,32 @@ class RemovedModelTest(unittest.TestCase):
         self.assertEqual((s["whisper_model"], s["live_whisper_model"]), ("gigaam-v3", "gigaam-v3"))
         update_settings({"whisper_model": "large-v3-turbo", "live_whisper_model": "auto"})
         self.assertNotIn("gigaam-v2", asr_onnx.ONNX_MODELS)
+
+
+class SentenceSplitTest(unittest.TestCase):
+    def test_words(self):
+        from app.asr_onnx import split_sentences_words
+        ws = [{"word": " " + w, "start": i, "end": i + 0.5} for i, w in enumerate("Привет. Как дела? Хорошо".split())]
+        out = split_sentences_words({"start": 0, "end": 3, "text": "", "words": ws})
+        self.assertEqual([o["text"] for o in out], ["Привет.", "Как дела?", "Хорошо"])
+        self.assertEqual(out[1]["start"], 1)
+
+    def test_text(self):
+        from app.asr_onnx import split_sentences_text
+        out = split_sentences_text(0, 10, "Раз два. Три четыре!")
+        self.assertEqual([o[2] for o in out], ["Раз два.", "Три четыре!"])
+        self.assertEqual(out[-1][1], 10)
+
+
+class LiveSentenceLinesTest(unittest.TestCase):
+    def test_lines_per_sentence(self):
+        from unittest import mock
+        import numpy as np
+        from app import asr_onnx, live
+
+        with mock.patch.object(live, "caption_onnx_model", return_value="gigaam-v3"):
+            s = live.LiveSession("ru", None)
+        s.audio = np.zeros(live.SR * 8, dtype=np.float32)
+        with mock.patch.object(asr_onnx, "recognize_array", return_value=[(0.2, 4.0, "Первое. Второе предложение? Третье")]):
+            s._transcribe_window()
+        self.assertEqual([l["text"] for l in s.lines], ["Первое.", "Второе предложение?", "Третье"])

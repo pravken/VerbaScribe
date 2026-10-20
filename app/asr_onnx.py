@@ -277,6 +277,44 @@ def words_from_tokens(tokens: List[str], timestamps: List[float], offset: float,
     return words
 
 
+_SENT_END = (".", "?", "!", "…")
+
+
+def split_sentences_words(seg: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """A phrase of several sentences as one segment per sentence (cut at words that end one)."""
+    words = seg.get("words") or []
+    if len(words) < 2:
+        return [seg]
+    out, cur = [], []
+    for i, w in enumerate(words):
+        cur.append(w)
+        if w["word"].strip().endswith(_SENT_END) and i < len(words) - 1:
+            out.append(cur)
+            cur = []
+    if cur:
+        out.append(cur)
+    if len(out) == 1:
+        return [seg]
+    return [{"start": ws[0]["start"], "end": ws[-1]["end"], "text": "".join(w["word"] for w in ws).strip(), "words": ws}
+            for ws in out]
+
+
+def split_sentences_text(start: float, end: float, text: str) -> List[Tuple[float, float, str]]:
+    """The same without word timings: times shared by the length of each sentence."""
+    import re
+
+    parts = [p.strip() for p in re.split(r"(?<=[.?!…])\s+", text) if p.strip()]
+    if len(parts) < 2:
+        return [(start, end, text)]
+    total = sum(len(p) for p in parts)
+    out, t = [], start
+    for p in parts:
+        d = (end - start) * len(p) / total
+        out.append((round(t, 2), round(t + d, 2), p))
+        t += d
+    return out
+
+
 def transcribe(model_id: str, wav_path: Path, total_dur: float, on_progress: Callable[[float], None],
                check_cancel: Callable[[], None], out: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
     """Segments like faster-whisper's: [{start, end, text, words: [{word, start, end, prob}]}].
@@ -291,6 +329,8 @@ def transcribe(model_id: str, wav_path: Path, total_dur: float, on_progress: Cal
             continue
         start, end = float(res.start), float(res.end)
         words = words_from_tokens(res.tokens or [], res.timestamps or [], start, end) if res.tokens and res.timestamps else []
-        segments.append({"start": round(start, 2), "end": round(end, 2), "text": text, "words": words})
+        seg = {"start": round(start, 2), "end": round(end, 2), "text": text, "words": words}
+        segments.extend(split_sentences_words(seg) if words else
+                        [{"start": a, "end": b, "text": t, "words": []} for a, b, t in split_sentences_text(start, end, text)])
         on_progress(min(1.0, end / max(1.0, total_dur)))
     return segments

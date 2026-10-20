@@ -222,6 +222,10 @@ class LiveSession:
             prob = 1.0 if segs and not self.speech_lang else 0.0
         else:
             segs, language, prob = _caption_worker().transcribe(window, self.speech_lang)
+        # One caption line per sentence (a phrase without pauses can hold several)
+        from app.asr_onnx import split_sentences_text
+
+        segs = [_Seg(a, b, t) for x in segs for a, b, t in split_sentences_text(x.start, x.end, x.text.strip())]
         if self.speech_lang:
             self.lang = self.speech_lang
         elif language and prob > 0.5:
