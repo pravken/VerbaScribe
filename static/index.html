@@ -1444,6 +1444,16 @@
             <input type="checkbox" id="set-update-check" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
             <span data-i18n="updateAutoToggle">Проверять обновления при запуске</span>
           </label>
+          <div class="space-y-1.5 pt-2">
+            <div class="text-xs text-apple-label" data-i18n="watchTitle">Папка автоимпорта</div>
+            <p class="text-[11px] text-apple-tertiary leading-snug" data-i18n="watchDesc">Новые аудио и видео, которые появятся в этой папке (синхронизация с телефона, диктофон, записи Zoom), добавятся в медиатеку и расшифруются сами. Файлы, которые уже лежат в папке, не трогаются.</p>
+            <div class="flex items-center gap-2">
+              <div id="watch-folder-path" class="flex-1 min-w-0 h-8 leading-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono truncate"></div>
+              <button onclick="pickWatchFolder()" class="ui-btn ui-btn-subtle h-8" data-i18n="exportDirPickBtn">Выбрать…</button>
+              <button onclick="watchFolderOff()" class="ui-btn ui-btn-subtle h-8" data-i18n="hotkeyClear">Отключить</button>
+            </div>
+            <div id="watch-folder-status" class="text-[11px] text-apple-tertiary"></div>
+          </div>
           <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label" data-i18n-title="tipQuietMode" title="Без всплывающих уведомлений Windows: о начале и конце записи, о готовых расшифровках. Переключается и в меню значка в трее">
             <input type="checkbox" id="set-quiet-mode" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
             <span data-i18n="quietModeToggle">Тихий режим (без уведомлений)</span>

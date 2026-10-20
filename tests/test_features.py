@@ -281,3 +281,33 @@ class AnalyticsTest(unittest.TestCase):
         self.assertEqual(a["turns"], 3)
         self.assertEqual(anna["longest"], 40.0)  # 0-40: one turn across a 1 s pause
         self.assertEqual(a["silence_share"], 40.0)
+
+
+class WatchFolderTest(unittest.TestCase):
+    def test_only_new_files_once_they_stop_growing(self):
+        import tempfile
+        from pathlib import Path
+
+        from app import database as db
+        from app import watch_folder as wf
+
+        try:
+            import app.main  # noqa: F401 (SUPPORTED_EXTENSIONS)
+        except ImportError:
+            self.skipTest("app dependencies not installed")
+        db.init_db()
+        d = Path(tempfile.mkdtemp())
+        (d / "old.mp3").write_bytes(b"x" * 10)
+        db.update_settings({"watch_folder": str(d), "watch_folder_baseline": ""})
+        added = []
+        self.assertEqual(wf.scan_once(added.append, now=0), 0)  # first look: what is there is the baseline
+        new = d / "new.m4a"
+        new.write_bytes(b"x" * 10)
+        (d / "notes.txt").write_text("no")
+        self.assertEqual(wf.scan_once(added.append, now=100), 0)  # just appeared: wait until it stops growing
+        new.write_bytes(b"x" * 20)
+        self.assertEqual(wf.scan_once(added.append, now=110), 0)  # still growing
+        self.assertEqual(wf.scan_once(added.append, now=110 + wf.STABLE_SEC), 1)
+        self.assertEqual([p.name for p in added], ["new.m4a"])
+        self.assertEqual(wf.scan_once(added.append, now=1000), 0)  # never twice
+        db.update_settings({"watch_folder": "", "watch_folder_baseline": ""})

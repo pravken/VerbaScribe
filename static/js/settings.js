@@ -87,6 +87,7 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     document.getElementById('set-auto-summary').checked = s.auto_summary !== 'false';
     document.getElementById('set-auto-title').checked = s.auto_title !== 'false';
     document.getElementById('set-quiet-mode').checked = s.quiet_mode === 'true';
+    loadWatchFolder();
     document.getElementById('set-semantic').checked = s.semantic_search === 'true';
     document.getElementById('set-semantic-model').value = s.semantic_model || 'bge-m3';
     loadSemanticStatus();
@@ -671,6 +672,29 @@ async function renderAnalysisEstimate() {
 }
 
 const ICON_LOCK = '<svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/></svg>';
+
+// --- Auto-import folder (app/watch_folder.py) ---
+function renderWatchFolder(st) {
+  document.getElementById('watch-folder-path').textContent = st.folder || t('watchOff');
+  const box = document.getElementById('watch-folder-status');
+  box.textContent = st.error ? st.error : st.folder ? t('watchOn').replace('{n}', st.imported || 0) + (st.last_import ? ` · ${st.last_import}` : '') : '';
+  box.className = 'text-[11px] ' + (st.error ? 'text-apple-amber' : 'text-apple-tertiary');
+}
+
+async function loadWatchFolder() {
+  const st = await fetch('/api/watch-folder').then(r => r.json()).catch(() => null);
+  if (st) renderWatchFolder(st);
+}
+
+async function pickWatchFolder() {
+  const st = await fetch('/api/watch-folder/pick', { method: 'POST' }).then(r => r.json()).catch(() => null);
+  if (st && st.ok) { renderWatchFolder(st); showToast(t('watchSet')); }
+}
+
+async function watchFolderOff() {
+  const st = await fetch('/api/watch-folder/off', { method: 'POST' }).then(r => r.json()).catch(() => null);
+  if (st) renderWatchFolder(st);
+}
 
 // --- Calls recorded by themselves (app/call_watch.py) ---
 const CALL_APP_NAMES = { zoom: 'Zoom', teams: 'Microsoft Teams', telegram: 'Telegram', discord: 'Discord', skype: 'Skype', whatsapp: 'WhatsApp' };

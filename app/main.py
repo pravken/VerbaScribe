@@ -171,6 +171,9 @@ async def lifespan(_app: FastAPI):
     from app import call_watch
 
     call_watch.start()
+    from app import watch_folder
+
+    watch_folder.start()
     # Resume recordings that were interrupted mid-processing
     active_states = {"queued", "extracting_audio", "transcribing", "diarizing", "summarizing"}
     for m in list_meetings():
@@ -2286,6 +2289,34 @@ def api_pick_recordings_dir() -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail=f"В эту папку нельзя записывать: {e}")
     update_settings({"recordings_dir": chosen})
     return {"ok": True, "folder": str(_recordings_dir())}
+
+
+@app.get("/api/watch-folder")
+def api_watch_folder_status() -> Dict[str, Any]:
+    from app import watch_folder
+
+    return watch_folder.status()
+
+
+@app.post("/api/watch-folder/pick")
+def api_watch_folder_pick() -> Dict[str, Any]:
+    """Auto-import (app/watch_folder.py): files that appear in this folder are added by themselves."""
+    current = get_all_settings().get("watch_folder") or ""
+    chosen = _pick_path_native("folder", Path(current) if current and Path(current).is_dir() else Path.home())
+    if not chosen:
+        return {"ok": False, "cancelled": True}
+    update_settings({"watch_folder": chosen})
+    from app import watch_folder
+
+    return {"ok": True, **watch_folder.status()}
+
+
+@app.post("/api/watch-folder/off")
+def api_watch_folder_off() -> Dict[str, Any]:
+    update_settings({"watch_folder": "", "watch_folder_baseline": ""})
+    from app import watch_folder
+
+    return {"ok": True, **watch_folder.status()}
 
 
 @app.post("/api/recordings-dir/reset")
