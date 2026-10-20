@@ -10,7 +10,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 ICO_PATH = BASE_DIR / "assets" / "icon.ico"
-WINDOW_TITLE = "VerbaScribe — AI Speech & Media Studio"
+WINDOW_TITLE = "VerbaScribe"
 
 import uvicorn
 from app.hardware import register_cuda_dlls
