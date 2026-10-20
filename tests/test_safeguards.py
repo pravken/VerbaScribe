@@ -95,16 +95,15 @@ class GpuSharingTest(unittest.TestCase):
     def test_caption_model(self):
         from app.live import caption_model
 
-        installed = {"small", "large-v3"}
+        installed = {"large-v3-turbo", "large-v3"}
         with mock.patch("app.model_manager.is_whisper_model_installed", side_effect=lambda m: m in installed):
-            big = {"vram_total_gb": 24, "recommended_device": "cuda"}
-            small = {"vram_total_gb": 8, "recommended_device": "cuda"}
+            hw = {"vram_total_gb": 8, "recommended_device": "cuda"}
             s = {"whisper_model": "large-v3", "device": "cuda"}
-            self.assertEqual(caption_model(s, big), "large-v3")
-            self.assertEqual(caption_model(s, small), "small")
-            self.assertEqual(caption_model({**s, "device": "cpu"}, big), "small")
-            self.assertEqual(caption_model({**s, "live_whisper_model": "large-v3"}, small), "large-v3")
-            self.assertEqual(caption_model({**s, "live_whisper_model": "medium"}, small), "large-v3")  # not downloaded
+            self.assertEqual(caption_model(s, hw), "large-v3-turbo")
+            self.assertEqual(caption_model({**s, "live_whisper_model": "large-v3"}, hw), "large-v3")
+            self.assertEqual(caption_model({**s, "live_whisper_model": "gigaam-v3"}, hw), "large-v3-turbo")
+            installed.discard("large-v3-turbo")
+            self.assertEqual(caption_model(s, hw), "large-v3")
 
     def test_job_waits_while_captions_hold_the_gpu(self):
         from app import transcriber

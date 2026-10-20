@@ -51,21 +51,6 @@ _downloads: Dict[str, Dict[str, Any]] = {}
 REPLACED = {"gigaam-v2": "gigaam-v3"}
 
 
-def remove_replaced() -> None:
-    """Moves settings off removed models and deletes their downloaded files."""
-    import shutil
-
-    from app.database import get_all_settings, update_settings
-
-    settings = get_all_settings()
-    changes = {k: REPLACED[v] for k in ("whisper_model", "live_whisper_model") if (v := settings.get(k)) in REPLACED}
-    if changes:
-        update_settings(changes)
-    for old in REPLACED:
-        if model_dir(old).is_dir():
-            shutil.rmtree(model_dir(old), ignore_errors=True)
-
-
 def is_onnx_model(model_id: str) -> bool:
     return model_id in ONNX_MODELS
 

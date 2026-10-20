@@ -134,10 +134,12 @@ class RemovedModelTest(unittest.TestCase):
         from app.database import get_all_settings, init_db, update_settings
 
         init_db()
-        update_settings({"whisper_model": "gigaam-v2", "live_whisper_model": "gigaam-v2"})
-        asr_onnx.remove_replaced()
+        update_settings({"whisper_model": "gigaam-v2", "live_whisper_model": "medium"})
+        from app.model_manager import WHISPER_CATALOG, remove_retired_models
+        remove_retired_models()
         s = get_all_settings()
-        self.assertEqual((s["whisper_model"], s["live_whisper_model"]), ("gigaam-v3", "gigaam-v3"))
+        self.assertEqual((s["whisper_model"], s["live_whisper_model"]), ("gigaam-v3", "large-v3-turbo"))
+        self.assertEqual([m["id"] for m in WHISPER_CATALOG], ["large-v3-turbo", "large-v3"])
         update_settings({"whisper_model": "large-v3-turbo", "live_whisper_model": "auto"})
         self.assertNotIn("gigaam-v2", asr_onnx.ONNX_MODELS)
 

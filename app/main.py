@@ -162,10 +162,12 @@ def _quiet_windows_connection_resets() -> None:
 async def lifespan(_app: FastAPI):
     _quiet_windows_connection_resets()
     init_db()
-    from app import asr_onnx, idle_unload
+    from app import idle_unload
 
     try:
-        asr_onnx.remove_replaced()
+        from app.model_manager import remove_retired_models
+
+        remove_retired_models()
     except Exception:
         traceback.print_exc()
 

@@ -356,7 +356,9 @@ function ctxOpenReconfigureModal() {
   if (!m) return;
 
   document.getElementById('reconfig-recording-name').textContent = m.title;
-  document.getElementById('reconfig-model').value = m.model_name || 'large-v3-turbo';
+  const modelSel = document.getElementById('reconfig-model');
+  modelSel.value = m.model_name || 'large-v3-turbo';
+  if (!modelSel.value && modelSel.options.length) modelSel.selectedIndex = 0;  // a removed model
   document.getElementById('reconfig-language').value = m.language || 'auto';
   document.getElementById('reconfig-speakers').value = String(m.num_speakers_hint || 0);
   openModal('reconfigure');

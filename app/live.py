@@ -406,9 +406,8 @@ def caption_onnx_model(settings: Dict[str, str], speech_lang: Optional[str]) -> 
 
 
 def caption_model(settings: Dict[str, str], hw: Dict[str, Any]) -> str:
-    """The Whisper model for live captions. "auto": on a GPU with less than 10 GB, or on the CPU,
-    the smallest downloaded model of small/medium, so the captions leave room for the work queue
-    (the saved file is transcribed again by the main model anyway); otherwise the main model."""
+    """The Whisper model for live captions. "auto": Turbo if downloaded (lighter and faster than Pro;
+    the saved file is transcribed again by the main model anyway), otherwise the main model."""
     from app.model_manager import is_whisper_model_installed
 
     main = settings.get("whisper_model") or "large-v3-turbo"
@@ -416,16 +415,13 @@ def caption_model(settings: Dict[str, str], hw: Dict[str, Any]) -> str:
 
     if is_onnx_model(main):
         # Captions stay on Whisper (they are decoded in short windows by app/live_worker.py)
-        main = next((m for m in ("large-v3-turbo", "medium", "small", "large-v3") if is_whisper_model_installed(m)), "small")
+        main = next((m for m in ("large-v3-turbo", "large-v3") if is_whisper_model_installed(m)), "large-v3-turbo")
     chosen = (settings.get("live_whisper_model") or "auto").strip()
     if is_onnx_model(chosen):
         chosen = "auto"  # the Whisper fallback when GigaAM / Parakeet does not fit the language
     if chosen != "auto":
         return chosen if is_whisper_model_installed(chosen) else main
-    device = settings.get("device") or hw.get("recommended_device") or "cpu"
-    if device == "cuda" and float(hw.get("vram_total_gb") or 0) >= 10:
-        return main
-    return next((m for m in ("small", "medium") if is_whisper_model_installed(m)), main)
+    return "large-v3-turbo" if is_whisper_model_installed("large-v3-turbo") else main
 
 
 def get_session(session_id: str) -> Optional[LiveSession]:

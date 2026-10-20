@@ -276,8 +276,6 @@ const MODEL_DISPLAY_NAMES = {
   'parakeet-v3': 'Parakeet TDT v3',
   'large-v3-turbo': 'Whisper Turbo',
   'large-v3': 'Whisper Pro',
-  'medium': 'Whisper Medium',
-  'small': 'Whisper Light',
   'qwen3:8b': 'Qwen3 8B',
   'qwen3:14b': 'Qwen3 14B',
   'qwen3:4b': 'Qwen3 4B',
@@ -404,6 +402,7 @@ function updateWhisperModelsUI(models) {
   const whisperList = models.whisper_catalog || models.whisper || [];
   state.whisperInstalled = whisperList.filter(i => i.installed && i.engine !== 'onnx').map(i => i.id);
   state.onnxInstalled = whisperList.filter(i => i.installed && i.engine === 'onnx').map(i => i.id);
+  fillRecognitionSelects(whisperList, activeModel);
   renderLiveModelSelect();
 
   if (catalogBox && whisperList.length > 0) {
@@ -785,6 +784,19 @@ async function loadHotkeyStatus() {
 }
 
 // Captions while recording: "auto" or one of the downloaded Whisper models
+// Upload and re-transcribe dialogs: the downloaded models (Whisper, GigaAM, Parakeet)
+function fillRecognitionSelects(list, active) {
+  const items = list.filter(i => i.installed);
+  if (!items.length) return;
+  ['upload-model', 'reconfig-model'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    const value = sel.value;
+    sel.innerHTML = items.map(i => `<option value="${escapeHtml(i.id)}">${escapeHtml(formatModelName(i.id))}</option>`).join('');
+    sel.value = items.some(i => i.id === value) ? value : (items.some(i => i.id === active) ? active : items[0].id);
+  });
+}
+
 function renderLiveModelSelect() {
   const sel = document.getElementById('set-live-model');
   if (!sel) return;

@@ -83,10 +83,10 @@ def get_hardware_info() -> Dict[str, Any]:
         "vram_free_gb": 0.0,
         "recommended_device": "cpu",
         "recommended_compute_type": "int8",
-        "recommended_whisper_model": "small",
+        "recommended_whisper_model": "large-v3-turbo",
         "recommended_ollama_model": "qwen3:4b",
         "tier": "cpu",
-        "tier_description": "Работа на процессоре (рекомендуются модели small / medium / large-v3-turbo в режиме int8)",
+        "tier_description": "Работа на процессоре: быстрее всего GigaAM v3 (русский) и Parakeet; Whisper Turbo — в режиме int8",
     }
 
     try:
@@ -128,7 +128,7 @@ def get_hardware_info() -> Dict[str, Any]:
             else:
                 info["tier"] = "low_vram"
                 info["recommended_compute_type"] = "int8"
-                info["recommended_whisper_model"] = "medium"
+                info["recommended_whisper_model"] = "large-v3-turbo"
                 info["recommended_ollama_model"] = "qwen3:4b"
                 info["tier_description"] = (
                     f"Компактный режим видеопамяти ({props.name}, {total_gb} ГБ VRAM). "

@@ -30,27 +30,28 @@ WHISPER_CATALOG: List[Dict[str, Any]] = [
         "desc_ru": "Максимальная точность для сложного звука, акцентов и сленга",
         "desc_en": "Maximum accuracy for noisy audio, accents, and technical jargon",
     },
-    {
-        "id": "medium",
-        "repo_id": "Systran/faster-whisper-medium",
-        "name": "Whisper Medium",
-        "badge": "1.4 GB · MIT",
-        "size": "1.4 GB",
-        "vram": "4+ GB / CPU",
-        "desc_ru": "Сбалансированная модель для средних видеокарт и ноутбуков",
-        "desc_en": "Balanced model for mid-range GPUs and laptops",
-    },
-    {
-        "id": "small",
-        "repo_id": "Systran/faster-whisper-small",
-        "name": "Whisper Light",
-        "badge": "465 MB · MIT",
-        "size": "465 MB",
-        "vram": "2+ GB / CPU",
-        "desc_ru": "Лёгкая модель для быстрой работы на процессоре (CPU)",
-        "desc_en": "Lightweight model for fast CPU transcription",
-    },
 ]
+
+# Removed Whisper models (Turbo is as large as Medium and more accurate; GigaAM / Parakeet replace
+# Light on the CPU): what a setting or a recording that still names one now uses
+WHISPER_REPLACED = {"medium": "large-v3-turbo", "small": "large-v3-turbo"}
+
+
+def remove_retired_models() -> None:
+    """Moves settings off removed models (Whisper and ONNX) and deletes their files."""
+    from app import asr_onnx
+
+    replaced = {**WHISPER_REPLACED, **asr_onnx.REPLACED}
+    settings = get_all_settings()
+    changes = {k: replaced[v] for k in ("whisper_model", "live_whisper_model") if (v := settings.get(k)) in replaced}
+    if changes:
+        update_settings(changes)
+    for old in WHISPER_REPLACED:
+        delete_whisper_model(old)
+    for old in asr_onnx.REPLACED:
+        if asr_onnx.model_dir(old).is_dir():
+            shutil.rmtree(asr_onnx.model_dir(old), ignore_errors=True)
+
 
 _WHISPER_DISPLAY_NAMES: Dict[str, str] = {
     "large-v3-turbo": "Whisper Turbo",

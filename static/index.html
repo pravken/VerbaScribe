@@ -1105,8 +1105,6 @@
             <select id="upload-model" data-i18n-title="tipSelectWhisper" title="Выберите модель Whisper для распознавания речи" class="w-full bg-apple-sidebar border apple-border rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none">
               <option value="large-v3-turbo">Whisper Turbo</option>
               <option value="large-v3">Whisper Pro</option>
-              <option value="medium">Whisper Medium</option>
-              <option value="small">Whisper Light</option>
             </select>
           </div>
           <div>
@@ -1214,8 +1212,6 @@
             <select id="reconfig-model" data-i18n-title="tipSelectWhisper" title="Выберите модель Whisper" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none">
               <option value="large-v3-turbo">Whisper Turbo</option>
               <option value="large-v3">Whisper Pro</option>
-              <option value="medium">Whisper Medium</option>
-              <option value="small">Whisper Light</option>
             </select>
           </div>
           <div>
@@ -1617,7 +1613,7 @@
               class="w-full h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
               <option value="auto" data-i18n="liveModelAuto">Авто</option>
             </select>
-            <p class="text-[10.5px] text-apple-tertiary mt-1" data-i18n="liveModelHint">Авто: для русской речи — GigaAM, для других европейских языков и автоопределения — Parakeet (если скачаны; работают на процессоре и не занимают видеокарту). Иначе Whisper: на видеокарте меньше 10 ГБ и на процессоре — Small или Medium, иначе основная модель</p>
+            <p class="text-[10.5px] text-apple-tertiary mt-1" data-i18n="liveModelHint">Авто: для русской речи — GigaAM, для других европейских языков и автоопределения — Parakeet (если скачаны; работают на процессоре и не занимают видеокарту). Иначе Whisper Turbo (или основная модель, если Turbo не скачана)</p>
           </div>
 
           <!-- Live SoundCloud Waveform & dB Meter inside Settings -->
