@@ -45,6 +45,8 @@ function t(key) {
 function setUILanguage(lang) {
   state.uiLang = lang;
   localStorage.setItem('whisper_ui_lang', lang);
+  // The launcher's splash screen speaks the same language (see /api/ui/lang)
+  fetch('/api/ui/lang', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lang }) }).catch(() => {});
 
   document.getElementById('lang-btn-ru').className = lang === 'ru'
     ? 'px-2 h-6 text-[10.5px] font-medium rounded-[6px] apple-segment-active'

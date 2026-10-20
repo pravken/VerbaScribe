@@ -104,6 +104,13 @@ _LOCKED_PAGE = """<!doctype html><html lang="ru"><head><meta charset="utf-8"><ti
 <h2>VerbaScribe</h2>
 <p>Откройте программу через VerbaScribe.exe или start.bat — эта страница доступна только из окна приложения.</p>
 <p style="color:#98989d">Open the app via VerbaScribe.exe or start.bat — this page is only available from the app window.</p>
+<script>
+// Inside the app window this means the window opened with an outdated session token (the server
+// was still starting): ask the window for a fresh address and reload.
+window.addEventListener('pywebviewready', async () => {
+  try { const url = await window.pywebview.api.app_url(); if (url && url.indexOf('token=') > 0) location.replace(url); } catch (e) {}
+});
+</script>
 </body></html>"""
 
 
@@ -751,6 +758,21 @@ async def api_record_finish(
     )
     enqueue_meeting_job(m["id"])
     return {"created": [m]}
+
+
+class UiLangPayload(BaseModel):
+    lang: str = "ru"
+
+
+@app.post("/api/ui/lang")
+def api_ui_lang(payload: UiLangPayload) -> Dict[str, Any]:
+    """Remembers the UI language for the launcher's splash screen (read by VerbaScribe.exe)."""
+    lang = "en" if payload.lang == "en" else "ru"
+    try:
+        (DATA_DIR / "ui-lang.txt").write_text(lang, encoding="utf-8")
+    except OSError:
+        pass
+    return {"lang": lang}
 
 
 # --- What the page is doing, for the tray icon (see app/app_status.py) ---

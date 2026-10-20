@@ -79,7 +79,8 @@ def is_port_in_use(host: str, port: int) -> bool:
         return s.connect_ex((host, port)) == 0
 
 
-def wait_for_server(host: str, port: int, timeout: float = 12.0) -> bool:
+def wait_for_server(host: str, port: int, timeout: float = 120.0) -> bool:
+    # The first start after boot imports torch & co. from a cold disk: that can take a minute
     deadline = time.time() + timeout
     while time.time() < deadline:
         if is_port_in_use(host, port):
@@ -89,8 +90,12 @@ def wait_for_server(host: str, port: int, timeout: float = 12.0) -> bool:
 
 
 def read_session_token(timeout: float = 5.0) -> str:
-    """Reads the per-launch session token written by the running server (app.main)."""
+    """The per-launch session token: ours when this process started the server, else the one the
+    running server wrote (app.main)."""
     from app.paths import SESSION_TOKEN_FILE as token_file
+
+    if os.environ.get("VERBASCRIBE_TOKEN"):
+        return os.environ["VERBASCRIBE_TOKEN"]
 
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -110,6 +115,11 @@ def app_url(host: str, port: int) -> str:
 
 
 def start_server_in_thread(host: str, port: int) -> threading.Thread:
+    # The token is chosen here and handed to the server, so the window never opens with a stale
+    # token file left by the previous run (the server may still be starting)
+    import secrets
+
+    os.environ["VERBASCRIBE_TOKEN"] = secrets.token_urlsafe(32)
     register_cuda_dlls()
     config = uvicorn.Config("app.main:app", host=host, port=port, log_level="warning", timeout_graceful_shutdown=3)
     server = uvicorn.Server(config)
@@ -121,8 +131,13 @@ def start_server_in_thread(host: str, port: int) -> threading.Thread:
 class WindowApi:
     """Exposed to the page as window.pywebview.api: things the embedded browser cannot do itself."""
 
-    def __init__(self) -> None:
+    def __init__(self, host: str = "127.0.0.1", port: int = 8765) -> None:
         self._fullscreen = False
+        self._host, self._port = host, port
+
+    def app_url(self) -> str:
+        """A fresh address with the session token: the "locked" page reloads itself with it."""
+        return app_url(self._host, self._port)
 
     def toggle_fullscreen(self) -> bool:
         """WebView2 inside pywebview ignores the Fullscreen API, so the native window is toggled."""
@@ -411,7 +426,7 @@ def main() -> None:
                 min_size=(1100, 700),
                 background_color="#141416",
                 text_select=True,
-                js_api=WindowApi(),
+                js_api=WindowApi(args.host, args.port),
             )
             tray = None
             try:

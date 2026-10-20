@@ -286,44 +286,143 @@ class VerbaScribeLauncher
     // A small "starting" window: the first start after an update can take a while (Python compiles
     // its files, the speech libraries load), and without it nothing seems to happen.
     // It closes when the app window appears or the app process ends (errors are shown by the app).
+    // Light-hearted lines shown while the app starts, a new one every 1.6 s
+    static readonly string[] PhrasesRu = {
+        "Завариваем чай для нейросетей\u2026",
+        "Будим Whisper, он любит поспать\u2026",
+        "Разминаем видеокарту\u2026",
+        "Расставляем запятые по местам\u2026",
+        "Ищем, кто сказал \u00ab\u044d-\u044d\u00bb\u2026",
+        "Протираем модели уши\u2026",
+        "Распушаем вербу\u2026",
+        "Учим нули и единицы слушать\u2026",
+        "Раскладываем слова по полочкам\u2026",
+        "Настраиваем чуткий слух\u2026",
+        "Считаем до десяти на 23 языках\u2026",
+        "Подметаем слова-паразиты\u2026",
+        "Прогреваем тензоры\u2026",
+        "Почти готово, честно\u2026",
+    };
+    static readonly string[] PhrasesEn = {
+        "Brewing tea for the neural nets\u2026",
+        "Waking Whisper up, it likes to sleep in\u2026",
+        "Stretching the GPU\u2026",
+        "Putting commas where they belong\u2026",
+        "Finding out who said \u201cumm\u201d\u2026",
+        "Cleaning the model's ears\u2026",
+        "Fluffing up the willow\u2026",
+        "Teaching ones and zeros to listen\u2026",
+        "Sorting words onto shelves\u2026",
+        "Tuning a keen ear\u2026",
+        "Counting to ten in 23 languages\u2026",
+        "Sweeping up filler words\u2026",
+        "Warming up the tensors\u2026",
+        "Almost there, honestly\u2026",
+    };
+
+    // The app's UI language, saved by the app in its data folder (default Russian)
+    static string UiLanguage()
+    {
+        try
+        {
+            string data = Environment.GetEnvironmentVariable("VERBASCRIBE_DATA_DIR");
+            if (string.IsNullOrEmpty(data))
+                data = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VerbaScribe");
+            string f = Path.Combine(data, "ui-lang.txt");
+            if (File.Exists(f)) return File.ReadAllText(f).Trim();
+        }
+        catch { }
+        return "ru";
+    }
+
+    // assets/icon.ico stores PNG images, which System.Drawing.Icon cannot read: take the biggest PNG
+    static System.Drawing.Image LoadLogo(string icoPath)
+    {
+        try
+        {
+            byte[] d = File.ReadAllBytes(icoPath);
+            int count = BitConverter.ToUInt16(d, 4);
+            int bestSize = 0, bestOff = 0, bestLen = 0;
+            for (int i = 0; i < count; i++)
+            {
+                int e = 6 + 16 * i;
+                int w = d[e] == 0 ? 256 : d[e];
+                int len = BitConverter.ToInt32(d, e + 8), off = BitConverter.ToInt32(d, e + 12);
+                if (w <= 128 && w > bestSize) { bestSize = w; bestOff = off; bestLen = len; }
+            }
+            if (bestLen > 0)
+                return System.Drawing.Image.FromStream(new MemoryStream(d, bestOff, bestLen));
+        }
+        catch { }
+        return null;
+    }
+
     static void ShowSplashUntilWindow(Process app)
     {
         Application.EnableVisualStyles();
+        bool ru = UiLanguage() != "en";
+        string[] phrases = ru ? PhrasesRu : PhrasesEn;
+        Random rnd = new Random();
+
         Form splash = new Form();
         splash.FormBorderStyle = FormBorderStyle.None;
         splash.StartPosition = FormStartPosition.CenterScreen;
-        splash.Size = new System.Drawing.Size(340, 96);
+        splash.Size = new System.Drawing.Size(420, 132);
         splash.BackColor = System.Drawing.Color.FromArgb(28, 28, 30);
         splash.ShowInTaskbar = true;
+        splash.TopMost = true;  // a few seconds only: keep it visible over other windows
         splash.Text = "VerbaScribe";
         try { splash.Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
+
+        // The willow logo, gently bobbing
+        PictureBox logo = new PictureBox();
+        logo.SizeMode = PictureBoxSizeMode.Zoom;
+        logo.SetBounds(22, 32, 64, 64);
+        logo.Image = LoadLogo(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", "icon.ico"));
 
         Label title = new Label();
         title.Text = "VerbaScribe";
         title.ForeColor = System.Drawing.Color.White;
-        title.Font = new System.Drawing.Font("Segoe UI Semibold", 12f);
-        title.SetBounds(20, 14, 300, 26);
+        title.Font = new System.Drawing.Font("Segoe UI Semibold", 13f);
+        title.SetBounds(104, 26, 300, 28);
         Label status = new Label();
-        status.Text = "Запуск приложения…";
+        status.Text = phrases[rnd.Next(phrases.Length)];
         status.ForeColor = System.Drawing.Color.FromArgb(152, 152, 157);
-        status.Font = new System.Drawing.Font("Segoe UI", 9f);
-        status.SetBounds(20, 42, 300, 20);
-        ProgressBar bar = new ProgressBar();
-        bar.Style = ProgressBarStyle.Marquee;
-        bar.MarqueeAnimationSpeed = 30;
-        bar.SetBounds(20, 68, 300, 6);
+        status.Font = new System.Drawing.Font("Segoe UI", 9.5f);
+        status.SetBounds(104, 58, 300, 22);
+        // A thin track with a blue segment running along it (the system progress bar looks foreign here)
+        Panel track = new Panel();
+        track.BackColor = System.Drawing.Color.FromArgb(52, 52, 56);
+        track.SetBounds(104, 92, 290, 3);
+        Panel runner = new Panel();
+        runner.BackColor = System.Drawing.Color.FromArgb(10, 132, 255);
+        runner.SetBounds(0, 0, 80, 3);
+        track.Controls.Add(runner);
+        splash.Controls.Add(logo);
         splash.Controls.Add(title);
         splash.Controls.Add(status);
-        splash.Controls.Add(bar);
+        splash.Controls.Add(track);
 
         DateTime started = DateTime.Now;
+        DateTime lastPhrase = DateTime.Now;
+        int last = -1;
         Timer timer = new Timer();
-        timer.Interval = 250;
+        timer.Interval = 40;
         timer.Tick += delegate
         {
+            double t = (DateTime.Now - started).TotalSeconds;
+            logo.Top = 32 + (int)Math.Round(Math.Sin(t * 2.4) * 3.0);
+            runner.Left = (int)(((t * 0.9) % 1.0) * (track.Width + runner.Width)) - runner.Width;
+            if ((DateTime.Now - lastPhrase).TotalSeconds >= 1.6)
+            {
+                int next = rnd.Next(phrases.Length);
+                if (next == last) next = (next + 1) % phrases.Length;
+                last = next;
+                status.Text = phrases[next];
+                lastPhrase = DateTime.Now;
+            }
             IntPtr hwnd = FindWindow(null, WindowTitle);
-            bool done = (hwnd != IntPtr.Zero && IsWindowVisible(hwnd)) || app.HasExited
-                || (DateTime.Now - started).TotalSeconds > 180;
+            bool done = (hwnd != IntPtr.Zero && IsWindowVisible(hwnd)) || app.HasExited || t > 180;
             if (done)
             {
                 timer.Stop();
