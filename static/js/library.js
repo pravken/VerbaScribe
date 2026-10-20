@@ -879,7 +879,7 @@ function meetingRowHtml(m, depth) {
       ${thumb}
       <div class="min-w-0 flex-1">
         <div class="flex items-center justify-between gap-2">
-          <span title="${escapeHtml(m.title)}" class="text-[12.5px] font-medium leading-snug line-clamp-2 break-words min-w-0">${escapeHtml(m.title)}</span>
+          <span title="${escapeHtml(libTitle(m))}" class="text-[12.5px] font-medium leading-snug line-clamp-2 break-words min-w-0">${escapeHtml(libTitle(m))}</span>
           <button onclick="openRecordingContextMenu(event, ${m.id})" title="${escapeHtml(t('tipItemMenu'))}"
             class="opacity-0 group-hover:opacity-100 px-1 rounded hover:bg-black/20 text-xs shrink-0 transition">•••</button>
         </div>
@@ -917,11 +917,17 @@ function libPrefs() {
     sort: LIB_SORTS.includes(p.sort) ? p.sort : 'recorded',
     dir: p.dir === 'asc' ? 'asc' : 'desc',
     group: LIB_GROUPS.includes(p.group) ? p.group : 'none',
+    names: p.names === 'file' ? 'file' : 'title',
   };
 }
 
 // Recordings grouped by the day (or month) they were recorded, like folders that can be folded
 const LIB_GROUPS = ['none', 'day', 'month'];
+
+// The name shown in the library: the title, or the file name made from the template
+function libTitle(m) {
+  return libPrefs().names === 'file' ? formatFileName(m) : (m.title || '');
+}
 
 function libDateKey(m, group) {
   const d = String(m.recorded_at || m.created_at || '').slice(0, 10);
@@ -978,7 +984,7 @@ function libComparator({ sort, dir }) {
   const key = {
     recorded: m => m.recorded_at || m.created_at || '',
     added: m => m.created_at || '',
-    name: m => (m.title || '').toLocaleLowerCase(),
+    name: m => libTitle(m).toLocaleLowerCase(),
     duration: m => Number(m.duration) || 0,
     size: m => Number(m.size_bytes) || 0,
   }[sort];
@@ -1008,7 +1014,10 @@ function openLibViewMenu(e) {
     + `<div class="my-1 h-px bg-white/10"></div><div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(t('libSort'))}</div>`
     + LIB_SORTS.map(v => item('sort', v, t(`libSort_${v}`), p.sort === v, arrow)).join('')
     + `<div class="my-1 h-px bg-white/10"></div><div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(t('libGroup'))}</div>`
-    + LIB_GROUPS.map(v => item('group', v, t(`libGroup_${v}`), p.group === v)).join('');
+    + LIB_GROUPS.map(v => item('group', v, t(`libGroup_${v}`), p.group === v)).join('')
+    + `<div class="my-1 h-px bg-white/10"></div><div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(t('libNames'))}</div>`
+    + item('names', 'title', t('libNames_title'), p.names === 'title')
+    + item('names', 'file', t('libNames_file'), p.names === 'file');
   menu.addEventListener('click', (ev) => {
     const b = ev.target.closest('button[data-k]');
     ev.stopPropagation();
@@ -1052,7 +1061,7 @@ function meetingCompactRowHtml(m, depth) {
            isSelected ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'
          }" style="padding-left:${10 + depth * 14}px">
       <span class="shrink-0 ${isSelected ? 'text-white/80' : 'text-apple-tertiary'}">${m.is_video ? ICON_FILE_VIDEO : ICON_FILE_AUDIO}</span>
-      <span class="truncate flex-1 min-w-0">${escapeHtml(m.title)}</span>
+      <span class="truncate flex-1 min-w-0">${escapeHtml(libTitle(m))}</span>
       <span class="rec-badges shrink-0 ${isSelected ? 'text-white/80' : 'text-apple-secondary'}">${recordingBadgesHtml(m)}</span>
       <span class="font-mono text-[10.5px] shrink-0 ${isSelected ? 'text-white/80' : 'text-apple-tertiary'}">${isBusy ? `${m.progress}%` : libPrefs().sort === 'size' ? formatSize(m.size_bytes) : formatTime(m.duration)}</span>
     </div>`;
@@ -1074,7 +1083,7 @@ function meetingTileHtml(m) {
         ${isBusy ? `<span class="lib-tile-progress" style="width:${m.progress}%"></span>` : ''}
       </div>
       <div class="px-1.5 pt-1 pb-1.5 min-w-0">
-        <div class="text-[11.5px] font-medium leading-tight line-clamp-2">${escapeHtml(m.title)}</div>
+        <div class="text-[11.5px] font-medium leading-tight line-clamp-2">${escapeHtml(libTitle(m))}</div>
         <div class="flex items-center justify-between gap-1 mt-1 text-[10px] ${isSelected ? 'text-white/80' : 'text-apple-secondary'}">
           <span class="rec-badges">${recordingBadgesHtml(m)}</span>
           <span class="shrink-0">${escapeHtml(libSortValue(m))}</span>

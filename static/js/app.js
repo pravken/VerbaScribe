@@ -576,6 +576,8 @@ function fillObsidianSettings(s) {
   document.getElementById('set-obsidian-subfolder').value = s.obsidian_subfolder ?? 'VerbaScribe';
   document.getElementById('set-obsidian-filename').value = s.obsidian_filename || '{date} {title}';
   document.getElementById('set-file-name-template').value = s.file_name_template || '{date} {title}';
+  state.fileNameTemplate = s.file_name_template || '{date} {title}';
+  if (libPrefs().names === 'file' && state.meetings) renderMeetingsSidebar();
   document.getElementById('set-date-folders').value = s.date_folders || 'off';
   updateFileNamePreview();
   const vault = document.getElementById('set-obsidian-vault');
@@ -596,6 +598,22 @@ function obsidianSettingsPayload() {
   return out;
 }
 
+function meetingDate(m) {
+  const d = m ? new Date(String(m.recorded_at || m.created_at || '').replace(' ', 'T')) : new Date();
+  return isNaN(d) ? new Date() : d;
+}
+
+// A recording's name by the file name template (as its files are named), without the extension
+function formatFileName(m, tpl) {
+  const dt = meetingDate(m);
+  const p2 = n => String(n).padStart(2, '0');
+  const ymd = `${dt.getFullYear()}-${p2(dt.getMonth() + 1)}-${p2(dt.getDate())}`;
+  return (tpl || state.fileNameTemplate || '{date} {title}')
+    .replaceAll('{date}', ymd).replaceAll('{time}', `${p2(dt.getHours())}-${p2(dt.getMinutes())}`)
+    .replaceAll('{title}', (m && m.title) || t('fileNameExampleTitle')).replaceAll('{lang}', ((m && m.language) || 'ru').toUpperCase())
+    .replace(/[<>:"/\\|?*]/g, '').replace(/\s+/g, ' ').trim();
+}
+
 // Settings -> Export: tokens to insert and an example of the folder and file name
 const FILE_NAME_TOKENS = ['{date}', '{time}', '{title}', '{lang}'];
 
@@ -614,14 +632,10 @@ function updateFileNamePreview() {
     };
   }
   const m = state.activeMeeting;
-  const d = m ? new Date(String(m.recorded_at || m.created_at || '').replace(' ', 'T')) : new Date();
-  const dt = isNaN(d) ? new Date() : d;
+  const name = formatFileName(m, input.value.trim());
+  const dt = meetingDate(m);
   const p2 = n => String(n).padStart(2, '0');
   const ymd = `${dt.getFullYear()}-${p2(dt.getMonth() + 1)}-${p2(dt.getDate())}`;
-  const name = (input.value.trim() || '{date} {title}')
-    .replaceAll('{date}', ymd).replaceAll('{time}', `${p2(dt.getHours())}-${p2(dt.getMinutes())}`)
-    .replaceAll('{title}', (m && m.title) || t('fileNameExampleTitle')).replaceAll('{lang}', ((m && m.language) || 'ru').toUpperCase())
-    .replace(/[<>:"/\\|?*]/g, '').trim();
   const mode = document.getElementById('set-date-folders').value;
   const folder = { off: '', day: ymd, month: ymd.slice(0, 7), year_month: `${ymd.slice(0, 4)}\\${ymd.slice(0, 7)}` }[mode] || '';
   document.getElementById('file-name-preview').textContent = `${t('fileNameExample')}: ${folder ? folder + '\\' : ''}${name}.md`;
