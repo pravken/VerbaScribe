@@ -700,11 +700,24 @@ def generate_meeting_title(
         "без слов «Встреча», «Запись», «Обсуждение» в начале, если можно обойтись без них."
     )
     raw = llm.chat(system, f"Расшифровка:\n{text}\n\nНазвание:")
-    return clean_title(raw)
+    title = clean_title(raw, answer_lang)
+    if len(title) < 3:
+        raise RuntimeError("Модель не дала названия")
+    return title
 
 
-def clean_title(raw: str) -> str:
-    line = next((ln.strip() for ln in (raw or "").splitlines() if ln.strip()), "")
+# Chinese, Japanese and Korean characters: Qwen sometimes slips a Chinese word into an answer in
+# another language, and the title becomes the file name
+_CJK_RE = re.compile(r"[\u2e80-\u2fff\u3000-\u30ff\u3100-\u31ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]+")
+
+
+def clean_title(raw: str, answer_lang: Optional[str] = None) -> str:
+    from app.llm_text import strip_think
+
+    raw = strip_think(raw or "")
+    if (answer_lang or "")[:2] not in ("zh", "ja", "ko"):
+        raw = _CJK_RE.sub(" ", raw)
+    line = next((" ".join(ln.split()) for ln in raw.splitlines() if ln.strip()), "")
     line = re.sub(r"^(название|title)\s*[:：-]\s*", "", line, flags=re.IGNORECASE)
     prev = None
     while line != prev:  # «Title». or "Title." in any order

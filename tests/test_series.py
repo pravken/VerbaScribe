@@ -229,3 +229,11 @@ class LiveSentenceLinesTest(unittest.TestCase):
         s.translator.set_model.assert_called_with("qwen3:4b")
         self.assertEqual(s.state()["translate_choice"], "qwen3:4b")
         update_settings({"live_whisper_model": "auto"})
+
+
+class TitleCleanTest(unittest.TestCase):
+    def test_cjk_removed(self):
+        from app.ollama_client import clean_title
+        self.assertEqual(clean_title("Планирование 发布 релиза.", "ru"), "Планирование релиза")
+        self.assertEqual(clean_title("<think>x</think>«Итоги квартала»", "ru"), "Итоги квартала")
+        self.assertEqual(clean_title("会议总结", "zh"), "会议总结")
