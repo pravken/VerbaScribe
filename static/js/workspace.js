@@ -764,7 +764,25 @@ async function requestVideoSubtitles(lang, variant, mode, askPath) {
 }
 
 // Transcript view: original / translation / both
+function renderTxQuickLangs() {
+  const m = state.activeMeeting;
+  const box = document.getElementById('tx-quick-langs');
+  if (!box) return;
+  if (!m || !(m.segments || []).length) { box.innerHTML = ''; return; }
+  const have = meetingTranslations(m);
+  const src = String(m.language || '').slice(0, 2);
+  const showing = state.txView && state.txView !== 'orig' ? state.txLang : null;
+  box.innerHTML = quickLangs().filter(c => c !== src).map(c => {
+    const ready = !!have[c];
+    const on = ready && showing === c;
+    return `<button onclick="${on ? "setTranscriptView('orig')" : `quickTranslate('${c}')`}"
+      title="${escapeHtml(on ? t('subsLangOriginal') : ready ? t('translateQuickShow').replace('{lang}', langName(c)) : t('translateQuickMake').replace('{lang}', langName(c)))}"
+      class="quick-lang ${on ? 'on' : ''}">${ready && !on ? '✓ ' : ''}${escapeHtml(langCode(c))}</button>`;
+  }).join('');
+}
+
 function renderTranslationControls() {
+  renderTxQuickLangs();
   const m = state.activeMeeting;
   const langs = Object.keys(meetingTranslations(m));
   // Always offered for finished recordings: the language list also starts a new translation
