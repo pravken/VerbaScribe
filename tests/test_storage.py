@@ -13,7 +13,7 @@ from app.paths import migrate_legacy_data_dir
 
 class MigrationTest(unittest.TestCase):
     def setUp(self):
-        self.root = Path(tempfile.mkdtemp())
+        self.root = Path(tempfile.mkdtemp()).resolve()  # the CI runner has a short (8.3) temp path
         self.legacy = self.root / "app" / "data"
         (self.legacy / "uploads").mkdir(parents=True)
         (self.legacy / "audio").mkdir()
