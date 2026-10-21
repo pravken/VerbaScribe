@@ -1252,6 +1252,12 @@ async function testLlmConnection() {
 // Web links never open inside the app window: they go to the default browser
 const SUPPORT_URL = 'https://ko-fi.com/pravken';
 
+// mailto: links go to the mail app (the window itself never navigates away)
+function openExternalMail(url) {
+  fetch('/api/open-url', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) })
+    .then(r => { if (!r.ok) location.href = url; }).catch(() => { location.href = url; });
+}
+
 async function openExternal(url) {
   if (!url) return;
   try {

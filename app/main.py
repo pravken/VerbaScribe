@@ -1753,6 +1753,39 @@ def api_commitments(series_id: Optional[int] = None) -> List[Dict[str, Any]]:
     return commitments.open_for_series(series_id) if series_id else commitments.all_open()
 
 
+class CommitmentExportPayload(BaseModel):
+    fmt: str = "md"  # md | todoist | csv
+    meeting_id: Optional[int] = None  # one recording, or all open promises
+    lang: str = "ru"
+
+
+@app.post("/api/commitments/export")
+def api_commitments_export(payload: CommitmentExportPayload) -> Dict[str, Any]:
+    """Saves promises as tasks for another app (Save as dialog)."""
+    from app import commitments
+    from app.naming import base_name
+
+    if payload.fmt not in ("md", "todoist", "csv"):
+        raise HTTPException(status_code=400, detail="Неизвестный формат")
+    items = commitments.for_meetings([payload.meeting_id]) if payload.meeting_id else commitments.all_open()
+    if not items:
+        raise HTTPException(status_code=404, detail="Нет обещаний для выгрузки")
+    text = commitments.export_text(items, payload.fmt, payload.lang)
+    m = get_meeting(payload.meeting_id) if payload.meeting_id else None
+    ext = "md" if payload.fmt == "md" else "csv"
+    base = (base_name(m) + " — ") if m else ""
+    name = f"{base}{'tasks' if payload.lang == 'en' else 'задачи'}{'-todoist' if payload.fmt == 'todoist' else ''}.{ext}"
+    chosen = _pick_export_path(m, name, ext)
+    if not chosen:
+        return {"ok": False, "cancelled": True}
+    out = Path(chosen)
+    # Excel and Todoist read a CSV with a BOM as UTF-8
+    out.write_text(text, encoding="utf-8-sig" if ext == "csv" else "utf-8")
+    if payload.meeting_id:
+        _remember_export(payload.meeting_id, out)
+    return {"ok": True, "path": str(out)}
+
+
 class CommitmentStatusPayload(BaseModel):
     status: str
 
@@ -2941,6 +2974,14 @@ def api_open_url(payload: OpenUrlPayload) -> Dict[str, Any]:
     from urllib.parse import urlparse
 
     u = urlparse(payload.url.strip())
+    if u.scheme == "mailto":  # a draft in the mail app (no address: the user picks the recipients)
+        if len(payload.url) > 8000:
+            raise HTTPException(status_code=400, detail="Слишком длинное письмо")
+        if sys.platform == "win32":
+            os.startfile(payload.url.strip())  # noqa: S606 - a mailto: link the user asked to open
+        else:
+            webbrowser.open(payload.url.strip())
+        return {"ok": True}
     if u.scheme not in ("https", "http") or not u.netloc:
         raise HTTPException(status_code=400, detail="Можно открыть только веб-ссылку")
     webbrowser.open(u.geturl())

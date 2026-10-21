@@ -113,7 +113,7 @@ def maybe_ground(md: str, template_key: str, m: Dict[str, Any]) -> str:
     when the setting is on."""
     from app.database import get_all_settings
 
-    if template_key == "chapters" or get_all_settings().get("summary_grounding", "true").lower() != "true":
+    if template_key in ("chapters", "followup") or get_all_settings().get("summary_grounding", "true").lower() != "true":
         return md
     try:
         return ground_summary(md, m.get("segments") or [], m.get("speakers") or {})

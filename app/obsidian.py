@@ -24,9 +24,9 @@ _lock = threading.Lock()
 
 _LABELS = {
     "ru": {"summary": "Резюме", "overview": "Обзор", "tasks": "Задачи", "chapters": "Главы", "transcript": "Расшифровка",
-           "participants": "Участники", "untitled": "Запись", "notes": "Заметки со встречи"},
+           "participants": "Участники", "untitled": "Запись", "notes": "Заметки со встречи", "promises": "Обещания"},
     "en": {"summary": "Summary", "overview": "Overview", "tasks": "Tasks", "chapters": "Chapters", "transcript": "Transcript",
-           "participants": "Participants", "untitled": "Recording", "notes": "Notes from the meeting"},
+           "participants": "Participants", "untitled": "Recording", "notes": "Notes from the meeting", "promises": "Promises"},
 }
 
 
@@ -127,6 +127,14 @@ def build_note(m: Dict[str, Any], settings: Optional[Dict[str, str]] = None) -> 
             body += [f"## {L['summary']}", "", _demote(summaries["tldr"]), ""]
         if summaries.get("protocol"):
             body += [f"## {L['overview']}", "", _demote(summaries["protocol"]), ""]
+    try:
+        from app import commitments
+
+        promised = commitments.for_meetings([int(m["id"])]) if m.get("id") else []
+    except Exception:
+        promised = []
+    if promised:
+        body += [f"## {L['promises']}", "", commitments.export_text(promised, "md").strip(), ""]
     if _on(settings, "obsidian_tasks") and summaries.get("tasks"):
         body += [f"## {L['tasks']}", "", _tasks_as_checklist(_demote(summaries["tasks"])), ""]
     if _on(settings, "obsidian_chapters") and summaries.get("chapters"):

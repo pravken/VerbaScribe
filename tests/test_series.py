@@ -419,3 +419,15 @@ class CommitmentsTest(unittest.TestCase):
             again = commitments.extract(m["id"])
         self.assertEqual(again[0]["status"], "done")  # ticked off stays ticked off
         self.assertNotIn(m["id"], [x["meeting_id"] for x in commitments.all_open()])
+
+
+class CommitmentExportTest(unittest.TestCase):
+    def test_formats(self):
+        from app.commitments import export_text
+        items = [{"who": "Анна", "to_whom": "клиент", "what": "презентация", "due": "к пятнице", "status": "open",
+                  "meeting_title": "Планёрка", "meeting_date": "2026-10-21"}]
+        self.assertIn("- [ ] Анна → клиент: презентация", export_text(items, "md"))
+        todo = export_text(items, "todoist").splitlines()
+        self.assertTrue(todo[0].startswith("TYPE,CONTENT"))
+        self.assertIn("презентация (Анна)", todo[1])
+        self.assertIn("Задача,Кто", export_text(items, "csv"))

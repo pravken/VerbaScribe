@@ -309,6 +309,22 @@ function renderSummaryPanel() {
   }
 
   renderMarkdownWithTimestamps(box, md, state.activeMeeting.duration);
+  if (state.activeSummaryTab === 'followup') {
+    const bar = document.createElement('div');
+    bar.className = 'mt-4 flex justify-end';
+    bar.innerHTML = `<button class="ui-btn ui-btn-primary">${escapeHtml(t('followupOpenMail'))}</button>`;
+    bar.querySelector('button').onclick = () => openFollowupMail(md);
+    box.appendChild(bar);
+  }
+}
+
+// The follow-up draft in the mail app: "Тема: …" becomes the subject, the rest the body
+function openFollowupMail(md) {
+  const text = String(md || '').replace(/\*\*|__|^#+\s*/gm, '').trim();
+  const m = text.match(/^(?:Тема|Subject)\s*:\s*(.+)$/im);
+  const subject = m ? m[1].trim() : (state.activeMeeting && state.activeMeeting.title) || '';
+  const body = (m ? text.replace(m[0], '') : text).trim();
+  openExternalMail(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body.slice(0, 1800))}`);
 }
 
 // The editor of the user's templates: name + what the summary should contain
@@ -388,7 +404,7 @@ async function renderCommitments(box) {
   const items = await fetch(`/api/meetings/${m.id}/commitments`).then(r => r.json()).catch(() => []);
   if (state.activeMeeting !== m || state.activeSummaryTab !== 'commitments') return;
   box.innerHTML = items.length
-    ? `<div>${items.map(c => commitmentRowHtml(c, false)).join('')}</div>`
+    ? `<div>${items.map(c => commitmentRowHtml(c, false)).join('')}</div>${commitmentExportBar(m.id)}`
     : `<div class="py-12 text-center text-xs text-apple-secondary">${escapeHtml(t('commitmentsEmpty'))}</div>`;
 }
 
@@ -409,6 +425,25 @@ async function extractCommitments() {
   } finally {
     btn.disabled = false;
   }
+}
+
+// Promises as tasks for another app: Markdown (Obsidian, Notion), Todoist's CSV, a table
+function commitmentExportBar(meetingId) {
+  const b = (fmt, label) => `<button onclick="exportCommitments('${fmt}', ${meetingId == null ? 'null' : meetingId})" class="ui-btn ui-btn-subtle h-7 text-[11px]">${escapeHtml(label)}</button>`;
+  return `<div class="flex flex-wrap items-center gap-1.5 pt-3">
+      <span class="text-[11px] text-apple-tertiary mr-1">${escapeHtml(t('commitmentsExport'))}</span>
+      ${b('md', 'Markdown')}${b('todoist', 'Todoist')}${b('csv', t('commitmentsTable'))}
+    </div>`;
+}
+
+async function exportCommitments(fmt, meetingId) {
+  const res = await fetch('/api/commitments/export', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fmt, meeting_id: meetingId, lang: state.uiLang === 'en' ? 'en' : 'ru' }),
+  });
+  const data = await readJson(res);
+  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  if (data.ok) showToast(t('commitmentsSaved'), { label: t('modelReveal'), onClick: () => revealPath(data.path) });
 }
 
 async function toggleCommitment(input) {
@@ -440,7 +475,7 @@ async function openOpenCommitments() {
           <p class="text-[11px] text-apple-secondary mt-1">${escapeHtml(t('openCommitmentsDesc'))}</p></div>
         <button data-a="close" class="ui-btn ui-btn-subtle">${escapeHtml(t('close'))}</button>
       </div>
-      <div class="flex-1 overflow-y-auto px-5 py-2">${items.length ? items.map(c => commitmentRowHtml(c, true)).join('')
+      <div class="flex-1 overflow-y-auto px-5 py-2">${items.length ? items.map(c => commitmentRowHtml(c, true)).join('') + commitmentExportBar(null)
         : `<div class="py-10 text-center text-xs text-apple-tertiary">${escapeHtml(t('commitmentsNoneOpen'))}</div>`}</div>
     </div>`;
   wrap.addEventListener('click', e => { if (e.target === wrap || e.target.closest('[data-a="close"]')) wrap.remove(); });

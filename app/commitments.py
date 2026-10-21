@@ -173,3 +173,35 @@ def as_text(items: List[Dict[str, Any]]) -> str:
         due = f" ({x['due']})" if x.get("due") else ""
         out.append(f"- {who}: {x['what']}{due} — «{x.get('meeting_title', '')}», {x.get('meeting_date', '')}")
     return "\n".join(out)
+
+
+def export_text(items: List[Dict[str, Any]], fmt: str, lang: str = "ru") -> str:
+    """md: Markdown tasks (Obsidian, Notion, any notes app); todoist: Todoist's CSV import;
+    csv: a table (Notion database, Excel)."""
+    import csv
+    import io
+
+    if fmt == "md":
+        lines = []
+        for x in items:
+            box = "[x]" if x.get("status") == "done" else "[ ]"
+            who = x["who"] + (f" → {x['to_whom']}" if x.get("to_whom") else "")
+            due = f" 📅 {x['due']}" if x.get("due") else ""
+            lines.append(f"- {box} {who}: {x['what']}{due} — {x.get('meeting_title', '')} ({x.get('meeting_date', '')})")
+        return "\n".join(lines) + "\n"
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    if fmt == "todoist":
+        w.writerow(["TYPE", "CONTENT", "DESCRIPTION", "PRIORITY", "INDENT", "AUTHOR", "RESPONSIBLE", "DATE", "DATE_LANG", "TIMEZONE"])
+        for x in items:
+            w.writerow(["task", f"{x['what']} ({x['who']})", f"{x.get('meeting_title', '')}, {x.get('meeting_date', '')}",
+                        4, 1, "", "", x.get("due") or "", "ru" if lang == "ru" else "en", ""])
+    else:
+        w.writerow(["Задача" if lang == "ru" else "Task", "Кто" if lang == "ru" else "Who", "Кому" if lang == "ru" else "For",
+                    "Срок" if lang == "ru" else "Due", "Встреча" if lang == "ru" else "Meeting",
+                    "Дата" if lang == "ru" else "Date", "Выполнено" if lang == "ru" else "Done"])
+        for x in items:
+            w.writerow([x["what"], x["who"], x.get("to_whom") or "", x.get("due") or "", x.get("meeting_title", ""),
+                        x.get("meeting_date", ""), "да" if x.get("status") == "done" and lang == "ru" else
+                        "yes" if x.get("status") == "done" else ""])
+    return buf.getvalue()
