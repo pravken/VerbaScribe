@@ -213,6 +213,23 @@ def ensure_ollama_running(base_url: str = "http://127.0.0.1:11434", auto_start: 
     return False
 
 
+def ollama_models_dir() -> str:
+    """Where Ollama keeps its models (OLLAMA_MODELS, or .ollama\\models in the user's folder)."""
+    custom = os.environ.get("OLLAMA_MODELS", "").strip()
+    return custom or str(Path.home() / ".ollama" / "models")
+
+
+def delete_ollama_model(name: str) -> None:
+    base = (get_all_settings().get("ollama_url") or "http://127.0.0.1:11434").replace("localhost", "127.0.0.1").rstrip("/")
+    if not _is_ollama_port_open(*_ollama_address(base)):
+        raise RuntimeError("Ollama не запущена — запустите её, чтобы удалить модель")
+    with httpx.Client(timeout=30.0) as client:
+        r = client.request("DELETE", f"{base}/api/delete", json={"model": name})
+    if r.status_code == 404:
+        raise RuntimeError("Модель не найдена в Ollama")
+    r.raise_for_status()
+
+
 def get_ollama_status(base_url: Optional[str] = None) -> Dict[str, Any]:
     settings = get_all_settings()
     if not base_url:
@@ -264,6 +281,7 @@ def get_ollama_status(base_url: Optional[str] = None) -> Dict[str, Any]:
     return {
         "installed": exe is not None or running,
         "running": running,
+        "models_dir": ollama_models_dir(),
         "base_url": base_url,
         "active_model": active_model,
         "models": models,

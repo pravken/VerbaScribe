@@ -304,7 +304,8 @@ async function startOnnxModelDownload(id) {
 }
 
 async function deleteOnnxModel(id) {
-  if (!confirm(t('onnxDeleteConfirm'))) return;
+  const item = (state.whisperCatalog || []).find(i => i.id === id) || {};
+  if (!(await confirmModelDelete(formatModelName(id), item.path))) return;
   await fetch(`/api/onnx-models/${encodeURIComponent(id)}`, { method: 'DELETE' });
   const models = await fetch('/api/models/status').then(r => r.json()).catch(() => null);
   if (models) updateWhisperModelsUI(models);
@@ -403,6 +404,7 @@ function updateWhisperModelsUI(models) {
   const whisperList = models.whisper_catalog || models.whisper || [];
   state.whisperInstalled = whisperList.filter(i => i.installed && i.engine !== 'onnx').map(i => i.id);
   state.onnxInstalled = whisperList.filter(i => i.installed && i.engine === 'onnx').map(i => i.id);
+  state.whisperCatalog = whisperList;
   fillRecognitionSelects(whisperList, activeModel);
   renderLiveModelSelect();
 
@@ -457,6 +459,7 @@ function updateWhisperModelsUI(models) {
               <span class="text-[10px] text-apple-tertiary">${escapeHtml(item.vram)}</span>
             </div>
             <p class="text-[11.5px] text-apple-secondary mt-1 leading-snug">${escapeHtml(desc)}</p>
+            ${item.installed ? modelLocationHtml(item.path, item.disk_mb) : ''}
           </div>
           <div class="shrink-0">${actionHtml}</div>
         </div>
@@ -495,11 +498,37 @@ async function selectActiveWhisperModel(modelId) {
   showToast(state.uiLang === 'en' ? `Speech model: ${pretty}` : `Модель речи: ${pretty}`);
 }
 
+// Where a downloaded model is on the disk, with its size and a button to show it in Explorer
+function modelLocationHtml(path, mb, label) {
+  if (!path) return '';
+  const size = mb ? ` · ${mb >= 1024 ? (mb / 1024).toFixed(1) + ' ' + t('unitGB') : mb + ' ' + t('unitMB')}` : '';
+  return `<div class="mt-1.5 flex items-center gap-1.5 min-w-0 text-[10.5px] text-apple-tertiary">
+      <span class="shrink-0">${escapeHtml(label || t('modelLocation'))}${size}:</span>
+      <span class="font-mono truncate" title="${escapeHtml(path)}">${escapeHtml(path)}</span>
+      <button data-path="${escapeHtml(path)}" onclick="revealPath(this.dataset.path)" class="shrink-0 text-apple-blue hover:underline">${escapeHtml(t('modelReveal'))}</button>
+    </div>`;
+}
+
+async function confirmModelDelete(name, path) {
+  return confirmDialog(t('modelDeleteTitle'), t('modelDeleteText').replace('{name}', name) + (path ? `\n${path}` : ''), t('modelDeleteBtn'));
+}
+
 async function deleteWhisperModel(modelId) {
-  await fetch(`/api/models/${encodeURIComponent(modelId)}`, { method: 'DELETE' });
-  await loadSystemInfo();
   const pretty = formatModelName(modelId);
+  const item = (state.whisperCatalog || []).find(i => i.id === modelId) || {};
+  if (!(await confirmModelDelete(pretty, item.path))) return;
+  const res = await fetch(`/api/models/${encodeURIComponent(modelId)}`, { method: 'DELETE' });
+  if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
+  await loadSystemInfo();
   showToast(state.uiLang === 'en' ? `Deleted ${pretty} from disk` : `Модель ${pretty} удалена с диска`);
+}
+
+async function deleteOllamaModel(name) {
+  if (!(await confirmModelDelete(formatModelName(name), ''))) return;
+  const res = await fetch(`/api/ollama/models/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
+  updateOllamaUI(await readJson(res));
+  showToast(t('modelDeleted').replace('{name}', formatModelName(name)));
 }
 
 function startWhisperPollingLoop(modelId) {
@@ -594,15 +623,16 @@ function updateOllamaUI(ollama) {
       let actionHtml = '';
       if (isPullingThis) {
         actionHtml = `<span class="ui-btn bg-apple-blue/20 text-apple-blue font-mono animate-pulse">${ps.progress || 1}%</span>`;
-      } else if (item.installed && isSelected) {
-        actionHtml = `<span class="ui-btn bg-apple-green/20 text-apple-green">${SVG_ICONS.check}<span>${state.uiLang === 'en' ? 'Active' : 'Активна'}</span></span>`;
       } else if (item.installed) {
-        actionHtml = `
+        const del = `<button data-id="${escapeHtml(item.id)}" onclick="deleteOllamaModel(this.dataset.id)" title="${escapeHtml(t('tipDeleteModel'))}"
+              class="ui-btn ui-btn-subtle px-2 hover:text-apple-red">${SVG_ICONS.trash}</button>`;
+        actionHtml = isSelected
+          ? `<div class="flex items-center gap-1.5"><span class="ui-btn bg-apple-green/20 text-apple-green">${SVG_ICONS.check}<span>${state.uiLang === 'en' ? 'Active' : 'Активна'}</span></span>${del}</div>`
+          : `<div class="flex items-center gap-1.5">
           <button data-id="${escapeHtml(item.id)}" onclick="selectActiveOllamaModel(this.dataset.id)" title="${escapeHtml(t('tipSelectModel'))}"
             class="ui-btn ui-btn-subtle text-white hover:bg-apple-blue">
             ${state.uiLang === 'en' ? 'Select' : 'Выбрать'}
-          </button>
-        `;
+          </button>${del}</div>`;
       } else {
         actionHtml = `
           <button data-id="${escapeHtml(item.id)}" onclick="pullOllamaModel(this.dataset.id)" title="${escapeHtml(t('tipDownloadModel'))}"
@@ -624,6 +654,7 @@ function updateOllamaUI(ollama) {
               <span class="text-[10px] text-apple-tertiary">${escapeHtml(item.vram)}</span>
             </div>
             <p class="text-[11.5px] text-apple-secondary mt-1 leading-snug">${escapeHtml(desc)}</p>
+            ${item.installed ? modelLocationHtml(ollama.models_dir, 0, t('modelLocationOllama')) : ''}
           </div>
           <div class="shrink-0">${actionHtml}</div>
         </div>
@@ -840,7 +871,9 @@ function renderSemanticModelCard() {
   const action = pulling
     ? `<span class="ui-btn bg-apple-blue/20 text-apple-blue font-mono animate-pulse">${ps.progress || 1}%</span>`
     : installed
-      ? `<button onclick="buildSemanticIndex()" class="ui-btn ui-btn-subtle text-white hover:bg-apple-blue">${escapeHtml(t('semanticBuild'))}</button>`
+      ? `<div class="flex items-center gap-1.5"><button onclick="buildSemanticIndex()" class="ui-btn ui-btn-subtle text-white hover:bg-apple-blue">${escapeHtml(t('semanticBuild'))}</button>
+          <button data-id="${escapeHtml((ollama.models || []).find(n => n === model || n.startsWith(model + ':')) || model)}" onclick="deleteOllamaModel(this.dataset.id)" title="${escapeHtml(t('tipDeleteModel'))}"
+            class="ui-btn ui-btn-subtle px-2 hover:text-apple-red">${SVG_ICONS.trash}</button></div>`
       : `<button onclick="pullSemanticModel()" class="ui-btn ui-btn-primary">${SVG_ICONS.download}<span>${escapeHtml(t('semanticDownload'))} (1.2 GB)</span></button>`;
   box.innerHTML = `<div class="p-3 rounded-xl border transition flex items-center justify-between gap-3 ${installed ? 'bg-apple-blue/10 border-apple-blue/50' : 'bg-apple-sidebar border-white/10'}">
     <div class="min-w-0 flex-1">
@@ -850,6 +883,7 @@ function renderSemanticModelCard() {
         <span class="text-[10px] text-apple-tertiary">${installed ? '✓ ' + escapeHtml(t('semanticInstalled')) : '1+ GB VRAM / CPU'}</span>
       </div>
       <p class="text-[11.5px] text-apple-secondary mt-1 leading-snug">${escapeHtml(t('semanticModelDesc'))}</p>
+      ${installed ? modelLocationHtml(ollama.models_dir, 0, t('modelLocationOllama')) : ''}
     </div>
     <div class="shrink-0">${action}</div>
   </div>`;

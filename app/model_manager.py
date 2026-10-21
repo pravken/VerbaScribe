@@ -114,6 +114,23 @@ def _hf_cache_dir(model_id: str) -> Optional[Path]:
     return MODELS_DIR / "whisper" / ("models--" + repo.replace("/", "--")) if repo else None
 
 
+def dir_size_mb(d: Path) -> int:
+    try:
+        return int(sum(f.stat().st_size for f in d.rglob("*") if f.is_file()) / 2**20)
+    except OSError:
+        return 0
+
+
+def whisper_model_location(model_id: str) -> Optional[Path]:
+    """The folder a downloaded Whisper model is in (our own layout or the Hugging Face cache)."""
+    if model_id not in _WHISPER_REPOS:
+        return None
+    if (_whisper_model_dir(model_id) / "model.bin").exists():
+        return _whisper_model_dir(model_id)
+    cache = _hf_cache_dir(model_id)
+    return cache if cache and any(cache.glob("snapshots/*/model.bin")) else None
+
+
 def is_whisper_model_installed(model_id: str) -> bool:
     if model_id not in _WHISPER_REPOS:
         return False
@@ -150,14 +167,20 @@ def get_models_status() -> Dict[str, Any]:
         inst = is_whisper_model_installed(item["id"])
         if inst:
             any_whisper_installed = True
-        whisper_list.append({**item, "installed": inst})
+        where = whisper_model_location(item["id"]) if inst else None
+        whisper_list.append({**item, "installed": inst, "path": str(where) if where else "",
+                             "disk_mb": dir_size_mb(where) if where else 0})
     # GigaAM and Parakeet (app/asr_onnx.py) are chosen in the same list
     from app.asr_onnx import catalog as onnx_catalog
 
     for item in onnx_catalog():
         mb = item["size_mb"]
         size = f"{round(mb / 1024, 1)} GB" if mb >= 1000 else f"{mb} MB"
-        whisper_list.append({**item, "size": size, "badge": f"{size} · {item['license']}", "vram": "CPU"})
+        from app.asr_onnx import model_dir
+
+        where = model_dir(item["id"]) if item["installed"] else None
+        whisper_list.append({**item, "size": size, "badge": f"{size} · {item['license']}", "vram": "CPU",
+                             "path": str(where) if where else "", "disk_mb": dir_size_mb(where) if where else 0})
 
     diarizer_ready = is_diarizer_installed()
 

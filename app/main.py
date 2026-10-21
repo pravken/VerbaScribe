@@ -2397,6 +2397,20 @@ def api_get_export_dir() -> Dict[str, Any]:
     return {"folder": str(_default_export_dir())}
 
 
+@app.delete("/api/ollama/models/{name:path}")
+def api_delete_ollama_model(name: str) -> Dict[str, Any]:
+    from app.ollama_client import delete_ollama_model, get_ollama_status
+    from app.transcriber import running_job_kind
+
+    if running_job_kind() in ("summary", "translate", "dub"):
+        raise HTTPException(status_code=409, detail="Модель сейчас используется — удалите её после задачи")
+    try:
+        delete_ollama_model(name.strip())
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e)[:300])
+    return get_ollama_status()
+
+
 class RevealPayload(BaseModel):
     path: str
 

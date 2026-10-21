@@ -92,6 +92,34 @@ function setUILanguage(lang) {
   if (state.activeWorkspaceTab === 'info' && state.activeMeeting) loadMeetingInfo();
 }
 
+// A styled yes/no question (instead of the browser's confirm): resolves true or false.
+// Cancel is focused, so Enter does not confirm by accident.
+function confirmDialog(title, text, okLabel, danger = true) {
+  return new Promise(resolve => {
+    const wrap = document.createElement('div');
+    wrap.className = 'fixed inset-0 modal-backdrop z-[70] flex items-center justify-center p-4';
+    wrap.setAttribute('role', 'dialog');
+    wrap.setAttribute('aria-modal', 'true');
+    wrap.innerHTML = `<div class="w-full max-w-md bg-apple-card border apple-border rounded-2xl shadow-2xl p-5 space-y-4 modal-card">
+      <div class="text-sm font-semibold text-white">${escapeHtml(title)}</div>
+      <p class="text-xs text-apple-secondary leading-relaxed whitespace-pre-line break-words">${escapeHtml(text)}</p>
+      <div class="flex justify-end gap-2">
+        <button data-a="no" class="ui-btn ui-btn-subtle">${escapeHtml(t('cancel'))}</button>
+        <button data-a="yes" class="ui-btn ${danger ? 'bg-apple-red text-white hover:opacity-90' : 'ui-btn-primary'}">${escapeHtml(okLabel)}</button>
+      </div></div>`;
+    const done = v => { wrap.remove(); document.removeEventListener('keydown', onKey, true); resolve(v); };
+    const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); done(false); } };
+    wrap.addEventListener('click', e => {
+      const a = e.target.closest('button[data-a]');
+      if (e.target === wrap || (a && a.dataset.a === 'no')) done(false);
+      else if (a) done(true);
+    });
+    document.addEventListener('keydown', onKey, true);
+    document.body.appendChild(wrap);
+    wrap.querySelector('button[data-a="no"]').focus();
+  });
+}
+
 // The JSON of a response; a non-JSON answer (a server error page) becomes {detail: "..."} instead of
 // "Unexpected token ... is not valid JSON" shown to the user
 async function readJson(res) {
