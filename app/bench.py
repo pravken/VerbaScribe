@@ -105,7 +105,8 @@ def _rss_bytes() -> int:
 
             c = _Counters()
             c.cb = ctypes.sizeof(c)
-            ctypes.windll.psapi.GetProcessMemoryInfo(ctypes.windll.kernel32.GetCurrentProcess(), ctypes.byref(c), c.cb)
+            # The pseudo handle -1 has to go as a 64-bit HANDLE: as a plain int it is cut to 32 bits and the call fails
+            ctypes.windll.psapi.GetProcessMemoryInfo(wintypes.HANDLE(-1), ctypes.byref(c), c.cb)
             return int(c.WorkingSetSize)
         with open("/proc/self/statm") as f:
             import os
