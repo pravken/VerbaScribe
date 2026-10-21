@@ -49,6 +49,7 @@ function t(key) {
 
 function setUILanguage(lang) {
   state.uiLang = lang;
+  document.documentElement.lang = lang;
   localStorage.setItem('whisper_ui_lang', lang);
   // The launcher's splash screen speaks the same language (see /api/ui/lang)
   fetch('/api/ui/lang', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lang }) }).catch(() => {});
@@ -89,6 +90,15 @@ function setUILanguage(lang) {
   if (state.appView === 'studio') { renderStudioState(); syncStudioCaptions(); }
   if (state.appView === 'ask') { renderAskScope(); renderAskThread(); }
   if (state.activeWorkspaceTab === 'info' && state.activeMeeting) loadMeetingInfo();
+}
+
+// The JSON of a response; a non-JSON answer (a server error page) becomes {detail: "..."} instead of
+// "Unexpected token ... is not valid JSON" shown to the user
+async function readJson(res) {
+  const text = await res.text().catch(() => '');
+  try { return text ? JSON.parse(text) : {}; } catch (e) {
+    return { detail: `${t('serverError')} (HTTP ${res.status})` };
+  }
 }
 
 function showToast(msg, action) {
@@ -168,7 +178,7 @@ async function loadVoiceProfiles() {
   if (!box) return;
   try {
     const res = await fetch('/api/voice-profiles');
-    renderVoiceProfiles(await res.json());
+    renderVoiceProfiles(await readJson(res));
   } catch (e) {
     box.innerHTML = '';
   }

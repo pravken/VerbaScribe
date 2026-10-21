@@ -440,7 +440,7 @@ label.settings-toggle { display: flex; }
 }
 .hw-row-btn { border-radius: 6px; padding: 2px 4px; margin: -2px -4px; width: calc(100% + 8px); transition: background-color 0.12s ease; }
 .hw-row-btn:hover { background: rgba(255, 255, 255, 0.06); }
-.hw-label { font-family: 'JetBrains Mono Variable', ui-monospace, monospace; font-size: 10px; color: #636366; }
+.hw-label { font-family: 'JetBrains Mono Variable', ui-monospace, monospace; font-size: 10px; color: #8A8A90; }
 .hw-name { display: flex; align-items: center; gap: 6px; min-width: 0; color: #D1D1D6; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .hw-bar { position: relative; height: 4px; border-radius: 9999px; background: rgba(255, 255, 255, 0.10); overflow: hidden; }
 .hw-bar > span { position: absolute; inset: 0 auto 0 0; border-radius: 9999px; transition: width 0.5s ease; }

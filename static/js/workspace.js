@@ -2,10 +2,14 @@
 // The parts are classic scripts sharing one global scope, loaded in order by index.html.
 
 // --- Active Meeting Workspace ---
+let _selectSeq = 0;
+
 async function selectMeeting(id, reloadPlayer = true) {
+  // Only the last request wins: a slow answer for an earlier click must not replace the open recording
+  const seq = ++_selectSeq;
   const res = await fetch(`/api/meetings/${id}`);
-  if (!res.ok) return;
-  const m = await res.json();
+  if (!res.ok || seq !== _selectSeq) return;
+  const m = await readJson(res);
   const prevId = state.activeMeeting ? state.activeMeeting.id : null;
   state.activeMeeting = m;
   if (prevId !== m.id) state.speakerFilter = null;
@@ -50,6 +54,7 @@ function updateProcessingBanner(m) {
   const banner = document.getElementById('workspace-processing-banner');
   banner.classList.toggle('hidden', !isBusy && m.status !== 'failed' && m.status !== 'cancelled');
   document.getElementById('workspace-cancel-btn').classList.toggle('hidden', !isBusy);
+  document.getElementById('workspace-retry-btn').classList.toggle('hidden', isBusy);
   const bar = document.getElementById('workspace-progress-bar');
   const q = (state.queue || []).find(x => x.id === m.id);
   const running = isBusy && q && q.state === 'running';
@@ -57,15 +62,28 @@ function updateProcessingBanner(m) {
   document.getElementById('workspace-live-dot').classList.toggle('hidden', !running);
   document.getElementById('workspace-progress-time').textContent = running ? formatTiming(jobTiming(q, m.progress || 0)) : '';
   if (isBusy) {
-    document.getElementById('workspace-stage-text').textContent = m.stage_text || 'Processing…';
+    document.getElementById('workspace-stage-text').textContent = m.stage_text || t('processingShort');
     document.getElementById('workspace-progress-pct').textContent = `${m.progress}%`;
+    bar.style.background = '';
     bar.style.width = `${Math.max(running ? 3 : 0, m.progress || 0)}%`;
   } else {
+    // Failed or cancelled: the reason, a red (or grey) bar and Retry, not a "finished" blue bar
+    const failed = m.status === 'failed';
     document.getElementById('workspace-stage-text').textContent =
-      m.stage_text || (m.status === 'cancelled' ? t('statusCancelled') : 'Failed');
+      (failed ? t('statusFailed') : t('statusCancelled')) + (m.error_message ? `: ${m.error_message}` : m.stage_text ? `: ${m.stage_text}` : '');
     document.getElementById('workspace-progress-pct').textContent = '';
-    document.getElementById('workspace-progress-bar').style.width = '100%';
+    bar.style.width = '100%';
+    bar.style.background = failed ? 'rgba(255, 69, 58, 0.7)' : 'rgba(255, 255, 255, 0.2)';
   }
+}
+
+async function retryActiveMeeting() {
+  const m = state.activeMeeting;
+  if (!m) return;
+  const res = await fetch(`/api/meetings/${m.id}/retry`, { method: 'POST' });
+  if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
+  await loadMeetingsList();
+  await selectMeeting(m.id, false);
 }
 
 // --- Audio track switch (original / AI dubs) and dub export ---
@@ -281,7 +299,7 @@ async function loadDubInfo() {
   try {
     const res = await fetch('/api/dub/info');
     if (!res.ok) return;
-    renderDubInfo(await res.json());
+    renderDubInfo(await readJson(res));
   } catch (e) {
     console.error(e);
   }
@@ -1024,7 +1042,7 @@ async function updateSpeaker(speakerId, newName, newColor) {
       color: colorToSave
     })
   });
-  state.activeMeeting = await res.json();
+  state.activeMeeting = await readJson(res);
   renderSpeakerPillsBar();
   renderSpeakersPanel();
   renderTranscript();
@@ -1369,7 +1387,7 @@ async function mergeSegmentWithPrevious(segId) {
     method: 'POST'
   });
   if (res.ok) {
-    state.activeMeeting = await res.json();
+    state.activeMeeting = await readJson(res);
     renderSpeakerPillsBar();
     renderSpeakersPanel();
     renderTranscript();
@@ -1389,7 +1407,7 @@ async function cleanActiveTranscriptFillers() {
   }
   const res = await fetch(`/api/meetings/${m.id}/clean-fillers`, { method: 'POST' });
   if (!res.ok) return;
-  const data = await res.json();
+  const data = await readJson(res);
   state.activeMeeting = data.meeting;
   renderTranscript();
   if (!data.removed_count) showToast(t('fillersNone'));
@@ -1440,7 +1458,7 @@ async function saveSegmentEdit(segId) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text: newText })
   });
-  state.activeMeeting = await res.json();
+  state.activeMeeting = await readJson(res);
   renderTranscript();
 }
 
@@ -1450,7 +1468,7 @@ async function changeSegmentSpeaker(segId, newSpeaker) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ speaker: newSpeaker })
   });
-  state.activeMeeting = await res.json();
+  state.activeMeeting = await readJson(res);
   renderSpeakerPillsBar();
   renderSpeakersPanel();
   renderTranscript();

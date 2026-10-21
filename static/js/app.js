@@ -371,7 +371,7 @@ async function generateSinceLast() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: chosenModel, lang: state.uiLang }),
     });
-    const data = await res.json();
+    const data = await readJson(res);
     if (!res.ok) throw new Error(data.detail || 'Error');
     m.summaries = data.summaries;
     renderSummaryPanel();
@@ -398,14 +398,16 @@ async function generateSummaryForActiveTab() {
   btn.disabled = true;
   box.innerHTML = `<div class="py-12 flex items-center justify-center gap-2 text-xs text-apple-secondary animate-pulse"><span>${state.uiLang === 'en' ? 'Generating analysis' : 'Формирование анализа'}</span><span class="px-2 py-0.5 rounded-md bg-white/10 text-white font-medium">${escapeHtml(prettyModel)}</span></div>`;
 
+  const forId = state.activeMeeting.id;  // the answer may come minutes later, for another recording
   try {
-    const res = await fetch(`/api/meetings/${state.activeMeeting.id}/summary`, {
+    const res = await fetch(`/api/meetings/${forId}/summary`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ template: state.activeSummaryTab, model: chosenModel, lang: state.uiLang })
     });
-    const data = await res.json();
+    const data = await readJson(res);
     if (!res.ok) throw new Error(data.detail || 'Error');
+    if (!state.activeMeeting || state.activeMeeting.id !== forId) return;
     state.activeMeeting.summaries = data.summaries;
     renderChaptersBar();
     renderSummaryPanel();
@@ -426,14 +428,16 @@ async function runCustomQuestion() {
   const box = document.getElementById('summary-content');
   box.innerHTML = `<div class="py-12 flex items-center justify-center gap-2 text-xs text-apple-secondary animate-pulse"><span>${state.uiLang === 'en' ? 'Searching for answer' : 'Поиск ответа'}</span><span class="px-2 py-0.5 rounded-md bg-white/10 text-white font-medium">${escapeHtml(prettyModel)}</span></div>`;
 
+  const forId = state.activeMeeting.id;
   try {
-    const res = await fetch(`/api/meetings/${state.activeMeeting.id}/summary`, {
+    const res = await fetch(`/api/meetings/${forId}/summary`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ template: 'custom', custom_prompt: prompt, model: chosenModel, lang: state.uiLang })
     });
-    const data = await res.json();
+    const data = await readJson(res);
     if (!res.ok) throw new Error(data.detail || 'Error');
+    if (!state.activeMeeting || state.activeMeeting.id !== forId) return;
     state.activeMeeting.summaries = data.summaries;
     renderChaptersBar();
     state.activeSummaryTab = 'custom';
@@ -541,7 +545,7 @@ async function refreshExportDirLabel() {
   if (!el) return;
   try {
     const res = await fetch('/api/export-dir');
-    const data = await res.json();
+    const data = await readJson(res);
     el.textContent = data.folder || '';
     el.title = data.folder || '';
   } catch (e) {}
@@ -550,7 +554,7 @@ async function refreshExportDirLabel() {
 async function pickExportDir() {
   try {
     const res = await fetch('/api/export-dir/pick', { method: 'POST' });
-    const data = await res.json();
+    const data = await readJson(res);
     if (data && data.ok) refreshExportDirLabel();
   } catch (e) {}
 }
@@ -757,7 +761,7 @@ async function loadMeetingInfo() {
   box.innerHTML = `<div class="py-10 text-center text-xs text-apple-secondary animate-pulse">…</div>`;
   try {
     const res = await fetch(`/api/meetings/${id}/info`);
-    const info = await res.json();
+    const info = await readJson(res);
     if (!res.ok) throw new Error(info.detail || 'Error');
     if (!state.activeMeeting || state.activeMeeting.id !== id) return;
     renderMeetingInfo(info);

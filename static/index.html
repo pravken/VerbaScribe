@@ -321,7 +321,7 @@
         <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="recTitleLabel">Название записи</label>
         <input id="record-title-input" type="text"
           data-i18n-title="tipRecordTitleInput" title="Введите название для новой записи"
-          placeholder="Созвон / Голосовая заметка"
+          placeholder="Созвон / Голосовая заметка" data-i18n-placeholder="phRecordTitle"
           class="w-full h-8 bg-apple-card border apple-border rounded-lg px-3 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
       </div>
 
@@ -648,6 +648,8 @@
             <span class="flex items-center gap-2.5 shrink-0">
               <span id="workspace-progress-time" class="font-mono text-[11px] text-apple-secondary"></span>
               <span id="workspace-progress-pct" class="font-mono text-apple-blue">0%</span>
+              <button id="workspace-retry-btn" onclick="retryActiveMeeting()" data-i18n="retryBtn"
+                class="hidden ui-btn ui-btn-primary h-6 px-2 text-[11px]">Повторить</button>
               <button id="workspace-cancel-btn" onclick="cancelActiveProcessing()" data-i18n-title="tipCancelProcessing" title="Остановить обработку этой записи"
                 class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]" data-i18n="cancelProcessingBtn">Отменить</button>
             </span>
@@ -1186,8 +1188,24 @@
             <kbd class="sc-kbd">Ctrl + O</kbd>
           </div>
           <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
-            <span class="text-xs text-apple-label" data-i18n="scRecord">Новая запись звука</span>
+            <span class="text-xs text-apple-label" data-i18n="scRecord">Новая запись звука (с подтверждением)</span>
             <kbd class="sc-kbd">R</kbd>
+          </div>
+          <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
+            <span class="text-xs text-apple-label" data-i18n="scMulti">Выбрать несколько записей</span>
+            <kbd class="sc-kbd">Ctrl / Shift + клик</kbd>
+          </div>
+          <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
+            <span class="text-xs text-apple-label" data-i18n="scSelectAll">Выбрать все записи (после клика в медиатеке)</span>
+            <kbd class="sc-kbd">Ctrl + A</kbd>
+          </div>
+          <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
+            <span class="text-xs text-apple-label" data-i18n="scDelete">Удалить выбранные записи</span>
+            <kbd class="sc-kbd">Delete</kbd>
+          </div>
+          <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
+            <span class="text-xs text-apple-label" data-i18n="scGlobalRec">Запись из любого окна (настраивается)</span>
+            <kbd class="sc-kbd">Ctrl + Alt + R</kbd>
           </div>
           <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
             <span class="text-xs text-apple-label" data-i18n="scEsc">Закрыть окно или режим кинотеатра</span>
@@ -2118,7 +2136,7 @@
   </div>
 
   <!-- Minimal Apple Pill Toast -->
-  <div id="toast" class="fixed top-4 left-1/2 -translate-x-1/2 hidden max-w-[80vw] break-all bg-apple-elevated/95 apple-blur border apple-border text-white px-4 py-1.5 rounded-xl shadow-xl text-xs font-medium z-50"></div>
+  <div id="toast" class="fixed top-4 left-1/2 -translate-x-1/2 hidden max-w-[80vw] break-words bg-apple-elevated/95 apple-blur border apple-border text-white px-4 py-1.5 rounded-xl shadow-xl text-xs font-medium z-50"></div>
 
   <script src="/static/i18n.js"></script>
   <!-- The page script in parts (static/js), in this order: they share one global scope -->

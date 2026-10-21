@@ -4,9 +4,11 @@
 // --- Meetings List, Global Search & Sidebar ---
 async function loadMeetingsList() {
   const [res] = await Promise.all([fetch('/api/meetings'), loadFolders()]);
-  state.meetings = await res.json();
+  state.meetings = await readJson(res);
   if (!state.globalSearchQuery) {
     renderMeetingsSidebar();
+  } else if (typeof rerunGlobalSearch === 'function') {
+    rerunGlobalSearch();  // deleted or renamed recordings must not stay in the results
   }
   if (state.appView === 'ask') renderAskScope();
 
@@ -29,7 +31,10 @@ async function loadMeetingsList() {
       updateProcessingBanner(state.activeMeeting);
     }
   } else if (state.meetings.length > 0 && !state.activeMeeting) {
-    await selectMeeting(state.meetings[0].id, true);
+    // The top row as the list is sorted (not the newest id), scrolled into view
+    const first = libVisibleIds()[0] ?? state.meetings[0].id;
+    await selectMeeting(first, true);
+    document.querySelector(`#meetings-list [data-mid="${first}"]`)?.scrollIntoView({ block: 'nearest' });
   }
 }
 
@@ -42,7 +47,18 @@ const LIVE_PROGRESS_FIELDS = ['status', 'progress', 'stage_text', 'error_message
 function startLiveUpdates() {
   if (!window.EventSource) return;
   const es = new EventSource('/api/events');
-  es.onopen = () => { live.connected = true; };
+  es.onopen = () => {
+    live.connected = true;
+    // An event sent while the stream was reconnecting is lost: a call that ended meanwhile must
+    // still stop its recording
+    if (state.callRecording) {
+      fetch('/api/calls/status').then(r => r.json()).then(st => {
+        if (state.callRecording && st && st.active !== state.callRecording) {
+          handleCallEvent({ state: 'ended', app: state.callRecording });
+        }
+      }).catch(() => {});
+    }
+  };
   // EventSource reconnects by itself (server sends retry: 3000)
   es.onerror = () => { live.connected = false; };
   es.onmessage = (e) => {
@@ -125,7 +141,7 @@ function scheduleQueueReload() {
 async function loadQueue() {
   const res = await fetch('/api/queue');
   if (!res.ok) return;
-  state.queue = await res.json();
+  state.queue = await readJson(res);
   renderQueuePanel();
 }
 
@@ -225,18 +241,25 @@ async function pollMeetingsLoop() {
 async function handleGlobalSidebarSearch(rawVal) {
   const q = (rawVal || '').trim();
   state.globalSearchQuery = q;
+  clearTimeout(window._globalSearchDebounce);  // also when cleared: a pending search must not come back
   if (!q) {
     state.globalSearchResults = null;
     renderMeetingsSidebar();
     return;
   }
+  window._globalSearchDebounce = setTimeout(() => runGlobalSearch(q), 180);
+}
 
-  clearTimeout(window._globalSearchDebounce);
-  window._globalSearchDebounce = setTimeout(async () => {
-    const res = await fetch(`/api/meetings/search?q=${encodeURIComponent(q)}`);
-    state.globalSearchResults = await res.json();
-    renderMeetingsSidebar();
-  }, 180);
+async function runGlobalSearch(q) {
+  const res = await fetch(`/api/meetings/search?q=${encodeURIComponent(q)}`);
+  const data = await readJson(res);
+  if (q !== state.globalSearchQuery) return;  // an older search answered late
+  state.globalSearchResults = Array.isArray(data) ? data : [];
+  renderMeetingsSidebar();
+}
+
+function rerunGlobalSearch() {
+  if (state.globalSearchQuery) runGlobalSearch(state.globalSearchQuery);
 }
 
 // --- App parts: library, recording studio, questions ---
@@ -656,7 +679,7 @@ function toggleFolderCollapsed(id) {
 async function loadFolders() {
   try {
     const res = await fetch('/api/folders');
-    if (res.ok) state.folders = await res.json();
+    if (res.ok) state.folders = await readJson(res);
   } catch (e) {
     console.error(e);
   }
@@ -909,10 +932,14 @@ function shortDate(s) {
 const LIB_VIEWS = ['details', 'compact', 'grid'];
 const LIB_SORTS = ['recorded', 'added', 'name', 'duration', 'size'];
 
+// Read once and kept: rendering asks for it for every row
+let _libPrefsCache = null;
+
 function libPrefs() {
+  if (_libPrefsCache) return _libPrefsCache;
   let p = {};
   try { p = JSON.parse(localStorage.getItem('verbascribe_library_view') || '{}') || {}; } catch (e) {}
-  return {
+  return _libPrefsCache = {
     view: LIB_VIEWS.includes(p.view) ? p.view : 'details',
     sort: LIB_SORTS.includes(p.sort) ? p.sort : 'recorded',
     dir: p.dir === 'asc' ? 'asc' : 'desc',
@@ -971,27 +998,34 @@ function dateRowHtml(id, label, count, depth, open) {
 }
 
 function setLibPref(key, value) {
-  const p = libPrefs();
+  const p = { ...libPrefs() };
   // Choosing the sort that is already on flips its direction
   if (key === 'sort' && p.sort === value) p.dir = p.dir === 'asc' ? 'desc' : 'asc';
   else if (key === 'sort') p.dir = value === 'name' ? 'asc' : 'desc';
   if (key !== 'dir') p[key] = value;
   try { localStorage.setItem('verbascribe_library_view', JSON.stringify(p)); } catch (e) {}
+  _libPrefsCache = null;
   renderMeetingsSidebar();
 }
 
-function libComparator({ sort, dir }) {
+const _libCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+function libComparator(prefs) {
+  const { sort, dir } = prefs;
+  const byFile = prefs.names === 'file';
   const key = {
     recorded: m => m.recorded_at || m.created_at || '',
     added: m => m.created_at || '',
-    name: m => libTitle(m).toLocaleLowerCase(),
+    name: m => byFile ? formatFileName(m) : (m.title || ''),
     duration: m => Number(m.duration) || 0,
     size: m => Number(m.size_bytes) || 0,
   }[sort];
   const sign = dir === 'asc' ? 1 : -1;
+  // Dates are ISO strings: compared as strings; only names need the (slow) locale collation
+  const cmp = sort === 'name' ? _libCollator.compare : (x, y) => (x < y ? -1 : x > y ? 1 : 0);
   return (a, b) => {
     const x = key(a), y = key(b);
-    const c = typeof x === 'string' ? x.localeCompare(y, undefined, { numeric: true }) : x - y;
+    const c = typeof x === 'string' ? cmp(x, y) : x - y;
     return (c || b.id - a.id) * sign;
   };
 }
@@ -1175,9 +1209,15 @@ async function bulkAutoTitles() {
   showToast(failed ? t('bulkSomeFailed').replace('{n}', failed) : t('bulkAutoTitleDone'));
 }
 
+// Ctrl+A selects recordings only after a click in the library (elsewhere it selects text as usual)
+let _libHadClick = false;
+document.addEventListener('mousedown', e => { _libHadClick = !!e.target.closest?.('#meetings-list'); }, true);
+
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && state.multi.size && !document.querySelector('.modal-backdrop:not(.hidden)')) clearLibSelection();
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a' && document.activeElement?.closest?.('#meetings-list')) {
+  const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '') || document.activeElement?.isContentEditable;
+  if ((e.ctrlKey || e.metaKey) && e.code === 'KeyA' && !typing && _libHadClick
+      && !document.querySelector('.modal-backdrop:not(.hidden)')) {
     e.preventDefault();
     state.multi = new Set(libVisibleIds());
     renderMeetingsSidebar();
@@ -1460,7 +1500,14 @@ function handleFileDrop(e) {
 // Sends files to the server; `source` tells a recording made here from an imported file (they go to
 // different folders on disk and in the library). The file dates are sent too: for an imported file
 // the date it was last modified is the closest to when the meeting took place.
+function requireRecognitionModel() {
+  if (document.getElementById('upload-model').value) return true;
+  showToast(t('noModelInstalled'), { label: t('settings'), onClick: () => openModal('settings', 'recognition') });
+  return false;
+}
+
 async function uploadFiles(fileList, opts = {}) {
+  if (opts.source !== 'recording' && !requireRecognitionModel()) return;
   const fd = new FormData();
   for (const f of fileList) {
     fd.append('files', f);
@@ -1504,7 +1551,7 @@ async function handleFileSelect(fileList) {
 async function submitLocalPath() {
   const pathInput = document.getElementById('local-path-input');
   const path = pathInput.value.trim();
-  if (!path) return;
+  if (!path || !requireRecognitionModel()) return;
 
   const res = await fetch('/api/meetings/local-path', {
     method: 'POST',
@@ -1517,7 +1564,7 @@ async function submitLocalPath() {
     })
   });
 
-  const data = await res.json();
+  const data = await readJson(res);
   if (!res.ok) {
     alert(data.detail || 'Error');
     return;
@@ -1533,16 +1580,23 @@ async function submitLocalPath() {
 
 // --- Sidebar width: dragged on its right edge, kept per computer ---
 const SIDEBAR_MIN = 240, SIDEBAR_MAX = 560, SIDEBAR_DEFAULT = 312;
+const MAIN_MIN = 800;  // the recording toolbar and the player need this much next to the sidebar
 
 function setSidebarWidth(w, save) {
   const aside = document.getElementById('app-sidebar');
   if (!aside) return;
-  w = Math.round(Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, Math.min(w, window.innerWidth - 560))));
+  w = Math.round(Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, Math.min(w, window.innerWidth - MAIN_MIN))));
   aside.style.width = `${w}px`;
   if (save) try { localStorage.setItem('verbascribe_sidebar_width', String(w)); } catch (e) {}
 }
 
 (function initSidebarResize() {
+  // A smaller window takes the room from the sidebar first (the saved width comes back when it grows)
+  window.addEventListener('resize', () => {
+    let saved = SIDEBAR_DEFAULT;
+    try { saved = Number(localStorage.getItem('verbascribe_sidebar_width')) || SIDEBAR_DEFAULT; } catch (e) {}
+    setSidebarWidth(saved, false);
+  });
   try { const w = Number(localStorage.getItem('verbascribe_sidebar_width')); if (w) setSidebarWidth(w, false); } catch (e) {}
   const handle = document.getElementById('sidebar-resizer');
   if (!handle) return;

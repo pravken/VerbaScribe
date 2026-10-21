@@ -12,7 +12,7 @@ async function buildPlayerWaveformEnvelope(meeting) {
   try {
     const res = await fetch(`/api/meetings/${meeting.id}/peaks?bars=120`);
     if (!res.ok) return;
-    const data = await res.json();
+    const data = await readJson(res);
     if (!state.activeMeeting || state.activeMeeting.id !== meeting.id) return;
     if (Array.isArray(data.peaks) && data.peaks.length > 0) {
       state.playerPeaks = data.peaks.map(v => Math.max(0.08, Number(v) || 0));

@@ -22,7 +22,7 @@ module.exports = {
           amber: '#FF9F0A',
           label: '#F5F5F7',
           secondary: '#98989D',
-          tertiary: '#636366',
+          tertiary: '#8A8A90',  // readable small text on the dark cards (was #636366, 2.6:1)
         },
       },
     },

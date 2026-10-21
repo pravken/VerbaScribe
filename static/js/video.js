@@ -380,7 +380,7 @@ document.addEventListener('keydown', (e) => {
   } else if (e.code === 'Slash') {
     e.preventDefault();
     focusTranscriptSearch();
-  } else if (e.code === 'Space' && hasMedia) {
+  } else if (e.code === 'Space' && hasMedia && !e.target.closest?.('button, a, [role="button"], [role="tab"], label')) {
     e.preventDefault();
     document.activeElement?.blur?.();
     togglePlayPause();
@@ -391,9 +391,11 @@ document.addEventListener('keydown', (e) => {
   } else if (e.code === 'KeyF' && !e.shiftKey && state.hasVideo && state.appView === 'library') {
     e.preventDefault();
     toggleTheatre();
-  } else if (e.code === 'KeyR' && !e.shiftKey) {
+  } else if (e.code === 'KeyR' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    // One key starts capturing the microphone and system sound: asked first, not started at once
     e.preventDefault();
-    quickRecord();
+    if (isRecording()) return;
+    showToast(t('quickRecordAsk'), { label: t('quickRecordStart'), onClick: () => quickRecord() });
   }
 });
 

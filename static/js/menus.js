@@ -306,7 +306,7 @@ async function openSeriesMenu(e) {
     } else if (b.dataset.sid !== 'none') body = { series_id: Number(b.dataset.sid) };
     const res = await fetch(`/api/meetings/${m.id}/series`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (!res.ok) return;
-    const data = await res.json();
+    const data = await readJson(res);
     if (state.activeMeeting && state.activeMeeting.id === m.id) { state.activeMeeting.series_id = data.series_id; renderSeriesUi(); }
     await loadMeetingsList();
     loadSeries();
@@ -362,11 +362,12 @@ async function ctxRenameRecording() {
   const newTitle = prompt(state.uiLang === 'en' ? 'New recording title:' : 'Новое название записи:', m.title);
   if (!newTitle || !newTitle.trim() || newTitle.trim() === m.title) return;
 
-  await fetch(`/api/meetings/${m.id}/title`, {
+  const res = await fetch(`/api/meetings/${m.id}/title`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title: newTitle.trim() })
   });
+  if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
   await loadMeetingsList();
   if (state.activeMeeting && state.activeMeeting.id === m.id) {
     state.activeMeeting.title = newTitle.trim();
@@ -484,7 +485,7 @@ function confirmDeleteDialog(list) {
     });
     document.addEventListener('keydown', onKey, true);
     document.body.appendChild(wrap);
-    wrap.querySelector('button[data-a="yes"]').focus();
+    wrap.querySelector('button[data-a="no"]').focus();  // Enter after Delete must not remove recordings
   });
 }
 

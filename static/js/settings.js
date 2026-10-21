@@ -36,7 +36,7 @@ async function installFfmpeg() {
 async function loadSystemInfo() {
   try {
     const res = await fetch('/api/system');
-    const data = await res.json();
+    const data = await readJson(res);
     state.system = data;
 
     const hw = data.hardware;
@@ -145,7 +145,7 @@ function scheduleVramRefresh(delay = VRAM_POLL_MS) {
 async function loadVram() {
   try {
     const res = await fetch('/api/vram');
-    if (res.ok) renderVram(await res.json());
+    if (res.ok) renderVram(await readJson(res));
   } catch (e) {
     // the server may be restarting; try again later
   } finally {
@@ -507,7 +507,7 @@ function startWhisperPollingLoop(modelId) {
   window._whisperPollTimer = setInterval(async () => {
     try {
       const res = await fetch('/api/models/status');
-      const data = await res.json();
+      const data = await readJson(res);
       updateWhisperModelsUI(data);
       if (!data.setup_state || !data.setup_state.active) {
         clearInterval(window._whisperPollTimer);
@@ -788,10 +788,13 @@ async function loadHotkeyStatus() {
 // Upload and re-transcribe dialogs: the downloaded models (Whisper, GigaAM, Parakeet)
 function fillRecognitionSelects(list, active) {
   const items = list.filter(i => i.installed);
-  if (!items.length) return;
   ['upload-model', 'reconfig-model'].forEach(id => {
     const sel = document.getElementById(id);
     if (!sel) return;
+    if (!items.length) {  // nothing downloaded yet: no model to offer (a job would fail)
+      sel.innerHTML = `<option value="">${escapeHtml(t('noModelInstalled'))}</option>`;
+      return;
+    }
     const value = sel.value;
     sel.innerHTML = items.map(i => `<option value="${escapeHtml(i.id)}">${escapeHtml(formatModelName(i.id))}</option>`).join('');
     sel.value = items.some(i => i.id === value) ? value : (items.some(i => i.id === active) ? active : items[0].id);
@@ -901,7 +904,7 @@ function cloudLlmChoice() {
 async function loadLlmStatus() {
   try {
     const res = await fetch('/api/llm/status');
-    if (res.ok) state.llm = await res.json();
+    if (res.ok) state.llm = await readJson(res);
   } catch (e) {
     console.error(e);
   }
@@ -1229,7 +1232,7 @@ function startOllamaPollingLoop(model) {
   window._ollamaPollTimer = setInterval(async () => {
     try {
       const res = await fetch('/api/ollama/status');
-      const data = await res.json();
+      const data = await readJson(res);
       updateOllamaUI(data);
       if (!data.pull_state || !data.pull_state.active) {
         clearInterval(window._ollamaPollTimer);
@@ -1283,7 +1286,7 @@ async function pullOllamaModel(modelArg, makeActive = true) {
 // --- Dictionary ---
 async function loadDictionary() {
   const res = await fetch('/api/dictionary');
-  state.dictionary = await res.json();
+  state.dictionary = await readJson(res);
   document.getElementById('dict-count-badge').textContent = state.dictionary.filter(d => d.active).length;
 
   const box = document.getElementById('dictionary-list');
