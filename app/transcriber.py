@@ -959,9 +959,14 @@ def _process_meeting_job(meeting_id: int) -> None:
                         segments=merged_segments,
                         speakers=speakers_meta,
                         template_key="protocol",
+                        user_notes=(get_meeting(meeting_id) or {}).get("user_notes") or "",
                         answer_lang=detected_lang,
                         local_only=local_only,
                     )
+                    from app.grounding import ground_summary
+
+                    if settings.get("summary_grounding", "true").lower() == "true":
+                        summary_md = ground_summary(summary_md, merged_segments, speakers_meta)
                     summaries["protocol"] = summary_md
                     merge_summaries(meeting_id, {"protocol": summary_md}, remove=("error",))
                 except Exception as sum_err:

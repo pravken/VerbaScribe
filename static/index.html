@@ -1918,6 +1918,11 @@
             <span><span data-i18n="autoTitleToggle">Называть записи по содержанию</span>
               <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="autoTitleHint">Если у записи безликое название («Запись 14-05», «zoom_0», «VID_2024…»), после расшифровки модель придумает его по тексту. Названия, которые вы ввели сами, не меняются.</span></span>
           </label>
+          <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
+            <input type="checkbox" id="set-summary-grounding" checked class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <span><span data-i18n="groundingToggle">Проверять пересказ по расшифровке</span>
+              <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="groundingHint">Каждый пункт сверяется с текстом записи: найденные получают ссылку на место в записи, а то, чего в записи нет, помечается «не найдено в записи». Работает без модели.</span></span>
+          </label>
         </div>
 
         <!-- Search by meaning (app/semantic.py) -->

@@ -9,6 +9,8 @@ leaving a copy behind. Exports run automatically after processing when "obsidian
 """
 
 import re
+
+from app.grounding import readable_summaries
 import threading
 import traceback
 from datetime import datetime
@@ -93,7 +95,7 @@ def build_note(m: Dict[str, Any], settings: Optional[Dict[str, str]] = None) -> 
     dt = meeting_datetime(m)
     speakers = m.get("speakers") or {}
     segments = m.get("segments") or []
-    summaries = m.get("summaries") or {}
+    summaries = readable_summaries(m)
     names = [s.get("name") or k for k, s in speakers.items()]
 
     props = [
@@ -172,11 +174,13 @@ def _prepare(meeting_id: int, generate: bool, settings: Dict[str, str]) -> Dict[
         if summaries.get(key):
             continue
         try:
-            summaries[key] = generate_meeting_summary(
+            from app.grounding import maybe_ground
+
+            summaries[key] = maybe_ground(generate_meeting_summary(
                 segments=m["segments"], speakers=m.get("speakers") or {}, template_key=key,
                 answer_lang=m.get("language") or "ru",
-                local_only=is_local_only(m),
-            )
+                local_only=is_local_only(m), user_notes=m.get("user_notes") or "",
+            ), key, m)
             changed = True
         except Exception as e:
             print(f"[obsidian] {key} for meeting {meeting_id} failed: {e}", flush=True)

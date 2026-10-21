@@ -151,7 +151,8 @@ def init_db() -> None:
             "obsidian_filename": "{date} {title}",
             "file_name_template": "{date} {title}",  # recordings and exports (app/naming.py)
             "date_folders": "off",  # off | day | month | year_month: folders by date (app/naming.py)
-            "summary_templates": "[]",  # the user's own summary templates, JSON (summary_templates())
+            "summary_templates": "[]",
+            "summary_grounding": "true",  # summaries checked against the transcript (app/grounding.py)  # the user's own summary templates, JSON (summary_templates())
             "update_auto": "true",  # download updates by themselves, install on exit (app/updater.py)
             "obsidian_summary": "true",
             "obsidian_tasks": "true",

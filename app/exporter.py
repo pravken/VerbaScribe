@@ -6,6 +6,7 @@ from docx import Document
 from docx.shared import Pt, RGBColor
 
 from app.audio_utils import format_timestamp
+from app.grounding import readable_summaries
 
 
 def _hex_to_rgb(hex_color: str) -> Tuple[int, int, int]:
@@ -73,7 +74,7 @@ def export_markdown(meeting: Dict[str, Any]) -> str:
     duration_str = format_timestamp(meeting.get("duration", 0.0))
     speakers = meeting.get("speakers") or {}
     segments = meeting.get("segments") or []
-    summaries = meeting.get("summaries") or {}
+    summaries = readable_summaries(meeting)
 
     lines = [
         f"# {title}",
@@ -138,7 +139,7 @@ def export_txt(meeting: Dict[str, Any]) -> str:
     duration_str = format_timestamp(meeting.get("duration", 0.0))
     speakers = meeting.get("speakers") or {}
     segments = meeting.get("segments") or []
-    summaries = meeting.get("summaries") or {}
+    summaries = readable_summaries(meeting)
 
     lines = [
         title,
@@ -198,7 +199,7 @@ def export_docx(meeting: Dict[str, Any]) -> bytes:
     title = meeting.get("title") or L["untitled"]
     speakers = meeting.get("speakers") or {}
     segments = meeting.get("segments") or []
-    summaries = meeting.get("summaries") or {}
+    summaries = readable_summaries(meeting)
 
     doc.add_heading(title, level=0)
 

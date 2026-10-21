@@ -367,3 +367,30 @@ class NotesAndTemplatesTest(unittest.TestCase):
         with mock.patch("app.llm.target", return_value=llm), self.assertRaises(RuntimeError):
             ollama_client.generate_meeting_summary(segs, {}, template_key="notes")
         save_summary_templates([])
+
+
+class GroundingTest(unittest.TestCase):
+    SEGS = [
+        {"start": 5, "end": 9, "text": "Бюджет проекта утвердили на следующий квартал", "speaker": "S1"},
+        {"start": 70, "end": 75, "text": "Анна подготовит презентацию для клиента к пятнице", "speaker": "S2"},
+        {"start": 140, "end": 150, "text": "Погода сегодня хорошая, обсудили отпуск в горах", "speaker": "S1"},
+    ]
+
+    def test_marks(self):
+        from app.grounding import UNVERIFIED_MARK, ground_summary
+        md = ("## Итог\n"
+              "- Анна подготовит презентацию для клиента к пятнице\n"
+              "- Бюджет проекта утвердили [00:05]\n"
+              "- Решили открыть офис в Лондоне и нанять десять инженеров\n"
+              "- Да")
+        out = ground_summary(md, self.SEGS).splitlines()
+        self.assertEqual(out[0], "## Итог")
+        self.assertTrue(out[1].endswith("[01:10]"))
+        self.assertEqual(out[2], "- Бюджет проекта утвердили [00:05]")
+        self.assertTrue(out[3].endswith(UNVERIFIED_MARK))
+        self.assertEqual(out[4], "- Да")
+
+    def test_wrong_time_stamp(self):
+        from app.grounding import UNVERIFIED_MARK, ground_summary
+        out = ground_summary("- Совет директоров одобрил слияние компаний [00:05]", self.SEGS)
+        self.assertTrue(out.endswith(UNVERIFIED_MARK))

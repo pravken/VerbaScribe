@@ -1801,8 +1801,10 @@ def api_generate_summary(meeting_id: int, payload: SummaryRequestPayload) -> Dic
         raise HTTPException(status_code=400, detail=str(e))
 
     from app.database import merge_summaries
+    from app.grounding import maybe_ground
 
     key = "custom" if payload.custom_prompt.strip() else payload.template
+    result_md = maybe_ground(result_md, key, m)
     summaries = merge_summaries(meeting_id, {key: result_md}, remove=("error",))
     if key != "custom":
         from app.obsidian import refresh_if_exported

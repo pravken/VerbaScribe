@@ -400,6 +400,30 @@ function sanitizedMarkdown(md) {
 function renderMarkdownWithTimestamps(box, md, durationSec) {
   box.innerHTML = sanitizedMarkdown(md);
   linkifyTimestamps(box, Number(durationSec) || 0, (sec) => seekPlayer(sec));
+  markUnverified(box);
+}
+
+// "[?]" (app/grounding.py): a point of a summary the transcript does not support
+function markUnverified(root) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) if (walker.currentNode.nodeValue.includes('[?]')) nodes.push(walker.currentNode);
+  for (const node of nodes) {
+    const parts = node.nodeValue.split('[?]');
+    const frag = document.createDocumentFragment();
+    parts.forEach((p, i) => {
+      if (p) frag.appendChild(document.createTextNode(p));
+      if (i < parts.length - 1) {
+        const b = document.createElement('span');
+        b.className = 'ml-1 px-1.5 py-px rounded bg-apple-amber/15 text-apple-amber text-[10.5px] font-medium whitespace-nowrap align-middle';
+        b.textContent = t('unverifiedBadge');
+        b.title = t('tipUnverified');
+        frag.appendChild(b);
+        b.closest('li, p')?.classList.add('opacity-80');
+      }
+    });
+    node.replaceWith(frag);
+  }
 }
 
 // Time stamps in model answers come in many shapes: [03:14], [03:14-05:06], (1:02:03), "03:14 — …"
@@ -566,7 +590,7 @@ async function runCustomQuestion() {
 
 function copySummaryText() {
   if (!state.activeMeeting) return;
-  const text = (state.activeMeeting.summaries || {})[state.activeSummaryTab] || '';
+  const text = ((state.activeMeeting.summaries || {})[state.activeSummaryTab] || '').replaceAll('[?]', `(${t('unverifiedBadge')})`);
   if (!text) return;
   navigator.clipboard.writeText(text);
   showToast(state.uiLang === 'en' ? 'Copied' : 'Скопировано');
