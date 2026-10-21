@@ -1841,6 +1841,20 @@
           </div>
         </div>
 
+        <!-- GigaAM / Parakeet on the NVIDIA GPU (app/onnx_gpu.py) -->
+        <div id="onnx-gpu-box" class="hidden pt-3 border-t apple-border space-y-1.5">
+          <label class="flex items-center gap-2.5 cursor-pointer text-xs text-apple-label">
+            <input type="checkbox" id="set-onnx-gpu" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <span data-i18n="onnxGpuToggle">GigaAM и Parakeet на видеокарте</span>
+          </label>
+          <p class="text-[11px] text-apple-tertiary leading-snug ml-6" data-i18n="onnxGpuHint">Расшифровка записей в несколько раз быстрее. Нужна сборка ONNX Runtime для видеокарты (около 300 МБ, скачивается один раз). Если видеопамяти не хватает, запись распознаётся на процессоре. Субтитры и диктовка всегда идут на процессоре, чтобы видеокарта оставалась свободной для расшифровки.</p>
+          <div class="flex items-center gap-2 ml-6">
+            <span id="onnx-gpu-status" class="text-[11px] text-apple-secondary"></span>
+            <button onclick="installOnnxGpu()" id="onnx-gpu-install" class="hidden ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" data-i18n="onnxGpuInstall">Установить</button>
+            <button onclick="removeOnnxGpu()" id="onnx-gpu-remove" class="hidden ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" data-i18n="onnxGpuRemove">Удалить</button>
+          </div>
+        </div>
+
         <!-- Processing options: one column, the same spacing everywhere; voice profiles belong to speaker separation -->
         <div class="pt-3 border-t apple-border space-y-1">
           <div class="settings-toggle">

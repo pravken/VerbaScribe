@@ -106,6 +106,8 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     document.getElementById('set-dictation-hotkey').value = s.dictation_hotkey ?? 'Ctrl+Alt+D';
     document.getElementById('set-dictation-language').value = s.dictation_language || 'auto';
     document.getElementById('set-calendar-ics').value = s.calendar_ics || '';
+    document.getElementById('set-onnx-gpu').checked = s.onnx_gpu !== 'false';
+    loadOnnxGpu();
     document.getElementById('calendar-status').textContent = '';
     fillCallSettings(s);
     loadHotkeyStatus();
@@ -826,6 +828,47 @@ async function watchFolderOff() {
   if (st) renderWatchFolder(st);
 }
 
+// --- GigaAM / Parakeet on the NVIDIA GPU (app/onnx_gpu.py) ---
+let _onnxGpuTimer = null;
+
+function renderOnnxGpu(st) {
+  const box = document.getElementById('onnx-gpu-box');
+  box.classList.toggle('hidden', !st.nvidia);
+  if (!st.nvidia) return;
+  const label = document.getElementById('onnx-gpu-status');
+  label.className = 'text-[11px] ' + (st.error ? 'text-apple-amber' : st.active ? 'text-apple-green' : 'text-apple-secondary');
+  label.textContent = st.installing ? t('onnxGpuInstalling')
+    : st.error ? st.error
+    : st.active ? t('onnxGpuActive')
+    : st.restart_needed ? t('onnxGpuRestart')
+    : st.installed ? t('onnxGpuNoCuda')
+    : t('onnxGpuMissing');
+  document.getElementById('onnx-gpu-install').classList.toggle('hidden', st.installed || st.installing);
+  document.getElementById('onnx-gpu-remove').classList.toggle('hidden', !st.installed || st.installing);
+  clearTimeout(_onnxGpuTimer);
+  if (st.installing) _onnxGpuTimer = setTimeout(loadOnnxGpu, 2000);
+}
+
+async function loadOnnxGpu() {
+  const st = await fetch('/api/onnx-gpu').then(r => r.json()).catch(() => null);
+  if (st) renderOnnxGpu(st);
+}
+
+async function installOnnxGpu() {
+  const res = await fetch('/api/onnx-gpu/install', { method: 'POST' });
+  const data = await readJson(res);
+  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  document.getElementById('set-onnx-gpu').checked = true;
+  renderOnnxGpu(data);
+}
+
+async function removeOnnxGpu() {
+  if (!await askConfirm(t('onnxGpuRemoveConfirm'))) return;
+  const data = await fetch('/api/onnx-gpu/remove', { method: 'POST' }).then(r => r.json()).catch(() => null);
+  document.getElementById('set-onnx-gpu').checked = false;
+  if (data) renderOnnxGpu(data);
+}
+
 // --- The user's calendar (app/calendar_ics.py) ---
 async function checkCalendar() {
   const box = document.getElementById('calendar-status');
@@ -1388,6 +1431,7 @@ async function saveAllSettings() {
       dictation_hotkey: document.getElementById('set-dictation-hotkey')?.value.trim() || '',
       dictation_language: document.getElementById('set-dictation-language')?.value || 'auto',
       calendar_ics: document.getElementById('set-calendar-ics')?.value.trim() || '',
+      onnx_gpu: document.getElementById('set-onnx-gpu')?.checked ? 'true' : 'false',
       ...callSettingsPayload(),
       ...dubSettingsPayload(),
     }

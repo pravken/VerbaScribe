@@ -24,6 +24,7 @@ ONNX_MODELS: Dict[str, Dict[str, Any]] = {
         "name": "GigaAM v3",
         "size_mb": 900,
         "license": "MIT",
+        "vram_gb": 1.5,  # on the GPU (app/onnx_gpu.py)
         "languages": ["ru"],
         "desc_ru": "Новая модель Сбера для русского языка: сразу пишет со знаками препинания и заглавными буквами, числа цифрами. Только русский, работает на процессоре.",
         "desc_en": "Sber's new model for Russian: writes with punctuation and capital letters, numbers as digits. Russian only, runs on the CPU.",
@@ -33,6 +34,7 @@ ONNX_MODELS: Dict[str, Dict[str, Any]] = {
         "name": "Parakeet TDT v3",
         "size_mb": 2600,
         "license": "CC-BY-4.0 (NVIDIA)",
+        "vram_gb": 3.0,
         "languages": ["en", "ru", "de", "fr", "es", "it", "pt", "nl", "pl", "uk", "cs", "sk", "bg", "hr", "da",
                       "fi", "el", "hu", "lv", "lt", "mt", "ro", "sl", "sv", "et"],
         "desc_ru": "Очень быстрая модель NVIDIA для 25 европейских языков, включая русский и английский, с расстановкой знаков препинания.",
@@ -130,9 +132,9 @@ def _run(cmd):
         return subprocess.CompletedProcess(cmd, 1, "", str(e))
 
 
-def _install_commands():
+def _install_commands(args=None):
     """uv first (setup.bat makes the venv with uv, which has no pip in it), then pip, bootstrapping it
-    with ensurepip when the venv has none."""
+    with ensurepip when the venv has none. `args`: what to install (onnx-asr by default)."""
     import os
     import shutil
     import sys
@@ -146,27 +148,39 @@ def _install_commands():
                 uv = str(c)
                 break
     if uv:
-        yield [uv, "pip", "install", "--python", sys.executable, ONNX_ASR_PIN]
+        yield [uv, "pip", "install", "--python", sys.executable, *(args or [ONNX_ASR_PIN])]
     if _run([sys.executable, "-m", "pip", "--version"]).returncode != 0:
         _run([sys.executable, "-m", "ensurepip", "--upgrade"])
-    yield [sys.executable, "-m", "pip", "install", "--disable-pip-version-check", ONNX_ASR_PIN]
+    yield [sys.executable, "-m", "pip", "install", "--disable-pip-version-check", *(args or [ONNX_ASR_PIN])]
 
 
-def _load(model_id: str):
-    """The model and the VAD, loaded once (installing the library and downloading what is missing)."""
+def _key(model_id: str, gpu: bool) -> str:
+    return f"{model_id}@gpu" if gpu else model_id
+
+
+def _load(model_id: str, gpu: bool = False):
+    """The model and the VAD, loaded once (installing the library and downloading what is missing).
+    gpu: on the video card (app/onnx_gpu.py; a copy apart from the CPU one live captions use). The VAD
+    stays on the CPU: it is tiny, and the GPU would only add copies."""
     ensure_package()
     import onnx_asr
 
-    if model_id not in _loaded:
+    from app import onnx_gpu
+
+    if model_id not in _loaded and _key(model_id, True) not in _loaded:
         with _fetch_lock:  # the download (gigabytes) must not hold the lock live captions wait on
             fetch(model_id)
+    key = _key(model_id, gpu)
     with _lock:
-        if model_id not in _loaded:
-            asr = onnx_asr.load_model(ONNX_MODELS[model_id]["onnx_name"], model_dir(model_id))
-            vad = onnx_asr.load_vad(VAD_NAME, _vad_dir())
-            _loaded[model_id] = asr.with_vad(vad, max_speech_duration_s=MAX_PHRASE_SEC, min_silence_duration_ms=300,
-                                             speech_pad_ms=120).with_timestamps()
-        return _loaded[model_id]
+        if key not in _loaded:
+            if gpu:
+                onnx_gpu.prepare_cuda()
+            asr = onnx_asr.load_model(ONNX_MODELS[model_id]["onnx_name"], model_dir(model_id),
+                                      providers=onnx_gpu.providers(gpu))
+            vad = onnx_asr.load_vad(VAD_NAME, _vad_dir(), providers=onnx_gpu.providers(False))
+            _loaded[key] = asr.with_vad(vad, max_speech_duration_s=MAX_PHRASE_SEC, min_silence_duration_ms=300,
+                                        speech_pad_ms=120).with_timestamps()
+        return _loaded[key]
 
 
 def fetch(model_id: str) -> None:
@@ -179,12 +193,25 @@ def fetch(model_id: str) -> None:
     create_vad_resolver(VAD_NAME, _vad_dir(), offline=False).resolve_model()
 
 
-def release(model_id: Optional[str] = None) -> None:
+def release(model_id: Optional[str] = None, gpu: Optional[bool] = None) -> None:
+    """gpu None: both copies of the model."""
     with _lock:
         if model_id:
-            _loaded.pop(model_id, None)
+            for g in ((False, True) if gpu is None else (gpu,)):
+                _loaded.pop(_key(model_id, g), None)
         else:
             _loaded.clear()
+
+
+def on_gpu(model_id: str) -> bool:
+    return _key(model_id, True) in _loaded
+
+
+def release_gpu() -> None:
+    """Frees the video memory of the models a transcription job loaded there."""
+    with _lock:
+        for k in [k for k in _loaded if k.endswith("@gpu")]:
+            _loaded.pop(k, None)
 
 
 def preload(model_id: str) -> None:
@@ -195,7 +222,7 @@ def preload(model_id: str) -> None:
 
 
 def loaded_models() -> List[str]:
-    return list(_loaded)
+    return list(dict.fromkeys(k.split("@")[0] for k in _loaded))
 
 
 def guess_language(text: str) -> str:
@@ -338,10 +365,11 @@ def split_sentences_text(start: float, end: float, text: str) -> List[Tuple[floa
 
 
 def transcribe(model_id: str, wav_path: Path, total_dur: float, on_progress: Callable[[float], None],
-               check_cancel: Callable[[], None], out: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+               check_cancel: Callable[[], None], out: Optional[List[Dict[str, Any]]] = None,
+               gpu: bool = False) -> List[Dict[str, Any]]:
     """Segments like faster-whisper's: [{start, end, text, words: [{word, start, end, prob}]}].
     `out` (optional) receives them as they come, for showing the text while it is recognized."""
-    asr = _load(model_id)
+    asr = _load(model_id, gpu)
     results: Iterator[Any] = asr.recognize(str(wav_path))
     segments: List[Dict[str, Any]] = out if out is not None else []
     for res in results:

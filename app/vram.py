@@ -179,7 +179,7 @@ def vram_snapshot() -> Dict[str, Any]:
     except Exception:
         pass
 
-    # GigaAM / Parakeet (app/asr_onnx.py) live in this process, in RAM
+    # GigaAM / Parakeet (app/asr_onnx.py) live in this process: in RAM, or on the GPU for a job (app/onnx_gpu.py)
     try:
         from app import asr_onnx, live
 
@@ -191,7 +191,7 @@ def vram_snapshot() -> Dict[str, Any]:
                 in_use = mid in live_onnx or (busy == "transcribe" and wanted_whisper == mid)
                 chips.append({"kind": "onnx", "name": mid, "label": asr_onnx.ONNX_MODELS[mid]["name"],
                               "default": mid == wanted_whisper, "loaded": mid in loaded,
-                              "live": mid in live_onnx, "device": "cpu",
+                              "live": mid in live_onnx, "device": "cuda" if asr_onnx.on_gpu(mid) else "cpu",
                               "can_unload": mid in loaded and not in_use, "can_preload": mid not in loaded})
     except Exception:
         traceback.print_exc()

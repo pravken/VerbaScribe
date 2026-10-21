@@ -185,6 +185,9 @@ def _run_job(meeting_id: int) -> None:
             queue_empty = not _active_jobs
         if queue_empty:
             release_whisper_model()
+            from app import asr_onnx
+
+            asr_onnx.release_gpu()  # the video memory goes back to the summary model
         _run_pending_exports(meeting_id)
 
 
@@ -812,15 +815,20 @@ def _process_meeting_job(meeting_id: int) -> None:
         model_name = {**WHISPER_REPLACED, **asr_onnx.REPLACED}.get(model_name, model_name)
         onnx_engine = asr_onnx.is_onnx_model(model_name)
         if onnx_engine:
-            # GigaAM / Parakeet on ONNX Runtime (app/asr_onnx.py): no Whisper, no GPU needed
+            # GigaAM / Parakeet on ONNX Runtime (app/asr_onnx.py): on the GPU when its build is installed
+            # and there is room (app/onnx_gpu.py), else on the CPU
             if mixed and len(asr_onnx.ONNX_MODELS[model_name]["languages"]) == 1:
                 raise RuntimeError(f"{asr_onnx.ONNX_MODELS[model_name]['name']} понимает только один язык. Для записей на "
                                    "нескольких языках выберите Parakeet или Whisper.")
             if not asr_onnx.supports_language(model_name, language):
                 raise RuntimeError(f"{asr_onnx.ONNX_MODELS[model_name]['name']} не распознаёт язык «{language}». "
                                    "Выберите Whisper или другую модель для этой записи.")
+            from app import onnx_gpu
+
+            use_gpu = onnx_gpu.gpu_for_job(model_name)
             update_meeting_progress(meeting_id, status="transcribing", progress=15,
-                                    stage_text=f"Распознавание речи — {asr_onnx.ONNX_MODELS[model_name]['name']}")
+                                    stage_text=f"Распознавание речи — {asr_onnx.ONNX_MODELS[model_name]['name']}"
+                                    + (" на видеокарте" if use_gpu else ""))
             total_dur = max(1.0, float(duration or 1.0))
 
             def _onnx_progress(ratio: float) -> None:
@@ -834,8 +842,20 @@ def _process_meeting_job(meeting_id: int) -> None:
                 _onnx_progress(ratio)
                 partial.push(onnx_done)
 
-            raw_segments = asr_onnx.transcribe(model_name, wav_path, total_dur, _onnx_progress_and_partial,
-                                               lambda: _check_cancel(meeting_id), out=onnx_done)
+            try:
+                raw_segments = asr_onnx.transcribe(model_name, wav_path, total_dur, _onnx_progress_and_partial,
+                                                   lambda: _check_cancel(meeting_id), out=onnx_done, gpu=use_gpu)
+            except JobCancelled:
+                raise
+            except Exception:
+                if not use_gpu:
+                    raise
+                traceback.print_exc()  # CUDA out of memory, a missing DLL: the CPU does the same work
+                asr_onnx.release(model_name, gpu=True)
+                onnx_done.clear()
+                update_meeting_progress(meeting_id, stage_text="Видеокарта не справилась — распознавание на процессоре")
+                raw_segments = asr_onnx.transcribe(model_name, wav_path, total_dur, _onnx_progress_and_partial,
+                                                   lambda: _check_cancel(meeting_id), out=onnx_done)
             text_all = " ".join(s["text"] for s in raw_segments)
             detected_lang = language or asr_onnx.guess_language(text_all)
             whisper_model = None

@@ -186,6 +186,9 @@ async def lifespan(_app: FastAPI):
         traceback.print_exc()
 
     idle_unload.start()
+    from app import onnx_gpu
+
+    onnx_gpu.maybe_install_on_start()
     from app import semantic
 
     semantic.start_indexer()
@@ -642,6 +645,32 @@ def api_calendar_upcoming(refresh: bool = False) -> Dict[str, Any]:
         it["person"] = next((a for a in it["attendees"] if a.strip().lower() in known), None)
     return {"configured": bool((get_all_settings().get("calendar_ics") or "").strip()), "events": items,
             **calendar_ics.status()}
+
+
+# --- GigaAM / Parakeet on the video card (app/onnx_gpu.py) ---
+@app.get("/api/onnx-gpu")
+def api_onnx_gpu() -> Dict[str, Any]:
+    from app import onnx_gpu
+
+    return onnx_gpu.status()
+
+
+@app.post("/api/onnx-gpu/install")
+def api_onnx_gpu_install() -> Dict[str, Any]:
+    from app import onnx_gpu
+
+    if not onnx_gpu.nvidia_present():
+        raise HTTPException(status_code=400, detail="Нужна видеокарта NVIDIA")
+    return onnx_gpu.install_async()
+
+
+@app.post("/api/onnx-gpu/remove")
+def api_onnx_gpu_remove() -> Dict[str, Any]:
+    from app import onnx_gpu
+
+    onnx_gpu.remove()
+    update_settings({"onnx_gpu": "false"})
+    return onnx_gpu.status()
 
 
 # --- Model comparison on the user's recordings (app/bench.py) ---
