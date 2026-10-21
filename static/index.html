@@ -467,6 +467,7 @@
           </div>
           <div id="studio-cap-rows" class="cap-rows"></div>
           <div id="studio-cap-empty" class="text-center text-apple-tertiary text-sm pt-16"></div>
+          <div id="studio-upcoming" class="hidden max-w-xl mx-auto mt-8"></div>
         </div>
       </div>
       <!-- The user's own notes while recording: saved with the recording, every summary takes them in -->
@@ -1607,6 +1608,16 @@
               <button onclick="watchFolderOff()" class="ui-btn ui-btn-subtle h-8" data-i18n="hotkeyClear">Отключить</button>
             </div>
             <div id="watch-folder-status" class="text-[11px] text-apple-tertiary"></div>
+          </div>
+          <div class="space-y-1.5 pt-2">
+            <div class="text-xs text-apple-label" data-i18n="calendarTitle">Календарь</div>
+            <p class="text-[11px] text-apple-tertiary leading-snug" data-i18n="calendarDesc">Файл .ics или ссылка на календарь (Outlook: «Опубликовать календарь», Google: «Секретный адрес в формате iCal»). Запись во время встречи получит её название и участников, а в студии видны ближайшие встречи со справкой. Календарь только читается и никуда не отправляется.</p>
+            <div class="flex items-center gap-2">
+              <input id="set-calendar-ics" type="text" spellcheck="false" placeholder="C:\Users\…\calendar.ics · https://…/basic.ics"
+                class="flex-1 min-w-0 h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono focus:outline-none focus:border-apple-blue" />
+              <button onclick="checkCalendar()" class="ui-btn ui-btn-subtle h-8" data-i18n="calendarCheck">Проверить</button>
+            </div>
+            <div id="calendar-status" class="text-[11px] text-apple-tertiary"></div>
           </div>
           <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label" data-i18n-title="tipQuietMode" title="Без всплывающих уведомлений Windows: о начале и конце записи, о готовых расшифровках. Переключается и в меню значка в трее">
             <input type="checkbox" id="set-quiet-mode" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />

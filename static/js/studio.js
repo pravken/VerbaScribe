@@ -600,6 +600,58 @@ async function prepareStudio(presetId) {
   _studioPrepared = true;
   renderStudioState();
   setTimeout(() => drawIdleSoundCloudBars('record-waveform-canvas'), 40);
+  loadUpcomingMeetings();
+}
+
+// --- The next meetings of the user's calendar (app/calendar_ics.py), shown while the studio is idle ---
+let _upcoming = [];
+
+async function loadUpcomingMeetings() {
+  const st = await fetch('/api/calendar/upcoming').then(r => r.json()).catch(() => null);
+  _upcoming = st && st.configured ? st.events || [] : [];
+  renderUpcomingMeetings();
+}
+
+function renderUpcomingMeetings() {
+  const box = document.getElementById('studio-upcoming');
+  if (!box) return;
+  const show = _upcoming.length && !isRecording() && !(capView.rows.size > 0);
+  box.classList.toggle('hidden', !show);
+  if (!show) return;
+  const now = new Date();
+  const today = now.toDateString();
+  const rows = _upcoming.map((e, i) => {
+    const start = new Date(e.start), end = new Date(e.end);
+    const time = start.toLocaleTimeString(state.uiLang === 'en' ? 'en-US' : 'ru-RU', { hour: '2-digit', minute: '2-digit' });
+    const day = start.toDateString() === today ? '' : `${start.toLocaleDateString(state.uiLang === 'en' ? 'en-US' : 'ru-RU', { weekday: 'short', day: 'numeric', month: 'short' })} · `;
+    const live = start <= now && now < end;
+    const people = e.attendees.length ? `<div class="text-[11px] text-apple-tertiary truncate">${escapeHtml(e.attendees.slice(0, 6).join(', '))}${e.attendees.length > 6 ? ` +${e.attendees.length - 6}` : ''}</div>` : '';
+    const brief = e.series_id || e.person
+      ? `<button onclick="upcomingBrief(${i})" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" title="${escapeHtml(t('tipUpcomingBrief'))}">${escapeHtml(t('briefBtn'))}</button>` : '';
+    return `<div class="flex items-center gap-3 px-3 py-2 rounded-lg ${live ? 'bg-apple-red/10' : 'hover:bg-white/5'}">
+      <div class="w-32 shrink-0 text-[11px] font-mono whitespace-nowrap ${live ? 'text-apple-red' : 'text-apple-secondary'}">${escapeHtml(day + time)}</div>
+      <div class="flex-1 min-w-0"><div class="text-[13px] text-white truncate">${escapeHtml(e.title || '—')}</div>${people}</div>
+      ${brief}
+      <button onclick="upcomingUseTitle(${i})" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" title="${escapeHtml(t('tipUpcomingTitle'))}">${escapeHtml(t('upcomingUseTitle'))}</button>
+    </div>`;
+  }).join('');
+  box.innerHTML = `<div class="text-[11px] uppercase tracking-wider text-apple-tertiary mb-1.5 px-3">${escapeHtml(t('upcomingTitle'))}</div>${rows}`;
+}
+
+function upcomingUseTitle(i) {
+  const e = _upcoming[i];
+  if (!e) return;
+  document.getElementById('record-title-input').value = e.title || '';
+  showToast(t('upcomingTitleSet'));
+}
+
+function upcomingBrief(i) {
+  const e = _upcoming[i];
+  if (!e) return;
+  state.askScope = e.series_id ? { type: 'series', id: e.series_id } : { type: 'person', name: e.person };
+  switchAppView('ask');
+  if (typeof renderAskScope === 'function') renderAskScope();
+  makeBrief();
 }
 
 function saveRecordVideoPref() {
@@ -1197,6 +1249,7 @@ function syncStudioCaptions() {
       : isRecording() ? t('studioCaptionsOff')
       : t('studioIdleHint');
   }
+  renderUpcomingMeetings();
   capFollowBottom();
   renderStudioControls();
   const status = document.getElementById('studio-status');
@@ -1531,6 +1584,7 @@ async function stopAndTranscribeRecording() {
   const screenId = _recScreenId;
   _recScreenId = null;
   const rawTitle = (document.getElementById('record-title-input').value || t('recordDefaultTitle')).trim();
+  const startedAt = _recStartTime ? _recStartTime / 1000 : 0;
   _cleanupRecordingResources();
 
   if (page) await page.upload;  // every chunk is on the server
@@ -1541,7 +1595,7 @@ async function stopAndTranscribeRecording() {
     body: JSON.stringify({
       title: rawTitle, page_id: page ? page.id : null, capture_id: captureId, screen_id: screenId,
       has_video: !!(page && page.hasVideo), has_mic: !!(page && page.hasMic),
-      notes: takeStudioNotes(),
+      notes: takeStudioNotes(), started_at: startedAt,
     }),
   });
   const data = await res.json().catch(() => ({}));

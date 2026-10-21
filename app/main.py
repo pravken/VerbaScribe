@@ -624,6 +624,26 @@ def api_hotkey() -> Dict[str, Any]:
     return {**hotkey_state, "dictation": dict(dictation_hotkey_state)}
 
 
+@app.get("/api/calendar/upcoming")
+def api_calendar_upcoming(refresh: bool = False) -> Dict[str, Any]:
+    """The next meetings of the user's calendar (Settings -> General -> Calendar), with the series they continue."""
+    from app import calendar_ics, series
+
+    if refresh:
+        calendar_ics.events(force=True)
+    items = calendar_ics.upcoming()
+    done = sorted((r for r in list_meetings() if r.get("status") == "completed"),
+                  key=lambda r: str(r.get("recorded_at") or r.get("created_at") or ""), reverse=True)
+    known = {n for r in done for n in series.people(r)}
+    for it in items:
+        key = series.title_key(it["title"])
+        same = next((r for r in done if r.get("series_id") and len(key) >= 6 and series.title_key(r.get("title") or "") == key), None)
+        it["series_id"] = same.get("series_id") if same else None
+        it["person"] = next((a for a in it["attendees"] if a.strip().lower() in known), None)
+    return {"configured": bool((get_all_settings().get("calendar_ics") or "").strip()), "events": items,
+            **calendar_ics.status()}
+
+
 @app.get("/api/disk")
 def api_disk() -> Dict[str, Any]:
     return disk_state()
@@ -1133,6 +1153,7 @@ class RecordFinishPayload(BaseModel):
     has_video: bool = False           # the page recording has a video track (screen, window, tab)
     has_mic: bool = False             # the page recording has an audio track
     notes: str = ""                   # what the user wrote in the studio during the recording
+    started_at: float = 0             # when the recording began (unix seconds): the calendar meeting
 
 
 def _run_ffmpeg(cmd: List[str]) -> subprocess.CompletedProcess:
@@ -1337,6 +1358,14 @@ def _queue_recording(payload: RecordFinishPayload, dest: Path, safe_stem: str, h
 
     if payload.notes.strip():
         update_meeting_fields(m["id"], user_notes=payload.notes[:50000])
+    try:
+        from datetime import datetime
+
+        from app import calendar_ics
+
+        calendar_ics.apply_to_recording(m["id"], datetime.fromtimestamp(payload.started_at) if payload.started_at > 0 else None)
+    except Exception as e:
+        print("[calendar]", e, flush=True)
     rename_recording_file(m["id"])  # "2026-10-20 Запись 14-05.m4a"; renamed again once titled
     enqueue_meeting_job(m["id"])
     return {"created": [get_meeting(m["id"]) or m]}

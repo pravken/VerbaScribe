@@ -105,6 +105,8 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     document.getElementById('set-record-hotkey').value = s.record_hotkey ?? 'Ctrl+Alt+R';
     document.getElementById('set-dictation-hotkey').value = s.dictation_hotkey ?? 'Ctrl+Alt+D';
     document.getElementById('set-dictation-language').value = s.dictation_language || 'auto';
+    document.getElementById('set-calendar-ics').value = s.calendar_ics || '';
+    document.getElementById('calendar-status').textContent = '';
     fillCallSettings(s);
     loadHotkeyStatus();
     renderLiveModelSelect();
@@ -823,6 +825,20 @@ async function watchFolderOff() {
   if (st) renderWatchFolder(st);
 }
 
+// --- The user's calendar (app/calendar_ics.py) ---
+async function checkCalendar() {
+  const box = document.getElementById('calendar-status');
+  const source = document.getElementById('set-calendar-ics').value.trim();
+  box.className = 'text-[11px] text-apple-tertiary';
+  box.textContent = t('calendarChecking');
+  await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ settings: { calendar_ics: source } }) }).catch(() => null);
+  const st = await fetch('/api/calendar/upcoming?refresh=true').then(r => r.json()).catch(() => null);
+  if (!st || !st.configured) { box.textContent = source ? 'Error' : t('watchOff'); return; }
+  if (st.error) { box.className = 'text-[11px] text-apple-amber'; box.textContent = st.error; return; }
+  box.textContent = t('calendarOk').replace('{n}', st.count).replace('{next}', st.events.length);
+}
+
 // --- Calls recorded by themselves (app/call_watch.py) ---
 const CALL_APP_NAMES = { zoom: 'Zoom', teams: 'Microsoft Teams', telegram: 'Telegram', discord: 'Discord', skype: 'Skype', whatsapp: 'WhatsApp' };
 
@@ -1370,6 +1386,7 @@ async function saveAllSettings() {
       record_hotkey: document.getElementById('set-record-hotkey')?.value.trim() || '',
       dictation_hotkey: document.getElementById('set-dictation-hotkey')?.value.trim() || '',
       dictation_language: document.getElementById('set-dictation-language')?.value || 'auto',
+      calendar_ics: document.getElementById('set-calendar-ics')?.value.trim() || '',
       ...callSettingsPayload(),
       ...dubSettingsPayload(),
     }
