@@ -14,7 +14,9 @@ Update (on the user's click):
      models or Python environments), installs Python packages again if requirements.txt changed,
      and starts VerbaScribe.exe. On any failure the backup is restored.
 
-A program folder that is a git checkout is never overwritten: it is updated with git pull.
+Automatic updates (setting "update_auto", on by default): a newer release found by the check is
+downloaded in the background; it is installed when the user clicks "Restart", or when the app is
+closed (then it is not started again). The folder .git of a git checkout is never touched.
 """
 
 import hashlib
@@ -125,6 +127,8 @@ def check(force: bool = False) -> Dict[str, Any]:
         except Exception as e:
             with _lock:
                 _state.update(checked_at=time.time(), error=str(e)[:200])
+    st = status()
+    _auto_download(st)
     return status()
 
 
@@ -143,8 +147,39 @@ def status() -> Dict[str, Any]:
             "git_checkout": is_git_checkout(),
             "download": dict(_state["download"]),
         }
-    out["can_install"] = out["available"] and not out["git_checkout"] and bool(latest and latest.get("zip_url"))
+    out["auto"] = auto_enabled()
+    out["can_install"] = out["available"] and bool(latest and latest.get("zip_url"))
     return out
+
+
+def auto_enabled() -> bool:
+    from app.database import get_all_settings
+
+    return get_all_settings().get("update_auto", "true").lower() == "true"
+
+
+def _auto_download(st: Dict[str, Any]) -> None:
+    """Starts downloading a found update when automatic updates are on."""
+    dl = st.get("download") or {}
+    if st.get("can_install") and st.get("auto") and not dl.get("active") and not dl.get("done"):
+        try:
+            start_download()
+        except RuntimeError:
+            pass
+
+
+def install_on_exit() -> bool:
+    """Called when the app closes: installs a downloaded update without starting the app again."""
+    try:
+        with _lock:
+            path = _state["download"].get("path") if _state["download"].get("done") else ""
+        if not path or not auto_enabled():
+            return False
+        launch_installer(restart=False)
+        return True
+    except Exception:
+        traceback.print_exc()
+        return False
 
 
 # ------------------------------------------------------------------ download
@@ -231,7 +266,7 @@ def quit_soon(delay: float = 0.8) -> None:
     threading.Thread(target=_quit, daemon=True, name="update_quit").start()
 
 
-def launch_installer() -> None:
+def launch_installer(restart: bool = True) -> None:
     """Starts the updater for the downloaded archive; the caller then quits the app."""
     from app.paths import APP_DIR, DATA_DIR
 
@@ -240,7 +275,7 @@ def launch_installer() -> None:
     if not path or not Path(path).is_file():
         raise RuntimeError("Архив обновления не скачан")
     cmd = [sys.executable, "-m", "app.updater", "apply", "--zip", path, "--app-dir", str(APP_DIR),
-           "--data-dir", str(DATA_DIR), "--pid", str(os.getpid())]
+           "--data-dir", str(DATA_DIR), "--pid", str(os.getpid())] + ([] if restart else ["--no-restart"])
     flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
     subprocess.Popen(cmd, cwd=str(APP_DIR), creationflags=flags, close_fds=True)
 
@@ -348,6 +383,7 @@ def _main(argv: List[str]) -> int:
     ap.add_argument("--app-dir", required=True)
     ap.add_argument("--data-dir", required=True)
     ap.add_argument("--pid", type=int, default=0)
+    ap.add_argument("--no-restart", action="store_true")  # installed on exit: the user closed the app
     a = ap.parse_args(argv)
     app_dir, data_dir = Path(a.app_dir), Path(a.data_dir)
 
@@ -361,14 +397,14 @@ def _main(argv: List[str]) -> int:
             if a.pid:
                 _wait_for_exit(a.pid)
             apply_update(Path(a.zip), app_dir, data_dir, ui.set)
-            ui.set("Готово. Запуск VerbaScribe…")
+            ui.set("Готово." if a.no_restart else "Готово. Запуск VerbaScribe…")
         except Exception as e:
             ok, message = False, str(e)
             with open(data_dir / "logs" / "update.log", "a", encoding="utf-8") as lf:
                 lf.write(traceback.format_exc())
         finally:
             launcher = app_dir / "VerbaScribe.exe"
-            if launcher.is_file():
+            if launcher.is_file() and not (a.no_restart and ok):
                 subprocess.Popen([str(launcher)], cwd=str(app_dir))
             ui.close(None if ok else f"Обновление не установлено: {message}\nПрежняя версия восстановлена.")
 

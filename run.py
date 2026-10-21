@@ -569,6 +569,24 @@ def grant_media_to_app(window, host: str, port: int) -> None:
     window.events.loaded += _on_loaded
 
 
+_update_launched = False
+
+
+def _install_update_on_exit() -> None:
+    """A downloaded update (automatic updates on) is installed when the app closes."""
+    global _update_launched
+    if _update_launched:
+        return
+    _update_launched = True
+    try:
+        from app import updater
+
+        if updater.install_on_exit():
+            print("[update] installing the downloaded update on exit")
+    except Exception as e:
+        print(f"[update] not installed on exit: {e}", file=sys.stderr)
+
+
 def show_error_box(text: str) -> None:
     if sys.platform == "win32":
         try:
@@ -659,6 +677,7 @@ def main() -> None:
                     print("Window closed: ending the process")
                     if tray is not None:
                         tray.stop()
+                    _install_update_on_exit()
                     os._exit(0)
 
                 threading.Thread(target=_hard_exit, daemon=True).start()
@@ -682,6 +701,7 @@ def main() -> None:
                           private_mode=False, storage_path=str(DATA_DIR / "webview"))
             if tray is not None:
                 tray.stop()
+            _install_update_on_exit()
             os._exit(0)
         except Exception as e:
             print(f"[!] Native window fallback to browser ({e})...")

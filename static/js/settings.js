@@ -76,6 +76,7 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     document.getElementById('set-voice-profiles').checked = s.voice_profiles !== 'false';
     syncVoiceProfilesToggle();
     document.getElementById('set-update-check').checked = s.update_check !== 'false';
+    document.getElementById('set-update-auto').checked = s.update_auto !== 'false';
     document.getElementById('set-vad').checked = s.vad_filter !== 'false';
     if (document.getElementById('set-audio-enhance')) {
       document.getElementById('set-audio-enhance').checked = s.audio_enhance !== 'false';
@@ -1178,6 +1179,7 @@ async function saveAllSettings() {
       diarization_enabled: String(document.getElementById('set-diarization').checked),
       voice_profiles: String(document.getElementById('set-voice-profiles').checked),
       update_check: String(document.getElementById('set-update-check').checked),
+      update_auto: String(document.getElementById('set-update-auto').checked),
       quiet_mode: String(document.getElementById('set-quiet-mode').checked),
       vad_filter: String(document.getElementById('set-vad').checked),
       audio_enhance: String(document.getElementById('set-audio-enhance')?.checked !== false),

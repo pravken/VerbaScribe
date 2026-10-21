@@ -149,7 +149,8 @@ def init_db() -> None:
             "obsidian_subfolder": "VerbaScribe",
             "obsidian_filename": "{date} {title}",
             "file_name_template": "{date} {title}",  # recordings and exports (app/naming.py)
-            "date_folders": "off",  # off | day | month | year_month: folders by date (app/naming.py)
+            "date_folders": "off",
+            "update_auto": "true",  # download updates by themselves, install on exit (app/updater.py)  # off | day | month | year_month: folders by date (app/naming.py)
             "obsidian_summary": "true",
             "obsidian_tasks": "true",
             "obsidian_chapters": "true",

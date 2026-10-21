@@ -14,9 +14,11 @@ function renderUpdateStatus() {
   let msg = (en ? 'Installed version ' : 'Установлена версия ') + info.current + '.';
   if (dl.active) msg += en ? ` Downloading ${info.latest.version}… ${dl.progress}%` : ` Скачивание ${info.latest.version}… ${dl.progress}%`;
   else if (dl.error) msg += ' ' + dl.error;
-  else if (info.available) {
+  else if (info.available && dl.done) {
+    msg += en ? ` Version ${info.latest.version} is downloaded` : ` Версия ${info.latest.version} скачана`;
+    msg += info.auto ? (en ? ' and will be installed when you close the app.' : ' и установится при закрытии программы.') : '.';
+  } else if (info.available) {
     msg += en ? ` Version ${info.latest.version} is available.` : ` Доступна версия ${info.latest.version}.`;
-    if (info.git_checkout) msg += en ? ' This folder is a git checkout: update it with git pull.' : ' Папка программы — git-репозиторий: обновите её командой git pull.';
   } else if (info.error) msg += (en ? ' Check failed: ' : ' Не удалось проверить: ') + info.error;
   else if (info.checked_at) msg += en ? ' This is the latest version.' : ' Это последняя версия.';
   text.textContent = msg;
@@ -32,12 +34,36 @@ async function checkForUpdates(force) {
   renderUpdateStatus();
   const info = updateState.info;
   const en = state.uiLang === 'en';
-  if (!force && info.available && !updateState.notified) {
+  if (info.available && info.auto && (info.download || {}).active) {
+    followUpdateDownload();  // started by the server (automatic updates): tell when it is ready
+  } else if (!force && info.available && !updateState.notified) {
     updateState.notified = true;
     showToast(en ? `VerbaScribe ${info.latest.version} is available` : `Доступна версия VerbaScribe ${info.latest.version}`,
       { label: en ? 'Details' : 'Подробнее', onClick: () => openModal('settings', 'general') });
   } else if (force && !info.available && !info.error) {
     showToast(en ? 'You have the latest version' : 'У вас последняя версия');
+  }
+}
+
+// Automatic updates: the download runs on the server; when it is ready the user may restart now
+// (otherwise it is installed when the app closes)
+async function followUpdateDownload() {
+  if (updateState.polling) return;
+  updateState.polling = true;
+  while (true) {
+    await new Promise(res => setTimeout(res, 1500));
+    try { updateState.info = await (await fetch('/api/update')).json(); } catch (e) { continue; }
+    renderUpdateStatus();
+    if (!updateState.info.download.active) break;
+  }
+  updateState.polling = false;
+  const info = updateState.info;
+  if (info.download.done && !updateState.notified) {
+    updateState.notified = true;
+    const en = state.uiLang === 'en';
+    showToast(en ? `VerbaScribe ${info.latest.version} is downloaded and will be installed when you close the app`
+      : `VerbaScribe ${info.latest.version} скачана и установится при закрытии программы`,
+      { label: en ? 'Restart now' : 'Перезапустить', onClick: () => installUpdate() });
   }
 }
 

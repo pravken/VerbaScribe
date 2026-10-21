@@ -72,3 +72,25 @@ class ApplyUpdateTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AutoUpdateTest(unittest.TestCase):
+    def test_found_update_downloads_and_installs_on_exit(self):
+        from unittest import mock
+        from app import updater
+
+        st = {"can_install": True, "auto": True, "download": {"active": False, "done": False}}
+        with mock.patch.object(updater, "start_download") as dl:
+            updater._auto_download(st)
+            dl.assert_called_once()
+            updater._auto_download({**st, "auto": False})
+            dl.assert_called_once()
+        with mock.patch.object(updater, "auto_enabled", return_value=True), \
+             mock.patch.object(updater, "launch_installer") as li, \
+             mock.patch.dict(updater._state, {"download": {"done": True, "path": "x.zip"}}):
+            self.assertTrue(updater.install_on_exit())
+            li.assert_called_once_with(restart=False)
+        with mock.patch.object(updater, "launch_installer") as li, \
+             mock.patch.dict(updater._state, {"download": {"done": False, "path": ""}}):
+            self.assertFalse(updater.install_on_exit())
+            li.assert_not_called()
