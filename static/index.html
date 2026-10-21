@@ -498,6 +498,10 @@
     <div id="ask-view" class="hidden flex-1 min-h-0 flex bg-apple-bg">
 <div id="side-ask" class="w-[270px] shrink-0 border-r apple-border bg-apple-sidebar/60 overflow-y-auto px-4 py-4 space-y-3">
       <div>
+        <button onclick="openOpenCommitments()" class="w-full mb-3 ui-btn ui-btn-subtle justify-start text-[11.5px]" data-i18n-title="tipOpenCommitments"
+          title="Все обещания из встреч, которые ещё не отмечены выполненными">
+          <span>✓</span><span data-i18n="openCommitmentsBtn">Открытые обещания</span>
+        </button>
         <div class="text-[11px] font-semibold text-apple-secondary uppercase tracking-wider mb-1.5" data-i18n="askScopeTitle">Где искать ответ</div>
         <div id="ask-scope-list" class="space-y-0.5"></div>
       </div>
@@ -777,6 +781,9 @@
                 data-i18n-title="tipSumSinceLast"
                 title="Задачи и договорённости прошлой встречи серии: что выполнено, что в работе, что не обсуждали"
                 class="hidden apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumSinceLast">С прошлого раза</button>
+              <button onclick="selectSummaryTab('commitments')" id="sumtab-commitments"
+                data-i18n-title="tipSumCommitments" title="Кто что пообещал, кому и к какому сроку; отметьте выполненные"
+                class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumCommitments">Обещания</button>
               <!-- The user's own templates (Settings → Analysis) -->
               <span id="sumtab-user-templates" class="contents"></span>
               <button onclick="openTemplatesEditor()" data-i18n-title="tipTemplatesAdd" title="Свои шаблоны пересказа: 1:1, интервью, планёрка…"
@@ -1917,6 +1924,11 @@
             <input type="checkbox" id="set-auto-title" checked class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
             <span><span data-i18n="autoTitleToggle">Называть записи по содержанию</span>
               <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="autoTitleHint">Если у записи безликое название («Запись 14-05», «zoom_0», «VID_2024…»), после расшифровки модель придумает его по тексту. Названия, которые вы ввели сами, не меняются.</span></span>
+          </label>
+          <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
+            <input type="checkbox" id="set-auto-commitments" checked class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <span><span data-i18n="autoCommitmentsToggle">Находить обещания после автоматического обзора</span>
+              <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="autoCommitmentsHint">Кто что пообещал, кому и к какому сроку — во вкладке «Обещания» и в «Ассистенте». Открытые обещания серии попадают в «С прошлого раза» и в справку перед встречей.</span></span>
           </label>
           <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
             <input type="checkbox" id="set-summary-grounding" checked class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />

@@ -1719,6 +1719,52 @@ def api_restore_segments(meeting_id: int) -> Dict[str, Any]:
 
 
 # --- AI Summary & Custom Q&A via Ollama ---
+class CommitmentExtractPayload(BaseModel):
+    model: Optional[str] = None
+
+
+@app.post("/api/meetings/{meeting_id}/commitments")
+def api_extract_commitments(meeting_id: int, payload: CommitmentExtractPayload) -> List[Dict[str, Any]]:
+    from app import commitments
+
+    try:
+        return commitments.extract(meeting_id, payload.model or None)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=str(e)[:300])
+
+
+@app.get("/api/meetings/{meeting_id}/commitments")
+def api_meeting_commitments(meeting_id: int) -> List[Dict[str, Any]]:
+    from app import commitments
+
+    return commitments.for_meetings([meeting_id])
+
+
+@app.get("/api/commitments")
+def api_commitments(series_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Open promises: of a series, or of all recordings."""
+    from app import commitments
+
+    return commitments.open_for_series(series_id) if series_id else commitments.all_open()
+
+
+class CommitmentStatusPayload(BaseModel):
+    status: str
+
+
+@app.patch("/api/commitments/{commitment_id}")
+def api_commitment_status(commitment_id: int, payload: CommitmentStatusPayload) -> Dict[str, Any]:
+    from app import commitments
+
+    try:
+        commitments.set_status(commitment_id, payload.status)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True}
+
+
 class NotesPayload(BaseModel):
     notes: str = ""
 

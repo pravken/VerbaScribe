@@ -151,8 +151,9 @@ def init_db() -> None:
             "obsidian_filename": "{date} {title}",
             "file_name_template": "{date} {title}",  # recordings and exports (app/naming.py)
             "date_folders": "off",  # off | day | month | year_month: folders by date (app/naming.py)
-            "summary_templates": "[]",
-            "summary_grounding": "true",  # summaries checked against the transcript (app/grounding.py)  # the user's own summary templates, JSON (summary_templates())
+            "summary_templates": "[]",  # the user's own summary templates, JSON (summary_templates())
+            "summary_grounding": "true",  # summaries checked against the transcript (app/grounding.py)
+            "auto_commitments": "true",  # promises found after the automatic summary (app/commitments.py)
             "update_auto": "true",  # download updates by themselves, install on exit (app/updater.py)
             "obsidian_summary": "true",
             "obsidian_tasks": "true",
@@ -884,6 +885,10 @@ def delete_meeting(meeting_id: int, with_source: bool = False, with_exports: boo
         conn.execute("DELETE FROM segments_fts WHERE meeting_id = ?", (meeting_id,))
         conn.execute("DELETE FROM semantic_chunks WHERE meeting_id = ?", (meeting_id,))
         conn.execute("DELETE FROM semantic_meta WHERE meeting_id = ?", (meeting_id,))
+        try:
+            conn.execute("DELETE FROM commitments WHERE meeting_id = ?", (meeting_id,))
+        except sqlite3.OperationalError:
+            pass  # no commitments table yet (app/commitments.py creates it on first use)
         conn.commit()
         conn.close()
     events.publish({"type": "list"})

@@ -151,7 +151,12 @@ def since_last_time(meeting_id: int, model_name: Optional[str] = None, answer_la
         "Для каждого пункта — кто ответственный, если сказано, и отметка времени новой встречи в виде [MM:SS], если пункт "
         f"там упомянут. Используй только материалы. Без эмодзи. Пиши {_lang_phrase(answer_lang)}."
     )
-    user = (f"Прошлая встреча «{prev.get('title')}» ({_when(prev)[:10]}):\n{_outcomes(prev)}\n\n"
+    from app import commitments
+
+    earlier = [x for x in commitments.open_for_series(int(m["series_id"])) if x["meeting_id"] != m["id"]]
+    promised = (f"Открытые обещания из прошлых встреч серии (проверь каждое):\n{commitments.as_text(earlier)}\n\n"
+                if earlier else "")
+    user = (f"{promised}Прошлая встреча «{prev.get('title')}» ({_when(prev)[:10]}):\n{_outcomes(prev)}\n\n"
             f"Новая встреча «{m.get('title')}» ({_when(m)[:10]}), расшифровка:\n{now_text}")
     return llm.chat(system, user)
 
@@ -191,7 +196,14 @@ def brief(series_id: Optional[int] = None, person: Optional[str] = None, model_n
         "Самое свежее важнее старого; выполненное не включай. После каждого пункта ставь ссылку на встречу [n]. "
         f"Только по материалам, без эмодзи. Пиши {_lang_phrase(answer_lang)}."
     )
-    answer = llm.chat(system, "Материалы встреч (от старых к новым):\n\n" + "\n\n".join(blocks))
+    from app import commitments
+
+    open_items = commitments.for_meetings([int(mm["id"]) for mm in meetings], status="open")
+    promised = (f"Открытые обещания (никто ещё не отметил их выполненными):\n{commitments.as_text(open_items)}\n\n"
+                if open_items else "")
+    if open_items:
+        system += " Отдельным разделом «## Обещания» перечисли открытые обещания: кто, кому, что, срок."
+    answer = llm.chat(system, promised + "Материалы встреч (от старых к новым):\n\n" + "\n\n".join(blocks))
     sources = [{"n": n, "meeting_id": int(m["id"]), "title": m.get("title") or "", "date": _when(m)[:10], "start": 0.0,
                 "speaker": "", "text": ""} for n, m in enumerate(meetings, 1)]
     return {"answer": answer, "sources": sources, "found": True, "model": llm.label, "cloud": llm.is_cloud,

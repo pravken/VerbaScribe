@@ -394,3 +394,28 @@ class GroundingTest(unittest.TestCase):
         from app.grounding import UNVERIFIED_MARK, ground_summary
         out = ground_summary("- Совет директоров одобрил слияние компаний [00:05]", self.SEGS)
         self.assertTrue(out.endswith(UNVERIFIED_MARK))
+
+
+class CommitmentsTest(unittest.TestCase):
+    def test_extract_checks_and_keeps_done(self):
+        from unittest import mock
+        from app import commitments
+        from app.database import create_meeting, init_db, save_meeting_results
+
+        init_db()
+        m = create_meeting("Планёрка", "c.m4a", "/tmp/c.m4a")
+        segs = [{"id": 0, "start": 70, "end": 75, "text": "Анна подготовит презентацию для клиента к пятнице", "speaker": "S2"}]
+        save_meeting_results(m["id"], segments=segs, speakers={"S2": {"name": "Анна"}})
+        answer = ('```json\n{"who": "Анна", "to": "клиент", "what": "подготовит презентацию для клиента", "due": "к пятнице", "time": "01:10"}\n'
+                  '{"who": "Борис", "to": "", "what": "откроет офис в Лондоне и наймёт десять инженеров", "due": "", "time": ""}\n```')
+        llm = mock.Mock(is_cloud=False, max_chars=100000)
+        llm.chat.return_value = answer
+        with mock.patch("app.llm.target", return_value=llm):
+            items = commitments.extract(m["id"])
+        self.assertEqual([x["who"] for x in items], ["Анна"])  # the made-up one is dropped
+        self.assertEqual(items[0]["at"], 70)
+        commitments.set_status(items[0]["id"], "done")
+        with mock.patch("app.llm.target", return_value=llm):
+            again = commitments.extract(m["id"])
+        self.assertEqual(again[0]["status"], "done")  # ticked off stays ticked off
+        self.assertNotIn(m["id"], [x["meeting_id"] for x in commitments.all_open()])

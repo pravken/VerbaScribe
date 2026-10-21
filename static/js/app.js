@@ -294,6 +294,7 @@ function renderSummaryPanel() {
   const box = document.getElementById('summary-content');
   if (!state.activeMeeting) return;
   if (state.activeSummaryTab === 'mynotes') { renderMyNotesEditor(box); return; }
+  if (state.activeSummaryTab === 'commitments') { renderCommitments(box); return; }
   const summaries = state.activeMeeting.summaries || {};
   const md = summaries[state.activeSummaryTab] || '';
 
@@ -365,6 +366,82 @@ function openTemplatesEditor() {
       wrap.remove();
     }
   });
+  document.body.appendChild(wrap);
+}
+
+// --- Commitments (app/commitments.py): who promised what to whom, by when ---
+function commitmentRowHtml(c, withMeeting) {
+  const who = escapeHtml(c.who || '—') + (c.to_whom ? ` <span class="text-apple-tertiary">→ ${escapeHtml(c.to_whom)}</span>` : '');
+  const ts = c.at != null ? ` <button data-mid="${c.meeting_id}" data-at="${c.at}" onclick="openCommitmentPlace(this)" class="font-mono text-[11px] text-apple-blue hover:underline">[${formatTime(c.at)}]</button>` : '';
+  const where = withMeeting ? `<div class="text-[10.5px] text-apple-tertiary mt-0.5">${escapeHtml(c.meeting_title || '')} · ${escapeHtml(c.meeting_date || '')}</div>` : '';
+  return `<label class="flex items-start gap-2.5 py-2 border-b border-white/5 cursor-pointer ${c.status === 'done' ? 'opacity-50' : ''}">
+      <input type="checkbox" ${c.status === 'done' ? 'checked' : ''} data-cid="${c.id}" onchange="toggleCommitment(this)" class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+      <span class="min-w-0 text-[13px] text-apple-label leading-snug"><span class="font-medium text-white">${who}</span>: ${escapeHtml(c.what)}${c.due ? ` <span class="text-apple-amber text-[11.5px]">(${escapeHtml(c.due)})</span>` : ''}${ts}${where}</span>
+    </label>`;
+}
+
+async function renderCommitments(box) {
+  const m = state.activeMeeting;
+  box.innerHTML = `<div class="py-6 text-center text-xs text-apple-secondary animate-pulse">…</div>`;
+  const items = await fetch(`/api/meetings/${m.id}/commitments`).then(r => r.json()).catch(() => []);
+  if (state.activeMeeting !== m || state.activeSummaryTab !== 'commitments') return;
+  box.innerHTML = items.length
+    ? `<div>${items.map(c => commitmentRowHtml(c, false)).join('')}</div>`
+    : `<div class="py-12 text-center text-xs text-apple-secondary">${escapeHtml(t('commitmentsEmpty'))}</div>`;
+}
+
+async function extractCommitments() {
+  const m = state.activeMeeting;
+  const btn = document.getElementById('generate-summary-btn');
+  const box = document.getElementById('summary-content');
+  const { chosenModel, prettyModel } = summaryModelChoice();
+  btn.disabled = true;
+  box.innerHTML = `<div class="py-12 flex items-center justify-center gap-2 text-xs text-apple-secondary animate-pulse"><span>${escapeHtml(t('commitmentsWorking'))}</span><span class="px-2 py-0.5 rounded-md bg-white/10 text-white font-medium">${escapeHtml(prettyModel)}</span></div>`;
+  try {
+    const res = await fetch(`/api/meetings/${m.id}/commitments`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: chosenModel }) });
+    const data = await readJson(res);
+    if (!res.ok) throw new Error(data.detail || 'Error');
+    if (state.activeMeeting === m) renderCommitments(box);
+  } catch (e) {
+    box.innerHTML = `<div class="py-6 text-xs text-apple-red">${escapeHtml(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function toggleCommitment(input) {
+  const res = await fetch(`/api/commitments/${input.dataset.cid}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: input.checked ? 'done' : 'open' }),
+  });
+  if (!res.ok) { input.checked = !input.checked; showToast((await readJson(res)).detail || 'Error'); return; }
+  input.closest('label')?.classList.toggle('opacity-50', input.checked);
+}
+
+async function openCommitmentPlace(btn) {
+  document.getElementById('open-commitments')?.remove();
+  switchAppView('library');
+  await selectMeetingAndSeek(Number(btn.dataset.mid), Number(btn.dataset.at));
+}
+
+// All open promises of the library, from the assistant's side panel
+async function openOpenCommitments() {
+  const items = await fetch('/api/commitments').then(r => r.json()).catch(() => []);
+  document.getElementById('open-commitments')?.remove();
+  const wrap = document.createElement('div');
+  wrap.id = 'open-commitments';
+  wrap.className = 'fixed inset-0 modal-backdrop z-[60] flex items-center justify-center p-4';
+  wrap.setAttribute('role', 'dialog');
+  wrap.setAttribute('aria-modal', 'true');
+  wrap.innerHTML = `<div class="w-full max-w-2xl max-h-[85vh] flex flex-col bg-apple-card border apple-border rounded-2xl shadow-2xl modal-card">
+      <div class="px-5 pt-5 pb-3 border-b apple-border flex items-center justify-between gap-3">
+        <div><div class="text-sm font-semibold text-white">${escapeHtml(t('openCommitmentsBtn'))}</div>
+          <p class="text-[11px] text-apple-secondary mt-1">${escapeHtml(t('openCommitmentsDesc'))}</p></div>
+        <button data-a="close" class="ui-btn ui-btn-subtle">${escapeHtml(t('close'))}</button>
+      </div>
+      <div class="flex-1 overflow-y-auto px-5 py-2">${items.length ? items.map(c => commitmentRowHtml(c, true)).join('')
+        : `<div class="py-10 text-center text-xs text-apple-tertiary">${escapeHtml(t('commitmentsNoneOpen'))}</div>`}</div>
+    </div>`;
+  wrap.addEventListener('click', e => { if (e.target === wrap || e.target.closest('[data-a="close"]')) wrap.remove(); });
   document.body.appendChild(wrap);
 }
 
@@ -533,6 +610,7 @@ function renderSeriesUi() {
 async function generateSummaryForActiveTab() {
   if (!state.activeMeeting) return;
   if (state.activeSummaryTab === 'since_last') { await generateSinceLast(); return; }
+  if (state.activeSummaryTab === 'commitments') { await extractCommitments(); return; }
   const btn = document.getElementById('generate-summary-btn');
   const box = document.getElementById('summary-content');
   const { chosenModel, prettyModel } = summaryModelChoice();

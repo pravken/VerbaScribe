@@ -969,6 +969,13 @@ def _process_meeting_job(meeting_id: int) -> None:
                         summary_md = ground_summary(summary_md, merged_segments, speakers_meta)
                     summaries["protocol"] = summary_md
                     merge_summaries(meeting_id, {"protocol": summary_md}, remove=("error",))
+                    if settings.get("auto_commitments", "true").lower() == "true":
+                        try:
+                            from app import commitments
+
+                            commitments.extract(meeting_id)
+                        except Exception as c_err:
+                            print(f"[commitments] meeting {meeting_id}: {c_err}", flush=True)
                 except Exception as sum_err:
                     summaries["error"] = str(sum_err)
                     merge_summaries(meeting_id, {"error": str(sum_err)})

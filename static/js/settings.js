@@ -88,6 +88,7 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     document.getElementById('set-auto-summary').checked = s.auto_summary !== 'false';
     document.getElementById('set-auto-title').checked = s.auto_title !== 'false';
     document.getElementById('set-summary-grounding').checked = s.summary_grounding !== 'false';
+    document.getElementById('set-auto-commitments').checked = s.auto_commitments !== 'false';
     document.getElementById('set-quiet-mode').checked = s.quiet_mode === 'true';
     loadWatchFolder();
     document.getElementById('set-semantic').checked = s.semantic_search === 'true';
@@ -1226,6 +1227,7 @@ async function saveAllSettings() {
       auto_summary: String(document.getElementById('set-auto-summary').checked),
       auto_title: String(document.getElementById('set-auto-title').checked),
       summary_grounding: String(document.getElementById('set-summary-grounding').checked),
+      auto_commitments: String(document.getElementById('set-auto-commitments').checked),
       semantic_search: String(document.getElementById('set-semantic').checked),
       semantic_model: document.getElementById('set-semantic-model').value.trim() || 'bge-m3',
       idle_unload_minutes: document.getElementById('set-idle-unload').value,
