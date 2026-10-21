@@ -20,6 +20,9 @@ from app.database import _db_lock, get_all_settings, get_connection
 # Same-speaker ECAPA embeddings of meeting audio typically score 0.6-0.85, different people
 # below 0.5. The bar is set high: a wrong name is worse than no name.
 MATCH_THRESHOLD = 0.72
+# Between this and MATCH_THRESHOLD the voice is only suggested ("Is this Anna?"): one click names
+# it and teaches the profile, so the next recordings are named by themselves
+SUGGEST_THRESHOLD = 0.55
 # How much one recording may move a stored print (a running mean that keeps adapting)
 MAX_SAMPLES_WEIGHT = 20
 
@@ -149,6 +152,15 @@ def apply_to_speakers(speakers: Dict[str, Dict[str, Any]], only_unnamed: bool = 
         used_speakers.add(spk_id)
         used_profiles.add(p["id"])
         named += 1
+    # Close but not sure: a suggestion the user confirms with one click
+    for score, spk_id, p in sorted(candidates, key=lambda c: -c[0]):
+        if score < SUGGEST_THRESHOLD:
+            break
+        if spk_id in used_speakers or p["id"] in used_profiles or score >= MATCH_THRESHOLD:
+            continue
+        speakers[spk_id]["voice_suggest"] = {"id": p["id"], "name": p["name"], "score": round(score, 3)}
+        used_speakers.add(spk_id)
+        used_profiles.add(p["id"])
     return named
 
 

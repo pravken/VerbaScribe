@@ -904,6 +904,7 @@ class SpeakerUpdatePayload(BaseModel):
     speaker_id: str
     name: str
     color: Optional[str] = None
+    dismiss_suggestion: bool = False  # "not this person": the suggestion of a known voice is dropped
 
 
 @app.patch("/api/meetings/{meeting_id}/speakers")
@@ -942,6 +943,8 @@ def api_update_speaker(meeting_id: int, payload: SpeakerUpdatePayload) -> Dict[s
             except Exception:
                 traceback.print_exc()
             speakers[payload.speaker_id].pop("voice_profile", None)
+        if payload.dismiss_suggestion or (name and name != old_name):
+            speakers[payload.speaker_id].pop("voice_suggest", None)
 
     save_meeting_results(meeting_id, speakers=speakers)
     return get_meeting(meeting_id)

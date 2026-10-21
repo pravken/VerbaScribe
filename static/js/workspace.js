@@ -998,6 +998,12 @@ function renderSpeakersPanel() {
 
         ${s.voice_profile ? `<span class="text-[10.5px] px-1.5 py-0.5 rounded bg-apple-blue/15 text-apple-blue shrink-0"
           title="${escapeHtml(t('tipVoiceRecognised'))}">${escapeHtml(t('voiceRecognisedBadge'))}</span>` : ''}
+        ${s.voice_suggest ? `<span class="flex items-center gap-1 shrink-0 text-[11px] px-1.5 py-0.5 rounded bg-apple-amber/15 text-apple-amber"
+            title="${escapeHtml(t('tipVoiceSuggest'))}">${escapeHtml(t('voiceSuggest').replace('{name}', s.voice_suggest.name))}
+            <button data-spk="${escapeHtml(spkId)}" data-name="${escapeHtml(s.voice_suggest.name)}" onclick="updateSpeaker(this.dataset.spk, this.dataset.name, null)"
+              class="px-1.5 rounded bg-apple-amber/25 hover:bg-apple-amber/40 text-white">${escapeHtml(t('voiceSuggestYes'))}</button>
+            <button data-spk="${escapeHtml(spkId)}" onclick="dismissVoiceSuggestion(this.dataset.spk)" class="px-1 hover:text-white">${escapeHtml(t('voiceSuggestNo'))}</button>
+          </span>` : ''}
         <span class="text-[11px] text-apple-secondary font-mono">${turnCount} ${t('turns')}</span>
 
         <button onclick="previewSpeakerVoice(${s.sample_start || 0}, ${s.sample_end || 5})"
@@ -1009,6 +1015,17 @@ function renderSpeakersPanel() {
       </div>
     `;
   }).join('');
+}
+
+async function dismissVoiceSuggestion(speakerId) {
+  const m = state.activeMeeting;
+  const s = (m.speakers || {})[speakerId];
+  if (!s) return;
+  const res = await fetch(`/api/meetings/${m.id}/speakers`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ speaker_id: speakerId, name: s.name, dismiss_suggestion: true }),
+  });
+  if (res.ok) { state.activeMeeting = await readJson(res); renderSpeakersPanel(); }
 }
 
 function previewSpeakerVoice(startSec, endSec) {
