@@ -644,6 +644,55 @@ def api_calendar_upcoming(refresh: bool = False) -> Dict[str, Any]:
             **calendar_ics.status()}
 
 
+# --- Model comparison on the user's recordings (app/bench.py) ---
+class BenchPayload(BaseModel):
+    kind: str = "asr"          # asr | llm
+    meeting_id: int
+    models: List[str] = []
+    clip_sec: int = 180        # asr: seconds of the recording, 0: all of it
+
+
+@app.get("/api/bench")
+def api_bench(choices: bool = False) -> Dict[str, Any]:
+    from app import bench
+
+    out = bench.status()
+    if choices:
+        out["asr_models"] = bench.asr_choices()
+        try:
+            out["llm_models"] = bench.llm_choices()
+        except Exception:
+            out["llm_models"] = []
+        out["busy"] = bench.busy_reason()
+    return out
+
+
+@app.post("/api/bench/start")
+def api_bench_start(payload: BenchPayload) -> Dict[str, Any]:
+    from app import bench
+
+    try:
+        return bench.start(payload.kind, payload.meeting_id, payload.models, payload.clip_sec)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/bench/cancel")
+def api_bench_cancel() -> Dict[str, Any]:
+    from app import bench
+
+    bench.cancel()
+    return bench.status()
+
+
+@app.delete("/api/bench/history")
+def api_bench_history_clear() -> Dict[str, Any]:
+    from app import bench
+
+    bench.clear_history()
+    return bench.status()
+
+
 @app.get("/api/disk")
 def api_disk() -> Dict[str, Any]:
     return disk_state()

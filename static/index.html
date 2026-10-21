@@ -1529,6 +1529,7 @@
           <button onclick="selectSettingsTab('analysis')" id="stab-analysis" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabAnalysis">Анализ</button>
           <button onclick="selectSettingsTab('export')" id="stab-export" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabExport">Экспорт</button>
           <button onclick="selectSettingsTab('dub')" id="stab-dub" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabDub">Дубляж</button>
+          <button onclick="selectSettingsTab('bench')" id="stab-bench" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabBench">Сравнение</button>
         </div>
       </div>
 
@@ -2227,6 +2228,35 @@
             </label>
           </div>
         </div>
+        </div>
+
+        <!-- Model comparison on the user's recordings (app/bench.py) -->
+        <div data-stab="bench" class="space-y-4 hidden">
+          <div>
+            <h4 class="text-xs font-semibold text-white" data-i18n="benchTitle">Сравнение моделей на ваших записях</h4>
+            <p class="text-[11px] text-apple-secondary leading-snug mt-0.5" data-i18n="benchDesc">Возьмите запись, расшифровку которой вы проверили и исправили, — она будет эталоном. Каждая выбранная модель распознает тот же фрагмент, и вы увидите долю ошибок (WER), скорость и нужную память. Для анализа модели пишут протокол, и считается доля пунктов, которых нет в расшифровке. Всё на этом компьютере.</p>
+          </div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <div class="apple-segmented" style="height: 30px;">
+              <button onclick="benchSetKind('asr')" id="bench-kind-asr" class="apple-segment-btn text-[11px]" data-i18n="benchKindAsr">Распознавание</button>
+              <button onclick="benchSetKind('llm')" id="bench-kind-llm" class="apple-segment-btn text-[11px]" data-i18n="benchKindLlm">Анализ</button>
+            </div>
+            <select id="bench-meeting" class="flex-1 min-w-0 h-8 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none"></select>
+            <select id="bench-clip" class="h-8 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none">
+              <option value="60" data-i18n="benchClip1">1 минута</option>
+              <option value="180" selected data-i18n="benchClip3">3 минуты</option>
+              <option value="600" data-i18n="benchClip10">10 минут</option>
+              <option value="0" data-i18n="benchClipAll">Вся запись</option>
+            </select>
+          </div>
+          <div id="bench-models" class="flex flex-wrap gap-x-4 gap-y-1.5"></div>
+          <div class="flex items-center gap-2">
+            <button onclick="startBench()" id="bench-start" class="ui-btn ui-btn-primary h-8" data-i18n="benchStart">Сравнить</button>
+            <button onclick="cancelBench()" id="bench-cancel" class="hidden ui-btn ui-btn-subtle h-8" data-i18n="benchCancel">Остановить</button>
+            <span id="bench-status" class="text-[11px] text-apple-tertiary"></span>
+          </div>
+          <div id="bench-results"></div>
+          <div id="bench-history" class="space-y-1"></div>
         </div>
 
       </div>

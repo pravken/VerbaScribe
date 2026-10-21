@@ -1531,3 +1531,151 @@ async function deleteDictItem(id) {
   await fetch(`/api/dictionary/${id}`, { method: 'DELETE' });
   await loadDictionary();
 }
+
+// --- Model comparison on the user's recordings (app/bench.py) ---
+const bench = { kind: 'asr', data: null, timer: null, picked: {} };
+
+async function loadBench() {
+  const data = await fetch('/api/bench?choices=true').then(r => r.json()).catch(() => null);
+  if (!data) return;
+  bench.data = data;
+  if (data.running) bench.kind = data.kind;
+  const sel = document.getElementById('bench-meeting');
+  const keep = sel.value;
+  const rows = (state.meetings || []).filter(m => m.status === 'completed');
+  sel.innerHTML = rows.length
+    ? rows.map(m => `<option value="${m.id}">${escapeHtml(m.title || '')}${m.duration ? ` · ${formatDurationShort(m.duration)}` : ''}</option>`).join('')
+    : `<option value="">${escapeHtml(t('benchNoRecordings'))}</option>`;
+  if (data.running && data.meeting_id) sel.value = String(data.meeting_id);
+  else if (keep && rows.some(m => String(m.id) === keep)) sel.value = keep;
+  renderBench();
+  if (data.running) pollBench();
+}
+
+function benchSetKind(kind) {
+  if (bench.data && bench.data.running) return;
+  bench.kind = kind;
+  renderBench();
+}
+
+function benchModels() {
+  const d = bench.data || {};
+  return (bench.kind === 'asr' ? d.asr_models : d.llm_models) || [];
+}
+
+function renderBench() {
+  const d = bench.data || {};
+  ['asr', 'llm'].forEach(k => {
+    document.getElementById(`bench-kind-${k}`).className = `apple-segment-btn text-[11px] ${bench.kind === k ? 'apple-segment-active' : 'text-apple-secondary hover:text-white'}`;
+  });
+  document.getElementById('bench-clip').classList.toggle('hidden', bench.kind !== 'asr');
+  const models = benchModels();
+  const picked = bench.picked[bench.kind] || (bench.picked[bench.kind] = new Set(models.map(m => m.id)));
+  const box = document.getElementById('bench-models');
+  box.innerHTML = models.length
+    ? models.map(m => `<label class="flex items-center gap-1.5 cursor-pointer text-xs text-apple-label">
+        <input type="checkbox" ${picked.has(m.id) ? 'checked' : ''} ${d.running ? 'disabled' : ''} onchange="benchPick('${escapeHtml(m.id)}', this.checked)"
+          class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+        <span>${escapeHtml(m.name || m.id)}</span>${m.engine === 'onnx' ? '<span class="text-[10px] text-apple-tertiary">CPU</span>' : ''}</label>`).join('')
+    : `<span class="text-[11px] text-apple-tertiary">${escapeHtml(t(bench.kind === 'asr' ? 'benchNoAsr' : 'benchNoLlm'))}</span>`;
+  document.getElementById('bench-start').classList.toggle('hidden', !!d.running);
+  document.getElementById('bench-cancel').classList.toggle('hidden', !d.running);
+  const st = document.getElementById('bench-status');
+  st.className = 'text-[11px] ' + (d.error && !d.running ? 'text-apple-amber' : 'text-apple-tertiary');
+  st.textContent = d.running
+    ? `${d.done + 1}/${d.total} · ${benchModelName(d.model)} · ${d.stage || ''}`
+    : d.error || d.busy || '';
+  const live = d.running || (d.results && d.results.length && d.kind === bench.kind)
+    ? { kind: d.kind, results: d.results || [], title: d.title } : null;
+  document.getElementById('bench-results').innerHTML = live && live.results.length ? benchTable(live) : '';
+  const hist = (d.history || []).filter(h => h.kind === bench.kind);
+  document.getElementById('bench-history').innerHTML = hist.length
+    ? `<div class="flex items-center justify-between pt-2"><span class="text-[11px] uppercase tracking-wider text-apple-tertiary">${escapeHtml(t('benchHistory'))}</span>
+         <button onclick="clearBenchHistory()" class="text-[11px] text-apple-tertiary hover:text-white">${escapeHtml(t('benchClear'))}</button></div>`
+      + hist.map((h, i) => `<details class="rounded-lg border apple-border px-3 py-1.5" ${i === 0 && !live ? 'open' : ''}>
+          <summary class="cursor-pointer text-[12px] text-apple-label">${escapeHtml(h.at)} · ${escapeHtml(h.title)}${h.clip_sec ? ` · ${formatDurationShort(h.clip_sec)}` : ''}${h.ref_words ? ` · ${h.ref_words} ${escapeHtml(t('benchWords'))}` : ''}</summary>
+          <div class="pt-2">${benchTable(h)}</div></details>`).join('')
+    : '';
+}
+
+function benchPick(id, on) {
+  const set = bench.picked[bench.kind];
+  if (on) set.add(id); else set.delete(id);
+}
+
+function benchModelName(id) {
+  const all = [...((bench.data || {}).asr_models || []), ...((bench.data || {}).llm_models || [])];
+  const m = all.find(x => x.id === id);
+  return m ? (m.name || id) : (id || '');
+}
+
+function benchTable(run) {
+  const ok = run.results.filter(r => !r.error);
+  const best = key => ok.length > 1 ? Math.min(...ok.map(r => r[key])) : null;
+  const cell = (v, isBest) => `<td class="px-2 py-1 text-right font-mono ${isBest ? 'text-apple-green' : ''}">${v}</td>`;
+  const useBtn = r => r.error ? '' : `<button onclick="benchUse('${run.kind}', '${escapeHtml(r.model)}')" class="text-[11px] text-apple-blue hover:underline">${escapeHtml(t('benchUse'))}</button>`;
+  const mem = r => [r.vram_mb ? `${(r.vram_mb / 1024).toFixed(1)} GB VRAM` : '', r.ram_mb ? `${(r.ram_mb / 1024).toFixed(1)} GB RAM` : ''].filter(Boolean).join(' · ') || '—';
+  const text = r => r.text ? `<details><summary class="cursor-pointer text-[11px] text-apple-tertiary">${escapeHtml(t('benchShowText'))}</summary>
+      <div class="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap text-[11.5px] text-apple-secondary">${escapeHtml(r.text)}</div></details>` : '';
+  let head, rows;
+  if (run.kind === 'asr') {
+    const bw = best('wer'), bs = best('sec');
+    head = ['benchColModel', 'benchColWer', 'benchColTime', 'benchColSpeed', 'benchColMemory', ''];
+    rows = run.results.map(r => r.error
+      ? `<tr><td class="px-2 py-1">${escapeHtml(r.name || benchModelName(r.model))}</td><td colspan="5" class="px-2 py-1 text-apple-amber">${escapeHtml(r.error)}</td></tr>`
+      : `<tr class="align-top"><td class="px-2 py-1">${escapeHtml(r.name || benchModelName(r.model))}${text(r)}</td>
+          ${cell(`${(r.wer * 100).toFixed(1)}%`, r.wer === bw)}${cell(`${r.sec} s`, r.sec === bs)}${cell(`×${r.speed}`, false)}
+          <td class="px-2 py-1 text-right text-[11px] text-apple-secondary">${escapeHtml(mem(r))}<div class="text-apple-tertiary">${escapeHtml(r.device || '')}</div></td>
+          <td class="px-2 py-1 text-right">${useBtn(r)}</td></tr>`);
+  } else {
+    const bu = best('unverified_share'), bs = best('sec');
+    head = ['benchColModel', 'benchColUnverified', 'benchColTime', 'benchColPoints', ''];
+    rows = run.results.map(r => r.error
+      ? `<tr><td class="px-2 py-1">${escapeHtml(r.name || benchModelName(r.model))}</td><td colspan="4" class="px-2 py-1 text-apple-amber">${escapeHtml(r.error)}</td></tr>`
+      : `<tr class="align-top"><td class="px-2 py-1">${escapeHtml(r.name || benchModelName(r.model))}${text(r)}</td>
+          ${cell(`${(r.unverified_share * 100).toFixed(0)}% (${r.unverified})`, r.unverified_share === bu)}${cell(`${r.sec} s`, r.sec === bs)}${cell(r.points, false)}
+          <td class="px-2 py-1 text-right">${useBtn(r)}</td></tr>`);
+  }
+  return `<div class="overflow-x-auto"><table class="w-full text-[12px] text-apple-label">
+    <thead><tr class="text-[10.5px] uppercase tracking-wider text-apple-tertiary">${head.map((h, i) => `<th class="px-2 py-1 font-normal ${i ? 'text-right' : 'text-left'}">${h ? escapeHtml(t(h)) : ''}</th>`).join('')}</tr></thead>
+    <tbody class="divide-y divide-white/5">${rows.join('')}</tbody></table></div>`
+    + `<p class="text-[10.5px] text-apple-tertiary mt-1">${escapeHtml(t(run.kind === 'asr' ? 'benchAsrNote' : 'benchLlmNote'))}</p>`;
+}
+
+async function startBench() {
+  const meetingId = Number(document.getElementById('bench-meeting').value);
+  const models = [...(bench.picked[bench.kind] || [])].filter(id => benchModels().some(m => m.id === id));
+  const res = await fetch('/api/bench/start', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kind: bench.kind, meeting_id: meetingId, models, clip_sec: Number(document.getElementById('bench-clip').value) }),
+  });
+  const data = await readJson(res);
+  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  bench.data = { ...bench.data, ...data };
+  renderBench();
+  pollBench();
+}
+
+function pollBench() {
+  clearTimeout(bench.timer);
+  bench.timer = setTimeout(async () => {
+    const data = await fetch('/api/bench').then(r => r.json()).catch(() => null);
+    if (data) { bench.data = { ...bench.data, ...data }; renderBench(); }
+    if (data && data.running && !document.getElementById('modal-settings').classList.contains('hidden')) pollBench();
+  }, 1500);
+}
+
+async function cancelBench() {
+  const data = await fetch('/api/bench/cancel', { method: 'POST' }).then(r => r.json()).catch(() => null);
+  if (data) { bench.data = { ...bench.data, ...data }; renderBench(); }
+}
+
+async function clearBenchHistory() {
+  const data = await fetch('/api/bench/history', { method: 'DELETE' }).then(r => r.json()).catch(() => null);
+  if (data) { bench.data = { ...bench.data, ...data }; renderBench(); }
+}
+
+async function benchUse(kind, model) {
+  if (kind === 'asr') await selectActiveWhisperModel(model);
+  else await selectActiveOllamaModel(model);
+}
