@@ -10,7 +10,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 ICO_PATH = BASE_DIR / "assets" / "icon.ico"
-WINDOW_TITLE = "VerbaScribe"
+WINDOW_TITLE = "VerbaScribe"  # the launcher (build_exe.py) closes its splash when a window with this title appears
 
 import uvicorn
 from app.hardware import register_cuda_dlls

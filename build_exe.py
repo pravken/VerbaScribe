@@ -281,7 +281,7 @@ class VerbaScribeLauncher
     [DllImport("user32.dll")]
     static extern bool IsWindowVisible(IntPtr hwnd);
 
-    const string WindowTitle = "VerbaScribe — AI Speech & Media Studio";
+    const string WindowTitle = "VerbaScribe";  // run.py WINDOW_TITLE
 
     // A small "starting" window: the first start after an update can take a while (Python compiles
     // its files, the speech libraries load), and without it nothing seems to happen.
@@ -371,7 +371,7 @@ class VerbaScribeLauncher
         splash.BackColor = System.Drawing.Color.FromArgb(28, 28, 30);
         splash.ShowInTaskbar = true;
         splash.TopMost = true;  // a few seconds only: keep it visible over other windows
-        splash.Text = "VerbaScribe";
+        splash.Text = "VerbaScribe \u2014 \u0437\u0430\u043f\u0443\u0441\u043a";  // not the app window title: FindWindow must not find the splash
         try { splash.Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
         // The willow logo, gently bobbing

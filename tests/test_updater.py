@@ -94,3 +94,15 @@ class AutoUpdateTest(unittest.TestCase):
              mock.patch.dict(updater._state, {"download": {"done": False, "path": ""}}):
             self.assertFalse(updater.install_on_exit())
             li.assert_not_called()
+
+
+class LauncherTitleTest(unittest.TestCase):
+    def test_splash_waits_for_the_app_window_title(self):
+        import re
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        run_title = re.search(r'^WINDOW_TITLE = "(.+?)"', (root / "run.py").read_text(encoding="utf-8"), re.M).group(1)
+        exe_src = (root / "build_exe.py").read_text(encoding="utf-8")
+        self.assertIn(f'const string WindowTitle = "{run_title}";', exe_src)
+        self.assertNotIn(f'splash.Text = "{run_title}";', exe_src)
