@@ -687,7 +687,7 @@ async function loadFolders() {
 
 async function createFolderPrompt(parentId) {
   hideFolderMenu();
-  const name = (prompt(t('folderNamePrompt'), '') || '').trim();
+  const name = (await askText(t('folderNamePrompt'), '') || '').trim();
   if (!name) return;
   const res = await fetch('/api/folders', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, parent_id: parentId }),
@@ -754,7 +754,7 @@ async function fctxRename() {
   hideFolderMenu();
   const f = folderById(state.contextFolderId);
   if (!f) return;
-  const name = (prompt(t('folderRenamePrompt'), folderName(f)) || '').trim();
+  const name = (await askText(t('folderRenamePrompt'), folderName(f)) || '').trim();
   if (!name || name === folderName(f)) return;
   await patchFolder(f.id, { name });
 }
@@ -788,7 +788,7 @@ async function fctxDelete() {
   hideFolderMenu();
   const f = folderById(state.contextFolderId);
   if (!f || f.system_key) return;
-  if (!confirm(t('folderDeleteConfirm').replace('{name}', folderName(f)))) return;
+  if (!await askConfirm(t('folderDeleteConfirm').replace('{name}', folderName(f)))) return;
   const res = await fetch(`/api/folders/${f.id}`, { method: 'DELETE' });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) { showToast(data.detail || 'Error'); return; }
@@ -1176,7 +1176,7 @@ async function bulkDelete() {
 async function bulkRename() {
   const list = libSelectedInOrder();
   if (!list.length) return;
-  const tpl = prompt(t('bulkRenamePrompt'), `${list[0].title} {n}`);
+  const tpl = await askText(t('bulkRenamePrompt'), `${list[0].title} {n}`);
   if (!tpl || !tpl.trim()) return;
   const width = String(list.length).length;
   let failed = 0;
@@ -1223,9 +1223,29 @@ document.addEventListener('keydown', e => {
     renderMeetingsSidebar();
     renderLibSelectionBar();
   }
+  // ↑ / ↓ after a click in the library: the previous or next recording (Enter is not needed: it opens)
+  if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && _libHadClick && !typing && !e.altKey
+      && !document.querySelector('.modal-backdrop:not(.hidden)')) {
+    const ids = libVisibleIds();
+    if (!ids.length) return;
+    e.preventDefault();
+    const cur = ids.indexOf(state.activeMeeting ? state.activeMeeting.id : -1);
+    const next = ids[Math.max(0, Math.min(ids.length - 1, cur + (e.key === 'ArrowDown' ? 1 : -1)))];
+    if (next !== undefined && (!state.activeMeeting || next !== state.activeMeeting.id)) {
+      state.multi.clear();
+      openMeeting(next, true);
+      document.querySelector(`#meetings-list [data-mid="${next}"]`)?.scrollIntoView({ block: 'nearest' });
+    }
+  }
   if (e.key === 'Delete' && state.multi.size && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '')
       && !document.activeElement?.isContentEditable) bulkDelete();
 });
+
+// "•••" on a row: the same menu as a right click (shown on hover and on keyboard focus)
+function rowMoreButton(m) {
+  return `<button onclick="event.stopPropagation(); openRecordingContextMenu(event, ${m.id})" tabindex="-1" aria-label="${escapeHtml(t('tipRecordingMore'))}"
+    title="${escapeHtml(t('tipRecordingMore'))}" class="row-more opacity-0 group-hover:opacity-100 focus:opacity-100 px-1 rounded hover:bg-black/20 text-[11px] shrink-0 transition">•••</button>`;
+}
 
 function meetingCompactRowHtml(m, depth) {
   const isSelected = libIsSelected(m);
@@ -1240,6 +1260,7 @@ function meetingCompactRowHtml(m, depth) {
       <span class="truncate flex-1 min-w-0">${escapeHtml(libTitle(m))}</span>
       <span class="rec-badges shrink-0 ${isSelected ? 'text-white/80' : 'text-apple-secondary'}">${recordingBadgesHtml(m)}</span>
       <span class="font-mono text-[10.5px] shrink-0 ${isSelected ? 'text-white/80' : 'text-apple-tertiary'}">${isBusy ? `${m.progress}%` : libPrefs().sort === 'size' ? formatSize(m.size_bytes) : formatTime(m.duration)}</span>
+      ${rowMoreButton(m)}
     </div>`;
 }
 
@@ -1566,7 +1587,7 @@ async function submitLocalPath() {
 
   const data = await readJson(res);
   if (!res.ok) {
-    alert(data.detail || 'Error');
+    showAlert(data.detail || 'Error');
     return;
   }
 

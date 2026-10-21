@@ -242,7 +242,7 @@ async function startDubSetup() {
   const question = (state.dubEnvInstalled ? t('sdubRepairConfirm') : t('dubSetupConfirm'))
     .replace('{gb}', st.download_gb ?? 6)
     .replace('{dir}', st.venv || '.venv-dub');
-  if (!confirm(question)) return;
+  if (!await askConfirm(question)) return;
   let res = null;
   try { res = await fetch('/api/dub/setup', { method: 'POST' }); } catch (e) { console.error(e); }
   const setup = res ? await res.json().catch(() => ({})) : {};
@@ -389,7 +389,7 @@ async function downloadDubWeights(ids) {
     .replace('{names}', items.map(i => i.name).join(', '))
     .replace('{size}', formatBytes(total))
     .replace('{dir}', state.dubInfo.weights.dir);
-  if (!confirm(question)) return;
+  if (!await askConfirm(question)) return;
   const res = await fetch('/api/dub/weights/download', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ models: items.map(i => i.id) }),
   });
@@ -405,7 +405,7 @@ async function cancelDubWeights() {
 
 async function deleteDubWeights(id) {
   const item = ((state.dubInfo && state.dubInfo.weights.items) || []).find(i => i.id === id);
-  if (!item || !confirm(t('sdubDeleteConfirm').replace('{name}', item.name).replace('{size}', formatBytes(item.size_bytes)))) return;
+  if (!item || !await askConfirm(t('sdubDeleteConfirm').replace('{name}', item.name).replace('{size}', formatBytes(item.size_bytes)))) return;
   const res = await fetch(`/api/dub/weights/${encodeURIComponent(id)}`, { method: 'DELETE' });
   const data = await res.json().catch(() => ({}));
   if (data.error) showToast(data.error);
@@ -721,7 +721,7 @@ async function startTranslation(onlyChanged, lang) {
 
 async function deleteTranslation(lang) {
   const m = state.activeMeeting;
-  if (!m || !confirm(t('translateDeleteConfirm').replace('{lang}', langName(lang)))) return;
+  if (!m || !await askConfirm(t('translateDeleteConfirm').replace('{lang}', langName(lang)))) return;
   const res = await fetch(`/api/meetings/${m.id}/translations/${encodeURIComponent(lang)}`, { method: 'DELETE' });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -760,7 +760,7 @@ async function makeSubtitles(mode) {
 async function requestVideoSubtitles(lang, variant, mode, askPath) {
   const m = state.activeMeeting;
   if (!m) return false;
-  if (mode === 'burn' && !confirm(t('subsBurnConfirm'))) return false;
+  if (mode === 'burn' && !await askConfirm(t('subsBurnConfirm'))) return false;
   showToast(mode === 'soft' ? t('subsSoftWorking') : t('subsBurnWorking'));
   const res = await fetch(`/api/meetings/${m.id}/subtitles`, {
     method: 'POST',

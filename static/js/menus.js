@@ -101,6 +101,14 @@ function setExportDubLang(lang) {
   renderExportMenu();
 }
 
+async function ctxCut(kind) {
+  hideContextMenu();
+  const id = state.contextMeetingId;
+  if (!id) return;
+  if (!state.activeMeeting || state.activeMeeting.id !== id) await selectMeeting(id, true);
+  requestCut(kind);
+}
+
 async function requestCut(kind) {
   const m = state.activeMeeting;
   if (!m) return;
@@ -300,7 +308,7 @@ async function openSeriesMenu(e) {
     menu.remove();
     let body = { series_id: null };
     if (b.dataset.sid === 'new') {
-      const name = (prompt(t('seriesNamePrompt'), m.title) || '').trim();
+      const name = (await askText(t('seriesNamePrompt'), m.title) || '').trim();
       if (!name) return;
       body = { new_name: name };
     } else if (b.dataset.sid !== 'none') body = { series_id: Number(b.dataset.sid) };
@@ -359,7 +367,7 @@ async function ctxRenameRecording() {
   hideContextMenu();
   const m = state.meetings.find(x => x.id === state.contextMeetingId);
   if (!m) return;
-  const newTitle = prompt(state.uiLang === 'en' ? 'New recording title:' : 'Новое название записи:', m.title);
+  const newTitle = await askText(state.uiLang === 'en' ? 'New recording title:' : 'Новое название записи:', m.title);
   if (!newTitle || !newTitle.trim() || newTitle.trim() === m.title) return;
 
   const res = await fetch(`/api/meetings/${m.id}/title`, {

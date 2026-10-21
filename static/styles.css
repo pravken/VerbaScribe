@@ -94,6 +94,7 @@ body {
 .macos-menu-item.hidden {
   display: none;
 }
+.ui-btn:disabled { opacity: 0.45; cursor: default; pointer-events: none; }
 .ui-btn:active {
   transform: scale(0.97);
 }

@@ -120,6 +120,41 @@ function confirmDialog(title, text, okLabel, danger = true) {
   });
 }
 
+// Short forms for the old browser dialogs (window.confirm / prompt / alert), in the app's style
+function askConfirm(text) {
+  return confirmDialog(t('confirmTitle'), text, t('ok'), /удал|delete|remove|сброс|clear|отмен/i.test(text));
+}
+
+function askText(label, value = '') {
+  return new Promise(resolve => {
+    const wrap = document.createElement('div');
+    wrap.className = 'fixed inset-0 modal-backdrop z-[70] flex items-center justify-center p-4';
+    wrap.setAttribute('role', 'dialog');
+    wrap.setAttribute('aria-modal', 'true');
+    wrap.innerHTML = `<form class="w-full max-w-md bg-apple-card border apple-border rounded-2xl shadow-2xl p-5 space-y-4 modal-card">
+      <label class="block text-xs text-apple-label leading-relaxed whitespace-pre-line">${escapeHtml(label)}</label>
+      <input type="text" class="w-full h-9 bg-apple-sidebar border apple-border rounded-lg px-3 text-sm text-white focus:outline-none focus:border-apple-blue" />
+      <div class="flex justify-end gap-2">
+        <button type="button" data-a="no" class="ui-btn ui-btn-subtle">${escapeHtml(t('cancel'))}</button>
+        <button type="submit" class="ui-btn ui-btn-primary">${escapeHtml(t('ok'))}</button>
+      </div></form>`;
+    const input = wrap.querySelector('input');
+    input.value = value || '';
+    const done = v => { wrap.remove(); document.removeEventListener('keydown', onKey, true); resolve(v); };
+    const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); done(null); } };
+    wrap.querySelector('form').addEventListener('submit', e => { e.preventDefault(); done(input.value); });
+    wrap.addEventListener('click', e => { if (e.target === wrap || e.target.closest('[data-a="no"]')) done(null); });
+    document.addEventListener('keydown', onKey, true);
+    document.body.appendChild(wrap);
+    input.focus();
+    input.select();
+  });
+}
+
+function showAlert(text) {
+  return confirmDialog(t('attentionTitle'), String(text), t('ok'), false).then(() => {});
+}
+
 // The JSON of a response; a non-JSON answer (a server error page) becomes {detail: "..."} instead of
 // "Unexpected token ... is not valid JSON" shown to the user
 async function readJson(res) {
@@ -240,7 +275,7 @@ async function applyVoiceProfilesToLibrary() {
 }
 
 async function deleteVoiceProfile(id, name) {
-  if (!confirm(t('voiceProfileDeleteConfirm').replace('{name}', name || ''))) return;
+  if (!await askConfirm(t('voiceProfileDeleteConfirm').replace('{name}', name || ''))) return;
   const res = await fetch(`/api/voice-profiles/${id}`, { method: 'DELETE' });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {

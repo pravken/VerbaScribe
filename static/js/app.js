@@ -87,7 +87,7 @@ async function installUpdate() {
     updateState.polling = false;
     if (!updateState.info.download.done) return;
   }
-  const ok = confirm(en
+  const ok = await askConfirm(en
     ? `Install VerbaScribe ${info.latest.version}? The app will close, update itself and start again.`
     : `Установить VerbaScribe ${info.latest.version}? Программа закроется, обновится и запустится снова.`);
   if (!ok) return;
@@ -215,6 +215,7 @@ function selectSummaryTab(tab) {
   });
   // "My notes" is the user's own text: edited here, nothing to generate
   document.getElementById('generate-summary-btn')?.classList.toggle('hidden', tab === 'mynotes');
+  document.getElementById('generate-summary-btn')?.removeAttribute('disabled');
   renderSummaryPanel();
 }
 
@@ -294,6 +295,7 @@ function renderSummaryPanel() {
   const box = document.getElementById('summary-content');
   if (!state.activeMeeting) return;
   if (state.activeSummaryTab === 'mynotes') { renderMyNotesEditor(box); return; }
+  if (!aiAvailable()) { renderNoModelCard(box); return; }
   if (state.activeSummaryTab === 'commitments') { renderCommitments(box); return; }
   const summaries = state.activeMeeting.summaries || {};
   const md = summaries[state.activeSummaryTab] || '';
@@ -443,6 +445,27 @@ async function openOpenCommitments() {
     </div>`;
   wrap.addEventListener('click', e => { if (e.target === wrap || e.target.closest('[data-a="close"]')) wrap.remove(); });
   document.body.appendChild(wrap);
+}
+
+// An analysis model is there: a local one downloaded in Ollama, or a cloud one with its key
+function aiAvailable() {
+  const ollamaModels = ((state.lastOllama && state.lastOllama.models) || []).length;
+  const st = state.llm;
+  const cloud = st && st.consent && st.providers && st.providers[st.provider] && st.providers[st.provider].key && st.providers[st.provider].key.saved;
+  return state.lastOllama === undefined || ollamaModels > 0 || !!cloud;  // not loaded yet: assume yes
+}
+
+// Instead of buttons that only fail when clicked: what to install, in one place
+function renderNoModelCard(box) {
+  document.getElementById('generate-summary-btn')?.setAttribute('disabled', '');
+  box.innerHTML = `<div class="max-w-md mx-auto py-6 text-center space-y-3">
+      <div class="text-sm font-semibold text-white">${escapeHtml(t('noAiTitle'))}</div>
+      <p class="text-[12px] text-apple-secondary leading-relaxed">${escapeHtml(t('noAiText'))}</p>
+      <div class="flex justify-center gap-2 pt-1">
+        <button onclick="pullOllamaModel(firstRunPicks(state.system || {}, state.uiLang).llm, true)" class="ui-btn ui-btn-primary">${escapeHtml(t('noAiLocal'))}</button>
+        <button onclick="openModal('settings', 'analysis')" class="ui-btn ui-btn-subtle">${escapeHtml(t('noAiCloud'))}</button>
+      </div>
+    </div>`;
 }
 
 // --- My notes of a recording: plain text, saved as it is typed; every summary takes it in ---

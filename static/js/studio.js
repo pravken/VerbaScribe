@@ -272,7 +272,7 @@ async function toggleSettingsAudioTest() {
     step();
   } catch (err) {
     stopSettingsAudioTest();
-    alert(err.message || err);
+    showAlert(err.message || err);
   }
 }
 
@@ -369,7 +369,7 @@ function presetFromForm(base) {
 }
 
 async function saveRecordPresetAs() {
-  const name = (prompt(t('presetNamePrompt'), '') || '').trim();
+  const name = (await askText(t('presetNamePrompt'), '') || '').trim();
   if (!name) return;
   const own = recordPresets().filter(p => !p.builtin);
   const preset = presetFromForm({ id: `p${Date.now().toString(36)}`, name: name.slice(0, 60) });
@@ -391,7 +391,7 @@ async function updateRecordPreset() {
 async function deleteRecordPreset() {
   const id = document.getElementById('record-preset-select').value;
   const p = recordPresets().find(x => x.id === id);
-  if (!p || p.builtin || !confirm(t('presetDeleteConfirm').replace('{name}', p.name))) return;
+  if (!p || p.builtin || !await askConfirm(t('presetDeleteConfirm').replace('{name}', p.name))) return;
   const own = recordPresets().filter(x => !x.builtin && x.id !== id);
   await saveRecordPresetSettings(own, defaultRecordPresetId() === id ? 'call' : null);
   applyRecordPreset(defaultRecordPresetId());
@@ -1252,7 +1252,7 @@ async function startLiveRecording() {
       _recVideoStream?.getTracks().forEach(tr => tr.stop());
       throw new Error(t('diskFullError').replace('{free}', formatSize(Math.max(0, disk.free_bytes))));
     }
-    if (disk && disk.low && !confirm(t('diskLowConfirm')
+    if (disk && disk.low && !await askConfirm(t('diskLowConfirm')
       .replace('{free}', formatSize(disk.free_bytes))
       .replace('{min}', recMinutesLeft(disk.free_bytes, !!_recVideoStream || !!appTarget)))) {
       _recVideoStream?.getTracks().forEach(tr => tr.stop());
@@ -1391,7 +1391,7 @@ async function startLiveRecording() {
     document.getElementById('record-status-hint').textContent = t('recStatusRecording');
   } catch (err) {
     _cleanupRecordingResources();
-    alert(t('recCaptureError') + err.message);
+    showAlert(t('recCaptureError') + err.message);
   }
 }
 
@@ -1487,9 +1487,9 @@ function _cleanupRecordingResources() {
   setTimeout(() => drawIdleSoundCloudBars('record-waveform-canvas'), 0);
 }
 
-function cancelLiveRecording() {
+async function cancelLiveRecording() {
   if (!isRecording()) return;
-  if (!confirm(t('recCancelConfirm'))) return;
+  if (!await askConfirm(t('recCancelConfirm'))) return;
   if (_mediaRecorder && _mediaRecorder.state !== 'inactive') {
     _mediaRecorder.ondataavailable = null;
     _mediaRecorder.onstop = null;

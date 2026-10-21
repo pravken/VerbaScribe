@@ -588,6 +588,9 @@
             title="Нажмите, чтобы переименовать запись"
             class="bg-transparent hover:bg-white/5 focus:bg-apple-card focus:outline-none focus:ring-1 focus:ring-apple-blue px-2 h-7 -ml-2 rounded-md text-[14px] font-semibold text-white truncate min-w-[100px] max-w-[320px] transition" />
           <span id="meeting-meta-badge" class="text-[11px] text-apple-secondary font-mono truncate min-w-0"></span>
+          <button onclick="state.activeMeeting && openRecordingContextMenu(event, state.activeMeeting.id)" data-i18n-title="tipRecordingMore"
+            title="Действия с записью: переименовать, серия, нарезка, повторная обработка, удаление"
+            class="ui-btn ui-btn-subtle h-7 !px-2 shrink-0" aria-label="⋯">•••</button>
         </div>
 
         <!-- Center: Primary View Tabs (Separated from transcript tools) -->
@@ -1075,6 +1078,12 @@
     </button>
     <button id="ctx-local-item" onclick="ctxToggleLocalOnly()" data-i18n-title="tipLocalOnly" title="Не отправлять в облачную модель: анализ, названия и ответы ассистента — только локальной моделью" class="macos-menu-item">
       <span data-i18n="ctxLocalOnly">Только локальный анализ</span><span id="ctx-local-item-check" class="text-[11px] opacity-70"></span>
+    </button>
+    <button onclick="ctxCut('clean')" class="macos-menu-item" data-i18n-title="tipCutClean" title="Копия записи без пауз и слов-паразитов">
+      <span data-i18n="ctxCutClean">Нарезка без пауз</span>
+    </button>
+    <button onclick="ctxCut('highlights')" class="macos-menu-item" data-i18n-title="tipCutHighlights" title="Короткая сборка из ключевых моментов: решения, выводы, задачи">
+      <span data-i18n="ctxCutHighlights">Ключевые моменты</span>
     </button>
     <button onclick="ctxRevealInExplorer()" data-i18n-title="tipCtxReveal" title="Открыть папку с исходным медиафайлом в Проводнике Windows" class="macos-menu-item">
       <span data-i18n="ctxReveal">Показать файл в папке</span>

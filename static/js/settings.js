@@ -1162,7 +1162,7 @@ async function setLlmMode(mode) {
   const st = state.llm || {};
   const extra = { llm_provider: mode };
   if (mode === 'cloud' && !st.consent) {
-    if (!confirm(t('llmConsentConfirm'))) return;
+    if (!await askConfirm(t('llmConsentConfirm'))) return;
     extra.llm_cloud_consent = 'true';
   }
   state.llmShowCloud = mode === 'cloud';
@@ -1199,7 +1199,7 @@ async function saveLlmKey() {
 
 async function deleteLlmKey() {
   const provider = document.getElementById('set-llm-provider').value;
-  if (!confirm(t('llmKeyDeleteConfirm'))) return;
+  if (!await askConfirm(t('llmKeyDeleteConfirm'))) return;
   await fetch(`/api/llm/key/${provider}`, { method: 'DELETE' });
   if (state.llmModels) delete state.llmModels[provider];
   await loadLlmStatus();
@@ -1377,7 +1377,7 @@ async function pullOllamaModel(modelArg, makeActive = true) {
   const model = (modelArg || document.getElementById('set-ollama-model').value || 'qwen2.5:7b').trim();
   let allowInstall = false;
   if (state.system && state.system.ollama && !state.system.ollama.installed) {
-    allowInstall = confirm(state.uiLang === 'en'
+    allowInstall = await askConfirm(state.uiLang === 'en'
       ? 'Ollama is not installed. Install it now via winget (package Ollama.Ollama, about 1 GB)?\n\nYou can also install it manually from https://ollama.com/download'
       : 'Ollama не установлена. Установить её сейчас через winget (пакет Ollama.Ollama, около 1 ГБ)?\n\nМожно установить и вручную: https://ollama.com/download');
     if (!allowInstall) return;
@@ -1451,7 +1451,7 @@ async function addDictionaryItems() {
 }
 
 async function clearDictionary() {
-  if (!confirm(t('dictClearConfirm').replace('{n}', state.dictionary.length))) return;
+  if (!await askConfirm(t('dictClearConfirm').replace('{n}', state.dictionary.length))) return;
   await fetch('/api/dictionary', { method: 'DELETE' });
   await loadDictionary();
 }
