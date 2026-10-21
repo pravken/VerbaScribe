@@ -21,6 +21,9 @@ Interval = Tuple[float, float]
 MAX_GAP_SEC = 0.6     # a longer silence between words is cut (down to 2 * PAD_SEC)
 PAD_SEC = 0.12        # kept around speech so words do not start or end abruptly
 HIGHLIGHT_MIN_SEC, HIGHLIGHT_MAX_SEC = 8.0, 75.0
+# "Clean sound": hum and rumble cut, steady noise removed (FFmpeg's own FFT denoiser, no model),
+# speech levelled. Mild settings: voices must not sound processed.
+DENOISE_FILTER = "highpass=f=70,lowpass=f=12000,afftdn=nr=12:nf=-30:tn=1,dynaudnorm=f=250:g=15:p=0.9"
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
@@ -102,12 +105,12 @@ def pick_highlights(m: Dict[str, Any], model_name: Optional[str] = None, answer_
 
 
 def cut_command(ffmpeg: str, media: Path, intervals: List[Interval], has_video: bool, out: Path,
-                script: Path) -> List[str]:
+                script: Path, afilter: str = "") -> List[str]:
     """FFmpeg command that joins `intervals` of `media`; the filter goes to a script file (a long
     recording has hundreds of pieces, too many for a command line)."""
     parts, labels = [], []
     for i, (a, b) in enumerate(intervals):
-        parts.append(f"[0:a]atrim=start={a:.3f}:end={b:.3f},asetpts=PTS-STARTPTS[a{i}]")
+        parts.append(f"[0:a]atrim=start={a:.3f}:end={b:.3f},asetpts=PTS-STARTPTS{',' + afilter if afilter else ''}[a{i}]")
         if has_video:
             parts.append(f"[0:v]trim=start={a:.3f}:end={b:.3f},setpts=PTS-STARTPTS[v{i}]")
             labels.append(f"[v{i}][a{i}]")
@@ -127,12 +130,12 @@ def cut_command(ffmpeg: str, media: Path, intervals: List[Interval], has_video: 
 
 
 def run_cut(ffmpeg: str, media: Path, intervals: List[Interval], has_video: bool, out: Path,
-            on_progress: Callable[[float], None], check_cancel: Callable[[], None]) -> Path:
+            on_progress: Callable[[float], None], check_cancel: Callable[[], None], afilter: str = "") -> Path:
     if not intervals:
         raise ValueError("Нечего оставить: в записи не найдено речи")
     total = max(0.1, kept_seconds(intervals))
     with tempfile.TemporaryDirectory() as tmp:
-        cmd = cut_command(ffmpeg, media, intervals, has_video, out, Path(tmp) / "cut.txt")
+        cmd = cut_command(ffmpeg, media, intervals, has_video, out, Path(tmp) / "cut.txt", afilter)
         with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                               encoding="utf-8", errors="replace", creationflags=_NO_WINDOW) as proc:
             _follow(proc, total, out, on_progress, check_cancel)

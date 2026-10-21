@@ -341,7 +341,7 @@ def _burn_runner(meeting_id: int, lang: str, srt_text: str, out_path: str) -> st
 
 def _cut_runner(meeting_id: int, kind: str, intervals: List[Tuple[float, float]], has_video: bool, out_path: str) -> str:
     from app.ffmpeg_manager import tool_cmd
-    from app.media_cut import run_cut
+    from app.media_cut import DENOISE_FILTER, run_cut
 
     meeting = get_meeting(meeting_id)
     if not meeting:
@@ -349,11 +349,11 @@ def _cut_runner(meeting_id: int, kind: str, intervals: List[Tuple[float, float]]
     media = Path(meeting["media_path"])
     if not media.exists():
         raise RuntimeError(f"Исходный файл не найден: {media}")
-    label = "Нарезка ключевых моментов" if kind == "highlights" else "Запись без пауз и слов-паразитов"
+    label = {"highlights": "Нарезка ключевых моментов", "denoise": "Запись без шума"}.get(kind, "Запись без пауз и слов-паразитов")
     update_meeting_progress(meeting_id, progress=1, stage_text=f"{label}: подготовка...")
     out = run_cut(tool_cmd("ffmpeg"), media, intervals, has_video, Path(out_path),
                   lambda r: update_meeting_progress(meeting_id, progress=max(1, int(99 * r)), stage_text=f"{label}: {int(100 * r)}%"),
-                  lambda: _check_cancel(meeting_id))
+                  lambda: _check_cancel(meeting_id), afilter=DENOISE_FILTER if kind == "denoise" else "")
     return f"{label} готова: {out}"
 
 

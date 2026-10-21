@@ -524,3 +524,17 @@ class DictationTest(unittest.TestCase):
             self.assertEqual(dictation.recognize(np.zeros(16000, dtype=np.float32)), "Привет. Как дела?")
         from app.hotkey import parse_hotkey
         self.assertIsNotNone(parse_hotkey("Ctrl+Alt+D"))
+
+
+class DenoiseCommandTest(unittest.TestCase):
+    def test_filter_in_script(self):
+        import tempfile
+        from pathlib import Path
+        from app.media_cut import DENOISE_FILTER, cut_command
+
+        with tempfile.TemporaryDirectory() as tmp:
+            script = Path(tmp) / "c.txt"
+            cut_command("ffmpeg", Path("in.m4a"), [(0.0, 60.0)], False, Path("out.m4a"), script, DENOISE_FILTER)
+            self.assertIn("afftdn", script.read_text())
+            cut_command("ffmpeg", Path("in.m4a"), [(0.0, 60.0)], False, Path("out.m4a"), script)
+            self.assertNotIn("afftdn", script.read_text())

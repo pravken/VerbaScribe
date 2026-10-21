@@ -2302,7 +2302,7 @@ class SubtitlesRequestPayload(BaseModel):
 
 
 class CutPayload(BaseModel):
-    kind: str = "clean"  # "clean": no pauses and fillers; "highlights": the key moments
+    kind: str = "clean"  # "clean": no pauses and fillers; "highlights": the key moments; "denoise": clean sound
     lang: str = "ru"
     model: Optional[str] = None
 
@@ -2318,7 +2318,7 @@ def api_meeting_cut(meeting_id: int, payload: CutPayload) -> Dict[str, Any]:
     m = get_meeting(meeting_id)
     if not m:
         raise HTTPException(status_code=404, detail="Встреча не найдена")
-    if payload.kind not in ("clean", "highlights"):
+    if payload.kind not in ("clean", "highlights", "denoise"):
         raise HTTPException(status_code=400, detail="Неизвестный вид нарезки")
     _ensure_not_processing(meeting_id)
     media = Path(m.get("media_path") or "")
@@ -2326,7 +2326,13 @@ def api_meeting_cut(meeting_id: int, payload: CutPayload) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail="Исходный файл не найден")
     duration = float(m.get("duration") or 0)
     moments: List[Dict[str, Any]] = []
-    if payload.kind == "clean":
+    if payload.kind == "denoise":
+        if duration <= 0:
+            from app.audio_utils import get_media_duration
+
+            duration = float(get_media_duration(media) or 0)
+        intervals = [(0.0, duration)] if duration > 0 else []
+    elif payload.kind == "clean":
         intervals = speech_intervals(m.get("segments") or [], duration)
     else:
         try:
@@ -2338,7 +2344,7 @@ def api_meeting_cut(meeting_id: int, payload: CutPayload) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail="В записи не найдено речи")
     has_video = bool(probe_media(media)["has_video"])
     ext = output_extension(media) if has_video else ".m4a"
-    suffix = ".highlights" if payload.kind == "highlights" else ".clean"
+    suffix = {"highlights": ".highlights", "denoise": ".clean-sound"}.get(payload.kind, ".clean")
     chosen = _pick_export_path(m, f"{base_name(m)}{suffix}{ext}", ext.lstrip("."))
     if not chosen:
         return {"ok": False, "cancelled": True}

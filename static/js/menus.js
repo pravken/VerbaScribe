@@ -80,7 +80,8 @@ function renderExportMenu() {
   html += sep + header(t('exportGroupCut'));
   if (!(m.segments || []).length) html += note(t('exportCutNeedsText'));
   else html += item({ kind: 'cut_clean' }, t('exportCutClean'), isVideo ? 'MP4' : 'M4A', t('tipCutClean'))
-    + item({ kind: 'cut_highlights' }, t('exportCutHighlights'), isVideo ? 'MP4' : 'M4A', t('tipCutHighlights'));
+    + item({ kind: 'cut_highlights' }, t('exportCutHighlights'), isVideo ? 'MP4' : 'M4A', t('tipCutHighlights'))
+    + item({ kind: 'cut_denoise' }, t('exportCutDenoise'), isVideo ? 'MP4' : 'M4A', t('tipCutDenoise'));
 
   const settings = (state.system && state.system.settings) || {};
   html += sep + header('Obsidian');
@@ -142,7 +143,10 @@ async function runExport(item) {
   const m = state.activeMeeting;
   if (!m) return;
   if (item.kind === 'obsidian') { await exportToObsidian(m.id); return; }
-  if (item.kind === 'cut_clean' || item.kind === 'cut_highlights') { await requestCut(item.kind === 'cut_clean' ? 'clean' : 'highlights'); return; }
+  if (item.kind === 'cut_clean' || item.kind === 'cut_highlights' || item.kind === 'cut_denoise') {
+    await requestCut({ cut_clean: 'clean', cut_highlights: 'highlights', cut_denoise: 'denoise' }[item.kind]);
+    return;
+  }
   let res, data;
   try {
     res = await fetch(`/api/meetings/${m.id}/export-request`, {
