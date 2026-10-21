@@ -331,15 +331,15 @@ def _asr_one(mid: str, clip: Path, audio: Any, dur: float, lang: Optional[str]) 
     from app import asr_onnx
 
     if asr_onnx.is_onnx_model(mid):
-        if not asr_onnx.supports_language(mid, lang):
-            raise ValueError(f"Модель не знает язык записи ({lang or 'не определён'})")
+        if lang and not asr_onnx.supports_language(mid, lang):
+            raise ValueError(f"Модель не знает язык записи ({lang})")
         was_loaded = mid in asr_onnx.loaded_models()
         with _Peak() as peak:
             t0 = time.perf_counter()
             asr_onnx._load(mid)
             t1 = time.perf_counter()
             _set(stage="Распознавание…")
-            segs = asr_onnx.transcribe(mid, clip, dur, lambda _p: None, _check, lang=lang)
+            segs = asr_onnx.transcribe(mid, clip, dur, lambda _p: None, _check)
             t2 = time.perf_counter()
         if not was_loaded:
             asr_onnx.release(mid)
@@ -401,5 +401,10 @@ def _run_llm(m: Dict[str, Any], models: List[str], clip_sec: int) -> Dict[str, A
 
 
 def _answer_lang(m: Dict[str, Any]) -> str:
-    lang = m.get("language") or "ru"
-    return "ru" if lang in ("auto", "mixed") else lang
+    """The protocol is written in the language of the recording: the check compares words."""
+    lang = (m.get("language") or "")[:2]
+    if lang in ("", "au", "mi"):
+        from app.asr_onnx import guess_language
+
+        lang = guess_language(" ".join(str(x.get("text") or "") for x in m.get("segments") or [])[:20000])
+    return lang

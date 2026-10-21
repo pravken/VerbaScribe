@@ -123,7 +123,7 @@ def get_hardware_info() -> Dict[str, Any]:
         "recommended_device": "cpu",
         "recommended_compute_type": "int8",
         "recommended_whisper_model": "large-v3-turbo",
-        "recommended_ollama_model": "qwen3:4b",
+        "recommended_ollama_model": "qwen3.5:4b",
         "tier": "cpu",
         "tier_description": "Работа на процессоре: быстрее всего GigaAM v3 (русский) и Parakeet; Whisper Turbo — в режиме int8",
     }
@@ -141,7 +141,7 @@ def get_hardware_info() -> Dict[str, Any]:
             if total_gb >= 10.0:
                 info["tier"] = "high_vram"
                 info["recommended_compute_type"] = "float16"
-                info["recommended_whisper_model"] = "large-v3-turbo"
+                info["recommended_whisper_model"] = "large-v3"
                 info["recommended_ollama_model"] = "qwen3:8b"
                 info["tier_description"] = (
                     f"Максимальная производительность ({name}, {total_gb} ГБ VRAM). "
@@ -151,7 +151,7 @@ def get_hardware_info() -> Dict[str, Any]:
                 info["tier"] = "mid_vram"
                 info["recommended_compute_type"] = "int8_float16"
                 info["recommended_whisper_model"] = "large-v3-turbo"
-                info["recommended_ollama_model"] = "qwen3:8b"
+                info["recommended_ollama_model"] = "qwen3.5:4b"
                 info["tier_description"] = (
                     f"Средний объём видеопамяти ({name}, {total_gb} ГБ VRAM). "
                     "Рекомендуется модель large-v3-turbo в гибридном режиме int8_float16."
@@ -160,7 +160,7 @@ def get_hardware_info() -> Dict[str, Any]:
                 info["tier"] = "low_vram"
                 info["recommended_compute_type"] = "int8"
                 info["recommended_whisper_model"] = "large-v3-turbo"
-                info["recommended_ollama_model"] = "qwen3:4b"
+                info["recommended_ollama_model"] = "qwen3.5:4b"
                 info["tier_description"] = (
                     f"Компактный режим видеопамяти ({name}, {total_gb} ГБ VRAM). "
                     "Модели загружаются по очереди в сжатом формате int8."

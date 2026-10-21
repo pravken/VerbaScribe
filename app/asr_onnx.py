@@ -38,17 +38,6 @@ ONNX_MODELS: Dict[str, Dict[str, Any]] = {
         "desc_ru": "Очень быстрая модель NVIDIA для 25 европейских языков, включая русский и английский, с расстановкой знаков препинания.",
         "desc_en": "A very fast NVIDIA model for 25 European languages including English and Russian, with punctuation.",
     },
-    "canary-v2": {
-        "onnx_name": "nemo-canary-1b-v2",
-        "name": "Canary 1B v2",
-        "size_mb": 3900,
-        "license": "CC-BY-4.0 (NVIDIA)",
-        "needs_language": True,  # it is told the language; "auto" and mixed recordings are not for it
-        "languages": ["en", "ru", "de", "fr", "es", "it", "pt", "nl", "pl", "uk", "cs", "sk", "bg", "hr", "da",
-                      "fi", "el", "hu", "lv", "lt", "mt", "ro", "sl", "sv", "et"],
-        "desc_ru": "Самая точная модель NVIDIA для 25 европейских языков (на русском ошибок почти вдвое меньше, чем у Parakeet), со знаками препинания. Медленнее Parakeet; язык записи нужно указать.",
-        "desc_en": "NVIDIA's most accurate model for 25 European languages (about half Parakeet's errors in Russian), with punctuation. Slower than Parakeet; the recording language must be set.",
-    },
 }
 VAD_NAME = "silero"
 MAX_PHRASE_SEC = 20.0
@@ -60,7 +49,7 @@ _downloads: Dict[str, Dict[str, Any]] = {}
 
 
 # Removed models: what a setting or a recording that still names one now uses
-REPLACED = {"gigaam-v2": "gigaam-v3"}
+REPLACED = {"gigaam-v2": "gigaam-v3", "canary-v2": "parakeet-v3"}  # Canary: slower and less accurate in Russian (bench-report/)
 
 
 def is_onnx_model(model_id: str) -> bool:
@@ -81,18 +70,7 @@ def is_installed(model_id: str) -> bool:
 
 
 def supports_language(model_id: str, lang: Optional[str]) -> bool:
-    if not lang or lang in ("auto", "mixed"):
-        return not ONNX_MODELS[model_id].get("needs_language")
-    return lang[:2] in ONNX_MODELS[model_id]["languages"]
-
-
-def _lang_kwargs(model_id: str, lang: Optional[str]) -> Dict[str, Any]:
-    """What recognize() is told: Canary needs the language (it would write English otherwise)."""
-    if not ONNX_MODELS[model_id].get("needs_language"):
-        return {}
-    if not lang or lang in ("auto", "mixed"):
-        raise RuntimeError(f"{ONNX_MODELS[model_id]['name']}: укажите язык записи")
-    return {"language": lang[:2]}
+    return not lang or lang == "auto" or lang[:2] in ONNX_MODELS[model_id]["languages"]
 
 
 def _dir_mb(d: Path) -> float:
@@ -225,12 +203,12 @@ def guess_language(text: str) -> str:
     return "ru" if cyr > len(text) * 0.3 else "en"
 
 
-def recognize_array(model_id: str, audio: Any, lang: Optional[str] = None) -> List[Tuple[float, float, str]]:
+def recognize_array(model_id: str, audio: Any) -> List[Tuple[float, float, str]]:
     """Sentences of a short 16 kHz float32 window (live captions): [(start, end, text)], cut at the
     word timings, so a sentence ends exactly where the next one starts."""
     asr = _load(model_id)
     out = []
-    for res in asr.recognize(audio, sample_rate=16000, **_lang_kwargs(model_id, lang)):
+    for res in asr.recognize(audio, sample_rate=16000):
         text = " ".join((res.text or "").split())
         if not text:
             continue
@@ -360,13 +338,11 @@ def split_sentences_text(start: float, end: float, text: str) -> List[Tuple[floa
 
 
 def transcribe(model_id: str, wav_path: Path, total_dur: float, on_progress: Callable[[float], None],
-               check_cancel: Callable[[], None], out: Optional[List[Dict[str, Any]]] = None,
-               lang: Optional[str] = None) -> List[Dict[str, Any]]:
+               check_cancel: Callable[[], None], out: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
     """Segments like faster-whisper's: [{start, end, text, words: [{word, start, end, prob}]}].
     `out` (optional) receives them as they come, for showing the text while it is recognized."""
-    kwargs = _lang_kwargs(model_id, lang)
     asr = _load(model_id)
-    results: Iterator[Any] = asr.recognize(str(wav_path), **kwargs)
+    results: Iterator[Any] = asr.recognize(str(wav_path))
     segments: List[Dict[str, Any]] = out if out is not None else []
     for res in results:
         check_cancel()

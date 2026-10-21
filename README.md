@@ -17,11 +17,11 @@ Recordings and transcripts are processed and stored locally (NVIDIA GPU via CUDA
 
 ### Features
 
-- **Speech recognition** with [faster-whisper](https://github.com/SYSTRAN/faster-whisper) and Silero VAD. Models: `large-v3-turbo`, `large-v3`; GigaAM v3, Parakeet TDT v3 and Canary 1B v2 on ONNX Runtime; recordings that mix languages are recognized phrase by phrase. Compute precision (`float16`, `int8_float16`, `int8`) is chosen from available VRAM, with fallback to CPU.
+- **Speech recognition** with [faster-whisper](https://github.com/SYSTRAN/faster-whisper) and Silero VAD. Models: `large-v3-turbo`, `large-v3`; GigaAM v3 and Parakeet TDT v3 on ONNX Runtime; recordings that mix languages are recognized phrase by phrase. Compute precision (`float16`, `int8_float16`, `int8`) is chosen from available VRAM, with fallback to CPU.
 - **Speaker separation** by clustering SpeechBrain ECAPA-TDNN voice embeddings. Works without tokens. Accuracy drops with overlapping speech, very short replies, or similar voices, so check the result and fix speakers where needed.
 - **Optional audio cleanup** before recognition: FFmpeg filters for noise reduction, click removal and loudness leveling. A simple voice filter is also available in the player.
 - **Filler-word removal** ("uh", "um", "э-э", "ммм"…). The original text is kept and can be restored.
-- **Local summaries and Q&A** via Ollama (default models: Qwen 2.5 and Mistral 7B), or optionally a **cloud model over its API** (OpenAI, Claude, Gemini, OpenAI-compatible) with your key; long recordings then fit in one request. Language models can make mistakes; treat summaries as a draft, not a source of truth. Long recordings are summarized in parts.
+- **Local summaries and Q&A** via Ollama (by default Qwen3.5 4B, or Qwen3 8B on GPUs with 10 GB and more), or optionally a **cloud model over its API** (OpenAI, Claude, Gemini, OpenAI-compatible) with your key; long recordings then fit in one request. Language models can make mistakes; treat summaries as a draft, not a source of truth. Long recordings are summarized in parts.
 - **Transcript editor and player**: click a word to jump to it, edit segments, merge them, rename speakers, waveform, playback speed.
 - **Recording** from a microphone, system audio, or both, with saved presets for one-click starts. System audio is captured directly (WASAPI loopback), without a screen-share prompt.
 - **Three parts of the app**: the **Library** (recordings, transcripts, analysis), the **Studio** (recording with live captions and real-time translation that is typed in without flicker; can fill the whole window) and **Ask** (questions about one recording, a folder or the whole library).
@@ -158,10 +158,9 @@ VerbaScribe's own code is released under the [MIT License](LICENSE). Models and 
 | Silero VAD | MIT |
 | GigaAM v3 (Sber, ONNX export by istupakov) / onnx-asr | MIT |
 | NVIDIA Parakeet TDT 0.6B v3 (ONNX export by istupakov) | CC-BY-4.0: credit "Parakeet TDT 0.6B v3 by NVIDIA" |
-| NVIDIA Canary 1B v2 (ONNX export by istupakov) | CC-BY-4.0: credit "Canary 1B v2 by NVIDIA" |
 | BGE-M3 embeddings (BAAI) | MIT |
 | SpeechBrain ECAPA-TDNN (`spkrec-ecapa-voxceleb`) | Apache 2.0 |
-| Qwen3.5 4B / 9B / 27B, Qwen3 4B / 8B / 14B, Qwen 2.5 1.5B / 7B / 14B, Mistral 7B | Apache 2.0 |
+| Qwen3.5 4B, Qwen3 8B / 14B, Qwen 2.5 1.5B / 7B / 14B, Mistral 7B | Apache 2.0 |
 | Ollama, FastAPI, pywebview | MIT / BSD-3 |
 | PyTorch, torchaudio | BSD-3 |
 | SoundCard (system audio recording) | BSD-3 |
@@ -203,11 +202,11 @@ To update Python dependencies, edit `requirements.in` and regenerate the lock (c
 
 ### Возможности
 
-- **Распознавание речи**: [faster-whisper](https://github.com/SYSTRAN/faster-whisper) и Silero VAD. Модели `large-v3-turbo`, `large-v3`, а также GigaAM v3, Parakeet TDT v3 и Canary 1B v2 на ONNX Runtime; записи на нескольких языках распознаются пофразово. Точность вычислений (`float16`, `int8_float16`, `int8`) подбирается под объём видеопамяти, при необходимости работа переходит на CPU.
+- **Распознавание речи**: [faster-whisper](https://github.com/SYSTRAN/faster-whisper) и Silero VAD. Модели `large-v3-turbo`, `large-v3`, а также GigaAM v3 и Parakeet TDT v3 на ONNX Runtime; записи на нескольких языках распознаются пофразово. Точность вычислений (`float16`, `int8_float16`, `int8`) подбирается под объём видеопамяти, при необходимости работа переходит на CPU.
 - **Разделение по спикерам**: кластеризация голосовых эмбеддингов SpeechBrain ECAPA-TDNN, без токенов. Точность снижается при перебиваниях, очень коротких репликах и похожих голосах, поэтому результат стоит проверять и при необходимости поправлять спикеров вручную.
 - **Очистка звука перед распознаванием** (по желанию): фильтры FFmpeg для шумоподавления, удаления щелчков и выравнивания громкости. В плеере также есть простой голосовой фильтр.
 - **Удаление слов-паразитов** («э-э», «ммм», «uh», «um»…). Исходный текст сохраняется, его можно вернуть.
-- **Локальные саммари и ответы на вопросы** через Ollama (модели по умолчанию — Qwen 2.5 и Mistral 7B) или, по желанию, **облачной моделью по API** (OpenAI, Claude, Gemini, OpenAI-совместимые) с вашим ключом; длинные записи тогда обрабатываются одним запросом. Языковые модели могут ошибаться, поэтому считайте саммари черновиком, а не источником истины. Длинные записи обрабатываются по частям.
+- **Локальные саммари и ответы на вопросы** через Ollama (по умолчанию Qwen3.5 4B, на видеокартах от 10 ГБ — Qwen3 8B) или, по желанию, **облачной моделью по API** (OpenAI, Claude, Gemini, OpenAI-совместимые) с вашим ключом; длинные записи тогда обрабатываются одним запросом. Языковые модели могут ошибаться, поэтому считайте саммари черновиком, а не источником истины. Длинные записи обрабатываются по частям.
 - **Редактор расшифровки и плеер**: клик по слову перематывает к нему, реплики можно править и склеивать, спикеров — переименовывать; есть звуковая дорожка и выбор скорости.
 - **Запись** с микрофона, системного звука или обоих источников, с пресетами для запуска в один клик. Системный звук захватывается напрямую (WASAPI loopback), без запроса на показ экрана.
 - **Три раздела программы**: **Медиатека** (записи, расшифровки, анализ), **Студия** (запись с живыми субтитрами и переводом в реальном времени, текст печатается без мерцания; можно развернуть на всё окно) и **Вопросы** (к одной записи, к папке или ко всей медиатеке).

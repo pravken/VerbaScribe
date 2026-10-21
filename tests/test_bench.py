@@ -73,17 +73,29 @@ class BenchRunTest(unittest.TestCase):
 
 
 
-class CanaryLanguageTest(unittest.TestCase):
-    def test_canary_needs_a_language(self):
-        from app import asr_onnx
+class GroundingLanguageTest(unittest.TestCase):
+    def test_other_alphabet_is_not_marked(self):
+        from app.grounding import UNVERIFIED_MARK, ground_summary
 
-        self.assertFalse(asr_onnx.supports_language("canary-v2", None))
-        self.assertFalse(asr_onnx.supports_language("canary-v2", "auto"))
-        self.assertTrue(asr_onnx.supports_language("canary-v2", "ru"))
-        self.assertEqual(asr_onnx._lang_kwargs("canary-v2", "ru-RU"), {"language": "ru"})
-        self.assertEqual(asr_onnx._lang_kwargs("parakeet-v3", None), {})
-        with self.assertRaises(RuntimeError):
-            asr_onnx._lang_kwargs("canary-v2", "auto")
+        segs = [{"start": 10.0, "end": 15.0, "text": "We will ship the release on Friday and update the docs"}]
+        ru = "- Команда выпустит релиз в пятницу и обновит документацию"
+        self.assertEqual(ground_summary(ru, segs), ru)
+        en = "- The team will ship the release on Friday\n- Penguins invaded the office kitchen yesterday"
+        out = ground_summary(en, segs)
+        self.assertIn("[00:10]", out.splitlines()[0])
+        self.assertIn(UNVERIFIED_MARK, out.splitlines()[1])
+
+
+class FfmpegScriptOptionTest(unittest.TestCase):
+    def test_old_and_new_ffmpeg(self):
+        from app import media_cut
+
+        for help_text, want in (("-filter_complex_script <filename>  deprecated", "-filter_complex_script"),
+                                ("-/filter_complex  read from file", "-/filter_complex")):
+            media_cut._SCRIPT_OPTION.clear()
+            with mock.patch.object(media_cut.subprocess, "run", return_value=mock.Mock(stdout=help_text, stderr="")):
+                self.assertEqual(media_cut.script_option("ffmpeg"), want)
+        media_cut._SCRIPT_OPTION.clear()
 
 
 if __name__ == "__main__":

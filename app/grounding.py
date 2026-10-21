@@ -74,9 +74,25 @@ class _Index:
         return best[0], best_t
 
 
+def alphabet(text: str) -> str:
+    """"cyr", "lat", or "mixed" when neither has 80% of the letters."""
+    cyr = len(re.findall(r"[\u0400-\u04ff]", text or ""))
+    lat = len(re.findall(r"[A-Za-z]", text or ""))
+    total = cyr + lat
+    if not total:
+        return "mixed"
+    return "cyr" if cyr >= 0.8 * total else "lat" if lat >= 0.8 * total else "mixed"
+
+
 def ground_summary(md: str, segments: List[Dict[str, Any]], speakers: Optional[Dict[str, Any]] = None) -> str:
-    """The summary with time stamps added to supported lines and UNVERIFIED_MARK on unsupported ones."""
+    """The summary with time stamps added to supported lines and UNVERIFIED_MARK on unsupported ones.
+    A summary in another alphabet than the recording (a Russian overview of an English call) is left
+    as it is: its words cannot be found in the transcript, and every line would look made up."""
     if not md or not segments:
+        return md
+    said = alphabet(" ".join(str(s.get("text") or "") for s in segments[:400]))
+    written = alphabet(_TS_RE.sub(" ", md))
+    if "mixed" not in (said, written) and said != written:
         return md
     idx = _Index(segments, speakers)
     out = []

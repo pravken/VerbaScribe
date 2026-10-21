@@ -104,6 +104,23 @@ def pick_highlights(m: Dict[str, Any], model_name: Optional[str] = None, answer_
     return moments
 
 
+_SCRIPT_OPTION: Dict[str, str] = {}
+
+
+def script_option(ffmpeg: str) -> str:
+    """How this FFmpeg reads a filter graph from a file: "-filter_complex_script" until 7.x, removed
+    since 8 in favor of "-/filter_complex" (which 7.1 and newer understand)."""
+    if ffmpeg not in _SCRIPT_OPTION:
+        try:
+            res = subprocess.run([ffmpeg, "-hide_banner", "-h", "full"], capture_output=True, text=True,
+                                 encoding="utf-8", errors="replace", timeout=20, creationflags=_NO_WINDOW)
+            old = "filter_complex_script" in (res.stdout or "") + (res.stderr or "")
+        except (OSError, subprocess.SubprocessError):
+            old = False
+        _SCRIPT_OPTION[ffmpeg] = "-filter_complex_script" if old else "-/filter_complex"
+    return _SCRIPT_OPTION[ffmpeg]
+
+
 def cut_command(ffmpeg: str, media: Path, intervals: List[Interval], has_video: bool, out: Path,
                 script: Path, afilter: str = "") -> List[str]:
     """FFmpeg command that joins `intervals` of `media`; the filter goes to a script file (a long
@@ -120,7 +137,7 @@ def cut_command(ffmpeg: str, media: Path, intervals: List[Interval], has_video: 
     parts.append("".join(labels) + (f"concat=n={n}:v=1:a=1[v][a]" if has_video else f"concat=n={n}:v=0:a=1[a]"))
     script.write_text(";\n".join(parts), encoding="utf-8")
     cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-progress", "pipe:1", "-nostats",
-           "-i", str(media), "-filter_complex_script", str(script)]
+           "-i", str(media), script_option(ffmpeg), str(script)]
     if has_video:
         cmd += ["-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p"]
     else:

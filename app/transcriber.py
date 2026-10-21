@@ -813,12 +813,9 @@ def _process_meeting_job(meeting_id: int) -> None:
         onnx_engine = asr_onnx.is_onnx_model(model_name)
         if onnx_engine:
             # GigaAM / Parakeet on ONNX Runtime (app/asr_onnx.py): no Whisper, no GPU needed
-            if mixed and (len(asr_onnx.ONNX_MODELS[model_name]["languages"]) == 1 or asr_onnx.ONNX_MODELS[model_name].get("needs_language")):
+            if mixed and len(asr_onnx.ONNX_MODELS[model_name]["languages"]) == 1:
                 raise RuntimeError(f"{asr_onnx.ONNX_MODELS[model_name]['name']} понимает только один язык. Для записей на "
                                    "нескольких языках выберите Parakeet или Whisper.")
-            if not language and asr_onnx.ONNX_MODELS[model_name].get("needs_language"):
-                raise RuntimeError(f"{asr_onnx.ONNX_MODELS[model_name]['name']} распознаёт только с заданным языком: "
-                                   "выберите язык записи вместо «Авто» или другую модель.")
             if not asr_onnx.supports_language(model_name, language):
                 raise RuntimeError(f"{asr_onnx.ONNX_MODELS[model_name]['name']} не распознаёт язык «{language}». "
                                    "Выберите Whisper или другую модель для этой записи.")
@@ -838,7 +835,7 @@ def _process_meeting_job(meeting_id: int) -> None:
                 partial.push(onnx_done)
 
             raw_segments = asr_onnx.transcribe(model_name, wav_path, total_dur, _onnx_progress_and_partial,
-                                               lambda: _check_cancel(meeting_id), out=onnx_done, lang=language)
+                                               lambda: _check_cancel(meeting_id), out=onnx_done)
             text_all = " ".join(s["text"] for s in raw_segments)
             detected_lang = language or asr_onnx.guess_language(text_all)
             whisper_model = None

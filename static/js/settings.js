@@ -283,14 +283,11 @@ async function vramChipClick(index) {
 const MODEL_DISPLAY_NAMES = {
   'gigaam-v3': 'GigaAM v3',
   'parakeet-v3': 'Parakeet TDT v3',
-  'canary-v2': 'Canary 1B v2',
   'large-v3-turbo': 'Whisper Turbo',
   'large-v3': 'Whisper Pro',
   'qwen3:8b': 'Qwen3 8B',
   'qwen3:14b': 'Qwen3 14B',
-  'qwen3.5:9b': 'Qwen3.5 9B',
   'qwen3.5:4b': 'Qwen3.5 4B',
-  'qwen3.5:27b': 'Qwen3.5 27B',
   'qwen3:4b': 'Qwen3 4B',
   'qwen2.5:7b': 'Qwen 7B Standard',
   'qwen2.5:14b': 'Qwen 14B Pro',
@@ -504,10 +501,10 @@ function firstRunPicks(data, lang) {
   const vram = Number(hw.vram_total_gb || 0);
   const speech = [];
   if (lang === 'ru') speech.push({ id: 'gigaam-v3', why: t('frWhyGigaam') });
+  speech.push({ id: 'parakeet-v3', why: t('frWhyParakeet') });  // more accurate than Whisper in the comparison
   if (gpu) speech.push({ id: 'large-v3-turbo', why: t('frWhyTurbo') });
-  speech.push({ id: 'parakeet-v3', why: t('frWhyParakeet') });
   if (!gpu && lang !== 'ru') speech.push({ id: 'large-v3-turbo', why: t('frWhyTurboCpu') });
-  const llm = vram >= 8 ? 'qwen3:8b' : 'qwen3:4b';
+  const llm = vram >= 10 ? 'qwen3:8b' : 'qwen3.5:4b';  // bench-report/report.md
   return { speech: speech.slice(0, 3), llm, gpu };
 }
 
