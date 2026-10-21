@@ -183,9 +183,10 @@ def get_models_status() -> Dict[str, Any]:
                              "path": str(where) if where else "", "disk_mb": dir_size_mb(where) if where else 0})
 
     diarizer_ready = is_diarizer_installed()
+    any_speech_model = any_whisper_installed or any(i.get("installed") for i in whisper_list if i.get("engine") == "onnx")
 
     return {
-        "needs_first_run_setup": not any_whisper_installed,
+        "needs_first_run_setup": not any_speech_model,
         "any_whisper_installed": any_whisper_installed,
         "active_whisper": active_whisper,
         "diarizer_installed": diarizer_ready,
