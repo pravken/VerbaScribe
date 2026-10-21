@@ -587,6 +587,14 @@ SUMMARY_TEMPLATES: Dict[str, str] = {
         "- **О чём запись**: 1–2 предложения.\n"
         "- **Ключевые моменты**: 2–5 коротких пунктов с таймкодами `[ММ:СС]` о том, что именно было сказано."
     ),
+    # The user's own notes from the meeting, each one expanded from the transcript (Granola-style)
+    "notes": (
+        "Ниже есть заметки, которые пользователь сам делал во время встречи. Разверни их {lang} в итоговый "
+        "конспект в формате Markdown (без эмодзи): сохрани порядок и формулировки пользователя как заголовки "
+        "или пункты, а под каждым кратко допиши по расшифровке, что именно было сказано, кем, с таймкодами `[ММ:СС]`. "
+        "Если заметка не находит подтверждения в расшифровке, оставь её как есть и пометь «(в записи не найдено)». "
+        "В конце добавь «## Что ещё обсуждали» — важное из записи, чего нет в заметках."
+    ),
     # Parsed by the app into a clickable table of contents: keep the line format strict
     "chapters": (
         "Раздели запись на смысловые главы по порядку: от 3 до 12 глав, по одной на каждую смену темы. "
@@ -639,7 +647,11 @@ def generate_meeting_summary(
     base_url: Optional[str] = None,
     answer_lang: Optional[str] = "ru",
     local_only: bool = False,
+    user_notes: str = "",
+    template_prompt: str = "",
 ) -> str:
+    """template_prompt: the instruction of a template the user made (Settings → Analysis);
+    user_notes: what the user wrote during the meeting, taken into account by every summary."""
     from app.llm import target
 
     # Ollama, or the cloud model chosen in Settings → Analysis ("cloud" asks for it explicitly)
@@ -659,8 +671,21 @@ def generate_meeting_summary(
             f"где это уместно. Отвечай {lang} в формате Markdown без эмодзи.\n\n"
             f"Вопрос / задание пользователя: {custom_prompt.strip()}"
         )
+    elif template_prompt.strip():
+        instruction = (
+            f"{template_prompt.strip()}\n\nОтвечай {lang} в формате Markdown без эмодзи, строго по расшифровке, "
+            "с таймкодами `[ММ:СС]` там, где это уместно."
+        )
     else:
         instruction = SUMMARY_TEMPLATES.get(template_key, SUMMARY_TEMPLATES["protocol"]).format(lang=lang)
+    notes = (user_notes or "").strip()[:6000]
+    if notes:
+        instruction += (
+            "\n\nЗаметки, которые пользователь сделал во время встречи (что для него главное), — учти их в первую "
+            f"очередь и не теряй ни одной:\n```text\n{notes}\n```"
+        )
+    elif template_key == "notes" and not custom_prompt.strip():
+        raise RuntimeError("У записи нет ваших заметок: напишите их во вкладке «Мои заметки» или во время записи в студии")
 
     source_label = "Вот точная расшифровка аудио/видеозаписи"
     single_pass_max = SINGLE_PASS_MAX_CHARS if not llm.is_cloud else llm.max_chars

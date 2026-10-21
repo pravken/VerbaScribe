@@ -1098,6 +1098,7 @@ class RecordFinishPayload(BaseModel):
     screen_id: Optional[str] = None   # the screen or a window recorded by the app
     has_video: bool = False           # the page recording has a video track (screen, window, tab)
     has_mic: bool = False             # the page recording has an audio track
+    notes: str = ""                   # what the user wrote in the studio during the recording
 
 
 def _run_ffmpeg(cmd: List[str]) -> subprocess.CompletedProcess:
@@ -1132,7 +1133,7 @@ def _queue_file(title: str, dest: Path, has_video: Optional[bool]) -> Dict[str, 
     return get_meeting(m["id"]) or m
 
 
-def _salvage_parts(title: str, parts: List[Tuple[Path, Optional[bool]]]) -> Dict[str, Any]:
+def _salvage_parts(title: str, parts: List[Tuple[Path, Optional[bool]]], notes: str = "") -> Dict[str, Any]:
     """The parts of a recording could not be joined: each one is kept as a recording of its own,
     so nothing that was recorded is lost."""
     created = []
@@ -1142,6 +1143,10 @@ def _salvage_parts(title: str, parts: List[Tuple[Path, Optional[bool]]]) -> Dict
         dest = _part_target(part, title)
         shutil.move(str(part), str(dest))
         created.append(_queue_file(title, dest, has_video))
+        if notes.strip():
+            from app.database import update_meeting_fields
+
+            update_meeting_fields(created[-1]["id"], user_notes=notes[:50000])
     if not created:
         raise HTTPException(status_code=500, detail="Не удалось свести запись, и её части пусты")
     return {"created": created, "salvaged": True}
@@ -1231,7 +1236,8 @@ async def api_record_finish(payload: RecordFinishPayload) -> Dict[str, Any]:
             print("[record] mix failed, parts kept:", (res.stderr or "")[-300:], flush=True)
             dest.unlink(missing_ok=True)
             return _salvage_parts(payload.title.strip() or "Запись",
-                                  [(screen, True), *[(p, p is page and payload.has_video) for p in (page, system) if p]])
+                                  [(screen, True), *[(p, p is page and payload.has_video) for p in (page, system) if p]],
+                                  payload.notes)
         for p in (screen, page, system):
             if p:
                 p.unlink(missing_ok=True)
@@ -1253,7 +1259,7 @@ async def api_record_finish(payload: RecordFinishPayload) -> Dict[str, Any]:
                 print("[record] mix failed, parts kept:", (res.stderr or "")[-300:], flush=True)
                 dest.unlink(missing_ok=True)
                 return _salvage_parts(payload.title.strip() or "Запись",
-                                      [(p, has_video if p is page else False) for p in (page, system) if p])
+                                      [(p, has_video if p is page else False) for p in (page, system) if p], payload.notes)
         if page:
             page.unlink(missing_ok=True)
     if system:
@@ -1275,8 +1281,11 @@ def _queue_recording(payload: RecordFinishPayload, dest: Path, safe_stem: str, h
         title_is_default=True,
         has_video=has_video,
     )
+    from app.database import update_meeting_fields
     from app.naming import rename_recording_file
 
+    if payload.notes.strip():
+        update_meeting_fields(m["id"], user_notes=payload.notes[:50000])
     rename_recording_file(m["id"])  # "2026-10-20 Запись 14-05.m4a"; renamed again once titled
     enqueue_meeting_job(m["id"])
     return {"created": [get_meeting(m["id"]) or m]}
@@ -1710,6 +1719,39 @@ def api_restore_segments(meeting_id: int) -> Dict[str, Any]:
 
 
 # --- AI Summary & Custom Q&A via Ollama ---
+class NotesPayload(BaseModel):
+    notes: str = ""
+
+
+@app.patch("/api/meetings/{meeting_id}/notes")
+def api_save_notes(meeting_id: int, payload: NotesPayload) -> Dict[str, Any]:
+    """The user's own notes of a recording (written during the meeting or after it)."""
+    from app.database import update_meeting_fields
+
+    if not get_meeting(meeting_id):
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    update_meeting_fields(meeting_id, user_notes=payload.notes[:50000])
+    return {"ok": True}
+
+
+class TemplatesPayload(BaseModel):
+    templates: List[Dict[str, Any]]
+
+
+@app.get("/api/summary-templates")
+def api_get_templates() -> List[Dict[str, Any]]:
+    from app.database import summary_templates
+
+    return summary_templates()
+
+
+@app.put("/api/summary-templates")
+def api_put_templates(payload: TemplatesPayload) -> List[Dict[str, Any]]:
+    from app.database import save_summary_templates
+
+    return save_summary_templates(payload.templates)
+
+
 class SummaryRequestPayload(BaseModel):
     template: str = "protocol"
     custom_prompt: str = ""
@@ -1735,6 +1777,14 @@ def api_generate_summary(meeting_id: int, payload: SummaryRequestPayload) -> Dic
     unload_diarizer()
     clear_vram()
 
+    template_prompt = ""
+    if payload.template.startswith("tpl:"):
+        from app.database import summary_templates
+
+        tpl = next((x for x in summary_templates() if f"tpl:{x['id']}" == payload.template), None)
+        if not tpl:
+            raise HTTPException(status_code=404, detail="Шаблон не найден")
+        template_prompt = tpl["prompt"]
     try:
         result_md = generate_meeting_summary(
             segments=segments,
@@ -1744,6 +1794,8 @@ def api_generate_summary(meeting_id: int, payload: SummaryRequestPayload) -> Dic
             model_name=payload.model or None,
             answer_lang=payload.lang or m.get("language") or "ru",
             local_only=is_local_only(m),
+            user_notes=m.get("user_notes") or "",
+            template_prompt=template_prompt,
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

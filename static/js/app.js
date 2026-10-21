@@ -98,6 +98,7 @@ async function installUpdate() {
 
 document.addEventListener('DOMContentLoaded', () => {
   state.autoScroll = true;
+  loadSummaryTemplates();
   initLogoEasterEgg();
   setUILanguage(state.uiLang);
   updateVolumeUI();
@@ -206,16 +207,47 @@ document.addEventListener('DOMContentLoaded', () => {
 // --- Summaries ---
 function selectSummaryTab(tab) {
   state.activeSummaryTab = tab;
-  ['protocol', 'tasks', 'tldr', 'chapters', 'since_last'].forEach(k => {
-    const btn = document.getElementById(`sumtab-${k}`);
-    if (btn) {
-      btn.className = (k === tab)
-        ? 'apple-segment-btn apple-segment-active'
-        : 'apple-segment-btn text-apple-secondary hover:text-white';
-    }
+  document.querySelectorAll('[id^="sumtab-"]:not(#sumtab-user-templates)').forEach(btn => {
+    const k = btn.dataset.tab || btn.id.slice('sumtab-'.length);
+    const hidden = btn.classList.contains('hidden');
+    btn.className = (k === tab ? 'apple-segment-btn apple-segment-active' : 'apple-segment-btn text-apple-secondary hover:text-white')
+      + (hidden ? ' hidden' : '');
   });
+  // "My notes" is the user's own text: edited here, nothing to generate
+  document.getElementById('generate-summary-btn')?.classList.toggle('hidden', tab === 'mynotes');
   renderSummaryPanel();
 }
+
+// --- The user's summary templates: tabs after the built-in ones ---
+async function loadSummaryTemplates() {
+  state.summaryTemplates = await fetch('/api/summary-templates').then(r => r.json()).catch(() => []);
+  renderTemplateTabs();
+}
+
+function renderTemplateTabs() {
+  const box = document.getElementById('sumtab-user-templates');
+  if (!box) return;
+  box.innerHTML = (state.summaryTemplates || []).map(tpl => `<button onclick="selectSummaryTab(this.dataset.tab)" id="sumtab-tpl-${escapeHtml(tpl.id)}"
+      data-tab="tpl:${escapeHtml(tpl.id)}" title="${escapeHtml(tpl.prompt)}"
+      class="apple-segment-btn text-apple-secondary hover:text-white">${escapeHtml(tpl.name)}</button>`).join('');
+  selectSummaryTab(state.activeSummaryTab);
+}
+
+// Ready-made starting points for the user's own templates
+const TEMPLATE_PRESETS = {
+  ru: [
+    { name: '1:1', prompt: 'Это встреча один на один руководителя и сотрудника. Выдели: как дела у сотрудника и что его беспокоит, обратную связь в обе стороны, договорённости и следующие шаги (кто — что — когда), темы на следующую встречу.' },
+    { name: 'Интервью', prompt: 'Это интервью. Составь портрет собеседника, выпиши ключевые ответы на каждый вопрос с цитатами, сильные стороны и сомнения, и вывод: что важно запомнить.' },
+    { name: 'Планёрка', prompt: 'Это планёрка команды. По каждому участнику: что сделано, что в работе, какие блокеры. Отдельно — решения и новые задачи с ответственными и сроками.' },
+    { name: 'Продажи', prompt: 'Это разговор с клиентом. Выдели: потребности и боли клиента, возражения и как на них ответили, бюджет и сроки, кто принимает решение, договорённости и следующий шаг.' },
+  ],
+  en: [
+    { name: '1:1', prompt: 'This is a one-on-one between a manager and a report. Cover: how the person is doing and what worries them, feedback both ways, agreements and next steps (who — what — when), topics for next time.' },
+    { name: 'Interview', prompt: 'This is an interview. Profile the person, list the key answers to each question with quotes, strengths and doubts, and a conclusion: what to remember.' },
+    { name: 'Stand-up', prompt: 'This is a team stand-up. For each person: done, in progress, blockers. Then the decisions and new tasks with owners and deadlines.' },
+    { name: 'Sales call', prompt: 'This is a call with a customer. Cover: needs and pains, objections and how they were answered, budget and timing, who decides, agreements and the next step.' },
+  ],
+};
 
 // --- Chapters: "- [MM:SS] Title — description" lines of the "chapters" analysis ---
 function parseChapters(md) {
@@ -261,6 +293,7 @@ function updateActiveChapter(cur) {
 function renderSummaryPanel() {
   const box = document.getElementById('summary-content');
   if (!state.activeMeeting) return;
+  if (state.activeSummaryTab === 'mynotes') { renderMyNotesEditor(box); return; }
   const summaries = state.activeMeeting.summaries || {};
   const md = summaries[state.activeSummaryTab] || '';
 
@@ -273,6 +306,90 @@ function renderSummaryPanel() {
   }
 
   renderMarkdownWithTimestamps(box, md, state.activeMeeting.duration);
+}
+
+// The editor of the user's templates: name + what the summary should contain
+function openTemplatesEditor() {
+  document.getElementById('templates-editor')?.remove();
+  let items = (state.summaryTemplates || []).map(x => ({ ...x }));
+  const wrap = document.createElement('div');
+  wrap.id = 'templates-editor';
+  wrap.className = 'fixed inset-0 modal-backdrop z-[60] flex items-center justify-center p-4';
+  wrap.setAttribute('role', 'dialog');
+  wrap.setAttribute('aria-modal', 'true');
+  const presets = TEMPLATE_PRESETS[state.uiLang === 'en' ? 'en' : 'ru'];
+  const draw = () => {
+    wrap.innerHTML = `<div class="w-full max-w-2xl max-h-[85vh] flex flex-col bg-apple-card border apple-border rounded-2xl shadow-2xl modal-card">
+      <div class="px-5 pt-5 pb-3 border-b apple-border">
+        <div class="text-sm font-semibold text-white">${escapeHtml(t('templatesTitle'))}</div>
+        <p class="text-[11px] text-apple-secondary mt-1">${escapeHtml(t('templatesDesc'))}</p>
+      </div>
+      <div class="flex-1 overflow-y-auto px-5 py-3 space-y-3">
+        ${items.map((x, i) => `<div class="p-3 rounded-xl bg-apple-sidebar border border-white/10 space-y-2">
+          <div class="flex items-center gap-2">
+            <input data-i="${i}" data-f="name" value="${escapeHtml(x.name)}" maxlength="60" placeholder="${escapeHtml(t('templateName'))}"
+              class="flex-1 h-8 bg-apple-card border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none focus:border-apple-blue" />
+            <button data-del="${i}" class="ui-btn ui-btn-subtle px-2 hover:text-apple-red" title="${escapeHtml(t('ctxDelete'))}">${SVG_ICONS.trash}</button>
+          </div>
+          <textarea data-i="${i}" data-f="prompt" rows="3" maxlength="4000" placeholder="${escapeHtml(t('templatePrompt'))}"
+            class="w-full bg-apple-card border apple-border rounded-lg px-2.5 py-2 text-xs text-white focus:outline-none focus:border-apple-blue resize-y">${escapeHtml(x.prompt)}</textarea>
+        </div>`).join('') || `<div class="py-6 text-center text-xs text-apple-tertiary">${escapeHtml(t('templatesEmpty'))}</div>`}
+        <div class="flex flex-wrap items-center gap-1.5 pt-1">
+          <span class="text-[11px] text-apple-secondary">${escapeHtml(t('templatesAddFrom'))}</span>
+          ${presets.map((p, i) => `<button data-preset="${i}" class="ui-btn ui-btn-subtle h-7 text-[11px]">${escapeHtml(p.name)}</button>`).join('')}
+          <button data-add="1" class="ui-btn ui-btn-subtle h-7 text-[11px]">+ ${escapeHtml(t('templateBlank'))}</button>
+        </div>
+      </div>
+      <div class="px-5 py-3 border-t apple-border flex justify-end gap-2">
+        <button data-a="no" class="ui-btn ui-btn-subtle">${escapeHtml(t('cancel'))}</button>
+        <button data-a="save" class="ui-btn ui-btn-primary">${escapeHtml(t('save'))}</button>
+      </div></div>`;
+  };
+  draw();
+  wrap.addEventListener('input', e => {
+    const el = e.target.closest('[data-f]');
+    if (el) items[Number(el.dataset.i)][el.dataset.f] = el.value;
+  });
+  wrap.addEventListener('click', async e => {
+    const b = e.target.closest('button');
+    if (e.target === wrap || (b && b.dataset.a === 'no')) { wrap.remove(); return; }
+    if (!b) return;
+    if (b.dataset.del !== undefined) { items.splice(Number(b.dataset.del), 1); draw(); }
+    else if (b.dataset.preset !== undefined) { items.push({ ...presets[Number(b.dataset.preset)], id: '' }); draw(); }
+    else if (b.dataset.add) { items.push({ id: '', name: '', prompt: '' }); draw(); }
+    else if (b.dataset.a === 'save') {
+      const res = await fetch('/api/summary-templates', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ templates: items }) });
+      if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
+      state.summaryTemplates = await readJson(res);
+      renderTemplateTabs();
+      wrap.remove();
+    }
+  });
+  document.body.appendChild(wrap);
+}
+
+// --- My notes of a recording: plain text, saved as it is typed; every summary takes it in ---
+function renderMyNotesEditor(box) {
+  const m = state.activeMeeting;
+  box.innerHTML = `<div class="space-y-2">
+      <p class="text-[11px] text-apple-tertiary">${escapeHtml(t('notesHint'))}</p>
+      <textarea id="my-notes-input" rows="14" placeholder="${escapeHtml(t('notesPh'))}"
+        class="w-full bg-apple-sidebar border apple-border rounded-xl px-4 py-3 text-[13px] leading-relaxed text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue resize-y"></textarea>
+      <div id="my-notes-status" class="text-[10.5px] text-apple-tertiary h-4"></div>
+    </div>`;
+  const ta = document.getElementById('my-notes-input');
+  ta.value = m.user_notes || '';
+  ta.oninput = () => {
+    const id = m.id, text = ta.value;
+    m.user_notes = text;
+    clearTimeout(window._notesSaveTimer);
+    document.getElementById('my-notes-status').textContent = '…';
+    window._notesSaveTimer = setTimeout(async () => {
+      const res = await fetch(`/api/meetings/${id}/notes`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notes: text }) });
+      const st = document.getElementById('my-notes-status');
+      if (st) st.textContent = res.ok ? t('notesSaved') : ((await readJson(res)).detail || 'Error');
+    }, 600);
+  };
 }
 
 // LLM output is derived from the recording's speech, so it is treated as untrusted HTML

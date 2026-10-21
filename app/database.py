@@ -3,6 +3,7 @@ import re
 import os
 import sqlite3
 import threading
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -149,8 +150,9 @@ def init_db() -> None:
             "obsidian_subfolder": "VerbaScribe",
             "obsidian_filename": "{date} {title}",
             "file_name_template": "{date} {title}",  # recordings and exports (app/naming.py)
-            "date_folders": "off",
-            "update_auto": "true",  # download updates by themselves, install on exit (app/updater.py)  # off | day | month | year_month: folders by date (app/naming.py)
+            "date_folders": "off",  # off | day | month | year_month: folders by date (app/naming.py)
+            "summary_templates": "[]",  # the user's own summary templates, JSON (summary_templates())
+            "update_auto": "true",  # download updates by themselves, install on exit (app/updater.py)
             "obsidian_summary": "true",
             "obsidian_tasks": "true",
             "obsidian_chapters": "true",
@@ -225,7 +227,8 @@ _MEETING_EXTRA_COLUMNS = {
     "obsidian_path": "TEXT DEFAULT ''",
     "obsidian_hash": "TEXT DEFAULT ''",  # sha256 of the part of the note VerbaScribe wrote last
     "pending_exports_json": "TEXT DEFAULT '[]'",
-    "exports_json": "TEXT DEFAULT '[]'",  # files saved by exports (Save as), deleted with the recording on request
+    "exports_json": "TEXT DEFAULT '[]'",
+    "user_notes": "TEXT DEFAULT ''",  # the user's own notes of the meeting (studio or "My notes" tab)  # files saved by exports (Save as), deleted with the recording on request
     "has_video": "INTEGER DEFAULT NULL",  # NULL: told from the file extension (see is_video)
     "local_only": "INTEGER DEFAULT 0",  # 1: never sent to a cloud model (see is_local_only)
     "media_size": "INTEGER DEFAULT NULL",  # bytes of the media file; NULL: not measured yet
@@ -538,6 +541,28 @@ def save_meeting_results(
         conn.close()
 
 
+def summary_templates() -> List[Dict[str, Any]]:
+    """Summary templates the user made: [{id, name, prompt}] (Settings → Analysis)."""
+    try:
+        items = json.loads(get_all_settings().get("summary_templates") or "[]")
+    except ValueError:
+        return []
+    return [t for t in items if isinstance(t, dict) and t.get("id") and t.get("name") and t.get("prompt")]
+
+
+def save_summary_templates(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    import re as _re
+
+    clean = []
+    for t in items[:30]:
+        name, prompt = str(t.get("name") or "").strip()[:60], str(t.get("prompt") or "").strip()[:4000]
+        tid = _re.sub(r"[^a-z0-9_-]", "", str(t.get("id") or "").lower())[:24]
+        if name and prompt:
+            clean.append({"id": tid or uuid.uuid4().hex[:8], "name": name, "prompt": prompt})
+    update_settings({"summary_templates": json.dumps(clean, ensure_ascii=False)})
+    return clean
+
+
 def merge_summaries(meeting_id: int, updates: Dict[str, Any], remove: tuple = ()) -> Dict[str, Any]:
     """Sets some summaries of a recording, keeping the others: two analyses running at once (each
     takes minutes) must not overwrite each other's result. Returns all summaries."""
@@ -617,7 +642,7 @@ def restore_segments_backup(meeting_id: int) -> bool:
 
 
 def update_meeting_fields(meeting_id: int, **fields: Any) -> None:
-    allowed = {"title", "model_name", "language", "num_speakers_hint", "folder_id", "title_is_default", "obsidian_path", "obsidian_hash",
+    allowed = {"title", "model_name", "language", "num_speakers_hint", "folder_id", "title_is_default", "obsidian_path", "obsidian_hash", "user_notes",
                "local_only", "series_id"}
     items = [(k, v) for k, v in fields.items() if k in allowed]
     if not items:

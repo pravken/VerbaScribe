@@ -22,9 +22,9 @@ _lock = threading.Lock()
 
 _LABELS = {
     "ru": {"summary": "Резюме", "overview": "Обзор", "tasks": "Задачи", "chapters": "Главы", "transcript": "Расшифровка",
-           "participants": "Участники", "untitled": "Запись"},
+           "participants": "Участники", "untitled": "Запись", "notes": "Заметки со встречи"},
     "en": {"summary": "Summary", "overview": "Overview", "tasks": "Tasks", "chapters": "Chapters", "transcript": "Transcript",
-           "participants": "Participants", "untitled": "Recording"},
+           "participants": "Participants", "untitled": "Recording", "notes": "Notes from the meeting"},
 }
 
 
@@ -118,6 +118,8 @@ def build_note(m: Dict[str, Any], settings: Optional[Dict[str, str]] = None) -> 
     if names:
         props += [f"**{L['participants']}:** " + ", ".join(names), ""]
     body: List[str] = []
+    if (m.get("user_notes") or "").strip():
+        body += [f"## {L['notes']}", "", m["user_notes"].strip(), ""]
     if _on(settings, "obsidian_summary"):
         if summaries.get("tldr"):
             body += [f"## {L['summary']}", "", _demote(summaries["tldr"]), ""]

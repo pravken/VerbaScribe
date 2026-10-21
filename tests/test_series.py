@@ -343,3 +343,27 @@ class WhisperDeleteTest(unittest.TestCase):
             self.assertTrue(mm.is_whisper_model_installed("large-v3-turbo"))
             with self.assertRaises(ValueError):
                 mm.delete_whisper_model("..")
+
+
+class NotesAndTemplatesTest(unittest.TestCase):
+    def test_templates_saved_and_used(self):
+        from unittest import mock
+        from app.database import init_db, save_summary_templates, summary_templates
+        from app import ollama_client
+
+        init_db()
+        saved = save_summary_templates([{"name": "1:1", "prompt": "Обратная связь и шаги"}, {"name": "", "prompt": "x"}])
+        self.assertEqual(len(saved), 1)
+        self.assertEqual(summary_templates()[0]["name"], "1:1")
+        llm = mock.Mock(is_cloud=False, max_chars=100000)
+        llm.chat.return_value = "ok"
+        segs = [{"start": 0, "end": 2, "text": "Привет", "speaker": "S1"}]
+        with mock.patch("app.llm.target", return_value=llm):
+            ollama_client.generate_meeting_summary(segs, {}, template_key="tpl:x", template_prompt="Обратная связь и шаги",
+                                                   user_notes="[00:01] спросить про отпуск")
+        user = llm.chat.call_args[0][1]
+        self.assertIn("Обратная связь и шаги", user)
+        self.assertIn("спросить про отпуск", user)
+        with mock.patch("app.llm.target", return_value=llm), self.assertRaises(RuntimeError):
+            ollama_client.generate_meeting_summary(segs, {}, template_key="notes")
+        save_summary_templates([])

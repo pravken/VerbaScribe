@@ -469,6 +469,16 @@
           <div id="studio-cap-empty" class="text-center text-apple-tertiary text-sm pt-16"></div>
         </div>
       </div>
+      <!-- The user's own notes while recording: saved with the recording, every summary takes them in -->
+      <div id="studio-notes" class="hidden shrink-0 border-t apple-border bg-apple-sidebar/95 px-5 py-2">
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-[11px] font-semibold text-apple-secondary" data-i18n="notesTitle">Мои заметки</span>
+          <span class="text-[10.5px] text-apple-tertiary" data-i18n="notesStudioHint">Enter — новая строка с отметкой времени. Заметки сохранятся с записью и войдут в пересказ</span>
+        </div>
+        <textarea id="studio-notes-input" rows="3" onkeydown="studioNotesKey(event)" oninput="saveStudioNotesDraft()"
+          data-i18n-placeholder="notesPh" placeholder="Главное для вас: решения, вопросы, что не забыть…"
+          class="w-full bg-apple-card border apple-border rounded-lg px-3 py-2 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue resize-y"></textarea>
+      </div>
       <!-- Questions about what was said so far, while recording (app/live.py ask) -->
       <div id="studio-ask" class="hidden shrink-0 border-t apple-border bg-apple-sidebar/95 px-5 py-2.5 space-y-2">
         <div id="studio-ask-answer" class="hidden max-h-48 overflow-y-auto markdown-body text-[13px] text-apple-label"></div>
@@ -757,10 +767,20 @@
                 data-i18n-title="tipSumChapters"
                 title="Смысловые главы записи с отметками времени; по ним над текстом появляется оглавление"
                 class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumChapters">Главы</button>
+              <button onclick="selectSummaryTab('mynotes')" id="sumtab-mynotes"
+                data-i18n-title="tipSumMyNotes" title="Ваши заметки к записи: они учитываются в каждом пересказе"
+                class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="notesTitle">Мои заметки</button>
+              <button onclick="selectSummaryTab('notes')" id="sumtab-notes"
+                data-i18n-title="tipSumNotes" title="Ваши заметки, развёрнутые по расшифровке: что именно сказано, кем и когда"
+                class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumNotes">По заметкам</button>
               <button onclick="selectSummaryTab('since_last')" id="sumtab-since_last"
                 data-i18n-title="tipSumSinceLast"
                 title="Задачи и договорённости прошлой встречи серии: что выполнено, что в работе, что не обсуждали"
                 class="hidden apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumSinceLast">С прошлого раза</button>
+              <!-- The user's own templates (Settings → Analysis) -->
+              <span id="sumtab-user-templates" class="contents"></span>
+              <button onclick="openTemplatesEditor()" data-i18n-title="tipTemplatesAdd" title="Свои шаблоны пересказа: 1:1, интервью, планёрка…"
+                class="apple-segment-btn text-apple-secondary hover:text-white">+</button>
             </div>
 
             <div class="flex items-center gap-1.5">

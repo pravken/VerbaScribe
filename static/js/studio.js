@@ -519,6 +519,39 @@ async function studioAsk() {
 function syncStudioAsk() {
   const el = document.getElementById('studio-ask');
   if (el) el.classList.toggle('hidden', !liveCap.session);
+  document.getElementById('studio-notes')?.classList.toggle('hidden', !isRecording());
+}
+
+// --- My notes while recording: Enter starts a new line with the recording time ---
+function studioNotesStamp() {
+  const sec = _recStartTime ? Math.floor((Date.now() - _recStartTime) / 1000) : 0;
+  return `[${formatTime(sec)}] `;
+}
+
+function studioNotesKey(e) {
+  const ta = e.target;
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    const pos = ta.selectionStart;
+    const ins = (pos > 0 ? '\n' : '') + studioNotesStamp();
+    ta.value = ta.value.slice(0, pos) + ins + ta.value.slice(ta.selectionEnd);
+    ta.selectionStart = ta.selectionEnd = pos + ins.length;
+    saveStudioNotesDraft();
+  } else if (!ta.value && e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
+    ta.value = studioNotesStamp();  // the first note gets its time too
+  }
+}
+
+function saveStudioNotesDraft() {
+  try { localStorage.setItem('verbascribe_studio_notes', document.getElementById('studio-notes-input').value); } catch (e) {}
+}
+
+function takeStudioNotes() {
+  const ta = document.getElementById('studio-notes-input');
+  const v = ta ? ta.value : '';
+  if (ta) ta.value = '';
+  try { localStorage.removeItem('verbascribe_studio_notes'); } catch (e) {}
+  return v;
 }
 
 async function quickRecord(presetId) {
@@ -930,6 +963,7 @@ function langCode(code) {
 // Buttons, heading and locked inputs follow whether a recording is running
 function renderStudioState() {
   const rec = isRecording();
+  syncStudioAsk();
   const sourceName = { mic: t('sourceMic'), system: t('sourceSystem'), both: t('sourceBoth') };
   const p = recordPresets().find(x => x.id === state.recPresetId);
   const withVideo = !!document.getElementById('record-video-select').value;
@@ -1332,6 +1366,13 @@ async function startLiveRecording() {
     updateMeter();
 
     _recStartTime = Date.now();
+    // Notes left from a recording that did not finish (the window was closed) are kept
+    try {
+      const draft = localStorage.getItem('verbascribe_studio_notes');
+      const ta = document.getElementById('studio-notes-input');
+      if (ta && draft && !ta.value) ta.value = draft;
+    } catch (e) {}
+    renderStudioState();
     clearInterval(_recDiskTimer);
     _recDiskTimer = setInterval(checkRecordingDisk, 15000);
     clearInterval(_recTimerInterval);
@@ -1500,6 +1541,7 @@ async function stopAndTranscribeRecording() {
     body: JSON.stringify({
       title: rawTitle, page_id: page ? page.id : null, capture_id: captureId, screen_id: screenId,
       has_video: !!(page && page.hasVideo), has_mic: !!(page && page.hasMic),
+      notes: takeStudioNotes(),
     }),
   });
   const data = await res.json().catch(() => ({}));
