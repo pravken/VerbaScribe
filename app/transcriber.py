@@ -573,6 +573,7 @@ def _start_transcription(
     language: Optional[str],
     hotwords: str,
     vad_enabled: bool,
+    multilingual: bool = False,
 ):
     vad_parameters = dict(min_silence_duration_ms=450, speech_pad_ms=250)
     if batch_size > 0:
@@ -596,6 +597,7 @@ def _start_transcription(
             vad_parameters=vad_parameters if vad_enabled else None,
             clip_timestamps=clips,
             batch_size=batch_size,
+            multilingual=multilingual,
         )
     return whisper_model.transcribe(
         str(wav_path),
@@ -605,6 +607,7 @@ def _start_transcription(
         vad_filter=vad_enabled,
         vad_parameters=vad_parameters,
         condition_on_previous_text=False,
+        multilingual=multilingual,
     )
 
 
@@ -796,7 +799,9 @@ def _process_meeting_job(meeting_id: int) -> None:
         device = settings.get("device") or hw["recommended_device"]
         compute_type = settings.get("compute_type") or hw["recommended_compute_type"]
         lang_setting = meeting.get("language") or settings.get("language") or "auto"
-        language = None if lang_setting in ("auto", "", None) else lang_setting
+        # "mixed": people switch languages (Russian and English in one call): detected per window
+        mixed = lang_setting == "mixed"
+        language = None if lang_setting in ("auto", "mixed", "", None) else lang_setting
         vad_enabled = settings.get("vad_filter", "true").lower() == "true"
 
         _check_cancel(meeting_id)
@@ -808,6 +813,9 @@ def _process_meeting_job(meeting_id: int) -> None:
         onnx_engine = asr_onnx.is_onnx_model(model_name)
         if onnx_engine:
             # GigaAM / Parakeet on ONNX Runtime (app/asr_onnx.py): no Whisper, no GPU needed
+            if mixed and len(asr_onnx.ONNX_MODELS[model_name]["languages"]) == 1:
+                raise RuntimeError(f"{asr_onnx.ONNX_MODELS[model_name]['name']} понимает только один язык. Для записей на "
+                                   "нескольких языках выберите Parakeet или Whisper.")
             if not asr_onnx.supports_language(model_name, language):
                 raise RuntimeError(f"{asr_onnx.ONNX_MODELS[model_name]['name']} не распознаёт язык «{language}». "
                                    "Выберите Whisper или другую модель для этой записи.")
@@ -854,7 +862,7 @@ def _process_meeting_job(meeting_id: int) -> None:
                 + (" (модель уже загружена)" if reused else ""),
             )
             total_dur = max(1.0, float(duration or 1.0))
-            decode = dict(duration=total_dur, language=language, hotwords=hotwords, vad_enabled=vad_enabled)
+            decode = dict(duration=total_dur, language=language, hotwords=hotwords, vad_enabled=vad_enabled, multilingual=mixed)
 
             try:
                 segments_iter, info = _start_transcription(whisper_model, wav_path, batch_size=batch_size, **decode)
@@ -924,6 +932,13 @@ def _process_meeting_job(meeting_id: int) -> None:
                 # Keep the unmodified recognition result so the cleanup can be undone
                 save_segments_backup(meeting_id, merged_segments)
             merged_segments = cleaned_segments
+
+        if mixed:
+            # Each phrase keeps its own language: shown in the transcript, used by translation
+            for seg in merged_segments:
+                seg["lang"] = asr_onnx.guess_language(seg.get("text") or "")
+            langs = [seg["lang"] for seg in merged_segments]
+            detected_lang = max(set(langs), key=langs.count) if langs else detected_lang
 
         save_meeting_results(
             meeting_id,

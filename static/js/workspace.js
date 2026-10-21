@@ -1217,6 +1217,8 @@ function transcriptSegmentHtml(seg, idx) {
             class="bg-transparent text-xs font-semibold focus:outline-none cursor-pointer">
             ${speakerOptionsHtml(seg.speaker)}
           </select>
+          ${seg.lang && state.activeMeeting && seg.lang !== state.activeMeeting.language
+            ? `<span class="ml-2 mr-auto text-[10px] font-mono px-1 rounded bg-white/10 text-apple-secondary" title="${escapeHtml(t('tipSegLang'))}">${escapeHtml(String(seg.lang).toUpperCase())}</span>` : ''}
           <div class="flex items-center gap-2.5">
             ${mergeBtnHtml}
             <button onclick="openInlineSegmentEditor(${seg.id})"
