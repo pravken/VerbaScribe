@@ -103,6 +103,8 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     renderRecordSaveHint();
     state.liveModelSetting = s.live_whisper_model || 'auto';
     document.getElementById('set-record-hotkey').value = s.record_hotkey ?? 'Ctrl+Alt+R';
+    document.getElementById('set-dictation-hotkey').value = s.dictation_hotkey ?? 'Ctrl+Alt+D';
+    document.getElementById('set-dictation-language').value = s.dictation_language || 'auto';
     fillCallSettings(s);
     loadHotkeyStatus();
     renderLiveModelSelect();
@@ -1366,6 +1368,8 @@ async function saveAllSettings() {
       record_mic_device: document.getElementById('set-record-mic')?.value || '',
       live_whisper_model: document.getElementById('set-live-model')?.value || 'auto',
       record_hotkey: document.getElementById('set-record-hotkey')?.value.trim() || '',
+      dictation_hotkey: document.getElementById('set-dictation-hotkey')?.value.trim() || '',
+      dictation_language: document.getElementById('set-dictation-language')?.value || 'auto',
       ...callSettingsPayload(),
       ...dubSettingsPayload(),
     }

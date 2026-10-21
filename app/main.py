@@ -619,9 +619,9 @@ def api_calls_status() -> Dict[str, Any]:
 @app.get("/api/hotkey")
 def api_hotkey() -> Dict[str, Any]:
     """Whether the recording hotkey is registered (it lives in the desktop window's tray thread)."""
-    from app.hotkey import hotkey_state
+    from app.hotkey import dictation_hotkey_state, hotkey_state
 
-    return dict(hotkey_state)
+    return {**hotkey_state, "dictation": dict(dictation_hotkey_state)}
 
 
 @app.get("/api/disk")

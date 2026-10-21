@@ -509,3 +509,18 @@ class PrivacyTest(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["model"], "gpt-x")
         self.assertIn("Составь обзор", rows[0]["purpose"])
+
+
+class DictationTest(unittest.TestCase):
+    def test_recognize_prefers_onnx_and_hotkey_slots(self):
+        from unittest import mock
+        import numpy as np
+        from app import asr_onnx, dictation, live
+        from app.database import init_db
+
+        init_db()
+        with mock.patch.object(live, "caption_onnx_model", return_value="gigaam-v3"), \
+             mock.patch.object(asr_onnx, "recognize_array", return_value=[(0, 1, "Привет."), (1, 2, "Как дела?")]):
+            self.assertEqual(dictation.recognize(np.zeros(16000, dtype=np.float32)), "Привет. Как дела?")
+        from app.hotkey import parse_hotkey
+        self.assertIsNotNone(parse_hotkey("Ctrl+Alt+D"))

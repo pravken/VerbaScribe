@@ -363,10 +363,17 @@ class TrayController:
     def _apply_hotkey(self) -> None:
         from app.database import get_all_settings
 
-        spec = (get_all_settings().get("record_hotkey") or "").strip()
+        settings = get_all_settings()
+        spec = (settings.get("record_hotkey") or "").strip()
         if spec != getattr(self, "_hotkey_spec", None):
             self._hotkey_spec = spec
             self.tray.set_hotkey(spec, "hotkey_record")
+        dspec = (settings.get("dictation_hotkey") or "").strip()
+        if dspec != getattr(self, "_dictation_spec", None):
+            from app.tray import DICTATION_HOTKEY_ID
+
+            self._dictation_spec = dspec
+            self.tray.set_hotkey(dspec, "hotkey_dictation", slot=DICTATION_HOTKEY_ID)
 
     def _hotkey_record(self) -> None:
         recording = bool(self._status.get("recording"))
@@ -475,6 +482,13 @@ class TrayController:
             return
         if cmd == "hotkey_record":
             self._hotkey_record()
+            return
+        if cmd == "hotkey_dictation":
+            from app import dictation
+
+            # The text is typed where the cursor is; the notice is shown only when it starts
+            if dictation.toggle(notify=self._notify) == "started":
+                self._notify("Диктовка", f"Говорите. Чтобы вставить текст, нажмите {self._dictation_spec} ещё раз")
             return
         if cmd.startswith("record:"):
             self.show_window()

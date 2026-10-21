@@ -138,6 +138,8 @@ def init_db() -> None:
             "recordings_dir": "",  # where recordings made in the app are saved; "" = <data>/recordings
             "live_whisper_model": "auto",
             "record_hotkey": "Ctrl+Alt+R",
+            "dictation_hotkey": "Ctrl+Alt+D",  # dictation into any program (app/dictation.py); empty: off
+            "dictation_language": "auto",
             "quiet_mode": "false",  # no tray notifications (run.py TrayController)
             "call_auto_record": "false",  # record calls by themselves (app/call_watch.py)
             "call_apps": "zoom,teams,telegram",
