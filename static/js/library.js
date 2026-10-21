@@ -1521,6 +1521,29 @@ function handleFileDrop(e) {
 // Sends files to the server; `source` tells a recording made here from an imported file (they go to
 // different folders on disk and in the library). The file dates are sent too: for an imported file
 // the date it was last modified is the closest to when the meeting took place.
+async function submitUrlImport() {
+  const input = document.getElementById('url-import-input');
+  const url = input.value.trim();
+  if (!url || !requireRecognitionModel()) return;
+  const res = await fetch('/api/meetings/url', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      url,
+      model_name: document.getElementById('upload-model').value,
+      language: document.getElementById('upload-language').value,
+      num_speakers: Number(document.getElementById('upload-speakers').value || 0),
+    }),
+  });
+  const data = await readJson(res);
+  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  input.value = '';
+  closeModal('import');
+  await loadMeetingsList();
+  const m = data.created && data.created[0];
+  if (m) selectMeeting(m.id, true);
+  showToast(t('urlImportStarted'));
+}
+
 function requireRecognitionModel() {
   if (document.getElementById('upload-model').value) return true;
   showToast(t('noModelInstalled'), { label: t('settings'), onClick: () => openModal('settings', 'recognition') });

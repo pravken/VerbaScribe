@@ -1190,6 +1190,18 @@
               class="ui-btn ui-btn-primary h-8 px-3.5" data-i18n="addBtnText">Добавить</button>
           </div>
         </div>
+
+        <!-- By link (app/url_import.py) -->
+        <div class="pt-3 border-t apple-border space-y-1.5">
+          <label class="block text-[11px] text-apple-secondary" data-i18n="urlImportLabel">Или ссылка на видео или подкаст (YouTube, VK Видео, RuTube, прямая ссылка на файл):</label>
+          <div class="flex gap-2">
+            <input id="url-import-input" type="url" onkeydown="if(event.key==='Enter') submitUrlImport()"
+              placeholder="https://…"
+              class="flex-1 h-8 bg-apple-sidebar border apple-border rounded-lg px-3 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
+            <button onclick="submitUrlImport()" class="ui-btn ui-btn-primary h-8 px-3.5" data-i18n="urlImportBtn">Скачать</button>
+          </div>
+          <p class="text-[10.5px] text-apple-tertiary" data-i18n="urlImportHint">Скачивается только звук. Используйте для записей, которые вы вправе скачивать.</p>
+        </div>
       </div>
     </div>
   </div>

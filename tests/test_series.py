@@ -431,3 +431,43 @@ class CommitmentExportTest(unittest.TestCase):
         self.assertTrue(todo[0].startswith("TYPE,CONTENT"))
         self.assertIn("презентация (Анна)", todo[1])
         self.assertIn("Задача,Кто", export_text(items, "csv"))
+
+
+class UrlImportTest(unittest.TestCase):
+    def test_download_then_queue(self):
+        import sys
+        import types
+        from unittest import mock
+        from app import url_import
+        from app.database import get_meeting, init_db
+        from app.paths import UPLOADS_DIR
+
+        init_db()
+
+        class FakeYDL:
+            def __init__(self, opts):
+                self.opts = opts
+            def __enter__(self):
+                return self
+            def __exit__(self, *a):
+                return False
+            def extract_info(self, url, download=True):
+                path = UPLOADS_DIR / self.opts["outtmpl"].split("/")[-1].split("\\\\")[-1].replace("%(title).80B.%(ext)s", "Лекция.m4a")
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"x" * 100)
+                for h in self.opts["progress_hooks"]:
+                    h({"status": "downloading", "downloaded_bytes": 50, "total_bytes": 100})
+                return {"title": "Лекция о звуке", "upload_date": "20260115", "requested_downloads": [{"filepath": str(path)}]}
+
+        fake = types.SimpleNamespace(YoutubeDL=FakeYDL)
+        with mock.patch.dict(sys.modules, {"yt_dlp": fake}), \
+             mock.patch("threading.Thread", side_effect=lambda target, args, **kw: types.SimpleNamespace(start=lambda: target(*args))), \
+             mock.patch("app.transcriber.enqueue_meeting_job") as enq:
+            m = url_import.start("https://example.com/v/1", "large-v3-turbo", "auto", 0)
+        got = get_meeting(m["id"])
+        self.assertEqual(got["title"], "Лекция о звуке")
+        self.assertTrue(got["media_path"].endswith("Лекция.m4a"))
+        self.assertTrue(str(got["recorded_at"]).startswith("2026-01-15"))
+        enq.assert_called_once_with(m["id"])
+        with self.assertRaises(ValueError):
+            url_import.start("file:///etc/passwd", "x", "auto", 0)

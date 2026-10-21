@@ -202,6 +202,9 @@ async def lifespan(_app: FastAPI):
         elif m.get("status") == "dubbing":
             # A dub interrupted by a restart is simply dropped; the transcript itself is complete
             update_meeting_progress(int(m["id"]), status="completed", progress=100, stage_text="Дубляж прерван перезапуском")
+        elif m.get("status") == "downloading":
+            update_meeting_progress(int(m["id"]), status="failed", progress=0, stage_text="",
+                                    error_message="Скачивание по ссылке прервано перезапуском — нажмите «Повторить»")
         elif m.get("status") in ("translating", "rendering"):
             # Partial translations are kept and can be completed with "Update translation"
             update_meeting_progress(int(m["id"]), status="completed", progress=100, stage_text="Задача прервана перезапуском")
@@ -700,6 +703,27 @@ async def api_upload_meetings(
     return {"created": created}
 
 
+class UrlImportPayload(BaseModel):
+    url: str
+    language: str = "auto"
+    model_name: str = ""
+    num_speakers: int = 0
+
+
+@app.post("/api/meetings/url")
+def api_import_url(payload: UrlImportPayload) -> Dict[str, Any]:
+    """A video or podcast by its link (app/url_import.py): downloaded, then transcribed."""
+    from app import url_import
+
+    settings = get_all_settings()
+    try:
+        m = url_import.start(payload.url.strip(), payload.model_name or settings.get("whisper_model") or "large-v3-turbo",
+                             payload.language or "auto", int(payload.num_speakers or 0))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"created": [m]}
+
+
 class LocalPathPayload(BaseModel):
     path: str
     language: str = "auto"
@@ -812,6 +836,12 @@ def api_retry_meeting(meeting_id: int) -> Dict[str, Any]:
     if not m:
         raise HTTPException(status_code=404, detail="Встреча не найдена")
     _ensure_not_processing(meeting_id)
+    from app import url_import
+
+    if not m.get("media_path") and url_import.valid_url(m.get("filename") or ""):
+        # A download by link that did not finish: downloaded again
+        url_import.restart(meeting_id, m["filename"])
+        return get_meeting(meeting_id)
     update_meeting_progress(
         meeting_id,
         status="queued",
