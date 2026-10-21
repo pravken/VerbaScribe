@@ -154,6 +154,8 @@ def init_db() -> None:
             "summary_templates": "[]",  # the user's own summary templates, JSON (summary_templates())
             "summary_grounding": "true",  # summaries checked against the transcript (app/grounding.py)
             "auto_commitments": "true",  # promises found after the automatic summary (app/commitments.py)
+            "delete_media_after": "false",  # the sound deleted once a recording is transcribed (privacy)
+            "media_retention_days": "0",  # the sound of older recordings deleted; 0: kept
             "update_auto": "true",  # download updates by themselves, install on exit (app/updater.py)
             "obsidian_summary": "true",
             "obsidian_tasks": "true",
@@ -230,7 +232,8 @@ _MEETING_EXTRA_COLUMNS = {
     "obsidian_hash": "TEXT DEFAULT ''",  # sha256 of the part of the note VerbaScribe wrote last
     "pending_exports_json": "TEXT DEFAULT '[]'",
     "exports_json": "TEXT DEFAULT '[]'",
-    "user_notes": "TEXT DEFAULT ''",  # the user's own notes of the meeting (studio or "My notes" tab)  # files saved by exports (Save as), deleted with the recording on request
+    "user_notes": "TEXT DEFAULT ''",
+    "media_removed": "INTEGER DEFAULT 0",  # 1: the sound was deleted for privacy, the transcript kept  # the user's own notes of the meeting (studio or "My notes" tab)  # files saved by exports (Save as), deleted with the recording on request
     "has_video": "INTEGER DEFAULT NULL",  # NULL: told from the file extension (see is_video)
     "local_only": "INTEGER DEFAULT 0",  # 1: never sent to a cloud model (see is_local_only)
     "media_size": "INTEGER DEFAULT NULL",  # bytes of the media file; NULL: not measured yet
@@ -829,6 +832,50 @@ def list_meetings() -> List[Dict[str, Any]]:
             conn.commit()
             conn.close()
     return result
+
+
+def remove_media(meeting_id: int) -> bool:
+    """Deletes the sound of a recording and keeps its transcript and analysis (privacy settings, or
+    by hand). Only files the app made or copied in; a file used in place is the user's and stays."""
+    m = get_meeting(meeting_id)
+    if not m or m.get("media_removed"):
+        return False
+    paths = [m.get("audio_path")]
+    if m.get("owns_media"):
+        paths.append(m.get("media_path"))
+    for p_str in paths:
+        if p_str:
+            try:
+                Path(p_str).unlink(missing_ok=True)
+            except OSError as e:
+                print(f"[privacy] {p_str}: {e}", flush=True)
+    with _db_lock:
+        conn = get_connection()
+        if m.get("owns_media"):
+            conn.execute("UPDATE meetings SET media_path = '', audio_path = '', media_removed = 1, media_size = 0 WHERE id = ?", (meeting_id,))
+        else:
+            conn.execute("UPDATE meetings SET audio_path = '' WHERE id = ?", (meeting_id,))
+        conn.commit()
+        conn.close()
+    (DATA_DIR / "thumbs" / f"{meeting_id}.jpg").unlink(missing_ok=True)
+    events.publish({"type": "list"})
+    return bool(m.get("owns_media"))
+
+
+def expired_media_ids(days: int) -> List[int]:
+    """Completed recordings older than `days` that still keep their sound (retention setting)."""
+    if days <= 0:
+        return []
+    from datetime import datetime, timedelta
+
+    cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    with _db_lock:
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT id FROM meetings WHERE status = 'completed' AND owns_media = 1 AND COALESCE(media_removed, 0) = 0 "
+            "AND media_path != '' AND COALESCE(NULLIF(recorded_at, ''), created_at) < ?", (cutoff,)).fetchall()
+        conn.close()
+    return [int(r["id"]) for r in rows]
 
 
 def add_export_path(meeting_id: int, path: str) -> None:

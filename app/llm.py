@@ -111,7 +111,57 @@ class Target:
         return self.model if not self.is_cloud else f"{PROVIDERS[self.provider]['name']} · {self.model}"
 
     def chat(self, system: str, user: str) -> str:
+        if self.is_cloud:
+            log_cloud_request(self.provider, self.model, system, user)
         return self.chat_fn(system, user)
+
+
+def log_cloud_request(provider: str, model: str, system: str, user: str) -> None:
+    """What left the computer: kept in the local database for the privacy log (Settings → Analysis)."""
+    from datetime import datetime
+
+    from app.database import _db_lock, get_connection
+
+    try:
+        with _db_lock:
+            conn = get_connection()
+            conn.execute("""CREATE TABLE IF NOT EXISTS cloud_log (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL,
+                provider TEXT NOT NULL, model TEXT NOT NULL, chars INTEGER NOT NULL, tokens INTEGER NOT NULL, purpose TEXT NOT NULL)""")
+            purpose = " ".join((system or "").split())[:160]
+            conn.execute("INSERT INTO cloud_log (at, provider, model, chars, tokens, purpose) VALUES (?,?,?,?,?,?)",
+                         (datetime.now().isoformat(timespec="seconds"), provider, model, len(system) + len(user),
+                          estimate_tokens(system + user), purpose))
+            conn.execute("DELETE FROM cloud_log WHERE id NOT IN (SELECT id FROM cloud_log ORDER BY id DESC LIMIT 1000)")
+            conn.commit()
+            conn.close()
+    except Exception as e:  # the log must never stop the request
+        print(f"[llm] cloud log: {e}", flush=True)
+
+
+def cloud_log(limit: int = 200) -> list:
+    from app.database import _db_lock, get_connection
+
+    with _db_lock:
+        conn = get_connection()
+        try:
+            rows = [dict(r) for r in conn.execute("SELECT * FROM cloud_log ORDER BY id DESC LIMIT ?", (limit,)).fetchall()]
+        except Exception:
+            rows = []
+        conn.close()
+    return rows
+
+
+def clear_cloud_log() -> None:
+    from app.database import _db_lock, get_connection
+
+    with _db_lock:
+        conn = get_connection()
+        try:
+            conn.execute("DELETE FROM cloud_log")
+            conn.commit()
+        except Exception:
+            pass
+        conn.close()
 
 
 def estimate_tokens(text: str) -> int:

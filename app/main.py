@@ -177,6 +177,7 @@ async def lifespan(_app: FastAPI):
         recover_orphan_recordings()
     except Exception:
         traceback.print_exc()
+    threading.Thread(target=_retention_loop, daemon=True, name="retention").start()
     try:
         from app.model_manager import remove_retired_models
 
@@ -1185,6 +1186,23 @@ def _salvage_parts(title: str, parts: List[Tuple[Path, Optional[bool]]], notes: 
     return {"created": created, "salvaged": True}
 
 
+def _retention_loop() -> None:
+    """Privacy setting "keep the sound N days": checked at start and every six hours."""
+    import time as _time
+
+    from app.database import expired_media_ids, remove_media
+
+    while True:
+        try:
+            days = int(get_all_settings().get("media_retention_days") or 0)
+            for mid in expired_media_ids(days):
+                if not is_job_active(mid):
+                    remove_media(mid)
+        except Exception:
+            traceback.print_exc()
+        _time.sleep(6 * 3600)
+
+
 def recover_orphan_recordings() -> int:
     """At start: parts of recordings that were never finished (the app closed or crashed while
     recording) become recordings, instead of staying hidden in the folders."""
@@ -1752,6 +1770,33 @@ def api_restore_segments(meeting_id: int) -> Dict[str, Any]:
 
 
 # --- AI Summary & Custom Q&A via Ollama ---
+@app.post("/api/meetings/{meeting_id}/remove-media")
+def api_remove_media(meeting_id: int) -> Dict[str, Any]:
+    """Deletes the sound of a recording, keeps the transcript and the analysis."""
+    from app.database import remove_media
+
+    _ensure_not_processing(meeting_id)
+    if not get_meeting(meeting_id):
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    remove_media(meeting_id)
+    return get_meeting(meeting_id)
+
+
+@app.get("/api/privacy/cloud-log")
+def api_cloud_log() -> List[Dict[str, Any]]:
+    from app.llm import cloud_log
+
+    return cloud_log()
+
+
+@app.delete("/api/privacy/cloud-log")
+def api_clear_cloud_log() -> Dict[str, Any]:
+    from app.llm import clear_cloud_log
+
+    clear_cloud_log()
+    return {"ok": True}
+
+
 class CommitmentExtractPayload(BaseModel):
     model: Optional[str] = None
 

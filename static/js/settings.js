@@ -76,6 +76,8 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     document.getElementById('set-voice-profiles').checked = s.voice_profiles !== 'false';
     syncVoiceProfilesToggle();
     document.getElementById('set-update-check').checked = s.update_check !== 'false';
+    document.getElementById('set-delete-media-after').checked = s.delete_media_after === 'true';
+    document.getElementById('set-media-retention').value = s.media_retention_days || '0';
     document.getElementById('set-update-auto').checked = s.update_auto !== 'false';
     document.getElementById('set-vad').checked = s.vad_filter !== 'false';
     if (document.getElementById('set-audio-enhance')) {
@@ -1252,6 +1254,37 @@ async function testLlmConnection() {
 // Web links never open inside the app window: they go to the default browser
 const SUPPORT_URL = 'https://ko-fi.com/pravken';
 
+// What left the computer: every request to a cloud model, with its size and purpose
+async function openCloudLog() {
+  const rows = await fetch('/api/privacy/cloud-log').then(r => r.json()).catch(() => []);
+  document.getElementById('cloud-log')?.remove();
+  const wrap = document.createElement('div');
+  wrap.id = 'cloud-log';
+  wrap.className = 'fixed inset-0 modal-backdrop z-[70] flex items-center justify-center p-4';
+  wrap.setAttribute('role', 'dialog');
+  wrap.setAttribute('aria-modal', 'true');
+  wrap.innerHTML = `<div class="w-full max-w-2xl max-h-[85vh] flex flex-col bg-apple-card border apple-border rounded-2xl shadow-2xl modal-card">
+      <div class="px-5 pt-5 pb-3 border-b apple-border flex items-center justify-between gap-3">
+        <div><div class="text-sm font-semibold text-white">${escapeHtml(t('cloudLogBtn'))}</div>
+          <p class="text-[11px] text-apple-secondary mt-1">${escapeHtml(t('cloudLogDesc'))}</p></div>
+        <div class="flex gap-2 shrink-0">
+          ${rows.length ? `<button data-a="clear" class="ui-btn ui-btn-subtle">${escapeHtml(t('cloudLogClear'))}</button>` : ''}
+          <button data-a="close" class="ui-btn ui-btn-subtle">${escapeHtml(t('close'))}</button>
+        </div>
+      </div>
+      <div class="flex-1 overflow-y-auto px-5 py-2">${rows.length ? rows.map(r => `<div class="py-2 border-b border-white/5 text-[11.5px]">
+          <div class="flex justify-between gap-3"><span class="text-white">${escapeHtml(r.provider)} · ${escapeHtml(r.model)}</span>
+            <span class="font-mono text-apple-tertiary shrink-0">${escapeHtml(r.at.replace('T', ' '))} · ${r.tokens} tok</span></div>
+          <div class="text-apple-secondary truncate" title="${escapeHtml(r.purpose)}">${escapeHtml(r.purpose)}</div></div>`).join('')
+        : `<div class="py-10 text-center text-xs text-apple-tertiary">${escapeHtml(t('cloudLogEmpty'))}</div>`}</div>
+    </div>`;
+  wrap.addEventListener('click', async e => {
+    if (e.target === wrap || e.target.closest('[data-a="close"]')) wrap.remove();
+    else if (e.target.closest('[data-a="clear"]')) { await fetch('/api/privacy/cloud-log', { method: 'DELETE' }); wrap.remove(); openCloudLog(); }
+  });
+  document.body.appendChild(wrap);
+}
+
 // mailto: links go to the mail app (the window itself never navigates away)
 function openExternalMail(url) {
   fetch('/api/open-url', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) })
@@ -1312,6 +1345,8 @@ async function saveAllSettings() {
       diarization_enabled: String(document.getElementById('set-diarization').checked),
       voice_profiles: String(document.getElementById('set-voice-profiles').checked),
       update_check: String(document.getElementById('set-update-check').checked),
+      delete_media_after: String(document.getElementById('set-delete-media-after').checked),
+      media_retention_days: document.getElementById('set-media-retention').value || '0',
       update_auto: String(document.getElementById('set-update-auto').checked),
       quiet_mode: String(document.getElementById('set-quiet-mode').checked),
       vad_filter: String(document.getElementById('set-vad').checked),

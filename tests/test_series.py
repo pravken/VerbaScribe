@@ -471,3 +471,41 @@ class UrlImportTest(unittest.TestCase):
         enq.assert_called_once_with(m["id"])
         with self.assertRaises(ValueError):
             url_import.start("file:///etc/passwd", "x", "auto", 0)
+
+
+class PrivacyTest(unittest.TestCase):
+    def test_remove_media_keeps_text_and_never_touches_user_files(self):
+        import tempfile
+        from pathlib import Path
+        from app.database import create_meeting, expired_media_ids, get_meeting, init_db, remove_media, save_meeting_results, update_meeting_progress
+
+        init_db()
+        with tempfile.TemporaryDirectory() as tmp:
+            own, user = Path(tmp) / "own.m4a", Path(tmp) / "user.m4a"
+            own.write_bytes(b"x"); user.write_bytes(b"x")
+            a = create_meeting("Своя", "own.m4a", str(own), owns_media=True, recorded_at="2020-01-01 10:00:00")
+            b = create_meeting("Чужая", "user.m4a", str(user), source="local", recorded_at="2020-01-01 10:00:00")
+            for m in (a, b):
+                save_meeting_results(m["id"], segments=[{"id": 0, "start": 0, "end": 1, "text": "текст"}])
+                update_meeting_progress(m["id"], status="completed")
+            self.assertIn(a["id"], expired_media_ids(30))
+            self.assertNotIn(b["id"], expired_media_ids(30))
+            self.assertTrue(remove_media(a["id"]))
+            self.assertFalse(own.exists())
+            got = get_meeting(a["id"])
+            self.assertTrue(got["media_removed"] and got["segments"])
+            remove_media(b["id"])
+            self.assertTrue(user.exists())
+
+    def test_cloud_log(self):
+        from app.database import init_db
+        from app.llm import Target, clear_cloud_log, cloud_log
+
+        init_db()
+        clear_cloud_log()
+        Target("openai", "gpt-x", 1000, lambda s, u: "ok").chat("Составь обзор", "текст")
+        Target("ollama", "qwen3:4b", 1000, lambda s, u: "ok").chat("локально", "текст")
+        rows = cloud_log()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["model"], "gpt-x")
+        self.assertIn("Составь обзор", rows[0]["purpose"])

@@ -994,6 +994,11 @@ def _process_meeting_job(meeting_id: int) -> None:
             progress=100,
             stage_text=f"Готово! Участников: {len(speakers_meta)}, реплик: {len(merged_segments)}" + "".join(f"; {n}" for n in notes),
         )
+        if settings.get("delete_media_after", "false").lower() == "true":
+            # Privacy setting: the transcript stays, the sound goes
+            from app.database import remove_media
+
+            remove_media(meeting_id)
 
     except JobCancelled:
         whisper_model = None

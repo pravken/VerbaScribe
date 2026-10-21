@@ -19,7 +19,7 @@ async function selectMeeting(id, reloadPlayer = true) {
 
   document.getElementById('meeting-title-input').value = m.title;
   document.getElementById('meeting-meta-badge').textContent =
-    `${formatTime(m.duration)} · ${(m.language || 'ru').toUpperCase()} · ${formatModelName(m.model_name)}`;
+    `${formatTime(m.duration)} · ${(m.language || 'ru').toUpperCase()} · ${formatModelName(m.model_name)}${m.media_removed ? ' · ' + t('mediaRemovedBadge') : ''}`;
   document.getElementById('meeting-meta-badge').title = document.getElementById('meeting-meta-badge').textContent;
 
   updateProcessingBanner(m);
@@ -31,7 +31,8 @@ async function selectMeeting(id, reloadPlayer = true) {
   if (reloadPlayer || prevId !== m.id) {
     const player = document.getElementById('media-player');
     state.audioTrack = 'orig';
-    player.src = `/api/meetings/${m.id}/media`;
+    // The sound may have been deleted for privacy: the transcript and the analysis stay
+    if (m.media_removed) player.removeAttribute('src'); else player.src = `/api/meetings/${m.id}/media`;
     player.volume = state.muted ? 0 : (state.volume / 100);
     document.getElementById('player-total-time').textContent = formatTime(m.duration);
     document.getElementById('player-current-time').textContent = '00:00';
