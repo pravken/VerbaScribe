@@ -223,6 +223,7 @@ _MEETING_EXTRA_COLUMNS = {
     "recorded_at": "TEXT DEFAULT ''",  # when the meeting took place (file date for imports)
     "title_is_default": "INTEGER DEFAULT 0",  # 1: the title came from a file name and may be replaced
     "obsidian_path": "TEXT DEFAULT ''",
+    "obsidian_hash": "TEXT DEFAULT ''",  # sha256 of the part of the note VerbaScribe wrote last
     "pending_exports_json": "TEXT DEFAULT '[]'",
     "exports_json": "TEXT DEFAULT '[]'",  # files saved by exports (Save as), deleted with the recording on request
     "has_video": "INTEGER DEFAULT NULL",  # NULL: told from the file extension (see is_video)
@@ -541,7 +542,7 @@ def save_segments_backup(meeting_id: int, segments: List[Dict[str, Any]]) -> Non
         conn = get_connection()
         conn.execute(
             "UPDATE meetings SET segments_backup_json = ? WHERE id = ?",
-            (json.dumps(segments, ensure_ascii=False), meeting_id),
+            (json.dumps(segments, ensure_ascii=False) if segments else "", meeting_id),
         )
         conn.commit()
         conn.close()
@@ -594,7 +595,7 @@ def restore_segments_backup(meeting_id: int) -> bool:
 
 
 def update_meeting_fields(meeting_id: int, **fields: Any) -> None:
-    allowed = {"title", "model_name", "language", "num_speakers_hint", "folder_id", "title_is_default", "obsidian_path",
+    allowed = {"title", "model_name", "language", "num_speakers_hint", "folder_id", "title_is_default", "obsidian_path", "obsidian_hash",
                "local_only", "series_id"}
     items = [(k, v) for k, v in fields.items() if k in allowed]
     if not items:

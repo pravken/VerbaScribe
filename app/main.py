@@ -13,7 +13,7 @@ import traceback
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote
 
 import httpx
@@ -164,6 +164,10 @@ async def lifespan(_app: FastAPI):
     init_db()
     from app import idle_unload
 
+    try:
+        recover_orphan_recordings()
+    except Exception:
+        traceback.print_exc()
     try:
         from app.model_manager import remove_retired_models
 
@@ -329,8 +333,14 @@ def api_models_setup(payload: ModelsSetupPayload) -> Dict[str, Any]:
 @app.delete("/api/models/{model_id}")
 def api_delete_whisper_model(model_id: str) -> Dict[str, Any]:
     from app.model_manager import delete_whisper_model, get_models_status
+    from app.transcriber import running_job_kind
 
-    delete_whisper_model(model_id)
+    if running_job_kind() == "transcribe":
+        raise HTTPException(status_code=409, detail="Идёт распознавание — удалите модель после него")
+    try:
+        delete_whisper_model(model_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return get_models_status()
 
 
@@ -1077,8 +1087,76 @@ class RecordFinishPayload(BaseModel):
 
 
 def _run_ffmpeg(cmd: List[str]) -> subprocess.CompletedProcess:
-    return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except OSError as e:  # FFmpeg missing: reported like a failed run, so the parts are kept
+        return subprocess.CompletedProcess(cmd, 1, "", str(e))
+
+
+def _part_target(part: Path, title: str) -> Path:
+    """Where a recording part is kept as a file of its own (".page_x.webm.part" -> ".webm")."""
+    name = part.name[:-5] if part.name.endswith(".part") else part.name
+    ext = Path(name).suffix or ".bin"
+    safe = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", title)[:100]
+    return _recording_folder() / f"{uuid.uuid4().hex[:8]}_{safe}{ext}"
+
+
+def _queue_file(title: str, dest: Path, has_video: Optional[bool]) -> Dict[str, Any]:
+    settings = get_all_settings()
+    m = create_meeting(
+        title=title[:300], filename=dest.name, media_path=str(dest),
+        language=settings.get("language", "auto"),
+        model_name=settings.get("whisper_model", "large-v3-turbo"),
+        num_speakers_hint=int(settings.get("num_speakers", 0)),
+        source="recording", owns_media=True, title_is_default=True, has_video=has_video,
+    )
+    from app.naming import rename_recording_file
+
+    rename_recording_file(m["id"])
+    enqueue_meeting_job(m["id"])
+    return get_meeting(m["id"]) or m
+
+
+def _salvage_parts(title: str, parts: List[Tuple[Path, Optional[bool]]]) -> Dict[str, Any]:
+    """The parts of a recording could not be joined: each one is kept as a recording of its own,
+    so nothing that was recorded is lost."""
+    created = []
+    for part, has_video in parts:
+        if not part.is_file() or part.stat().st_size == 0:
+            continue
+        dest = _part_target(part, title)
+        shutil.move(str(part), str(dest))
+        created.append(_queue_file(title, dest, has_video))
+    if not created:
+        raise HTTPException(status_code=500, detail="Не удалось свести запись, и её части пусты")
+    return {"created": created, "salvaged": True}
+
+
+def recover_orphan_recordings() -> int:
+    """At start: parts of recordings that were never finished (the app closed or crashed while
+    recording) become recordings, instead of staying hidden in the folders."""
+    found: List[Tuple[Path, Optional[bool]]] = []
+    try:
+        rec = _recordings_dir()
+        found += [(p, None) for p in rec.glob(".page_*.webm.part")]
+        found += [(p, True) for p in rec.glob(".screen_*.mkv.part")]
+        found += [(p, False) for p in UPLOADS_DIR.glob("system_*.wav") if p.stat().st_size > 4096]
+    except OSError:
+        return 0
+    n = 0
+    for part, has_video in found:
+        if part.stat().st_size < 4096:
+            part.unlink(missing_ok=True)
+            continue
+        try:
+            _salvage_parts("Восстановленная запись", [(part, has_video)])
+            n += 1
+        except Exception:
+            traceback.print_exc()
+    if n:
+        print(f"[record] recovered {n} unfinished recording part(s)", flush=True)
+    return n
 
 
 def record_mix_command(ffmpeg: str, page: Optional[Path], system: Optional[Path], has_video: bool,
@@ -1136,7 +1214,10 @@ async def api_record_finish(payload: RecordFinishPayload) -> Dict[str, Any]:
         dest = _recording_folder() / f"{uuid.uuid4().hex[:8]}_{safe_stem}.mp4"
         res = await run_in_threadpool(_run_ffmpeg, screen_mix_command(tool_cmd("ffmpeg"), screen, audio, dest))
         if res.returncode != 0 or not dest.is_file():
-            raise HTTPException(status_code=500, detail="Не удалось свести запись: " + (res.stderr or "")[-300:])
+            print("[record] mix failed, parts kept:", (res.stderr or "")[-300:], flush=True)
+            dest.unlink(missing_ok=True)
+            return _salvage_parts(payload.title.strip() or "Запись",
+                                  [(screen, True), *[(p, p is page and payload.has_video) for p in (page, system) if p]])
         for p in (screen, page, system):
             if p:
                 p.unlink(missing_ok=True)
@@ -1155,7 +1236,10 @@ async def api_record_finish(payload: RecordFinishPayload) -> Dict[str, Any]:
                 dest.unlink(missing_ok=True)
                 shutil.move(str(page), str(dest))  # the original is still a playable recording
             else:
-                raise HTTPException(status_code=500, detail="Не удалось свести запись: " + (res.stderr or "")[-300:])
+                print("[record] mix failed, parts kept:", (res.stderr or "")[-300:], flush=True)
+                dest.unlink(missing_ok=True)
+                return _salvage_parts(payload.title.strip() or "Запись",
+                                      [(p, has_video if p is page else False) for p in (page, system) if p])
         if page:
             page.unlink(missing_ok=True)
     if system:

@@ -300,3 +300,46 @@ class DeleteWithFilesTest(unittest.TestCase):
             delete_meeting(m["id"], with_exports=True)
             self.assertFalse(files[0].exists() or files[1].exists())
             self.assertTrue(files[2].exists() and files[3].exists())  # not asked for
+
+
+class RecordingSalvageTest(unittest.TestCase):
+    def test_unfinished_parts_become_recordings(self):
+        from unittest import mock
+        from app import main
+        from app.database import init_db, list_meetings
+
+        init_db()
+        rec = main._recordings_dir()
+        rec.mkdir(parents=True, exist_ok=True)
+        part = rec / ".page_abcdef123456.webm.part"
+        part.write_bytes(b"x" * 10000)
+        empty = rec / ".page_000000000000.webm.part"
+        empty.write_bytes(b"")
+        before = len(list_meetings())
+        with mock.patch.object(main, "enqueue_meeting_job"):
+            self.assertEqual(main.recover_orphan_recordings(), 1)
+        self.assertFalse(part.exists() or empty.exists())
+        after = list_meetings()
+        self.assertEqual(len(after), before + 1)
+        self.assertTrue(after[0]["filename"].endswith(".webm"))
+
+
+class WhisperDeleteTest(unittest.TestCase):
+    def test_exact_model_only(self):
+        from unittest import mock
+        import tempfile
+        from pathlib import Path
+        from app import model_manager as mm
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(mm, "MODELS_DIR", Path(tmp)):
+            pro = Path(tmp) / "whisper" / "models--Systran--faster-whisper-large-v3" / "snapshots" / "a"
+            turbo = Path(tmp) / "whisper" / "models--mobiuslabsgmbh--faster-whisper-large-v3-turbo" / "snapshots" / "a"
+            for d in (pro, turbo):
+                d.mkdir(parents=True)
+                (d / "model.bin").write_bytes(b"x")
+            self.assertTrue(mm.is_whisper_model_installed("large-v3"))
+            mm.delete_whisper_model("large-v3")
+            self.assertFalse(mm.is_whisper_model_installed("large-v3"))
+            self.assertTrue(mm.is_whisper_model_installed("large-v3-turbo"))
+            with self.assertRaises(ValueError):
+                mm.delete_whisper_model("..")

@@ -96,24 +96,31 @@ def _log(msg: str) -> None:
     _setup_state["status"] = msg
 
 
+# Every Whisper model id the app knows, with its repository (removed ones too, to delete them)
+_WHISPER_REPOS: Dict[str, str] = {**{m["id"]: m["repo_id"] for m in WHISPER_CATALOG},
+                                  "medium": "Systran/faster-whisper-medium", "small": "Systran/faster-whisper-small"}
+
+
 def _whisper_model_dir(model_id: str) -> Path:
+    if model_id not in _WHISPER_REPOS:
+        raise ValueError(f"Неизвестная модель Whisper: {model_id!r}")
     return MODELS_DIR / "whisper" / model_id
 
 
-def is_whisper_model_installed(model_id: str) -> bool:
-    # Check our clean direct directory first
-    direct_dir = _whisper_model_dir(model_id)
-    if (direct_dir / "model.bin").exists():
-        return True
+def _hf_cache_dir(model_id: str) -> Optional[Path]:
+    """The Hugging Face cache folder of exactly this model ("models--Systran--faster-whisper-large-v3"
+    must not match ...-large-v3-turbo)."""
+    repo = _WHISPER_REPOS.get(model_id)
+    return MODELS_DIR / "whisper" / ("models--" + repo.replace("/", "--")) if repo else None
 
-    # Also check standard HuggingFace hub cache inside models/whisper
-    hf_cache = MODELS_DIR / "whisper"
-    if hf_cache.exists():
-        slug = model_id.replace("/", "--")
-        for p in hf_cache.glob(f"*{slug}*/snapshots/*/model.bin"):
-            if p.exists():
-                return True
-    return False
+
+def is_whisper_model_installed(model_id: str) -> bool:
+    if model_id not in _WHISPER_REPOS:
+        return False
+    if (_whisper_model_dir(model_id) / "model.bin").exists():
+        return True
+    cache = _hf_cache_dir(model_id)  # the Hugging Face cache layout
+    return bool(cache and any(cache.glob("snapshots/*/model.bin")))
 
 
 def get_whisper_model_path(model_id: str) -> str:
@@ -121,9 +128,8 @@ def get_whisper_model_path(model_id: str) -> str:
     Returns local folder path if model was downloaded via our manager,
     otherwise returns model_id so faster-whisper can resolve it.
     """
-    direct_dir = _whisper_model_dir(model_id)
-    if (direct_dir / "model.bin").exists():
-        return str(direct_dir)
+    if model_id in _WHISPER_REPOS and (_whisper_model_dir(model_id) / "model.bin").exists():
+        return str(_whisper_model_dir(model_id))
     return model_id
 
 
@@ -313,17 +319,12 @@ def start_models_setup(
 
 
 def delete_whisper_model(model_id: str) -> bool:
-    direct_dir = _whisper_model_dir(model_id)
+    """Deletes exactly this model (only known ids: never a path from outside)."""
+    if model_id not in _WHISPER_REPOS:
+        raise ValueError(f"Неизвестная модель Whisper: {model_id!r}")
     deleted = False
-    if direct_dir.exists():
-        shutil.rmtree(direct_dir, ignore_errors=True)
-        deleted = True
-
-    hf_cache = MODELS_DIR / "whisper"
-    if hf_cache.exists():
-        slug = model_id.replace("/", "--")
-        for p in hf_cache.glob(f"*{slug}*"):
-            if p.is_dir():
-                shutil.rmtree(p, ignore_errors=True)
-                deleted = True
+    for d in (_whisper_model_dir(model_id), _hf_cache_dir(model_id)):
+        if d and d.is_dir():
+            shutil.rmtree(d, ignore_errors=True)
+            deleted = True
     return deleted

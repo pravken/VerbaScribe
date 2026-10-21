@@ -170,6 +170,22 @@ class ObsidianTest(unittest.TestCase):
         self.assertNotEqual(written, foreign)
         self.assertEqual(foreign.read_text(encoding="utf-8"), "моя заметка")
 
+    def test_user_notes_and_edits_survive_updates(self):
+        m = _done_meeting(title="Планёрка", recorded_at="2024-05-13 10:30:00")
+        path = obsidian.export_meeting(m["id"])
+        text = path.read_text(encoding="utf-8")
+        self.assertIn(obsidian.NOTES_MARKER, text)
+        # The user writes in their section: kept by every update
+        path.write_text(text + "- [x] позвонить Анне\n", encoding="utf-8")
+        database.update_meeting_fields(m["id"], title="Планёрка команды")
+        path = obsidian.export_meeting(m["id"], explicit=False)
+        self.assertIn("- [x] позвонить Анне", path.read_text(encoding="utf-8"))
+        # An edit above the section: an automatic update leaves the note alone
+        edited = path.read_text(encoding="utf-8").replace("## Резюме", "## Резюме (моё)")
+        path.write_text(edited, encoding="utf-8")
+        obsidian.export_meeting(m["id"], explicit=False)
+        self.assertEqual(path.read_text(encoding="utf-8"), edited)
+
     def test_tasks_become_checklist(self):
         self.assertEqual(obsidian._tasks_as_checklist("- сделать\n- [x] готово"), "- [ ] сделать\n- [x] готово")
 

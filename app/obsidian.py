@@ -185,7 +185,7 @@ def _prepare(meeting_id: int, generate: bool, settings: Dict[str, str]) -> Dict[
     return m
 
 
-def export_meeting(meeting_id: int, generate: bool = False, in_job: bool = False) -> Path:
+def export_meeting(meeting_id: int, generate: bool = False, in_job: bool = False, explicit: bool = True) -> Path:
     """Writes (or updates) the note of a recording; returns its path. `in_job`: called by the
     transcription job itself, when the transcript is saved but the status is not "completed" yet."""
     from app.database import get_meeting, update_meeting_fields
@@ -209,9 +209,40 @@ def export_meeting(meeting_id: int, generate: bool = False, in_job: bool = False
         elif target.exists() and (not old.name or old.resolve() != target.resolve()) and not _is_ours(target, meeting_id):
             # Another note already has this name: never overwrite it
             target = _unique(target)
-        target.write_text(build_note(m, settings), encoding="utf-8")
-        update_meeting_fields(meeting_id, obsidian_path=str(target))
+        existing = target.read_text(encoding="utf-8", errors="replace") if target.is_file() else ""
+        ours, notes = split_user_notes(existing)
+        if in_job is False and not explicit and existing and m.get("obsidian_hash") and _hash(ours) != m["obsidian_hash"]:
+            # Changed in Obsidian above the user's section: an automatic update must not undo that
+            print(f"[obsidian] {target.name} was edited in Obsidian: not updated automatically", flush=True)
+            return target
+        body = build_note(m, settings).rstrip() + "\n"
+        target.write_text(body + "\n" + (notes or _notes_section(m)), encoding="utf-8")
+        update_meeting_fields(meeting_id, obsidian_path=str(target), obsidian_hash=_hash(body))
         return target
+
+
+# The end of every note belongs to the user: VerbaScribe rewrites what is above this heading and
+# keeps everything from it on (tasks ticked, own notes)
+NOTES_MARKER = "<!-- verbascribe:notes -->"
+
+
+def _notes_section(m: Dict[str, Any]) -> str:
+    head = "## My notes" if (m.get("language") or "") == "en" else "## Мои заметки"
+    return f"{NOTES_MARKER}\n{head}\n\n"
+
+
+def split_user_notes(text: str) -> tuple:
+    """(the part VerbaScribe wrote, the user's section from the marker on, or "")."""
+    i = text.find(NOTES_MARKER)
+    if i < 0:
+        return text.rstrip() + "\n" if text else "", ""
+    return text[:i].rstrip() + "\n", text[i:]
+
+
+def _hash(text: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(text.strip().encode("utf-8")).hexdigest()
 
 
 def _is_ours(path: Path, meeting_id: int) -> bool:
@@ -245,7 +276,7 @@ def refresh_if_exported(meeting_id: int) -> None:
 
     def _run() -> None:
         try:
-            export_meeting(meeting_id, generate=False)
+            export_meeting(meeting_id, generate=False, explicit=False)
         except Exception:
             traceback.print_exc()
 

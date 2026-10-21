@@ -609,9 +609,13 @@ class _PartialTranscript:
     def __init__(self, meeting_id: int):
         self.meeting_id = meeting_id
         self.last = time.time()
+        # A recording transcribed again keeps its transcript (edits, speaker names) until the new
+        # one is complete: a cancel or a failure must not leave only a fragment of it
+        m = get_meeting(meeting_id) or {}
+        self.enabled = not (m.get("segments") or [])
 
     def push(self, raw_segments: List[Dict[str, Any]], force: bool = False) -> None:
-        if not raw_segments or (not force and time.time() - self.last < PARTIAL_EVERY_SEC):
+        if not self.enabled or not raw_segments or (not force and time.time() - self.last < PARTIAL_EVERY_SEC):
             return
         self.last = time.time()
         from app import events
@@ -901,6 +905,7 @@ def _process_meeting_job(meeting_id: int) -> None:
             traceback.print_exc()
 
         _check_cancel(meeting_id)
+        save_segments_backup(meeting_id, [])  # a backup of the previous run does not belong to this one
         if settings.get("clean_fillers", "true").lower() == "true":
             cleaned_segments, removed = clean_filler_words_in_segments(merged_segments)
             if removed:
