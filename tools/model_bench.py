@@ -60,6 +60,19 @@ def _pick(models, kind):
 
 
 # ---------------------------------------------------------------- FLEURS
+def _pcm16(name, data):
+    """16-bit PCM of a 16 kHz mono wav; FLEURS stores 32-bit float (format 3), which wave cannot read."""
+    import io
+
+    import numpy as np
+    import soundfile as sf
+
+    audio, rate = sf.read(io.BytesIO(data), dtype="float32", always_2d=True)
+    if rate != 16000 or audio.shape[1] != 1:
+        raise RuntimeError(f"{name}: {rate} Hz, {audio.shape[1]} channels")
+    return (np.clip(audio[:, 0], -1, 1) * 32767).astype("<i2").tobytes()
+
+
 def fleurs_clip(lang, n):
     """One wav of the first n phrases of the FLEURS test set (concatenated) and its reference text."""
     from huggingface_hub import hf_hub_download
@@ -86,10 +99,7 @@ def fleurs_clip(lang, n):
         for member in t:
             name = Path(member.name).name
             if name in wanted:
-                with wave.open(t.extractfile(member), "rb") as w:
-                    if w.getframerate() != 16000 or w.getnchannels() != 1:
-                        raise RuntimeError(f"{name}: {w.getframerate()} Hz, {w.getnchannels()} channels")
-                    frames[name] = w.readframes(w.getnframes())
+                frames[name] = _pcm16(name, t.extractfile(member).read())
     with wave.open(str(clip), "wb") as w:
         w.setnchannels(1)
         w.setsampwidth(2)
