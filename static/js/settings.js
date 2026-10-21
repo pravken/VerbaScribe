@@ -1122,6 +1122,8 @@ async function testLlmConnection() {
 }
 
 // Web links never open inside the app window: they go to the default browser
+const SUPPORT_URL = 'https://ko-fi.com/pravken';
+
 async function openExternal(url) {
   if (!url) return;
   try {

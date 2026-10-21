@@ -2,6 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D6.svg)](#requirements)
+[![Support on Ko-fi](https://img.shields.io/badge/Ko--fi-Support-FF5E5B.svg?logo=ko-fi&logoColor=white)](https://ko-fi.com/pravken)
 
 [English](#english) | [Русский](#русский)
 
@@ -162,6 +163,10 @@ VerbaScribe's own code is released under the [MIT License](LICENSE). Models and 
 
 Not every Qwen 2.5 size is Apache 2.0 (the 3B and 72B models use a different license). If you download other models through Ollama, check their terms.
 
+### Support
+
+VerbaScribe is free. If it saves you time, you can support its development on [Ko-fi](https://ko-fi.com/pravken).
+
 ### Development
 
 ```bash
@@ -313,6 +318,10 @@ start.bat
 ### Лицензии
 
 Код VerbaScribe распространяется по [лицензии MIT](LICENSE). У моделей и библиотек свои лицензии; перед коммерческим использованием проверьте их самостоятельно (таблица выше, в английском разделе). Не все размеры Qwen 2.5 выпущены под Apache 2.0: у моделей 3B и 72B другая лицензия. Если скачиваете через Ollama другие модели, проверьте и их условия.
+
+### Поддержать проект
+
+VerbaScribe бесплатна. Если она экономит вам время, можно поддержать разработку на [Ko-fi](https://ko-fi.com/pravken).
 
 ### Разработка
 
