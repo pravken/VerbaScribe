@@ -330,15 +330,15 @@ def _asr_one(mid: str, clip: Path, audio: Any, dur: float, lang: Optional[str]) 
     from app import asr_onnx
 
     if asr_onnx.is_onnx_model(mid):
-        if lang and not asr_onnx.supports_language(mid, lang):
-            raise ValueError(f"Модель не знает язык записи ({lang})")
+        if not asr_onnx.supports_language(mid, lang):
+            raise ValueError(f"Модель не знает язык записи ({lang or 'не определён'})")
         was_loaded = mid in asr_onnx.loaded_models()
         with _Peak() as peak:
             t0 = time.perf_counter()
             asr_onnx._load(mid)
             t1 = time.perf_counter()
             _set(stage="Распознавание…")
-            segs = asr_onnx.transcribe(mid, clip, dur, lambda _p: None, _check)
+            segs = asr_onnx.transcribe(mid, clip, dur, lambda _p: None, _check, lang=lang)
             t2 = time.perf_counter()
         if not was_loaded:
             asr_onnx.release(mid)

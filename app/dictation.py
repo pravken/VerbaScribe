@@ -108,7 +108,7 @@ def recognize(audio: np.ndarray) -> str:
     lang = _language()
     model = live.caption_onnx_model({**get_all_settings(), "live_whisper_model": "auto"}, lang)
     if model:
-        parts = asr_onnx.recognize_array(model, audio)
+        parts = asr_onnx.recognize_array(model, audio, lang)
         return " ".join(t for _, _, t in parts).strip()
     segs, _lang, _prob = live._caption_worker().transcribe(audio, lang)
     return " ".join(s.text.strip() for s in segs).strip()

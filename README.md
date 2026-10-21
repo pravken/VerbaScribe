@@ -17,7 +17,7 @@ Recordings and transcripts are processed and stored locally (NVIDIA GPU via CUDA
 
 ### Features
 
-- **Speech recognition** with [faster-whisper](https://github.com/SYSTRAN/faster-whisper) and Silero VAD. Models: `large-v3-turbo`, `large-v3`; GigaAM v3 and Parakeet TDT v3 on ONNX Runtime. Compute precision (`float16`, `int8_float16`, `int8`) is chosen from available VRAM, with fallback to CPU.
+- **Speech recognition** with [faster-whisper](https://github.com/SYSTRAN/faster-whisper) and Silero VAD. Models: `large-v3-turbo`, `large-v3`; GigaAM v3, Parakeet TDT v3 and Canary 1B v2 on ONNX Runtime; recordings that mix languages are recognized phrase by phrase. Compute precision (`float16`, `int8_float16`, `int8`) is chosen from available VRAM, with fallback to CPU.
 - **Speaker separation** by clustering SpeechBrain ECAPA-TDNN voice embeddings. Works without tokens. Accuracy drops with overlapping speech, very short replies, or similar voices, so check the result and fix speakers where needed.
 - **Optional audio cleanup** before recognition: FFmpeg filters for noise reduction, click removal and loudness leveling. A simple voice filter is also available in the player.
 - **Filler-word removal** ("uh", "um", "э-э", "ммм"…). The original text is kept and can be restored.
@@ -31,7 +31,7 @@ Recordings and transcripts are processed and stored locally (NVIDIA GPU via CUDA
 - **Names from the content**: a recording with a generic title ("Recording 14-05", "zoom_0") gets one from its transcript after processing.
 - **Voice profiles**: once you name a speaker, their voice is recognised in new recordings (stored only in the local database).
 - **Tray icon** that shows what the app is doing and starts or stops a recording from its menu.
-- **Automatic update check** with one-click install from GitHub Releases; the download is verified against the release checksums, and your data, models and settings stay untouched.
+- **Automatic updates** from GitHub Releases: a new version downloads in the background and installs when you close the app (or by hand, if you turn that off); the download is verified against the release checksums, and your data, models and settings stay untouched.
 - **Search** across all recordings.
 - **Memory and load**: CPU, RAM and VRAM meters in the sidebar; models are unloaded after a configurable time without use (Settings → General).
 - **Recordings folder** of your choice (Settings → Recording); imported copies and files added by their path are kept apart.
@@ -40,6 +40,12 @@ Recordings and transcripts are processed and stored locally (NVIDIA GPU via CUDA
 - **Export** to Word (`.docx`), Markdown, plain text, SRT subtitles, JSON and video with subtitles, all from one menu. A translated or dubbed export that does not exist yet is made first and then saved to the export folder by itself.
 - **Obsidian**: a note per meeting (properties, summary, overview, tasks as a checklist, transcript) named `{date} {title}`, saved by hand or automatically after processing (Settings → Export).
 - **Translate & dub (prototype, optional)**: translates a finished recording with Ollama and re-voices it in each speaker's cloned voice over the original background. See [Translate & dub](#translate-dub).
+- **Model comparison** (Settings → Comparison): every downloaded speech model recognizes a fragment of a recording you have corrected, and you see its error rate (WER), speed and memory; language models write the same protocol and you see how many points the transcript does not support.
+- **Checked summaries**: each point of an overview gets the time it comes from, and points the transcript does not support are marked `[?]`. **My notes** taken during the meeting go into every summary; your own summary templates.
+- **Promises across meetings**: who promised what to whom and by when, collected after each summary, shown before the next meeting of the series, exported to Obsidian, Todoist (CSV) or Markdown, and a follow-up email draft.
+- **Calendar** (an `.ics` file or link, read only): a recording made during a meeting gets its title and participants; the Studio lists the next meetings with a brief.
+- **Dictation into any program**: `Ctrl+Alt+D` records the microphone and types the text where the cursor is.
+- **Import by link** (YouTube and other sites, via yt-dlp installed on first use); **noise cleanup** export; **privacy** options: delete the sound after transcription or after N days, and a log of everything sent to a cloud model.
 - **Translate text**: machine translation of a transcript with your local Ollama model, shown under or instead of the original, exported as translated or bilingual files and as video subtitles. See [Translate text](#translate-text).
 
 ### Requirements
@@ -125,6 +131,8 @@ VerbaScribe has no telemetry. It connects to the internet only for these actions
 | :--- | :--- |
 | First-time setup (`setup.bat`) | PyPI and download.pytorch.org (Python packages); winget, if `uv` is missing |
 | You download a Whisper or speaker model | Hugging Face (`huggingface.co`) |
+| You import by link | The site of the link, and PyPI the first time (yt-dlp) |
+| You set a calendar link (Settings → General) | That link, at most every 15 minutes, to read the calendar |
 | You download an Ollama model | Ollama's model registry, via your local Ollama |
 | You confirm installing Ollama | winget (package `Ollama.Ollama`) |
 | You install the dubbing environment (optional) | PyPI and download.pytorch.org |
@@ -150,12 +158,14 @@ VerbaScribe's own code is released under the [MIT License](LICENSE). Models and 
 | Silero VAD | MIT |
 | GigaAM v3 (Sber, ONNX export by istupakov) / onnx-asr | MIT |
 | NVIDIA Parakeet TDT 0.6B v3 (ONNX export by istupakov) | CC-BY-4.0: credit "Parakeet TDT 0.6B v3 by NVIDIA" |
+| NVIDIA Canary 1B v2 (ONNX export by istupakov) | CC-BY-4.0: credit "Canary 1B v2 by NVIDIA" |
 | BGE-M3 embeddings (BAAI) | MIT |
 | SpeechBrain ECAPA-TDNN (`spkrec-ecapa-voxceleb`) | Apache 2.0 |
-| Qwen3 4B / 8B / 14B, Qwen 2.5 1.5B / 7B / 14B, Mistral 7B | Apache 2.0 |
+| Qwen3.5 4B / 9B / 27B, Qwen3 4B / 8B / 14B, Qwen 2.5 1.5B / 7B / 14B, Mistral 7B | Apache 2.0 |
 | Ollama, FastAPI, pywebview | MIT / BSD-3 |
 | PyTorch, torchaudio | BSD-3 |
 | SoundCard (system audio recording) | BSD-3 |
+| yt-dlp (installed when you first import by link) | Unlicense |
 | FFmpeg (optional download, Gyan.dev essentials build) | GPL v3 |
 | Chatterbox Multilingual TTS (optional dubbing) | MIT |
 | Demucs `htdemucs` (optional dubbing) | MIT |
@@ -193,7 +203,7 @@ To update Python dependencies, edit `requirements.in` and regenerate the lock (c
 
 ### Возможности
 
-- **Распознавание речи**: [faster-whisper](https://github.com/SYSTRAN/faster-whisper) и Silero VAD. Модели `large-v3-turbo`, `large-v3`, а также GigaAM v3 и Parakeet TDT v3 на ONNX Runtime. Точность вычислений (`float16`, `int8_float16`, `int8`) подбирается под объём видеопамяти, при необходимости работа переходит на CPU.
+- **Распознавание речи**: [faster-whisper](https://github.com/SYSTRAN/faster-whisper) и Silero VAD. Модели `large-v3-turbo`, `large-v3`, а также GigaAM v3, Parakeet TDT v3 и Canary 1B v2 на ONNX Runtime; записи на нескольких языках распознаются пофразово. Точность вычислений (`float16`, `int8_float16`, `int8`) подбирается под объём видеопамяти, при необходимости работа переходит на CPU.
 - **Разделение по спикерам**: кластеризация голосовых эмбеддингов SpeechBrain ECAPA-TDNN, без токенов. Точность снижается при перебиваниях, очень коротких репликах и похожих голосах, поэтому результат стоит проверять и при необходимости поправлять спикеров вручную.
 - **Очистка звука перед распознаванием** (по желанию): фильтры FFmpeg для шумоподавления, удаления щелчков и выравнивания громкости. В плеере также есть простой голосовой фильтр.
 - **Удаление слов-паразитов** («э-э», «ммм», «uh», «um»…). Исходный текст сохраняется, его можно вернуть.
@@ -207,7 +217,7 @@ To update Python dependencies, edit `requirements.in` and regenerate the lock (c
 - **Названия по содержанию**: запись с безликим названием («Запись 14-05», «zoom_0») после обработки получает название по тексту.
 - **Профили голосов**: стоит один раз назвать участника по имени, и в новых записях его голос узнаётся автоматически (хранится только в локальной базе).
 - **Значок в трее** показывает, чем занято приложение, и запускает или останавливает запись из меню.
-- **Проверка обновлений** и установка в один клик из GitHub Releases; архив сверяется с контрольными суммами релиза, ваши данные, модели и настройки не затрагиваются.
+- **Автообновление** из GitHub Releases: новая версия скачивается в фоне и ставится при закрытии программы (или вручную, если это отключить); архив сверяется с контрольными суммами релиза, ваши данные, модели и настройки не затрагиваются.
 - **Поиск** по всем записям.
 - **Память и нагрузка**: индикаторы CPU, RAM и VRAM в боковой панели; модели выгружаются из памяти через заданное время простоя (Настройки → Общие).
 - **Папка для записей** на ваш выбор (Настройки → Запись); импортированные копии и файлы, добавленные по пути, хранятся отдельно.
@@ -216,6 +226,12 @@ To update Python dependencies, edit `requirements.in` and regenerate the lock (c
 - **Экспорт** в Word (`.docx`), Markdown, текст, субтитры SRT, JSON и видео с субтитрами — всё в одном меню. Если нужного перевода или дубляжа ещё нет, он сначала выполняется, а файл затем сам сохраняется в папку экспорта.
 - **Obsidian**: заметка на каждую встречу (свойства, резюме, обзор, задачи чек-листом, расшифровка) с именем `{дата} {название}` — вручную или автоматически после обработки (Настройки → Экспорт).
 - **Перевод и дубляж (прототип, по желанию)**: готовая запись переводится через Ollama и озвучивается клонами голосов участников поверх исходного фона. Подробнее — в разделе [Перевод и дубляж](#дубляж).
+- **Сравнение моделей** («Настройки → Сравнение»): каждая скачанная модель распознавания расшифровывает фрагмент исправленной вами записи — видно долю ошибок (WER), скорость и память; языковые модели пишут один и тот же протокол — видно, сколько пунктов не подтверждает расшифровка.
+- **Проверенные саммари**: у каждого пункта обзора есть время, откуда он взят, а пункты, которых нет в расшифровке, помечены `[?]`. **Мои заметки** во время встречи учитываются в каждом саммари; свои шаблоны саммари.
+- **Обещания между встречами**: кто, что, кому и к какому сроку пообещал — собирается после саммари, показывается перед следующей встречей серии, выгружается в Obsidian, Todoist (CSV) или Markdown; черновик письма по итогам.
+- **Календарь** (файл или ссылка `.ics`, только чтение): запись во время встречи получает её название и участников; в Студии видны ближайшие встречи со справкой.
+- **Диктовка в любую программу**: `Ctrl+Alt+D` записывает микрофон и печатает текст там, где стоит курсор.
+- **Импорт по ссылке** (YouTube и другие сайты, через yt-dlp, который ставится при первом использовании); экспорт **с очисткой шума**; **приватность**: удаление звука после расшифровки или через N дней и журнал всего, что отправлялось облачной модели.
 - **Перевод текста**: машинный перевод расшифровки локальной моделью Ollama — под оригиналом или вместо него, экспорт переведённых и двуязычных файлов, субтитры для видео. Подробнее — в разделе [Перевод текста](#перевод-текста).
 
 ### Требования
@@ -300,6 +316,8 @@ start.bat
 | :--- | :--- |
 | Первичная установка (`setup.bat`) | PyPI и download.pytorch.org (пакеты Python); winget, если нет `uv` |
 | Вы скачиваете модель Whisper или модель спикеров | Hugging Face (`huggingface.co`) |
+| Вы импортируете запись по ссылке | Сайт ссылки, а в первый раз — PyPI (yt-dlp) |
+| Вы указали ссылку на календарь («Настройки → Общие») | Эта ссылка, не чаще раза в 15 минут, чтобы прочитать календарь |
 | Вы скачиваете модель Ollama | Реестр моделей Ollama, через вашу локальную Ollama |
 | Вы подтверждаете установку Ollama | winget (пакет `Ollama.Ollama`) |
 | Вы устанавливаете окружение дубляжа (по желанию) | PyPI и download.pytorch.org |

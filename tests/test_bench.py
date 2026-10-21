@@ -72,5 +72,19 @@ class BenchRunTest(unittest.TestCase):
             bench.start("asr", m["id"], ["a"])
 
 
+
+class CanaryLanguageTest(unittest.TestCase):
+    def test_canary_needs_a_language(self):
+        from app import asr_onnx
+
+        self.assertFalse(asr_onnx.supports_language("canary-v2", None))
+        self.assertFalse(asr_onnx.supports_language("canary-v2", "auto"))
+        self.assertTrue(asr_onnx.supports_language("canary-v2", "ru"))
+        self.assertEqual(asr_onnx._lang_kwargs("canary-v2", "ru-RU"), {"language": "ru"})
+        self.assertEqual(asr_onnx._lang_kwargs("parakeet-v3", None), {})
+        with self.assertRaises(RuntimeError):
+            asr_onnx._lang_kwargs("canary-v2", "auto")
+
+
 if __name__ == "__main__":
     unittest.main()

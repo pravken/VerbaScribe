@@ -219,7 +219,7 @@ class LiveSession:
         if onnx_id:
             from app import asr_onnx
 
-            segs = [_Seg(a, b, t) for a, b, t in asr_onnx.recognize_array(onnx_id, window)]
+            segs = [_Seg(a, b, t) for a, b, t in asr_onnx.recognize_array(onnx_id, window, self.speech_lang)]
             language = asr_onnx.guess_language(" ".join(x.text for x in segs)) if segs else None
             prob = 1.0 if segs and not self.speech_lang else 0.0
         else:
