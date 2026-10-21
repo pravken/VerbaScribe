@@ -55,18 +55,29 @@ class ScreenCapture:
             stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, creationflags=_NO_WINDOW,
         )
         self.started_at = time.time()
+        # FFmpeg's messages are read all the time: a full pipe (repeated grab warnings over a long
+        # recording) would stop it. The last lines are kept for the error message.
+        self._tail: List[str] = []
+        threading.Thread(target=self._drain, daemon=True, name="screen_stderr").start()
         # A window that cannot be found or a missing grabber ends FFmpeg right away
         time.sleep(0.6)
         if self.proc.poll() is not None:
-            err = (self.proc.stderr.read() or b"").decode("utf-8", "replace").strip()
+            time.sleep(0.1)
+            err = "\n".join(self._tail).strip()
             raise RuntimeError(err[-300:] or "FFmpeg завершился сразу после запуска")
+
+    def _drain(self) -> None:
+        for raw in self.proc.stderr:
+            self._tail = (self._tail + [raw.decode("utf-8", "replace").rstrip()])[-20:]
 
     def stop(self) -> None:
         """Asks FFmpeg to finish the file ("q" on its input), then ends it if it does not."""
         if not self.proc or self.proc.poll() is not None:
             return
         try:
-            self.proc.communicate(b"q", timeout=10)
+            self.proc.stdin.write(b"q")
+            self.proc.stdin.close()
+            self.proc.wait(timeout=10)
         except (subprocess.TimeoutExpired, OSError, ValueError):
             self.proc.kill()
             self.proc.wait(timeout=5)

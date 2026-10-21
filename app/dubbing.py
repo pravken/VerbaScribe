@@ -74,6 +74,13 @@ ProgressFn = Callable[[int, str], None]
 CancelFn = Callable[[], None]
 
 
+
+def _tool(name: str) -> str:
+    """FFmpeg as the rest of the app finds it (the copy the app downloaded is not on PATH)."""
+    from app.ffmpeg_manager import tool_cmd
+
+    return tool_cmd(name)
+
 def dub_environment_status() -> Dict[str, Any]:
     from app.dub_setup import is_installed, setup_status
 
@@ -523,7 +530,7 @@ class TtsPool:
 # ---------------------------------------------------------------- audio helpers
 def _ffmpeg(args: List[str]) -> None:
     proc = subprocess.run(
-        ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", *args],
+        [_tool("ffmpeg"), "-y", "-hide_banner", "-loglevel", "error", *args],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         encoding="utf-8", errors="replace", creationflags=_NO_WINDOW,
     )
@@ -533,7 +540,7 @@ def _ffmpeg(args: List[str]) -> None:
 
 def _has_video(path: Path) -> bool:
     proc = subprocess.run(
-        ["ffprobe", "-v", "error", "-select_streams", "v", "-show_entries", "stream=codec_type,disposition=attached_pic",
+        [_tool("ffprobe"), "-v", "error", "-select_streams", "v", "-show_entries", "stream=codec_type,disposition=attached_pic",
          "-of", "json", str(path)],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
         creationflags=_NO_WINDOW,
@@ -619,7 +626,7 @@ def _stretch_clip(src: Path, dst: Path, tempo: float, use_rubberband: bool) -> N
 
 def _ffmpeg_has_filter(name: str) -> bool:
     try:
-        proc = subprocess.run(["ffmpeg", "-hide_banner", "-filters"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        proc = subprocess.run([_tool("ffmpeg"), "-hide_banner", "-filters"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                               text=True, encoding="utf-8", errors="replace", creationflags=_NO_WINDOW)
         return f" {name} " in proc.stdout
     except Exception:

@@ -176,6 +176,9 @@ def _ollama_up(settings: Dict[str, str]) -> bool:
     return bool(_is_ollama_port_open())
 
 
+_skip: set = set()  # recordings that failed to index in this run of the app
+
+
 def _run() -> None:
     while True:
         _wake.wait(IDLE_RECHECK_SEC)
@@ -184,11 +187,17 @@ def _run() -> None:
             settings = get_all_settings()
             if not enabled(settings) or not _ollama_up(settings):
                 continue
-            for mid in pending_ids(settings):
+            for mid in [m for m in pending_ids(settings) if m not in _skip]:
                 if not enabled() or _gpu_busy():
                     break  # transcription and live captions come first; picked up again later
                 _state.update(running=True, current=mid)
-                index_meeting(mid, settings)
+                try:
+                    index_meeting(mid, settings)
+                except RuntimeError:
+                    raise  # the model itself is not available: nothing else can be indexed now
+                except Exception:
+                    traceback.print_exc()  # one bad recording must not stop the others
+                    _skip.add(mid)
             _state["error"] = ""
         except Exception as e:
             # Reported once, not every two minutes (a model that is not downloaded is the usual case)

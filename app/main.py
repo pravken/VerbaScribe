@@ -19,6 +19,7 @@ from urllib.parse import quote
 import httpx
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response, StreamingResponse
+from starlette.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -57,6 +58,14 @@ from app.transcriber import (
 
 _SPEAKER_ID_RE = re.compile(r"^[A-Za-z0-9_\-]{1,40}$")
 _COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def _ensure_not_transcribing(meeting_id: int) -> None:
+    """Edits of the transcript would be overwritten by a recognition job that is queued or running."""
+    from app.transcriber import is_transcribing
+
+    if is_transcribing(meeting_id):
+        raise HTTPException(status_code=409, detail="Запись распознаётся — правки станут доступны после окончания")
 
 
 def _ensure_not_processing(meeting_id: int) -> None:
@@ -658,8 +667,12 @@ async def api_upload_meetings(
         safe_stem = _UNSAFE_NAME_RE.sub("_", Path(orig_name).stem)[:120] or "recording"
         dest_path = target_dir / f"{uuid.uuid4().hex[:8]}_{safe_stem}{ext}"
 
-        with dest_path.open("wb") as out_f:
-            shutil.copyfileobj(uf.file, out_f)
+        def _save(src=uf.file, dst=dest_path) -> None:
+            with dst.open("wb") as out_f:
+                shutil.copyfileobj(src, out_f, 1 << 20)
+
+        # A multi-GB file must not stop the server (events, other requests) while it is copied
+        await run_in_threadpool(_save)
 
         recorded_at = ""
         if not is_recording and i < len(last_modified):
@@ -895,6 +908,7 @@ class SpeakerUpdatePayload(BaseModel):
 
 @app.patch("/api/meetings/{meeting_id}/speakers")
 def api_update_speaker(meeting_id: int, payload: SpeakerUpdatePayload) -> Dict[str, Any]:
+    _ensure_not_transcribing(meeting_id)
     m = get_meeting(meeting_id)
     if not m:
         raise HTTPException(status_code=404, detail="Встреча не найдена")
@@ -1228,13 +1242,13 @@ async def api_record_finish(payload: RecordFinishPayload) -> Dict[str, Any]:
     dest = _recording_folder() / f"{uuid.uuid4().hex[:8]}_{safe_stem}{ext}"
     cmd = record_mix_command(tool_cmd("ffmpeg"), page, system, has_video, payload.has_mic, dest)
     if cmd is None:
-        shutil.move(str(page), str(dest))  # the recordings folder may have changed to another drive
+        await run_in_threadpool(shutil.move, str(page), str(dest))  # the recordings folder may be on another drive
     else:
         res = await run_in_threadpool(_run_ffmpeg, cmd)
         if res.returncode != 0 or not dest.is_file():
             if page and not system:
                 dest.unlink(missing_ok=True)
-                shutil.move(str(page), str(dest))  # the original is still a playable recording
+                await run_in_threadpool(shutil.move, str(page), str(dest))  # the original is still playable
             else:
                 print("[record] mix failed, parts kept:", (res.stderr or "")[-300:], flush=True)
                 dest.unlink(missing_ok=True)
@@ -1514,10 +1528,9 @@ def api_since_last(meeting_id: int, payload: SinceLastPayload) -> Dict[str, Any]
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=503, detail=str(e)[:300])
-    m = get_meeting(meeting_id) or {}
-    summaries = {**(m.get("summaries") or {}), "since_last": md}
-    save_meeting_results(meeting_id, summaries=summaries)
-    return {"summaries": summaries}
+    from app.database import merge_summaries
+
+    return {"summaries": merge_summaries(meeting_id, {"since_last": md})}
 
 
 class BriefPayload(BaseModel):
@@ -1608,6 +1621,7 @@ class SegmentUpdatePayload(BaseModel):
 def api_update_segment(
     meeting_id: int, segment_id: int, payload: SegmentUpdatePayload
 ) -> Dict[str, Any]:
+    _ensure_not_transcribing(meeting_id)
     m = get_meeting(meeting_id)
     if not m:
         raise HTTPException(status_code=404, detail="Встреча не найдена")
@@ -1647,6 +1661,8 @@ def api_update_segment(
 @app.post("/api/meetings/{meeting_id}/segments/{segment_id}/merge")
 def api_merge_segment(meeting_id: int, segment_id: int) -> Dict[str, Any]:
     from app.database import merge_segment_with_previous
+
+    _ensure_not_transcribing(meeting_id)
 
     updated = merge_segment_with_previous(meeting_id, segment_id)
     if not updated:
@@ -1732,11 +1748,10 @@ def api_generate_summary(meeting_id: int, payload: SummaryRequestPayload) -> Dic
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    summaries = m.get("summaries") or {}
+    from app.database import merge_summaries
+
     key = "custom" if payload.custom_prompt.strip() else payload.template
-    summaries[key] = result_md
-    summaries.pop("error", None)
-    save_meeting_results(meeting_id, summaries=summaries)
+    summaries = merge_summaries(meeting_id, {key: result_md}, remove=("error",))
     if key != "custom":
         from app.obsidian import refresh_if_exported
 

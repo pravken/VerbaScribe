@@ -43,6 +43,7 @@ VAD_NAME = "silero"
 MAX_PHRASE_SEC = 20.0
 
 _lock = threading.Lock()
+_fetch_lock = threading.Lock()
 _loaded: Dict[str, Any] = {}
 _downloads: Dict[str, Dict[str, Any]] = {}
 
@@ -156,9 +157,11 @@ def _load(model_id: str):
     ensure_package()
     import onnx_asr
 
+    if model_id not in _loaded:
+        with _fetch_lock:  # the download (gigabytes) must not hold the lock live captions wait on
+            fetch(model_id)
     with _lock:
         if model_id not in _loaded:
-            fetch(model_id)
             asr = onnx_asr.load_model(ONNX_MODELS[model_id]["onnx_name"], model_dir(model_id))
             vad = onnx_asr.load_vad(VAD_NAME, _vad_dir())
             _loaded[model_id] = asr.with_vad(vad, max_speech_duration_s=MAX_PHRASE_SEC, min_silence_duration_ms=300,

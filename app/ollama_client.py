@@ -161,17 +161,36 @@ def find_ollama_executable() -> Optional[str]:
     return None
 
 
-def _is_ollama_port_open(host: str = "127.0.0.1", port: int = 11434) -> bool:
+def _ollama_address(base_url: Optional[str] = None) -> tuple:
+    """(host, port) of the Ollama address in Settings (default 127.0.0.1:11434)."""
+    from urllib.parse import urlparse
+
+    if not base_url:
+        base_url = get_all_settings().get("ollama_url") or "http://127.0.0.1:11434"
+    u = urlparse(base_url if "://" in base_url else "http://" + base_url)
+    host = (u.hostname or "127.0.0.1").replace("localhost", "127.0.0.1")
+    return host, u.port or (443 if u.scheme == "https" else 11434 if host == "127.0.0.1" else 80)
+
+
+def _is_ollama_port_open(host: Optional[str] = None, port: Optional[int] = None) -> bool:
     import socket
 
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.settimeout(0.15)
-        return s.connect_ex((host, port)) == 0
+    if host is None or port is None:
+        h, p = _ollama_address()
+        host, port = host or h, port or p
+    try:
+        with socket.create_connection((host, port), timeout=0.15 if host == "127.0.0.1" else 0.8):
+            return True
+    except OSError:
+        return False
 
 
 def ensure_ollama_running(base_url: str = "http://127.0.0.1:11434", auto_start: bool = True) -> bool:
-    if _is_ollama_port_open():
+    host, port = _ollama_address(base_url)
+    if _is_ollama_port_open(host, port):
         return True
+    if host != "127.0.0.1":
+        return False  # Ollama on another computer is not started from here
 
     if not auto_start:
         return False
@@ -185,9 +204,9 @@ def ensure_ollama_running(base_url: str = "http://127.0.0.1:11434", auto_start: 
                 stderr=subprocess.DEVNULL,
                 creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0,
             )
-            for _ in range(8):
+            for _ in range(80):  # a cold start (first run, slow disk) can take many seconds
                 time.sleep(0.25)
-                if _is_ollama_port_open():
+                if _is_ollama_port_open(host, port):
                     return True
         except Exception:
             pass
@@ -204,7 +223,7 @@ def get_ollama_status(base_url: Optional[str] = None) -> Dict[str, Any]:
     exe = find_ollama_executable()
     # Status polling never starts background processes: Ollama is only launched after an
     # explicit user action (model download or AI summary request).
-    running = _is_ollama_port_open()
+    running = _is_ollama_port_open(*_ollama_address(base_url))
     models: List[str] = []
     if running:
         try:

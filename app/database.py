@@ -507,7 +507,9 @@ def save_meeting_results(
     segments: Optional[List[Dict[str, Any]]] = None,
     summaries: Optional[Dict[str, Any]] = None,
     language: Optional[str] = None,
+    reindex: bool = True,
 ) -> None:
+    """reindex=False: a partial transcript shown while recognizing (search is indexed at the end)."""
     fields = []
     values = []
     if speakers is not None:
@@ -530,10 +532,30 @@ def save_meeting_results(
     with _db_lock:
         conn = get_connection()
         conn.execute(f"UPDATE meetings SET {', '.join(fields)} WHERE id = ?", tuple(values))
-        if segments is not None:
+        if segments is not None and reindex:
             _reindex_segments(conn, meeting_id, segments)
         conn.commit()
         conn.close()
+
+
+def merge_summaries(meeting_id: int, updates: Dict[str, Any], remove: tuple = ()) -> Dict[str, Any]:
+    """Sets some summaries of a recording, keeping the others: two analyses running at once (each
+    takes minutes) must not overwrite each other's result. Returns all summaries."""
+    with _db_lock:
+        conn = get_connection()
+        row = conn.execute("SELECT summaries_json FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+        if row is None:
+            conn.close()
+            return {}
+        current = _loads_dict(row[0])
+        current.update(updates)
+        for k in remove:
+            current.pop(k, None)
+        conn.execute("UPDATE meetings SET summaries_json = ? WHERE id = ?",
+                     (json.dumps(current, ensure_ascii=False), meeting_id))
+        conn.commit()
+        conn.close()
+    return current
 
 
 def save_segments_backup(meeting_id: int, segments: List[Dict[str, Any]]) -> None:
@@ -721,6 +743,19 @@ _LIST_COLUMNS = """id, title, filename, media_path, duration, status, progress, 
 _LIST_LANGS_SQL = """,
     (SELECT group_concat(key) FROM json_each(CASE WHEN json_valid(translations_json) THEN translations_json ELSE '{}' END)) AS tr_langs,
     (SELECT group_concat(json_extract(value, '$.lang')) FROM json_each(CASE WHEN json_valid(dubs_json) THEN dubs_json ELSE '[]' END)) AS dub_langs"""
+
+
+def meeting_briefs(ids: List[int]) -> Dict[int, Dict[str, Any]]:
+    """Title and progress of a few recordings (the queue, polled often): no full library scan."""
+    if not ids:
+        return {}
+    with _db_lock:
+        conn = get_connection()
+        rows = conn.execute(
+            f"SELECT id, title, status, progress, stage_text FROM meetings WHERE id IN ({','.join('?' * len(ids))})",
+            [int(i) for i in ids]).fetchall()
+        conn.close()
+    return {r["id"]: dict(r) for r in rows}
 
 
 def list_meetings() -> List[Dict[str, Any]]:

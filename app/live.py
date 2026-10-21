@@ -124,8 +124,7 @@ class _CaptionWorker:
     def _reaper(self) -> None:
         while True:
             time.sleep(15)
-            with _sessions_lock:
-                active = bool(_sessions)
+            active = has_sessions()
             if self.proc is not None and not active and time.time() - self.last_used > WORKER_IDLE_SEC:
                 with self.lock:
                     self._kill()
@@ -152,7 +151,9 @@ class LiveSession:
         # between languages); self.lang is the language heard last, for translation and the UI
         self.speech_lang = lang if lang and lang != "auto" else None
         self.lang = self.speech_lang
-        self.onnx_model = caption_onnx_model(get_all_settings(), self.speech_lang)
+        settings = get_all_settings()
+        self.caption_choice = settings.get("live_whisper_model") or "auto"
+        self.onnx_model = caption_onnx_model(settings, self.speech_lang)
         self.draft = False  # the page shows the draft line: translate it too
         self.translate_model: Optional[str] = None  # chosen by hand in the studio
         self.translate_to = translate_to or None
@@ -306,8 +307,10 @@ class LiveSession:
             "session": self.id,
             "lang": self.lang,
             "speech_lang": self.speech_lang or "auto",
-            "lines": [ln for ln in self.lines if ln["id"] > since_id or ln["translation"] is None],
-            "translations": {ln["id"]: ln["translation"] for ln in self.lines if ln["translation"]},
+            # New lines, and recent ones still waiting for a translation (not the whole meeting:
+            # this answer goes out about once a second)
+            "lines": [ln for ln in self.lines[-200:] if ln["id"] > since_id or (self.translator and ln["translation"] is None)],
+            "translations": {ln["id"]: ln["translation"] for ln in self.lines[-60:] if ln["translation"]},
             # The language each line went into (differs per line with translate_to="auto")
             "targets": {ln["id"]: ln.get("target") for ln in self.lines if ln.get("target")},
             "partial_target": self.translator.draft_target if self.translator else "",
@@ -316,7 +319,7 @@ class LiveSession:
             "translation_ready": bool(self.translator and self.translator.ready),
             "error": self.error or (self.translator.error if self.translator else ""),
             "caption_model": self.caption_label(),
-            "caption_choice": get_all_settings().get("live_whisper_model") or "auto",
+            "caption_choice": self.caption_choice,
             "translate_choice": self.translate_model or "",
             "translate_model": self.translate_label(),
         }
@@ -327,6 +330,7 @@ class LiveSession:
         from app.database import update_settings
 
         update_settings({"live_whisper_model": value or "auto"})
+        self.caption_choice = value or "auto"
         settings = get_all_settings()
         self.onnx_model = caption_onnx_model(settings, self.speech_lang)
         if self.onnx_model:
@@ -437,7 +441,17 @@ def stop_session(session_id: str) -> None:
 
 
 def _drop_idle() -> None:
+    """Sessions whose page stopped sending audio (closed, reloaded, crashed) end, with their
+    translator thread."""
     now = time.time()
     with _sessions_lock:
-        for sid in [k for k, s in _sessions.items() if now - s.touched > SESSION_IDLE_SEC]:
-            _sessions.pop(sid, None)
+        dropped = [_sessions.pop(k) for k, s in list(_sessions.items()) if now - s.touched > SESSION_IDLE_SEC]
+    for s in dropped:
+        if s.translator:
+            s.translator.stop()
+
+
+def has_sessions() -> bool:
+    _drop_idle()
+    with _sessions_lock:
+        return bool(_sessions)

@@ -60,8 +60,7 @@ def _busy() -> bool:
 
     if transcriber.running_job_kind():
         return True
-    with live._sessions_lock:
-        return bool(live._sessions)
+    return live.has_sessions()
 
 
 def unload_now() -> Dict[str, Any]:

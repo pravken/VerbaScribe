@@ -23,6 +23,7 @@ from app.database import (
     get_meeting,
     save_meeting_dub,
     save_meeting_results,
+    merge_summaries,
     save_segments_backup,
     update_meeting_progress,
 )
@@ -52,6 +53,12 @@ class JobCancelled(Exception):
 def is_job_active(meeting_id: int) -> bool:
     with _jobs_lock:
         return meeting_id in _active_jobs
+
+
+def is_transcribing(meeting_id: int) -> bool:
+    """A recognition job of this recording is queued or running (it will replace the transcript)."""
+    with _jobs_lock:
+        return any(q["id"] == meeting_id and q["kind"] == "transcribe" for q in _queue)
 
 
 def request_cancel(meeting_id: int) -> bool:
@@ -101,13 +108,15 @@ def _queue_finish(meeting_id: int) -> None:
 
 def queue_snapshot() -> List[Dict[str, Any]]:
     """Running job first, then waiting jobs in the order they will run."""
-    from app.database import list_meetings
+    from app.database import meeting_briefs
 
     with _jobs_lock:
         items = [dict(q) for q in _queue]
         running = _running_id
         cancelling = set(_cancel_requested)
-    meetings = {m["id"]: m for m in list_meetings()}
+    if not items:
+        return []
+    meetings = meeting_briefs(list({q["id"] for q in items}))
     items.sort(key=lambda q: 0 if q["id"] == running else 1)
     out = []
     waiting_pos = 0
@@ -615,13 +624,15 @@ class _PartialTranscript:
         self.enabled = not (m.get("segments") or [])
 
     def push(self, raw_segments: List[Dict[str, Any]], force: bool = False) -> None:
-        if not self.enabled or not raw_segments or (not force and time.time() - self.last < PARTIAL_EVERY_SEC):
+        # Longer transcripts are saved less often: each save writes the whole text so far
+        every = PARTIAL_EVERY_SEC * max(1, len(raw_segments) // 300 + 1)
+        if not self.enabled or not raw_segments or (not force and time.time() - self.last < every):
             return
         self.last = time.time()
         from app import events
 
         partial = [{**seg, "id": i, "speaker": "SPEAKER_00"} for i, seg in enumerate(raw_segments)]
-        save_meeting_results(self.meeting_id, segments=partial,
+        save_meeting_results(self.meeting_id, segments=partial, reindex=False,
                              speakers={"SPEAKER_00": {"name": "Участник 1", "color": "#0A84FF"}})
         events.publish({"type": "segments", "id": self.meeting_id})
 
@@ -765,6 +776,7 @@ def _process_meeting_job(meeting_id: int) -> None:
         )
 
         wav_path = AUDIO_DIR / f"meeting_{meeting_id}.wav"
+        _check_cancel(meeting_id)  # cancelled while waiting: do not spend minutes extracting audio
         extract_audio_16k_mono(media_path, wav_path, enhance_audio=enhance_audio)
         duration = get_media_duration(wav_path) or get_media_duration(media_path)
 
@@ -951,10 +963,10 @@ def _process_meeting_job(meeting_id: int) -> None:
                         local_only=local_only,
                     )
                     summaries["protocol"] = summary_md
-                    save_meeting_results(meeting_id, summaries=summaries)
+                    merge_summaries(meeting_id, {"protocol": summary_md}, remove=("error",))
                 except Exception as sum_err:
                     summaries["error"] = str(sum_err)
-                    save_meeting_results(meeting_id, summaries=summaries)
+                    merge_summaries(meeting_id, {"error": str(sum_err)})
 
         clear_vram()
 

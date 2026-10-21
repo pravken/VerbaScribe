@@ -99,8 +99,8 @@ def scan_once(add: Callable[[Path], None], now: Optional[float] = None) -> int:
         return 0
     ready = ready_files(files, seen, now if now is not None else time.time())
     for p in ready:
+        _mark_seen([str(p.resolve())])  # before adding: a failure later in the batch must not import it twice
         add(p)
-    _mark_seen([str(p.resolve()) for p in ready])
     if ready:
         _state["imported"] = int(_state["imported"]) + len(ready)
         _state["last_import"] = ready[-1].name

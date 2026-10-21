@@ -56,6 +56,20 @@ def _nvml_memory() -> Optional[Tuple[int, int]]:
             return None
 
 
+def nvml_device() -> Optional[Tuple[str, int, int]]:
+    """(name, used bytes, total bytes) of GPU 0 from NVML, or None."""
+    mem = _nvml_memory()
+    if not mem:
+        return None
+    with _nvml_lock:
+        buf = ctypes.create_string_buffer(96)
+        try:
+            ok = _nvml["lib"].nvmlDeviceGetName(_nvml["handle"], buf, 96) == 0
+        except Exception:
+            ok = False
+    return (buf.value.decode("utf-8", "replace") if ok else "NVIDIA GPU"), mem[0], mem[1]
+
+
 def gpu_memory() -> Optional[Dict[str, float]]:
     """
     Device-wide used/free/total in GB (all programs), or None without an NVIDIA GPU. NVML is asked

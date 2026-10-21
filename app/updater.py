@@ -309,12 +309,32 @@ def _find_uv() -> Optional[str]:
     return None
 
 
+def _freeze(py: Path, uv: Optional[str]) -> str:
+    cmd = [uv, "pip", "freeze", "--python", str(py)] if uv else [str(py), "-m", "pip", "freeze"]
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                             creationflags=_NO_WINDOW, timeout=120)
+        return res.stdout if res.returncode == 0 else ""
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
+def _reinstall(py: Path, uv: Optional[str], frozen_file: Path, log_dir: Path) -> None:
+    torch_index = "https://download.pytorch.org/whl/cu124"
+    cmd = ([uv, "pip", "install", "--python", str(py), "-r", str(frozen_file),
+            "--index-strategy", "unsafe-best-match", "--extra-index-url", torch_index]
+           if uv else [str(py), "-m", "pip", "install", "-r", str(frozen_file), "--extra-index-url", torch_index])
+    with open(log_dir / "update.log", "a", encoding="utf-8") as lf:
+        subprocess.run(cmd, stdout=lf, stderr=subprocess.STDOUT, creationflags=_NO_WINDOW)
+
+
 def apply_update(zip_path: Path, app_dir: Path, data_dir: Path, report: Callable[[str], None]) -> None:
     log_dir = data_dir / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     backup = data_dir / "updates" / "backup.zip"
     old_req = _sha256(app_dir / "requirements.txt")
     replaced: List[str] = []
+    restore_packages: Optional[Callable[[], None]] = None
 
     with zipfile.ZipFile(zip_path) as z:
         names = [n for n in z.namelist() if not n.endswith("/")]
@@ -352,6 +372,12 @@ def apply_update(zip_path: Path, app_dir: Path, data_dir: Path, report: Callable
                 report("Установка библиотек Python (может занять несколько минут)…")
                 py = app_dir / ".venv" / "Scripts" / "python.exe"
                 uv = _find_uv()
+                # What is installed now: put back if the new libraries fail half way
+                frozen = _freeze(py, uv)
+                if frozen:
+                    frozen_file = data_dir / "updates" / "packages-before-update.txt"
+                    frozen_file.write_text(frozen, encoding="utf-8")
+                    restore_packages = (lambda: _reinstall(py, uv, frozen_file, log_dir))
                 torch_index = "https://download.pytorch.org/whl/cu124"
                 cmd = ([uv, "pip", "install", "--python", str(py), "-r", str(app_dir / "requirements.txt"),
                         "--require-hashes", "--index-strategy", "unsafe-best-match", "--extra-index-url", torch_index]
@@ -365,12 +391,24 @@ def apply_update(zip_path: Path, app_dir: Path, data_dir: Path, report: Callable
                     raise RuntimeError("Не удалось установить библиотеки (подробности в logs\\update.log)")
         except Exception:
             report("Ошибка — восстановление прежней версии…")
-            with zipfile.ZipFile(backup) as bz:
-                bz.extractall(app_dir)
-            kept = set(replaced)
-            for _n, rel in files:  # files the new version added
-                if rel not in kept:
-                    (app_dir / rel).unlink(missing_ok=True)
+            # Each step on its own: a failure here must not hide the original error
+            try:
+                with zipfile.ZipFile(backup) as bz:
+                    bz.extractall(app_dir)
+                kept = set(replaced)
+                for _n, rel in files:  # files the new version added
+                    if rel not in kept:
+                        (app_dir / rel).unlink(missing_ok=True)
+            except Exception:
+                with open(log_dir / "update.log", "a", encoding="utf-8") as lf:
+                    lf.write("restore of the program files failed:\n" + traceback.format_exc())
+            if restore_packages:
+                report("Восстановление прежних библиотек Python…")
+                try:
+                    restore_packages()
+                except Exception:
+                    with open(log_dir / "update.log", "a", encoding="utf-8") as lf:
+                        lf.write("restore of the Python packages failed:\n" + traceback.format_exc())
             raise
 
 

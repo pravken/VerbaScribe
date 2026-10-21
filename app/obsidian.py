@@ -180,7 +180,9 @@ def _prepare(meeting_id: int, generate: bool, settings: Dict[str, str]) -> Dict[
             print(f"[obsidian] {key} for meeting {meeting_id} failed: {e}", flush=True)
             break  # Ollama is not available: the note is written with what there is
     if changed:
-        save_meeting_results(meeting_id, summaries=summaries)
+        from app.database import merge_summaries
+
+        merge_summaries(meeting_id, {k: summaries[k] for k in wanted if summaries.get(k)})
         m = get_meeting(meeting_id) or m
     return m
 
