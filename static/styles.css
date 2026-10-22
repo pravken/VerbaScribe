@@ -500,12 +500,17 @@ label.settings-toggle { display: flex; }
 /* Hardware block in the sidebar: one row per device, columns aligned */
 .hw-block { display: flex; flex-direction: column; gap: 4px; }
 .hw-row {
-  display: grid; grid-template-columns: 30px minmax(0, 1fr) 52px 70px; align-items: center; column-gap: 8px;
+  display: grid; grid-template-columns: 42px minmax(0, 1fr) 52px 70px; align-items: center; column-gap: 8px;
   width: 100%; min-height: 18px; text-align: left; font-size: 10.5px;
 }
 .hw-row-btn { border-radius: 6px; padding: 2px 4px; margin: -2px -4px; width: calc(100% + 8px); transition: background-color 0.12s ease; }
 .hw-row-btn:hover { background: rgba(255, 255, 255, 0.06); }
-.hw-label { font-family: 'JetBrains Mono Variable', ui-monospace, monospace; font-size: 10px; color: #8A8A90; }
+.hw-label { display: inline-flex; align-items: center; gap: 4px; font-family: 'JetBrains Mono Variable', ui-monospace, monospace; font-size: 10px; color: #8A8A90; }
+.hw-icon { width: 12px; height: 12px; flex-shrink: 0; }
+/* The models, framed apart from the devices: on the video card, on the processor */
+.hw-models { margin-top: 4px; padding: 6px 7px; border-radius: 9px; border: 1px solid rgba(255, 255, 255, 0.07); background: rgba(255, 255, 255, 0.025); display: flex; flex-direction: column; gap: 6px; }
+.hw-models-head { display: flex; align-items: center; justify-content: space-between; font-size: 10px; font-weight: 600; color: #8A8A90; margin-bottom: 3px; }
+.hw-models-count { font-family: 'JetBrains Mono Variable', ui-monospace, monospace; font-weight: 400; }
 .hw-name { display: flex; align-items: center; gap: 6px; min-width: 0; color: #D1D1D6; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .hw-bar { position: relative; height: 4px; border-radius: 9999px; background: rgba(255, 255, 255, 0.10); overflow: hidden; }
 .hw-bar > span { position: absolute; inset: 0 auto 0 0; border-radius: 9999px; transition: width 0.5s ease; }

@@ -179,7 +179,8 @@ function vramChipLabel(c) {
   if (c.kind === 'dub') return `${t('vramChipDub')}${c.count > 1 ? ' ×' + c.count : ''}`;
   if (c.kind === 'speakers') return t('vramChipSpeakers');
   if (c.kind === 'live') return `${t('vramChipLive')} · ${c.label || c.name}`;
-  if (c.kind === 'onnx') return `${c.label || c.name}${c.device === 'cuda' ? ' · GPU' : ''}${c.live ? ' · ' + t('vramChipLive') : ''}`;
+  if (c.kind === 'onnx') return `${c.label || c.name}${c.live ? ' · ' + t('vramChipLive') : ''}`;  // the device: its section
+  if (c.kind === 'ollama' && c.embedding) return `${t('vramChipSearch')} · ${c.label || c.name}`;
   if (c.kind === 'ollama') return `${c.label || c.name}${c.size_gb ? ' · ' + c.size_gb + ' ' + t('unitGB') : ''}`;
   return c.label || c.name;
 }
@@ -231,15 +232,18 @@ function renderVram(data) {
   renderSystemLoad(data.system);
   const row = document.getElementById('vram-row');
   const gpu = data.gpu;
-  row.classList.toggle('hidden', !gpu);
-  document.querySelector('#hw-block .hw-row-btn .hw-bar').classList.toggle('invisible', !gpu);
-  if (!gpu) { document.getElementById('vram-text').textContent = ''; vram.chips = data.chips || []; renderIdleStatus(data.idle); return; }
-  document.getElementById('vram-text').textContent = `${gpu.used_gb}/${gpu.total_gb} ${t('unitGB')}`;
-  document.getElementById('vram-bar').style.width = `${Math.min(100, (100 * gpu.used_gb) / Math.max(1, gpu.total_gb))}%`;
-  document.querySelector('#hw-block .hw-row-btn').title = `${t('tipVramUsage').replace('{free}', () => gpu.free_gb)}\n${t('tipHwStatus')}`;
-
   const chips = data.chips || [];  // every model: loaded, loading or ready to load
-  const html = chips.map((c, i) => {
+  row.classList.toggle('hidden', !chips.length);
+  document.querySelector('#hw-block .hw-row-btn .hw-bar').classList.toggle('invisible', !gpu);
+  if (gpu) {
+    document.getElementById('vram-text').textContent = `${gpu.used_gb}/${gpu.total_gb} ${t('unitGB')}`;
+    document.getElementById('vram-bar').style.width = `${Math.min(100, (100 * gpu.used_gb) / Math.max(1, gpu.total_gb))}%`;
+    document.querySelector('#hw-block .hw-row-btn').title = `${t('tipVramUsage').replace('{free}', () => gpu.free_gb)}\n${t('tipHwStatus')}`;
+  } else {
+    document.getElementById('vram-text').textContent = '';
+  }
+
+  const chipHtml = (c, i) => {
     const actionable = vram.busy || c.loading ? false : (c.loaded ? c.can_unload : c.can_preload);
     const cls = c.loading
       ? 'bg-apple-blue/10 text-apple-blue border-apple-blue/40 animate-pulse'
@@ -254,15 +258,26 @@ function renderVram(data) {
       class="group max-w-full inline-flex items-center gap-1 px-1.5 h-5 rounded-full border text-[10px] font-medium transition ${cls} ${actionable ? 'hover:bg-white/10' : 'cursor-default'}">
       <span class="w-1.5 h-1.5 rounded-full shrink-0 ${c.loaded || c.loading ? 'bg-current' : 'border border-current'}"></span>
       <span class="truncate">${c.default ? '★ ' : ''}${escapeHtml(vramChipLabel(c))}</span>${icon}</button>`;
-  }).join('');
+  };
+  // Split by where each model runs (or will); loaded ones first. Without a video card all are on the CPU
+  const part = where => chips.map((c, i) => [c, i]).filter(([c]) => (c.where || 'gpu') === where)
+    .sort(([a], [b]) => (b.loaded || b.loading ? 1 : 0) - (a.loaded || a.loading ? 1 : 0));
+  const parts = { gpu: part('gpu'), cpu: part('cpu') };
+  const html = parts.gpu.map(([c, i]) => chipHtml(c, i)).join('');
+  const htmlCpu = parts.cpu.map(([c, i]) => chipHtml(c, i)).join('');
+  for (const where of ['gpu', 'cpu']) {
+    document.getElementById(`hw-models-${where}`).classList.toggle('hidden', !parts[where].length);
+    const on = parts[where].filter(([c]) => c.loaded).length;
+    document.getElementById(`hw-models-${where}-count`).textContent = t('hwModelsLoaded').replace('{n}', () => on).replace('{total}', () => parts[where].length);
+  }
   // Unchanged chips are left alone, so a refresh never swallows a click
-  const box = document.getElementById('vram-chips');
-  if (html !== vram.html) {
-    box.innerHTML = html;
+  if (html + htmlCpu !== vram.html) {
+    document.getElementById('vram-chips').innerHTML = html;
+    document.getElementById('vram-chips-cpu').innerHTML = htmlCpu;
     // The recording studio covers the sidebar: it shows the same chips in its header
     const studioBox = document.getElementById('studio-vram-chips');
-    if (studioBox) studioBox.innerHTML = html;
-    vram.html = html;
+    if (studioBox) studioBox.innerHTML = html + htmlCpu;
+    vram.html = html + htmlCpu;
   }
   vram.chips = chips;
   renderIdleStatus(data.idle);
