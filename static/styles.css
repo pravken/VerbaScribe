@@ -544,6 +544,18 @@ label.settings-toggle { display: flex; }
   .tx-toolbar .tx-tool-label { display: none; }
 }
 
+/* Recording header: in a narrow window the Translate and Export buttons keep only their icons
+   (their titles explain them) and the view tabs shrink, so the recording title stays readable */
+#workspace-content { container-type: inline-size; }
+@container (max-width: 640px) {
+  #workspace-header { padding-left: 12px; padding-right: 12px; gap: 10px; }
+  #workspace-header .hdr-label { display: none; }
+  #workspace-header #meeting-meta-badge { display: none; }
+  #workspace-header #meeting-title-input { min-width: 80px; }
+  #workspace-header .apple-segmented { flex-shrink: 1; min-width: 0; }
+  #workspace-header .apple-segment-btn { padding: 0 8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+
 /* Parts of the app: tabs along the top of the main area */
 .app-bar {
   height: 40px; display: flex; align-items: flex-end; gap: 2px; padding: 0 16px;
