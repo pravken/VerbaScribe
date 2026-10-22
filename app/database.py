@@ -228,6 +228,13 @@ def init_db() -> None:
             )
             """
         )
+        for ddl in _FLAG_TRIGGERS:
+            cur.execute(ddl)
+        if not cur.execute("SELECT 1 FROM settings WHERE key = 'meeting_flags_v1'").fetchone():
+            # Recordings made before the triggers existed (read once)
+            cur.execute(f"UPDATE meetings SET has_transcript = {_HAS_TRANSCRIPT.format(row='meetings')}, "
+                        f"has_summary = {_HAS_SUMMARY.format(row='meetings')}")
+            cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('meeting_flags_v1', '1')")
         if cur.execute("PRAGMA user_version").fetchone()[0] < _FTS_SCHEMA_VERSION:
             # First start with the index (or a newer index format): build it from stored transcripts
             cur.execute("DELETE FROM segments_fts")
@@ -259,7 +266,23 @@ _MEETING_EXTRA_COLUMNS = {
     "local_only": "INTEGER DEFAULT 0",  # 1: never sent to a cloud model (see is_local_only)
     "media_size": "INTEGER DEFAULT NULL",  # bytes of the media file; NULL: not measured yet
     "series_id": "INTEGER DEFAULT NULL",  # a series of recurring meetings (app/series.py)
+    # Whether there is a transcript / a summary, kept by triggers (_FLAG_TRIGGERS): the library list
+    # reads these instead of the transcripts themselves (megabytes per recording)
+    "has_transcript": "INTEGER DEFAULT 0",
+    "has_summary": "INTEGER DEFAULT 0",
 }
+
+_HAS_TRANSCRIPT = "(COALESCE({row}.segments_json, '') NOT IN ('', '[]'))"
+_HAS_SUMMARY = "(COALESCE({row}.summaries_json, '') NOT IN ('', '{{}}'))"
+_FLAG_TRIGGERS = [
+    f"""CREATE TRIGGER IF NOT EXISTS meetings_flags_insert AFTER INSERT ON meetings BEGIN
+        UPDATE meetings SET has_transcript = {_HAS_TRANSCRIPT.format(row="NEW")},
+            has_summary = {_HAS_SUMMARY.format(row="NEW")} WHERE id = NEW.id; END""",
+    f"""CREATE TRIGGER IF NOT EXISTS meetings_flags_segments AFTER UPDATE OF segments_json ON meetings BEGIN
+        UPDATE meetings SET has_transcript = {_HAS_TRANSCRIPT.format(row="NEW")} WHERE id = NEW.id; END""",
+    f"""CREATE TRIGGER IF NOT EXISTS meetings_flags_summaries AFTER UPDATE OF summaries_json ON meetings BEGIN
+        UPDATE meetings SET has_summary = {_HAS_SUMMARY.format(row="NEW")} WHERE id = NEW.id; END""",
+]
 
 SYSTEM_FOLDERS = {"recordings": "Записи", "imports": "Импорт"}
 _VIDEO_EXTS = {".mp4", ".mkv", ".mov", ".avi", ".m4v", ".webm", ".wmv", ".flv", ".mpg", ".mpeg", ".ts", ".mts", ".3gp"}
@@ -860,8 +883,7 @@ _LIST_COLUMNS = """id, title, filename, media_path, duration, status, progress, 
     speakers_json, created_at, completed_at, folder_id, source, recorded_at, has_video, local_only, media_size, series_id,
     transcript_verified,
     obsidian_path, exports_json,
-    segments_json NOT IN ('', '[]') AS has_transcript,
-    summaries_json NOT IN ('', '{}') AS has_summary"""
+    has_transcript, has_summary"""
 
 # What a recording has been through, for the badges in the library: the languages of its
 # translations and dubs (read inside SQLite, so the large JSON is not loaded for every row)

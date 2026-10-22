@@ -304,3 +304,26 @@ class WhisperModelFilesTest(unittest.TestCase):
         self.assertTrue(mm.delete_whisper_model(mid))
         self.assertFalse(d.exists())
         self.assertEqual(list(d.parent.glob(d.name + ".deleting-*")), [])
+
+
+class ListFlagsTest(unittest.TestCase):
+    def test_flags_follow_the_transcript_and_summary(self):
+        database.init_db()
+        m = database.create_meeting(title="Флаги", filename="a.wav", media_path="a.wav")
+        flags = lambda: next((x["has_transcript"], x["has_summary"]) for x in database.list_meetings() if x["id"] == m["id"])
+        self.assertEqual(flags(), (False, False))
+        database.save_meeting_results(m["id"], segments=[{"id": 1, "start": 0, "end": 1, "text": "да"}])
+        database.merge_summaries(m["id"], {"protocol": "# Итог"})
+        self.assertEqual(flags(), (True, True))
+        database.clear_results(m["id"])
+        self.assertEqual(flags(), (False, False))
+        # a library from before the flags: filled in once at the start
+        database.save_meeting_results(m["id"], segments=[{"id": 1, "start": 0, "end": 1, "text": "да"}])
+        with database._db_lock:
+            conn = database.get_connection()
+            conn.execute("UPDATE meetings SET has_transcript = 0")
+            conn.execute("DELETE FROM settings WHERE key = 'meeting_flags_v1'")
+            conn.commit()
+            conn.close()
+        database.init_db()
+        self.assertEqual(flags(), (True, False))

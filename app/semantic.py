@@ -133,7 +133,7 @@ def pending_ids(settings: Optional[Dict[str, str]] = None) -> List[int]:
         rows = conn.execute(
             """
             SELECT id FROM meetings
-            WHERE status = 'completed' AND segments_json NOT IN ('', '[]')
+            WHERE status = 'completed' AND has_transcript = 1
               AND id NOT IN (SELECT meeting_id FROM semantic_meta WHERE model = ?)
             ORDER BY id DESC
             """,
@@ -148,7 +148,7 @@ def status() -> Dict[str, Any]:
     model = model_name(settings)
     with _db_lock:
         conn = get_connection()
-        total = conn.execute("SELECT COUNT(*) FROM meetings WHERE status = 'completed' AND segments_json NOT IN ('', '[]')").fetchone()[0]
+        total = conn.execute("SELECT COUNT(*) FROM meetings WHERE status = 'completed' AND has_transcript = 1").fetchone()[0]
         done = conn.execute(
             "SELECT COUNT(*) FROM semantic_meta s JOIN meetings m ON m.id = s.meeting_id WHERE s.model = ? AND m.status = 'completed'",
             (model,),
