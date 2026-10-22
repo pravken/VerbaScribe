@@ -274,8 +274,41 @@ function selectSettingsTab(name) {
   if (name === 'bench' && typeof loadBench === 'function') loadBench();
 }
 
+// Keyboard: an opened window takes the focus, Tab stays inside the top one, and the focus goes back
+// to where it was when the window closes
+const _modalReturnFocus = {};
+
+function focusablesIn(root) {
+  return [...root.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+    .filter(el => !el.disabled && el.getClientRects().length);  // shown (offsetParent is null for fixed ones)
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Tab') return;
+  const open = [...document.querySelectorAll('[aria-modal="true"]')].filter(el => !el.classList.contains('hidden') && el.getClientRects().length).pop();
+  if (!open) return;
+  const items = focusablesIn(open);
+  if (!items.length) return;
+  const first = items[0], last = items[items.length - 1];
+  if (!open.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+  else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+});
+
+// Rows and items made of <div role="button" tabindex="0">: Enter and Space click them, as a button
+document.addEventListener('keydown', e => {
+  if ((e.key !== 'Enter' && e.key !== ' ') || e.target.tagName === 'BUTTON' || !e.target.matches?.('[role="button"][tabindex="0"]')) return;
+  e.preventDefault();
+  e.target.click();
+});
+
 function openModal(name, tab) {
-  document.getElementById(`modal-${name}`).classList.remove('hidden');
+  const modal = document.getElementById(`modal-${name}`);
+  _modalReturnFocus[name] = document.activeElement;
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.classList.remove('hidden');
+  setTimeout(() => { if (!modal.contains(document.activeElement)) (focusablesIn(modal)[0] || modal).focus(); }, 60);
   if (name === 'settings') {
     let last = null;
     try { last = localStorage.getItem('verbascribe_settings_tab'); } catch (e) {}
@@ -356,6 +389,8 @@ function closeModal(name) {
     stopSettingsAudioTest();
   }
   document.getElementById(`modal-${name}`).classList.add('hidden');
+  const back = _modalReturnFocus[name];
+  if (back && document.contains(back)) back.focus();
 }
 function closeModalOnBackdrop(e, name) {
   if (e.target === e.currentTarget) closeModal(name);

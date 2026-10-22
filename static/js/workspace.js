@@ -1249,7 +1249,7 @@ function transcriptSegmentHtml(seg, idx) {
   const mergeBtnHtml = idx > 0 ? `
     <button onclick="mergeSegmentWithPrevious(${seg.id})"
       title="${escapeHtml(t('tipMergeSegment'))}"
-      class="opacity-0 group-hover:opacity-100 inline-flex items-center gap-1 text-[11px] text-apple-tertiary hover:text-apple-blue transition">
+      class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 inline-flex items-center gap-1 text-[11px] text-apple-tertiary hover:text-apple-blue transition">
       ${SVG_ICONS.mergeUp}
       <span>${t('mergeBtn')}</span>
     </button>
@@ -1278,7 +1278,7 @@ function transcriptSegmentHtml(seg, idx) {
             ${mergeBtnHtml}
             <button onclick="openInlineSegmentEditor(${seg.id})"
               title="${escapeHtml(t('tipEditSegment'))}"
-              class="opacity-0 group-hover:opacity-100 text-[11px] text-apple-tertiary hover:text-white transition">
+              class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 text-[11px] text-apple-tertiary hover:text-white transition">
               ${t('editBtn')}
             </button>
           </div>

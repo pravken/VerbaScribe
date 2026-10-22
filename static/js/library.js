@@ -172,7 +172,7 @@ function renderQueuePanel() {
       : running ? serverText(m.stage_text || q.stage_text || '') : t('queueWaiting').replace('{n}', () => q.position);
     const timing = running && !q.cancelling ? formatTiming(jobTiming(q, pct)) : '';
     return `
-      <div onclick="openMeeting(${q.id}, true)" title="${escapeHtml(detail)}"
+      <div onclick="openMeeting(${q.id}, true)" tabindex="0" role="button" title="${escapeHtml(detail)}"
         class="group px-2 py-1.5 rounded-md cursor-pointer hover:bg-white/5 ${running ? 'bg-apple-blue/10' : ''}">
         <div class="flex items-center justify-between gap-2">
           <span class="flex items-center gap-1.5 min-w-0">
@@ -924,7 +924,7 @@ function meetingRowHtml(m, depth) {
   const status = m.status === 'failed' ? t('statusFailed') : m.status === 'cancelled' ? t('statusCancelled') : m.status === 'cleared' ? t('statusClearedShort')
     : `${spkCount || 1} ${t('spkShort')} · ${(m.language || 'ru').toUpperCase()}`;
   return `
-    <div onclick="libRowClick(event, ${m.id})" data-mid="${m.id}"
+    <div onclick="libRowClick(event, ${m.id})" data-mid="${m.id}" tabindex="0" role="button"
          oncontextmenu="openRecordingContextMenu(event, ${m.id})"
          draggable="true" ondragstart="libraryDragStart(event, 'm', ${m.id})"
          class="group cursor-pointer pr-2 py-1.5 rounded-lg transition relative flex items-center gap-2 ${
@@ -935,7 +935,7 @@ function meetingRowHtml(m, depth) {
         <div class="flex items-center justify-between gap-2">
           <span title="${escapeHtml(libTitle(m))}" class="text-[12.5px] font-medium leading-snug line-clamp-2 break-words min-w-0">${escapeHtml(libTitle(m))}</span>
           <button onclick="openRecordingContextMenu(event, ${m.id})" title="${escapeHtml(t('tipItemMenu'))}"
-            class="opacity-0 group-hover:opacity-100 px-1 rounded hover:bg-black/20 text-xs shrink-0 transition">•••</button>
+            class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 px-1 rounded hover:bg-black/20 text-xs shrink-0 transition">•••</button>
         </div>
         <div class="flex items-center justify-between gap-2 text-[11px] mt-0.5 ${isSelected ? 'text-white/80' : 'text-apple-secondary'}">
           <span class="flex items-center gap-1.5 min-w-0">
@@ -1019,7 +1019,7 @@ function toggleDateCollapsed(key) {
 
 function dateRowHtml(id, label, count, depth, open) {
   return `
-    <div onclick="toggleDateCollapsed(this.dataset.id)" data-id="${escapeHtml(id)}"
+    <div onclick="toggleDateCollapsed(this.dataset.id)" data-id="${escapeHtml(id)}" tabindex="0" role="button"
          class="flex items-center gap-1.5 pr-2 py-1 rounded-lg cursor-pointer text-apple-secondary hover:bg-white/5 transition"
          style="padding-left:${6 + depth * 14}px" title="${escapeHtml(label)}">
       <span class="shrink-0 text-apple-tertiary transition-transform ${open ? 'rotate-90' : ''}">${ICON_CHEVRON}</span>
@@ -1243,6 +1243,8 @@ async function bulkAutoTitles() {
 // Ctrl+A selects recordings only after a click in the library (elsewhere it selects text as usual)
 let _libHadClick = false;
 document.addEventListener('mousedown', e => { _libHadClick = !!e.target.closest?.('#meetings-list'); }, true);
+// ... or after moving into it with the keyboard (Tab onto a recording)
+document.addEventListener('focusin', e => { if (e.target.closest?.('#meetings-list')) _libHadClick = true; });
 
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && state.multi.size && !document.querySelector('.modal-backdrop:not(.hidden)')) clearLibSelection();
@@ -1275,14 +1277,14 @@ document.addEventListener('keydown', e => {
 // "•••" on a row: the same menu as a right click (shown on hover and on keyboard focus)
 function rowMoreButton(m) {
   return `<button onclick="event.stopPropagation(); openRecordingContextMenu(event, ${m.id})" tabindex="-1" aria-label="${escapeHtml(t('tipRecordingMore'))}"
-    title="${escapeHtml(t('tipRecordingMore'))}" class="row-more opacity-0 group-hover:opacity-100 focus:opacity-100 px-1 rounded hover:bg-black/20 text-[11px] shrink-0 transition">•••</button>`;
+    title="${escapeHtml(t('tipRecordingMore'))}" class="row-more opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 px-1 rounded hover:bg-black/20 text-[11px] shrink-0 transition">•••</button>`;
 }
 
 function meetingCompactRowHtml(m, depth) {
   const isSelected = libIsSelected(m);
   const isBusy = !DONE_STATUSES.includes(m.status);
   return `
-    <div onclick="libRowClick(event, ${m.id})" data-mid="${m.id}" oncontextmenu="openRecordingContextMenu(event, ${m.id})"
+    <div onclick="libRowClick(event, ${m.id})" data-mid="${m.id}" tabindex="0" role="button" oncontextmenu="openRecordingContextMenu(event, ${m.id})"
          draggable="true" ondragstart="libraryDragStart(event, 'm', ${m.id})" title="${escapeHtml(m.title)}"
          class="group cursor-pointer pr-2 py-1 rounded-md transition flex items-center gap-2 text-[12px] ${
            isSelected ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'
@@ -1302,7 +1304,7 @@ function meetingTileHtml(m) {
     ? `<img src="/api/meetings/${m.id}/thumb" loading="lazy" alt="" draggable="false" onerror="this.replaceWith(Object.assign(document.createElement('span'), {className: 'lib-tile-icon', innerHTML: ICON_FILE_VIDEO}))" class="w-full h-full object-cover" />`
     : `<span class="lib-tile-icon">${ICON_FILE_AUDIO}</span>`;
   return `
-    <div onclick="libRowClick(event, ${m.id})" data-mid="${m.id}" oncontextmenu="openRecordingContextMenu(event, ${m.id})"
+    <div onclick="libRowClick(event, ${m.id})" data-mid="${m.id}" tabindex="0" role="button" oncontextmenu="openRecordingContextMenu(event, ${m.id})"
          draggable="true" ondragstart="libraryDragStart(event, 'm', ${m.id})" title="${escapeHtml(m.title)}"
          class="lib-tile group ${isSelected ? 'lib-tile-on' : ''}">
       <div class="lib-tile-cover">
@@ -1327,7 +1329,7 @@ function folderRowHtml(f, depth, collapsed) {
   const count = meetingsInFolderTree(f.id).length;
   const open = !collapsed.has(f.id);
   return `
-    <div onclick="toggleFolderCollapsed(${f.id})" oncontextmenu="openFolderMenu(event, ${f.id})"
+    <div onclick="toggleFolderCollapsed(${f.id})" tabindex="0" role="button" oncontextmenu="openFolderMenu(event, ${f.id})"
          ${f.system_key ? '' : `draggable="true" ondragstart="libraryDragStart(event, 'f', ${f.id})"`}
          ondragover="libraryDragOver(event, ${f.id})" ondragleave="libraryDragLeave(event)" ondrop="libraryDrop(event, ${f.id})"
          class="folder-row group flex items-center gap-1.5 pr-2 py-1.5 rounded-lg cursor-pointer text-apple-label hover:bg-white/5 transition"
@@ -1337,7 +1339,7 @@ function folderRowHtml(f, depth, collapsed) {
       <span class="text-[12px] font-semibold truncate flex-1">${escapeHtml(folderName(f))}</span>
       <span class="text-[10.5px] font-mono text-apple-tertiary">${count}</span>
       <button onclick="openFolderMenu(event, ${f.id})" title="${escapeHtml(t('tipFolderMenu'))}"
-        class="opacity-0 group-hover:opacity-100 px-1 rounded hover:bg-black/20 text-xs shrink-0 transition">•••</button>
+        class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 px-1 rounded hover:bg-black/20 text-xs shrink-0 transition">•••</button>
     </div>`;
 }
 
@@ -1358,13 +1360,13 @@ function renderMeetingsSidebar() {
     listEl._keyed = false;
     listEl.innerHTML = askHtml + state.globalSearchResults.map(item => `
       <div class="rounded-lg bg-white/[0.03] border apple-border p-2.5 space-y-1.5 mb-1.5">
-        <div onclick="openMeeting(${item.meeting_id}, true)"
+        <div onclick="openMeeting(${item.meeting_id}, true)" tabindex="0" role="button"
              title="${escapeHtml(item.title)}"
              class="text-xs font-semibold text-white hover:text-apple-blue cursor-pointer truncate">
           ${escapeHtml(item.title)}
         </div>
         ${(item.hits || []).map(h => `
-          <div onclick="switchAppView('library'); selectMeetingAndSeek(${item.meeting_id}, ${h.start})"
+          <div onclick="switchAppView('library'); selectMeetingAndSeek(${item.meeting_id}, ${Number(h.start) || 0})" tabindex="0" role="button"
                title="${escapeHtml(t('tipSeekTimestamp'))}"
                class="px-2 py-1 rounded bg-black/30 hover:bg-apple-blue/20 cursor-pointer text-[11px] transition">
             <div class="flex items-center justify-between text-[10px] text-apple-blue font-mono">

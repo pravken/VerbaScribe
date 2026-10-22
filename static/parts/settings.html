@@ -112,8 +112,8 @@
               <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="deleteMediaAfterHint">Остаются расшифровка, анализ и заметки. Файлы, добавленные по пути на диске, не трогаются.</span></span>
           </label>
           <div class="flex items-center gap-2 text-xs text-apple-label">
-            <span data-i18n="retentionLabel">Хранить звук записей</span>
-            <select id="set-media-retention" class="h-7 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none">
+            <span id="lbl-media-retention" data-i18n="retentionLabel">Хранить звук записей</span>
+            <select id="set-media-retention" aria-labelledby="lbl-media-retention" class="h-7 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none">
               <option value="0" data-i18n="retentionForever">всегда</option>
               <option value="7" data-i18n="retention7">7 дней</option>
               <option value="30" data-i18n="retention30">30 дней</option>
@@ -150,7 +150,7 @@
             </div>
           </div>
           <div class="flex items-center gap-2">
-            <select id="set-idle-unload" class="h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
+            <select id="set-idle-unload" data-i18n-title="a11yIdleUnload" title="Выгружать модели из памяти через" class="h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
               <option value="0" data-i18n="idleUnloadNever">Не выгружать</option>
               <option value="1">1 min</option>
               <option value="5">5 min</option>
@@ -260,7 +260,7 @@
                 data-i18n-title="tipDictation" title="Нажмите сочетание: начнётся запись микрофона; нажмите ещё раз — текст появится там, где стоит курсор (в любой программе)"
                 class="w-44 h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono focus:outline-none focus:border-apple-blue cursor-pointer" />
               <button onclick="document.getElementById('set-dictation-hotkey').value = ''" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" data-i18n="hotkeyClear">Отключить</button>
-              <select id="set-dictation-language" class="h-7 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none">
+              <select id="set-dictation-language" data-i18n-title="a11yDictationLang" title="Язык диктовки" class="h-7 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none">
                 <option value="auto" data-i18n="studioSpeechAuto">Авто</option>
                 <option value="ru">Русский</option>
                 <option value="en">English</option>
@@ -286,8 +286,8 @@
               <div id="call-apps" class="flex flex-wrap gap-x-4 gap-y-1.5"></div>
               <div id="call-mic-now" class="text-[11px] text-apple-tertiary"></div>
               <div class="flex items-center gap-2">
-                <span class="text-[11px] text-apple-secondary" data-i18n="callPresetLabel">Пресет записи</span>
-                <select id="set-call-preset" class="h-7 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none"></select>
+                <span id="lbl-call-preset" class="text-[11px] text-apple-secondary" data-i18n="callPresetLabel">Пресет записи</span>
+                <select id="set-call-preset" aria-labelledby="lbl-call-preset" class="h-7 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none"></select>
               </div>
             </div>
           </div>
@@ -458,7 +458,7 @@
             <div class="rounded-lg border border-apple-amber/40 bg-apple-amber/10 px-3 py-2.5 text-[11.5px] text-apple-amber leading-relaxed" data-i18n="llmCloudWarning">Текст расшифровки анализируемой записи (а для вопросов по медиатеке — найденные фрагменты) отправляется в выбранный сервис через интернет и обрабатывается по его правилам. Аудио и видео не отправляются. Запросы оплачиваются по тарифам сервиса.</div>
             <div class="grid grid-cols-2 gap-3">
               <div>
-                <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="llmProviderLabel">Сервис</label>
+                <label for="set-llm-provider" class="block text-[11px] text-apple-secondary mb-1" data-i18n="llmProviderLabel">Сервис</label>
                 <select id="set-llm-provider" onchange="renderLlmProvider()" class="w-full h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
                   <option value="openai">OpenAI (ChatGPT)</option>
                   <option value="anthropic">Anthropic (Claude)</option>
@@ -467,7 +467,7 @@
                 </select>
               </div>
               <div>
-                <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="llmModelLabel">Модель</label>
+                <label for="set-llm-model-select" class="block text-[11px] text-apple-secondary mb-1" data-i18n="llmModelLabel">Модель</label>
                 <div class="flex items-center gap-1.5">
                   <select id="set-llm-model-select" onchange="onLlmModelSelect(this.value)" class="flex-1 min-w-0 h-8 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white font-mono focus:outline-none"></select>
                   <button onclick="loadLlmModels(true)" id="llm-models-btn" class="ui-btn ui-btn-subtle h-8 !px-2 shrink-0" data-i18n-title="tipLlmModels" title="Загрузить список моделей, доступных по ключу">
@@ -791,7 +791,7 @@
           <!-- Dub settings -->
           <div class="grid grid-cols-2 gap-x-3.5 gap-y-3 pt-1">
             <div>
-              <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="sdubWorkersLabel">Процессы синтеза</label>
+              <label for="set-dub-workers" class="block text-[11px] text-apple-secondary mb-1" data-i18n="sdubWorkersLabel">Процессы синтеза</label>
               <select id="set-dub-workers" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none">
                 <option value="auto" data-i18n="sdubWorkersAuto">Авто (по свободной VRAM)</option>
                 <option value="1">1</option>
@@ -801,7 +801,7 @@
               <p class="text-[10.5px] text-apple-tertiary mt-1 leading-snug" data-i18n="sdubWorkersHint">Каждый процесс — около 4 ГБ видеопамяти. Несколько процессов озвучивают фразы параллельно: быстрее, но памяти нужно больше.</p>
             </div>
             <div>
-              <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="sdubStretchLabel">Подгонка длительности</label>
+              <label for="set-dub-stretch" class="block text-[11px] text-apple-secondary mb-1" data-i18n="sdubStretchLabel">Подгонка длительности</label>
               <select id="set-dub-stretch" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none">
                 <option value="atempo">atempo (FFmpeg)</option>
                 <option value="rubberband">Rubber Band</option>
@@ -854,8 +854,8 @@
               <button onclick="benchSetKind('asr')" id="bench-kind-asr" class="apple-segment-btn text-[11px]" data-i18n="benchKindAsr">Распознавание</button>
               <button onclick="benchSetKind('llm')" id="bench-kind-llm" class="apple-segment-btn text-[11px]" data-i18n="benchKindLlm">Анализ</button>
             </div>
-            <select id="bench-meeting" class="flex-1 min-w-0 h-8 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none"></select>
-            <select id="bench-clip" class="h-8 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none">
+            <select id="bench-meeting" data-i18n-title="a11yBenchMeeting" title="Запись для сравнения" class="flex-1 min-w-0 h-8 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none"></select>
+            <select id="bench-clip" data-i18n-title="a11yBenchClip" title="Длина фрагмента" class="h-8 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none">
               <option value="60" data-i18n="benchClip1">1 минута</option>
               <option value="180" selected data-i18n="benchClip3">3 минуты</option>
               <option value="600" data-i18n="benchClip10">10 минут</option>

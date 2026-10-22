@@ -90,6 +90,20 @@ class StaticUiTest(unittest.TestCase):
                         missing.append(f"{f.name}: {text[:80]}")
         self.assertEqual(missing, [])
 
+    def test_every_select_has_a_name(self):
+        """A screen reader names a list by its <label for>, aria-label(ledby) or title."""
+        labels = set(re.findall(r'<label[^>]*\sfor="([^"]+)"', HTML))
+        unnamed = []
+        for m in re.finditer(r"<select\b[^>]*>", HTML):
+            tag = m.group(0)
+            sid = (re.search(r'id="([^"]+)"', tag) or [None, "?"])[1]
+            if "title=" in tag or "aria-label" in tag or sid in labels:
+                continue
+            before = HTML[max(0, m.start() - 300):m.start()]
+            if before.rfind("<label") <= before.rfind("</label>"):
+                unnamed.append(sid)
+        self.assertEqual(unnamed, [])
+
     def test_vendor_files_match_package_json(self):
         """static/vendor is what `npm run vendor` built from the versions in package.json."""
         import json

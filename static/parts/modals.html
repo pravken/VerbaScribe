@@ -215,11 +215,11 @@
 
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="translateLangLabel">Язык перевода</label>
+            <label for="translate-lang" class="block text-[11px] text-apple-secondary mb-1" data-i18n="translateLangLabel">Язык перевода</label>
             <select id="translate-lang" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none"></select>
           </div>
           <div>
-            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="translateModelLabel">Модель Ollama</label>
+            <label for="translate-model" class="block text-[11px] text-apple-secondary mb-1" data-i18n="translateModelLabel">Модель Ollama</label>
             <select id="translate-model" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none"></select>
           </div>
         </div>
@@ -235,11 +235,11 @@
           <div class="text-xs font-semibold text-white" data-i18n="subsTitle">Субтитры для видео</div>
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="subsLangLabel">Текст субтитров</label>
+              <label for="subs-lang" class="block text-[11px] text-apple-secondary mb-1" data-i18n="subsLangLabel">Текст субтитров</label>
               <select id="subs-lang" onchange="updateSubsControls()" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none"></select>
             </div>
             <div>
-              <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="subsVariantLabel">Вариант</label>
+              <label for="subs-variant" class="block text-[11px] text-apple-secondary mb-1" data-i18n="subsVariantLabel">Вариант</label>
               <select id="subs-variant" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none">
                 <option value="translated" data-i18n="subsVariantTranslated">Только перевод</option>
                 <option value="bilingual" data-i18n="subsVariantBilingual">Оригинал + перевод</option>
@@ -296,7 +296,7 @@
         <div id="dub-last-error" class="hidden text-xs rounded-lg border border-apple-red/30 bg-apple-red/15 text-apple-red px-3 py-2"></div>
 
         <div>
-          <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="dubLangLabel">Язык озвучки</label>
+          <label for="dub-lang" class="block text-[11px] text-apple-secondary mb-1" data-i18n="dubLangLabel">Язык озвучки</label>
           <select id="dub-lang" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none"></select>
         </div>
 
