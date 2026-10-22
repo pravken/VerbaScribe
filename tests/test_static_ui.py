@@ -51,6 +51,16 @@ class StaticUiTest(unittest.TestCase):
         self.assertEqual(sorted(used - en), [], "no English text")
         self.assertEqual(sorted(ru - en), [], "Russian text without English")
 
+    def test_vendor_files_match_package_json(self):
+        """static/vendor is what `npm run vendor` built from the versions in package.json."""
+        import json
+
+        deps = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["devDependencies"]
+        head = (ROOT / "static" / "vendor" / "purify.min.js").read_text(encoding="utf-8")[:120]
+        self.assertIn(f"DOMPurify {deps['dompurify']} ", head)
+        head = (ROOT / "static" / "vendor" / "marked.min.js").read_text(encoding="utf-8")[:200]
+        self.assertIn(f"marked v{deps['marked']} ", head)
+
     def test_no_text_in_inline_handlers(self):
         """Data in an onclick="..." goes through jsArg() (or Number()): a quote in a name must not end the code."""
         bad = []
