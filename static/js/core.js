@@ -468,6 +468,7 @@ function closeModal(name) {
   if (name === 'settings') {
     stopSettingsAudioTest();
   }
+  if (name === 'about') endAboutEgg();  // the transcript of the room does not go on unseen
   document.getElementById(`modal-${name}`).classList.add('hidden');
   const back = _modalReturnFocus[name];
   if (back && document.contains(back)) back.focus();

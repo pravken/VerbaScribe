@@ -1482,6 +1482,14 @@ function startAboutEgg() {
     timer.textContent = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
   }, 250);
   about.egg.push(tick);
+  // Now and then the whole window glitches, every 2.5-5 s (its last line glitches too)
+  const glitch = () => {
+    box.classList.remove('egg-glitch');
+    void box.offsetWidth;  // restart the animation
+    box.classList.add('egg-glitch');
+    about.egg.push(setTimeout(glitch, 2500 + Math.random() * 2500));
+  };
+  about.egg.push(setTimeout(glitch, 1800));
   const lines = ABOUT_EGG[en ? 'en' : 'ru'];
   lines.forEach(([ts, who, color, text], i) => {
     about.egg.push(setTimeout(() => {
@@ -1509,5 +1517,6 @@ function endAboutEgg() {
   about.eggOn = false;
   const box = document.getElementById('about-egg');
   box?.classList.add('hidden');
+  box?.classList.remove('egg-glitch');
   box?.parentElement.classList.remove('about-egg-on');
 }

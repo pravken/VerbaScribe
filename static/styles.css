@@ -466,7 +466,7 @@ label.settings-toggle { display: flex; }
 .about-caption .caret { display: inline-block; width: 7px; height: 1em; vertical-align: -0.12em; margin-left: 2px; background: #0A84FF; animation: caret-blink 1s steps(1) infinite; }
 @keyframes caret-blink { 50% { opacity: 0; } }
 .about-egg {
-  position: absolute; inset: 0; padding: 22px 26px; background: rgba(4, 4, 6, 0.97); cursor: pointer;
+  position: absolute; inset: 0; padding: 22px 26px; background: rgba(4, 4, 6, 0.97); cursor: default;
   animation: egg-in .6s ease forwards;
 }
 @keyframes egg-in { from { opacity: 0; } to { opacity: 1; } }
@@ -483,10 +483,19 @@ label.settings-toggle { display: flex; }
   50% { text-shadow: 1px 0 #FF453A, -1px 0 #30D158; transform: translateX(-1px); }
   100% { text-shadow: none; transform: none; }
 }
+/* Now and then the whole transcript of the room glitches, as its last line does */
+.about-egg.egg-glitch { animation: egg-glitch .45s steps(3) 1; }
+@keyframes egg-glitch {
+  0% { text-shadow: 3px 0 #FF453A, -3px 0 #0A84FF; transform: translate(0, 0) skewX(0); }
+  30% { text-shadow: -3px 0 #FF453A, 3px 0 #0A84FF; transform: translate(2px, -1px) skewX(-1.5deg); filter: brightness(1.25); }
+  60% { text-shadow: 2px 0 #FF453A, -2px 0 #30D158; transform: translate(-2px, 1px) skewX(1deg); clip-path: inset(8% 0 22% 0); }
+  100% { text-shadow: none; transform: none; filter: none; clip-path: none; }
+}
 @media (prefers-reduced-motion: reduce) {
   .app-logo:hover .app-logo-branch, .app-logo:hover .catkin { animation: none; }
   .willow-fluff { display: none; }
-  .about-willow, .about-willow .catkin, .about-logo.about-shake .about-willow, .about-egg .glitch { animation: none; }
+  .about-willow, .about-willow .catkin, .about-logo.about-shake .about-willow, .about-egg .glitch,
+  .about-egg.egg-glitch { animation: none; }
 }
 
 /* Studio captions: small language label in front of a line */
