@@ -125,10 +125,12 @@ def _run(cmd: List[str], start_pct: int, end_pct: int, env: Dict[str, str]) -> i
     if _cancel.is_set():
         raise RuntimeError("Установка отменена")
     _log("$ " + " ".join(Path(cmd[0]).name if i == 0 else c for i, c in enumerate(cmd)))
-    proc = subprocess.Popen(
+    from app.shutdown import track
+
+    proc = track(subprocess.Popen(
         cmd, cwd=str(APP_DIR), env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, encoding="utf-8", errors="replace", creationflags=_NO_WINDOW,
-    )
+    ))
     with _lock:
         _proc = proc
     pct = start_pct

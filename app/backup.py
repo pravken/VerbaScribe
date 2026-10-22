@@ -31,6 +31,7 @@ from typing import Any, Dict, List, Optional
 from app.paths import DATA_DIR, DB_PATH
 
 PENDING = DATA_DIR / "meetings.restore-pending.db"
+busy = 0  # a copy is being written or read (app/app_status.py: the app does not quit in the middle)
 FORMAT = 1
 RESTORED_FOLDER = "Восстановлено из копии"
 # Where data is sent and where files are written: taken from this computer, not from the copy
@@ -64,6 +65,15 @@ def estimate() -> Dict[str, Any]:
 
 
 def make(dest: Path, with_media: bool = False) -> Dict[str, Any]:
+    global busy
+    busy += 1
+    try:
+        return _make(dest, with_media)
+    finally:
+        busy -= 1
+
+
+def _make(dest: Path, with_media: bool) -> Dict[str, Any]:
     from app import __version__
 
     dest = Path(dest)
@@ -142,6 +152,15 @@ def _keep_local_settings(conn: sqlite3.Connection) -> None:
 
 def restore(src: Path) -> Dict[str, Any]:
     """Stages the copy's database for the next start and puts the media files back now."""
+    global busy
+    busy += 1
+    try:
+        return _restore(src)
+    finally:
+        busy -= 1
+
+
+def _restore(src: Path) -> Dict[str, Any]:
     from app.database import get_all_settings
     from app.paths import recordings_dir
 

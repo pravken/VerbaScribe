@@ -589,6 +589,16 @@ def grant_media_to_app(window, host: str, port: int) -> None:
 _update_launched = False
 
 
+def _stop_work() -> None:
+    """Before the process ends: recordings finished, work processes ended (app/shutdown.py)."""
+    try:
+        from app import shutdown
+
+        shutdown.stop_all()
+    except Exception as e:
+        print(f"[exit] {e}", file=sys.stderr)
+
+
 def _install_update_on_exit() -> None:
     """A downloaded update (automatic updates on) is installed when the app closes."""
     global _update_launched
@@ -616,7 +626,11 @@ def show_error_box(text: str) -> None:
 
 
 def main() -> None:
+    import atexit
+
     import uvicorn
+
+    atexit.register(_stop_work)  # the browser and headless modes end through Python's own exit
 
     from app.hardware import register_cuda_dlls
 
@@ -687,6 +701,7 @@ def main() -> None:
                 from app import updater
 
                 updater.exit_hooks.append(tray.stop)
+                updater.exit_hooks.append(_stop_work)
             except Exception as e:  # the app works without the tray icon
                 print(f"[tray] not available: {e}", file=sys.stderr)
 
@@ -698,6 +713,7 @@ def main() -> None:
                     print("Window closed: ending the process")
                     if tray is not None:
                         tray.stop()
+                    _stop_work()
                     _install_update_on_exit()
                     os._exit(0)
 
@@ -722,6 +738,7 @@ def main() -> None:
                           private_mode=False, storage_path=str(DATA_DIR / "webview"))
             if tray is not None:
                 tray.stop()
+            _stop_work()
             _install_update_on_exit()
             os._exit(0)
         except Exception as e:

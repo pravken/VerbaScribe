@@ -194,6 +194,11 @@ def api_update_install() -> Dict[str, Any]:
 
     if running_job_kind():
         raise HTTPException(status_code=409, detail="Дождитесь окончания текущей задачи")
+    from app import app_status
+
+    st = app_status.snapshot()
+    if st["recording"] or st["state"] != "idle":  # the app quits for the update: nothing may be cut off
+        raise HTTPException(status_code=409, detail=f"Дождитесь окончания: {st['text']}")
     try:
         updater.launch_installer()
     except RuntimeError as e:

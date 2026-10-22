@@ -165,10 +165,12 @@ def burn_subtitles(
         if out_path.suffix.lower() == ".mp4":
             args += ["-movflags", "+faststart"]
         args.append(str(partial))
-        proc = subprocess.Popen(
+        from app.shutdown import track
+
+        proc = track(subprocess.Popen(
             args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8",
             errors="replace", creationflags=_NO_WINDOW, cwd=str(tmp),
-        )
+        ))
         err_tail: List[str] = []
 
         def _drain_err() -> None:

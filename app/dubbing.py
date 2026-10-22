@@ -232,7 +232,9 @@ class DubWorker:
         self._check_cancel = check_cancel
         self._cancelled = False
         self._stderr: deque = deque(maxlen=60)
-        self.proc = subprocess.Popen(
+        from app.shutdown import track
+
+        self.proc = track(subprocess.Popen(
             [str(DUB_PYTHON), "-I", str(DUB_WORKER)],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -242,7 +244,7 @@ class DubWorker:
             errors="replace",
             env=env,
             creationflags=_NO_WINDOW,
-        )
+        ))
         with _live_lock:
             _live_workers[self.proc.pid] = purpose
         threading.Thread(target=self._drain_stderr, daemon=True).start()

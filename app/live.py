@@ -76,10 +76,12 @@ class _CaptionWorker:
             raise RuntimeError(self.last_error or "процесс распознавания не запустился")
         cmd = [sys.executable, "-m", "app.live_worker"]
         try:
-            self.proc = subprocess.Popen(
+            from app.shutdown import track
+
+            self.proc = track(subprocess.Popen(
                 cmd, cwd=str(APP_DIR), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 creationflags=_NO_WINDOW, env={**os.environ, "PYTHONIOENCODING": "utf-8"},
-            )
+            ))
             self._out = queue.Queue()
             threading.Thread(target=self._drain, args=(self.proc,), daemon=True).start()
             threading.Thread(target=self._read, args=(self.proc, self._out), daemon=True).start()

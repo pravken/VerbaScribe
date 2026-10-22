@@ -221,3 +221,29 @@ class UploadDiskSpaceTest(unittest.TestCase):
                 r = c.post("/api/meetings/upload", files={"files": ("big.wav", b"x" * 1024, "audio/wav")})
             self.assertEqual(r.status_code, 507, r.text)
             self.assertEqual(set(main.UPLOADS_DIR.iterdir()), before)
+
+
+class ShutdownTest(unittest.TestCase):
+    def test_work_processes_end_with_the_app(self):
+        import subprocess
+        import sys
+
+        from app import shutdown
+
+        proc = shutdown.track(subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"]))
+        shutdown.stop_all()
+        self.assertIsNotNone(proc.wait(timeout=10))
+
+    def test_background_work_keeps_the_app_open(self):
+        from unittest import mock
+
+        from app import app_status, backup, dub_setup
+
+        with mock.patch("app.transcriber.queue_snapshot", return_value=[]):
+            self.assertEqual(app_status.snapshot()["state"], "idle")
+            with mock.patch.dict(dub_setup._state, {"active": True}):
+                st = app_status.snapshot()
+                self.assertEqual(st["state"], "busy")
+                self.assertIn("Установка дубляжа", st["text"])
+            with mock.patch.object(backup, "busy", 1):
+                self.assertIn("Резервная копия", app_status.snapshot()["text"])
