@@ -44,7 +44,7 @@ DOWNLOAD_PREFIX = f"https://github.com/{GITHUB_REPO}/releases/download/"
 # The author's release key (minisign format, app/release_sign.py, docs/release-signing.md). Set: an
 # update installs only with SHA256SUMS.txt.minisig signed by it for that very release. Empty: the
 # checksum alone is checked, as before the key existed.
-RELEASE_PUBLIC_KEY = ""
+RELEASE_PUBLIC_KEY = "RWT8fmjh8HjA/sAFcnc7vHWhzK+i+OircfoKXDPiKs5QnNnrGdiRRIpB"
 # Never replaced by an update: user data, models and the Python environments
 PROTECTED = {".venv", ".venv-dub", ".python", "models", "data", "node_modules", ".git"}
 

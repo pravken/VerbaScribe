@@ -374,6 +374,12 @@ class ReleaseSignatureTest(unittest.TestCase):
                 if not ok:
                     self.assertIn("не подписан", st["error"])
 
+    def test_the_app_holds_a_valid_release_key(self):
+        from app import release_sign
+
+        key_id, pk = release_sign._key_parts(updater.RELEASE_PUBLIC_KEY)
+        self.assertEqual((len(key_id), len(pk)), (8, 32))
+
     def test_release_key_tool_makes_signatures_the_updater_accepts(self):
         import os
         import subprocess
@@ -390,8 +396,11 @@ class ReleaseSignatureTest(unittest.TestCase):
             env = {**os.environ, "RELEASE_SIGNING_KEY": key.read_text().strip()}
             res = subprocess.run([sys.executable, str(root / "tools" / "release_key.py"), "sign", str(sums), "--tag", "v9.0.0"],
                                  capture_output=True, text=True, env=env)
-            self.assertEqual(res.returncode, 0, res.stderr)
+            # The signature is made and checks out with its own key, but this key is not the one in
+            # app/updater.py: the release workflow stops instead of publishing what nobody could install
             updater.check_signature(self.sums, (Path(tmp) / "SHA256SUMS.txt.minisig").read_text(), "v9.0.0", key=pub)
+            self.assertNotEqual(res.returncode, 0)
+            self.assertIn("does not belong to the public key", res.stderr)
             again = subprocess.run([sys.executable, str(root / "tools" / "release_key.py"), "generate", "--out", str(key)],
                                    capture_output=True, text=True)
             self.assertNotEqual(again.returncode, 0)  # a key is never overwritten
