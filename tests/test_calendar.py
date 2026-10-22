@@ -59,6 +59,54 @@ class CalendarParseTest(unittest.TestCase):
         self.assertEqual(len(calendar_ics.occurrences(ev, datetime(2026, 10, 1), datetime(2026, 11, 1))), 3)
 
 
+def _event(rule, start="20100104T090000", end="20100104T091500", extra=""):
+    return f"BEGIN:VEVENT\nUID:{rule}\nSUMMARY:x\nDTSTART:{start}\nDTEND:{end}\nRRULE:{rule}\n{extra}END:VEVENT\n"
+
+
+class CalendarRobustnessTest(unittest.TestCase):
+    """A calendar someone else publishes: one odd event must not stop the whole calendar."""
+
+    def _window(self, text, start, days=7):
+        evs = calendar_ics.parse("BEGIN:VCALENDAR\n" + text + "END:VCALENDAR\n")
+        with mock.patch.object(calendar_ics, "events", return_value=evs):
+            return calendar_ics.window(start, start + timedelta(days=days))
+
+    def test_odd_rules_do_not_break_the_calendar(self):
+        good = _event("FREQ=WEEKLY;BYDAY=MO", start="20261019T100000", end="20261019T103000")
+        for rule in ("FREQ=DAILY;INTERVAL=abc", "FREQ=DAILY;INTERVAL=99999999999", "FREQ=MONTHLY;INTERVAL=100000",
+                     "FREQ=YEARLY;COUNT=99999", "FREQ=DAILY;UNTIL=99991231T235959Z"):
+            got = self._window(_event(rule, start="20261019T090000", end="20261019T091500") + good, datetime(2026, 10, 18))
+            self.assertIn(datetime(2026, 10, 19, 10, 0), [e["start"] for e in got], rule)
+        # dates a calendar cannot have
+        evs = calendar_ics.parse("BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:y\nDTSTART:99991231T235900Z\nEND:VEVENT\n"
+                                 "BEGIN:VEVENT\nSUMMARY:z\nDTSTART:99991231T235900\nEND:VEVENT\nEND:VCALENDAR\n")
+        self.assertLessEqual(len(evs), 1)
+
+    def test_old_series_reach_today(self):
+        """A daily or weekly meeting started years ago is still there (the walk starts near the window)."""
+        start = datetime(2026, 10, 19)
+        got = self._window(_event("FREQ=DAILY") + _event("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,TH", start="20100104T120000",
+                                                          end="20100104T123000"), start)
+        daily = [e["start"] for e in got if e["start"].hour == 9]
+        self.assertEqual(daily, [datetime(2026, 10, 19 + i, 9, 0) for i in range(7)])
+        weekly = [e["start"] for e in got if e["start"].hour == 12]
+        first = datetime(2010, 1, 4, 12, 0)  # a Monday; every second week, on Monday and Thursday
+        want = [d for d in (start.replace(hour=12) + timedelta(days=i) for i in range(7))
+                if d.weekday() in (0, 3) and ((d - first).days // 7) % 2 == 0]
+        self.assertEqual(weekly, want)
+
+    def test_many_events_are_fast(self):
+        import time
+
+        text = "".join(_event("FREQ=DAILY", start=f"2000{1 + i % 12:02d}{1 + i % 28:02d}T09{i % 60:02d}00",
+                              end=f"2000{1 + i % 12:02d}{1 + i % 28:02d}T10{i % 60:02d}00").replace(f"UID:FREQ=DAILY", f"UID:{i}")
+                       for i in range(2000))
+        t = time.time()
+        got = self._window(text, datetime(2026, 10, 19), days=1)
+        self.assertLess(time.time() - t, 3.0)
+        self.assertEqual(len(got), 2000)
+
+
 class CalendarApplyTest(unittest.TestCase):
     def test_recording_gets_title_and_participants(self):
         from app.database import create_meeting, get_meeting, init_db
