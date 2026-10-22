@@ -3,6 +3,8 @@
 
 // VerbaScribe UI logic. Depends on vendor/marked.min.js, vendor/purify.min.js and i18n.js.
 const DONE_STATUSES = ['completed', 'failed', 'cancelled', 'cleared'];
+// The page opened, so the locked page (app/main.py) may again try one fresh address next time
+try { sessionStorage.removeItem('vs_relocked'); } catch (e) { /* storage off */ }
 
 let state = {
   uiLang: localStorage.getItem('whisper_ui_lang') || 'ru',

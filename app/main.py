@@ -99,9 +99,14 @@ _LOCKED_PAGE = """<!doctype html><html lang="ru"><head><meta charset="utf-8"><ti
 <p style="color:#98989d">Open the app via VerbaScribe.exe or start.bat — this page is only available from the app window.</p>
 <script>
 // Inside the app window this means the window opened with an outdated session token (the server
-// was still starting): ask the window for a fresh address and reload.
+// was still starting): ask the window for a fresh address and reload. Only once: if that address
+// is refused too (the server belongs to another Windows user), reloading would never end.
 window.addEventListener('pywebviewready', async () => {
-  try { const url = await window.pywebview.api.app_url(); if (url && url.indexOf('token=') > 0) location.replace(url); } catch (e) {}
+  try {
+    if (sessionStorage.getItem('vs_relocked')) return;
+    const url = await window.pywebview.api.app_url();
+    if (url && url.indexOf('token=') > 0) { sessionStorage.setItem('vs_relocked', '1'); location.replace(url); }
+  } catch (e) {}
 });
 </script>
 </body></html>"""
