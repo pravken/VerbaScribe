@@ -70,7 +70,10 @@ def _pcm16(name, data):
     audio, rate = sf.read(io.BytesIO(data), dtype="float32", always_2d=True)
     if rate != 16000 or audio.shape[1] != 1:
         raise RuntimeError(f"{name}: {rate} Hz, {audio.shape[1]} channels")
-    return (np.clip(audio[:, 0], -1, 1) * 32767).astype("<i2").tobytes()
+    # en_us is recorded very quietly (median peak under 1% of full scale): the VAD takes whole phrases
+    # for silence there. Each phrase is brought to the same peak, as a microphone with gain control would.
+    audio = audio[:, 0] * (0.9 / max(float(np.abs(audio).max()), 1e-6))
+    return (np.clip(audio, -1, 1) * 32767).astype("<i2").tobytes()
 
 
 def fleurs_clip(lang, n):
