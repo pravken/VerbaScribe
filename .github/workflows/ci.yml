@@ -82,8 +82,12 @@ jobs:
 
       # Known vulnerabilities of the pinned versions. torch/torchaudio (+cu126 builds) are not on PyPI
       # and are skipped.
+      # PYSEC-2026-3447 (CVE-2026-59890, GHSA-h35f-9h28-mq5c, fixed in setuptools 83): MANIFEST.in
+      # exclusions miss NFD file names when an sdist is built on macOS. setuptools is here only as
+      # torch's dependency and the app builds no sdist; torch 2.11 requires setuptools<82 and
+      # torchaudio ends at 2.11, so 83 cannot be locked. Drop the ignore when torch allows it.
       - name: pip-audit
-        run: pip-audit -r requirements.txt --disable-pip --no-deps --progress-spinner off
+        run: pip-audit -r requirements.txt --disable-pip --no-deps --progress-spinner off --ignore-vuln PYSEC-2026-3447
 
       # The dubbing environment's lock. Its findings cannot be fixed there for now: chatterbox-tts 0.1.7
       # pins transformers 5.2.0 and diffusers 0.29.0, perth needs setuptools<81, and Pillow 13 needs
