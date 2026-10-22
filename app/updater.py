@@ -333,6 +333,12 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else ""
 
 
+def _dub_requirements_hash(app_dir: Path) -> str:
+    """The same hash app/dub_setup.py records in its ready mark: both dubbing locks together."""
+    files = [app_dir / "requirements-dub.txt", app_dir / "requirements-dub-chatterbox.txt"]
+    return hashlib.sha256(b"".join(f.read_bytes() for f in files if f.is_file())).hexdigest()
+
+
 class UpdateFailed(RuntimeError):
     """An update that did not install. `outcome` says what the program folder holds now:
     "untouched" (nothing was replaced yet), "restored" (the previous version is back) or "broken"
@@ -476,7 +482,7 @@ def apply_update(zip_path: Path, app_dir: Path, data_dir: Path, report: Callable
     log_dir.mkdir(parents=True, exist_ok=True)
     backup = data_dir / "updates" / "backup.zip"
     old_req = _sha256(app_dir / "requirements.txt")
-    old_dub_req = _sha256(app_dir / "requirements-dub.txt")
+    old_dub_req = _dub_requirements_hash(app_dir)
     replaced: List[str] = []
     restore_packages: Optional[Callable[[], None]] = None
 
@@ -533,7 +539,7 @@ def apply_update(zip_path: Path, app_dir: Path, data_dir: Path, report: Callable
                                          creationflags=_NO_WINDOW)
                 if res.returncode != 0:
                     raise RuntimeError("Не удалось установить библиотеки (подробности в logs\\update.log)")
-            if _sha256(app_dir / "requirements-dub.txt") != old_dub_req:
+            if _dub_requirements_hash(app_dir) != old_dub_req:
                 _mark_dub_outdated(app_dir, old_dub_req)
         except Exception as e:
             report("Ошибка — восстановление прежней версии…")

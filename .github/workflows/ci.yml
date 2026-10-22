@@ -81,9 +81,17 @@ jobs:
             --index-strategy unsafe-best-match --extra-index-url https://download.pytorch.org/whl/cu124
 
       # Known vulnerabilities of the pinned versions. torch/torchaudio (+cu124 builds) are not on PyPI
-      # and are skipped; requirements-dub.txt is not pinned yet, so it cannot be audited.
+      # and are skipped.
       - name: pip-audit
         run: pip-audit -r requirements.txt --disable-pip --no-deps --progress-spinner off
+
+      # The dubbing environment's lock. Its findings cannot be fixed there for now: chatterbox-tts 0.1.7
+      # pins transformers 5.2.0 and diffusers 0.29.0, perth needs setuptools<81, and Pillow 13 needs
+      # Python 3.11 (the environment is 3.10). So they are listed as a warning instead of failing.
+      - name: pip-audit (dubbing environment)
+        run: |
+          pip-audit -r requirements-dub.txt -r requirements-dub-chatterbox.txt --disable-pip --no-deps --progress-spinner off \
+            || echo "::warning title=Dubbing environment::known vulnerabilities in requirements-dub.txt (see this step's log)"
 
       # The npm packages are build tools plus the libraries copied into static/vendor. Only those
       # libraries reach the page: a finding in them fails, a build-only finding (Tailwind's file
