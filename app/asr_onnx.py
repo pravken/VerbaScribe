@@ -254,20 +254,42 @@ def _clean_words(words: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 QUIET_PEAK = 0.3     # below this the sound is raised, so the VAD does not take quiet speech for silence
 SILENT_PEAK = 0.002  # nothing but noise: left as it is
 MAX_GAIN = 30.0
+LEVEL_WINDOW_SEC = 10.0
+NOISE_SHARE = 0.03   # a window this much quieter than the loudest one is a pause: not raised
 
 
-def level(audio: Any) -> Any:
-    """A quiet recording (far from the microphone, low gain) brought to a normal level: the VAD of
-    GigaAM / Parakeet drops whole quiet phrases otherwise (bench-report/gpu-report.md)."""
+def _peak(a: Any) -> float:
+    import numpy as np
+
+    return float(np.percentile(np.abs(a), 99.9)) if a.size else 0.0  # not one click
+
+
+def level(audio: Any, sr: int = 16000) -> Any:
+    """Quiet speech brought to a normal level, so the VAD of GigaAM / Parakeet does not drop it
+    (bench-report/gpu-report.md): the whole recording when it is quiet, and then each 10 s part on its
+    own, so a far, quiet speaker next to a loud one is raised too. The gain changes smoothly between
+    parts; pauses and noise are not raised."""
     import numpy as np
 
     a = np.asarray(audio, dtype=np.float32)
     if a.size == 0:
         return a
-    peak = float(np.percentile(np.abs(a), 99.9))  # not one click
+    peak = _peak(a)
     if SILENT_PEAK < peak < QUIET_PEAK:
         a = np.clip(a * min(0.9 / peak, MAX_GAIN), -1.0, 1.0)
-    return a
+        peak = _peak(a)
+    win = int(LEVEL_WINDOW_SEC * sr)
+    n = a.size // win
+    if n < 2 or peak <= SILENT_PEAK:
+        return a
+    peaks = np.percentile(np.abs(a[: n * win].reshape(n, win)), 99.9, axis=1)
+    floor = max(SILENT_PEAK, peak * NOISE_SHARE)
+    gains = np.where((peaks > floor) & (peaks < QUIET_PEAK), np.minimum(0.9 / np.maximum(peaks, 1e-6), MAX_GAIN), 1.0)
+    if np.all(gains == 1.0):
+        return a
+    centers = (np.arange(n) + 0.5) * win
+    g = np.interp(np.arange(a.size, dtype=np.float32), centers, gains).astype(np.float32)
+    return np.clip(a * g, -1.0, 1.0)
 
 
 def recognize_array(model_id: str, audio: Any) -> List[Tuple[float, float, str]]:
@@ -430,7 +452,7 @@ def transcribe(model_id: str, wav_path: Path, total_dur: float, on_progress: Cal
     audio, sr = sf.read(str(wav_path), dtype="float32")  # 16 kHz mono (app/audio_utils.py)
     if getattr(audio, "ndim", 1) > 1:
         audio = audio.mean(axis=1)
-    results: Iterator[Any] = asr.recognize(level(audio), sample_rate=sr)
+    results: Iterator[Any] = asr.recognize(level(audio, sr), sample_rate=sr)
     segments: List[Dict[str, Any]] = out if out is not None else []
     for res in results:
         check_cancel()

@@ -123,6 +123,19 @@ class OnnxTextTest(unittest.TestCase):
         silence = np.zeros(16000, dtype=np.float32) + 0.0005
         self.assertTrue(np.array_equal(asr_onnx.level(silence), silence))
 
+    def test_quiet_speaker_next_to_a_loud_one(self):
+        import numpy as np
+
+        sr = 16000
+        t = np.linspace(0, 200, sr * 20, dtype=np.float32)
+        loud, quiet = np.sin(t) * 0.8, np.sin(t) * 0.04
+        pause = np.full(sr * 20, 0.001, dtype=np.float32)  # room noise
+        out = asr_onnx.level(np.concatenate([loud, quiet, pause]), sr)
+        q = out[sr * 25: sr * 35]  # the middle of the quiet speaker
+        self.assertGreater(float(np.abs(q).max()), 0.5)
+        self.assertLess(float(np.abs(out[sr * 50:]).max()), 0.01)  # the pause is not raised
+        self.assertLessEqual(float(np.abs(out).max()), 1.0)
+
     def test_word_ends_keep_pauses(self):
         # "да" at 0.0, a pause, "нет" at 3.0: the first word ends soon after its token, not at 3.0
         words = asr_onnx.words_from_text("да нет", ["▁да", "▁нет"], [0.0, 3.0], 0.0, 4.0)
