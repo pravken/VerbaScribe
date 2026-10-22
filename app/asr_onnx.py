@@ -254,6 +254,44 @@ def preload(model_id: str) -> None:
         traceback.print_exc()
 
 
+_preloading: Dict[str, threading.Thread] = {}
+_preload_errors: Dict[str, Tuple[float, str]] = {}  # model -> (when, why) of the last failed load
+PRELOAD_RETRY_SEC = 60.0
+
+
+def is_loaded(model_id: str) -> bool:
+    """The CPU copy (live captions) is in memory: recognizing with it starts at once."""
+    return _key(model_id, False) in _loaded
+
+
+def preload_async(model_id: str) -> str:
+    """Loads the CPU copy in the background (installing onnx-asr or downloading missing files can take
+    minutes: never in a request). Returns why the last try failed, '' while none did; a failed load
+    is tried again after PRELOAD_RETRY_SEC."""
+    import time
+
+    with _lock:
+        running = _preloading.get(model_id)
+        if running and running.is_alive() or is_loaded(model_id):
+            return ""
+        failed = _preload_errors.get(model_id)
+        if failed and time.time() - failed[0] < PRELOAD_RETRY_SEC:
+            return failed[1]
+
+        def _run() -> None:
+            try:
+                _load(model_id)
+                _preload_errors.pop(model_id, None)
+            except Exception as e:
+                traceback.print_exc()
+                _preload_errors[model_id] = (time.time(), str(e)[:200])
+
+        t = threading.Thread(target=_run, daemon=True, name=f"onnx_preload_{model_id}")
+        _preloading[model_id] = t
+        t.start()
+    return failed[1] if failed else ""
+
+
 def loaded_models() -> List[str]:
     return list(dict.fromkeys(k.split("@")[0] for k in _loaded))
 

@@ -117,10 +117,47 @@ class LiveOnnxWindowTest(unittest.TestCase):
         with mock.patch.object(live, "caption_onnx_model", return_value="gigaam-v3"):
             s = live.LiveSession("ru", None)
         s.audio = np.zeros(live.SR * 6, dtype=np.float32)
-        with mock.patch.object(asr_onnx, "recognize_array", return_value=[(0.2, 1.5, "Привет всем"), (4.8, 5.9, "дальше")]):
+        with mock.patch.object(asr_onnx, "is_loaded", return_value=True), mock.patch.object(asr_onnx, "recognize_array", return_value=[(0.2, 1.5, "Привет всем"), (4.8, 5.9, "дальше")]):
             s._transcribe_window()
         self.assertEqual([l["text"] for l in s.lines], ["Привет всем"])
         self.assertEqual(s.partial, "дальше")
+
+
+class LiveOnnxLoadingTest(unittest.TestCase):
+    def test_captions_wait_for_the_model_instead_of_loading_it_in_the_request(self):
+        from unittest import mock
+        import numpy as np
+        from app import asr_onnx, live
+
+        with mock.patch.object(live, "caption_onnx_model", return_value="gigaam-v3"):
+            s = live.LiveSession("ru", None)
+        s.audio = np.zeros(live.SR * 6, dtype=np.float32)
+        with mock.patch.object(asr_onnx, "is_loaded", return_value=False), \
+                mock.patch.object(asr_onnx, "preload_async", return_value="") as pre, \
+                mock.patch.object(asr_onnx, "recognize_array") as rec:
+            s._transcribe_window()
+        pre.assert_called_once_with("gigaam-v3")
+        rec.assert_not_called()
+        self.assertEqual(s.audio.size, live.SR * 6)  # kept for when the model is ready
+
+    def test_failed_load_is_reported_and_not_retried_at_once(self):
+        from unittest import mock
+        from app import asr_onnx
+
+        calls = []
+
+        def failing(model_id, gpu=False):
+            calls.append(model_id)
+            raise RuntimeError("onnx-asr could not be installed")
+
+        asr_onnx._preload_errors.pop("test-model", None)
+        with mock.patch.object(asr_onnx, "_load", side_effect=failing):
+            self.assertEqual(asr_onnx.preload_async("test-model"), "")
+            asr_onnx._preloading["test-model"].join(5)
+            self.assertIn("could not be installed", asr_onnx.preload_async("test-model"))
+            self.assertIn("could not be installed", asr_onnx.preload_async("test-model"))
+        self.assertEqual(calls, ["test-model"])
+        asr_onnx._preload_errors.pop("test-model", None)
 
 
 class LiveDraftTranslationTest(unittest.TestCase):
@@ -135,7 +172,7 @@ class LiveDraftTranslationTest(unittest.TestCase):
             s.draft = on
             s.translator = mock.Mock()
             s.audio = np.zeros(live.SR * 6, dtype=np.float32)
-            with mock.patch.object(asr_onnx, "recognize_array", return_value=[(0.2, 1.5, "Привет"), (4.8, 5.9, "дальше")]):
+            with mock.patch.object(asr_onnx, "is_loaded", return_value=True), mock.patch.object(asr_onnx, "recognize_array", return_value=[(0.2, 1.5, "Привет"), (4.8, 5.9, "дальше")]):
                 s._transcribe_window()
             s.translator.set_draft.assert_called_with(expected)
 
@@ -180,7 +217,7 @@ class LiveSentenceLinesTest(unittest.TestCase):
         with mock.patch.object(live, "caption_onnx_model", return_value="gigaam-v3"):
             s = live.LiveSession("ru", None)
         s.audio = np.zeros(live.SR * 8, dtype=np.float32)
-        with mock.patch.object(asr_onnx, "recognize_array", return_value=[(0.2, 4.0, "Первое. Второе предложение? Третье")]):
+        with mock.patch.object(asr_onnx, "is_loaded", return_value=True), mock.patch.object(asr_onnx, "recognize_array", return_value=[(0.2, 4.0, "Первое. Второе предложение? Третье")]):
             s._transcribe_window()
         self.assertEqual([l["text"] for l in s.lines], ["Первое.", "Второе предложение?", "Третье"])
 
@@ -193,7 +230,7 @@ class LiveSentenceLinesTest(unittest.TestCase):
             s = live.LiveSession("ru", None)
         s.audio = np.zeros(live.SR * 5, dtype=np.float32)
         # Both end within the last 1.6 s, but the first is followed by another sentence
-        with mock.patch.object(asr_onnx, "recognize_array", return_value=[(0.2, 3.6, "Первое."), (3.6, 4.9, "Второе")]):
+        with mock.patch.object(asr_onnx, "is_loaded", return_value=True), mock.patch.object(asr_onnx, "recognize_array", return_value=[(0.2, 3.6, "Первое."), (3.6, 4.9, "Второе")]):
             s._transcribe_window()
         self.assertEqual([l["text"] for l in s.lines], ["Первое."])
         self.assertEqual(s.partial, "Второе")

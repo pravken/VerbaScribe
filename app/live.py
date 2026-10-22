@@ -273,6 +273,11 @@ class LiveSession:
         if onnx_id:
             from app import asr_onnx
 
+            if not asr_onnx.is_loaded(onnx_id):
+                # Still loading (or installing) in the background: captions start once it is ready;
+                # the audio meanwhile stays in the window, bounded by add_audio
+                self.error = asr_onnx.preload_async(onnx_id)
+                return
             segs = [_Seg(a, b, t) for a, b, t in asr_onnx.recognize_array(onnx_id, window)]
             language = asr_onnx.guess_language(" ".join(x.text for x in segs)) if segs else None
             prob = 1.0 if segs and not self.speech_lang else 0.0
@@ -390,7 +395,7 @@ class LiveSession:
         if self.onnx_model:
             from app import asr_onnx
 
-            threading.Thread(target=asr_onnx.preload, args=(self.onnx_model,), daemon=True).start()
+            asr_onnx.preload_async(self.onnx_model)
         elif _worker is not None and _worker.proc is not None:
             from app.hardware import get_hardware_info
 
@@ -433,7 +438,7 @@ def start_session(lang: Optional[str], translate_to: Optional[str], capture_id: 
     if s.onnx_model:
         from app import asr_onnx
 
-        threading.Thread(target=asr_onnx.preload, args=(s.onnx_model,), daemon=True).start()
+        asr_onnx.preload_async(s.onnx_model)
     else:
         threading.Thread(target=_caption_worker().preload, daemon=True).start()
     return s
