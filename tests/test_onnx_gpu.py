@@ -50,15 +50,24 @@ class OnnxGpuTest(unittest.TestCase):
             return mock.Mock(returncode=0, stdout="", stderr="")
 
         with mock.patch.object(onnx_gpu, "_cpu_version", return_value="1.23.2"), \
+             mock.patch.object(onnx_gpu.sys, "version_info", mock.Mock(major=3, minor=10)), \
+             mock.patch.object(onnx_gpu, "TARGET", self.target), \
              mock.patch.object(asr_onnx, "_run", side_effect=fake_run) as run, \
              mock.patch.object(asr_onnx, "_install_commands", side_effect=lambda args: iter([["uv", "pip", "install", *args]])), \
              mock.patch.object(onnx_gpu, "activate"):
             onnx_gpu._install()
         cmd = run.call_args[0][0]
-        self.assertIn("onnxruntime-gpu==1.23.2", cmd)
+        self.assertIn("--require-hashes", cmd)
         self.assertIn("--no-deps", cmd)
+        req = Path(cmd[cmd.index("-r") + 1]).read_text(encoding="utf-8")
+        self.assertIn("onnxruntime-gpu==1.23.2 --hash=sha256:deba091e", req)
         self.assertTrue(onnx_gpu.installed())
         self.assertEqual(onnx_gpu._state["error"], "")
+
+    def test_unknown_version_is_not_installed(self):
+        with mock.patch.object(onnx_gpu, "_cpu_version", return_value="9.9.9"):
+            with self.assertRaises(RuntimeError):
+                onnx_gpu._requirement()
 
     def test_remove_of_a_loaded_build_finishes_at_start(self):
         _fake_build(self.target)

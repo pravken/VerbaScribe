@@ -153,16 +153,35 @@ def install_async() -> Dict[str, Any]:
     return status()
 
 
+# The GPU wheel is checked like every package of requirements.txt: by its hash on PyPI (the Python
+# 3.10 build setup.bat makes the environment with). A version without a known hash is not installed.
+WHEEL_HASHES = {
+    ("1.23.2", "cp310"): "deba091e15357355aa836fd64c6c4ac97dd0c4609c38b08a69675073ea46b321",
+}
+
+
+def _requirement() -> str:
+    """The requirements line with the hash, or a RuntimeError when this combination is unknown."""
+    version = _cpu_version()  # the same API onnx-asr runs on now
+    tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
+    digest = WHEEL_HASHES.get((version, tag))
+    if not digest:
+        raise RuntimeError(f"Нет проверенной контрольной суммы onnxruntime-gpu {version} для Python {tag[2:3]}.{tag[3:]}: "
+                           "обновите программу")
+    return f"onnxruntime-gpu=={version} --hash=sha256:{digest}"
+
+
 def _install() -> None:
     from app.asr_onnx import _install_commands, _run
 
     try:
-        spec = f"onnxruntime-gpu=={_cpu_version()}"  # the same API onnx-asr runs on now
         REMOVE_MARK.unlink(missing_ok=True)
         tmp = TARGET.with_name(TARGET.name + ".partial")
         _rmtree(tmp)
+        req = TARGET.with_name("onnxruntime-gpu-requirements.txt")
+        req.write_text(_requirement() + "\n", encoding="utf-8")
         errors = []
-        for cmd in _install_commands([spec, "--no-deps", "--target", str(tmp)]):
+        for cmd in _install_commands(["-r", str(req), "--require-hashes", "--no-deps", "--target", str(tmp)]):
             proc = _run(cmd)
             if proc.returncode == 0 and (tmp / "onnxruntime" / "capi").is_dir():
                 break
