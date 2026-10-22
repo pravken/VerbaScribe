@@ -451,3 +451,23 @@ class LiveCaptionFailureTest(unittest.TestCase):
                     w.transcribe(np.zeros(16000, dtype=np.float32), "ru")
         self.assertEqual(len(starts), 1)  # the next try waits WORKER_RETRY_SEC
         self.assertGreater(w.retry_at, 0)
+
+
+class CutStderrTest(unittest.TestCase):
+    def test_a_talkative_ffmpeg_does_not_hang_the_cut(self):
+        """FFmpeg writing a lot of errors (a damaged source) must not block on a full pipe."""
+        import subprocess
+        import sys
+        import tempfile
+        from pathlib import Path
+
+        from app import media_cut
+
+        script = ("import sys\nfor i in range(20000): sys.stderr.write('decode error %d\\n' % i)\n"
+                  "print('out_time_us=1000000', flush=True)\nsys.exit(1)\n")
+        proc = subprocess.Popen([sys.executable, "-c", script], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True, encoding="utf-8")
+        out = Path(tempfile.mkdtemp()) / "cut.mp4"
+        with self.assertRaises(RuntimeError) as err:
+            media_cut._follow(proc, 1.0, out, lambda _f: None, lambda: None)
+        self.assertIn("decode error 19999", str(err.exception))
