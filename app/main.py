@@ -643,8 +643,10 @@ def api_calendar_upcoming(refresh: bool = False) -> Dict[str, Any]:
         same = next((r for r in done if r.get("series_id") and len(key) >= 6 and series.title_key(r.get("title") or "") == key), None)
         it["series_id"] = same.get("series_id") if same else None
         it["person"] = next((a for a in it["attendees"] if a.strip().lower() in known), None)
+    from app import calendar_outlook
+
     return {"configured": bool((get_all_settings().get("calendar_ics") or "").strip()), "events": items,
-            **calendar_ics.status()}
+            "outlook": calendar_outlook.supported(), **calendar_ics.status()}
 
 
 # --- GigaAM / Parakeet on the video card (app/onnx_gpu.py) ---

@@ -106,6 +106,7 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     document.getElementById('set-dictation-hotkey').value = s.dictation_hotkey ?? 'Ctrl+Alt+D';
     document.getElementById('set-dictation-language').value = s.dictation_language || 'auto';
     document.getElementById('set-calendar-ics').value = s.calendar_ics || '';
+    loadCalendarSource();
     document.getElementById('set-onnx-gpu').checked = s.onnx_gpu !== 'false';
     loadOnnxGpu();
     document.getElementById('calendar-status').textContent = '';
@@ -871,7 +872,17 @@ async function removeOnnxGpu() {
   if (data) renderOnnxGpu(data);
 }
 
-// --- The user's calendar (app/calendar_ics.py) ---
+// --- The user's calendar (app/calendar_ics.py; "outlook": app/calendar_outlook.py) ---
+async function loadCalendarSource() {
+  const st = await fetch('/api/calendar/upcoming').then(r => r.json()).catch(() => null);
+  document.getElementById('calendar-outlook-btn')?.classList.toggle('hidden', !(st && st.outlook));
+}
+
+function useOutlookCalendar() {
+  document.getElementById('set-calendar-ics').value = 'outlook';
+  checkCalendar();
+}
+
 async function checkCalendar() {
   const box = document.getElementById('calendar-status');
   const source = document.getElementById('set-calendar-ics').value.trim();

@@ -81,5 +81,31 @@ class CalendarApplyTest(unittest.TestCase):
             self.assertIsNone(calendar_ics.current_meeting(datetime(2026, 10, 21, 10, 5)))  # the excluded day
 
 
+class OutlookCalendarTest(unittest.TestCase):
+    def test_parse_powershell_json(self):
+        from app import calendar_outlook
+
+        one = '{"uid":"A1","title":"Планёрка","start":"2026-10-26T10:00:00","end":"2026-10-26T10:30:00","location":"Teams","attendees":"Анна Петрова"}'
+        evs = calendar_outlook.parse(one)  # PowerShell 5 gives a single object, not a list
+        self.assertEqual(evs[0]["title"], "Планёрка")
+        self.assertEqual(evs[0]["attendees"], ["Анна Петрова"])
+        self.assertEqual(evs[0]["end"] - evs[0]["start"], timedelta(minutes=30))
+        many = '[' + one + ',{"uid":"B","title":"X","start":"bad","end":"bad","attendees":[]}]'
+        self.assertEqual(len(calendar_outlook.parse(many)), 1)
+        self.assertEqual(calendar_outlook.parse(""), [])
+
+    def test_outlook_source_feeds_the_calendar(self):
+        from app import calendar_outlook
+
+        ev = {"uid": "A", "title": "Созвон", "start": datetime(2026, 10, 26, 10), "end": datetime(2026, 10, 26, 11),
+              "attendees": ["Борис"], "rrule": "", "exdates": [], "all_day": False, "status": ""}
+        calendar_ics._cache.update(source="", at=0.0, events=[], error="")
+        with mock.patch.object(calendar_ics, "_source", return_value="outlook"), \
+             mock.patch.object(calendar_outlook, "fetch", return_value=[ev]) as fetch:
+            self.assertEqual(calendar_ics.current_meeting(datetime(2026, 10, 26, 10, 20))["title"], "Созвон")
+            calendar_ics.events()  # cached: Outlook is not asked again
+        fetch.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()

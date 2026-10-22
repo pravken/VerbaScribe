@@ -54,12 +54,10 @@ function setUILanguage(lang) {
   // The launcher's splash screen speaks the same language (see /api/ui/lang)
   fetch('/api/ui/lang', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lang }) }).catch(() => {});
 
-  document.getElementById('lang-btn-ru').className = lang === 'ru'
-    ? 'px-2 h-6 text-[10.5px] font-medium rounded-[6px] apple-segment-active'
-    : 'px-2 h-6 text-[10.5px] font-medium rounded-[6px] text-apple-secondary';
-  document.getElementById('lang-btn-en').className = lang === 'en'
-    ? 'px-2 h-6 text-[10.5px] font-medium rounded-[6px] apple-segment-active'
-    : 'px-2 h-6 text-[10.5px] font-medium rounded-[6px] text-apple-secondary';
+  // Settings -> General -> Interface language
+  for (const code of ['ru', 'en']) {
+    document.getElementById(`lang-btn-${code}`).className = `apple-segment-btn ${lang === code ? 'apple-segment-active' : 'text-apple-secondary hover:text-white'}`;
+  }
 
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.getAttribute('data-i18n');
@@ -77,6 +75,12 @@ function setUILanguage(lang) {
   renderMeetingsSidebar();
   loadDictionary();
   if (state.system) {
+    const p = state.system.paths;
+    const dirEl = document.getElementById('settings-data-dir');
+    if (p && dirEl) {
+      dirEl.textContent = `${t('dataFolder')}: ${p.data}`;
+      dirEl.title = `${t('dataFolder')}: ${p.data}\n${t('modelsFolder')}: ${p.models}`;
+    }
     updateOllamaUI(state.system.ollama);
     if (state.system.models) updateWhisperModelsUI(state.system.models);
   }

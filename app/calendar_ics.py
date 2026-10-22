@@ -1,5 +1,6 @@
 """
-The user's calendar, read from an iCalendar file or link (Outlook: "Publish calendar" / save as
+The user's calendar, read from an iCalendar file or link, or (source "outlook") from the classic
+Outlook on this computer (app/calendar_outlook.py) (Outlook: "Publish calendar" / save as
 .ics; Google Calendar: "Secret address in iCal format"; any CalDAV app's export). Read only, kept
 on this computer; nothing is ever sent.
 
@@ -22,6 +23,7 @@ from typing import Any, Dict, List, Optional
 CACHE_SEC = 15 * 60
 _cache: Dict[str, Any] = {"source": "", "at": 0.0, "events": [], "error": ""}
 _lock = threading.Lock()
+_fetch_lock = threading.Lock()
 _DAYS = {"MO": 0, "TU": 1, "WE": 2, "TH": 3, "FR": 4, "SA": 5, "SU": 6}
 
 
@@ -192,7 +194,16 @@ def events(force: bool = False) -> List[Dict[str, Any]]:
         if fresh and not force:
             return list(_cache["events"])
     try:
-        parsed = parse(_load_text(source))
+        if source.lower() == "outlook":  # the classic Outlook of this computer (app/calendar_outlook.py)
+            from app import calendar_outlook
+
+            with _fetch_lock:  # PowerShell and Outlook take seconds: one read at a time
+                with _lock:
+                    if _cache["source"] == source and time.time() - _cache["at"] < CACHE_SEC and not force:
+                        return list(_cache["events"])
+                parsed = calendar_outlook.fetch()
+        else:
+            parsed = parse(_load_text(source))
         with _lock:
             _cache.update(source=source, at=time.time(), events=parsed, error="")
         return parsed

@@ -226,15 +226,6 @@
         <span data-i18n="settings" class="truncate">Настройки</span>
       </button>
 
-
-      <div class="apple-segmented shrink-0" style="height: 28px;">
-        <button onclick="setUILanguage('ru')" id="lang-btn-ru"
-          data-i18n-title="tipLangRu" title="Переключить интерфейс на русский язык"
-          class="px-2 h-6 text-[10.5px] font-medium rounded-[6px] apple-segment-active">RU</button>
-        <button onclick="setUILanguage('en')" id="lang-btn-en"
-          data-i18n-title="tipLangEn" title="Switch interface to English"
-          class="px-2 h-6 text-[10.5px] font-medium rounded-[6px] text-apple-secondary">EN</button>
-      </div>
     </div>
   </aside>
 
@@ -1571,6 +1562,18 @@
         </div>
 
         <div data-stab="general" class="space-y-4 hidden">
+        <!-- Interface language (applied at once, remembered in this browser profile) -->
+        <div class="settings-card !space-y-0 flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <h4 class="text-[13px] font-semibold text-white" data-i18n="uiLangTitle">Язык интерфейса</h4>
+            <p class="text-[11px] text-apple-secondary leading-snug mt-0.5" data-i18n="uiLangDesc">Меняется сразу, без сохранения.</p>
+          </div>
+          <div class="apple-segmented shrink-0">
+            <button onclick="setUILanguage('ru')" id="lang-btn-ru" class="apple-segment-btn apple-segment-active">Русский</button>
+            <button onclick="setUILanguage('en')" id="lang-btn-en" class="apple-segment-btn text-apple-secondary hover:text-white">English</button>
+          </div>
+        </div>
+
         <!-- Version and updates from GitHub Releases (app/updater.py) -->
         <div class="settings-card">
           <div class="flex items-center justify-between gap-3">
@@ -2141,12 +2144,14 @@
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
               <h4 class="text-[13px] font-semibold text-white" data-i18n="calendarTitle">Календарь</h4>
-              <p class="text-[11px] text-apple-secondary leading-snug mt-0.5" data-i18n="calendarDesc">Файл .ics или ссылка на календарь (Outlook: «Опубликовать календарь», Google: «Секретный адрес в формате iCal»). Запись во время встречи получит её название и участников, а в студии видны ближайшие встречи со справкой. Календарь только читается и никуда не отправляется.</p>
+              <p class="text-[11px] text-apple-secondary leading-snug mt-0.5" data-i18n="calendarDesc">Outlook на этом компьютере (кнопка «Из Outlook»: Microsoft 365, Exchange, Outlook.com — там же встречи Teams), файл .ics или ссылка на календарь (Outlook в браузере: «Опубликовать календарь», Google: «Секретный адрес в формате iCal»). Запись во время встречи получит её название и участников, а в студии видны ближайшие встречи со справкой. Календарь только читается и никуда не отправляется.</p>
             </div>
           </div>
           <div class="flex items-center gap-2">
-            <input id="set-calendar-ics" type="text" spellcheck="false" placeholder="C:\Users\…\calendar.ics · https://…/basic.ics"
+            <input id="set-calendar-ics" type="text" spellcheck="false" placeholder="outlook · C:\Users\…\calendar.ics · https://…/basic.ics"
               class="flex-1 min-w-0 h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono focus:outline-none focus:border-apple-blue" />
+            <button onclick="useOutlookCalendar()" id="calendar-outlook-btn" class="hidden ui-btn ui-btn-subtle h-8 shrink-0" data-i18n-title="tipCalendarOutlook"
+              title="Читать календарь из Outlook на этом компьютере (Microsoft 365, Exchange, Outlook.com — там же встречи Teams). Без ссылок и входа" data-i18n="calendarOutlook">Из Outlook</button>
             <button onclick="checkCalendar()" class="ui-btn ui-btn-subtle h-8" data-i18n="calendarCheck">Проверить</button>
           </div>
           <div id="calendar-status" class="text-[11px] text-apple-tertiary"></div>
