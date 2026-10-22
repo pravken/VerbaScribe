@@ -98,8 +98,15 @@ def init_db() -> None:
         if "local_only" not in folder_cols:
             cur.execute("ALTER TABLE folders ADD COLUMN local_only INTEGER DEFAULT 0")
         _ensure_system_folders(cur)
-        if "folder_id" not in existing_cols:
+        # Sorted once. The column is added in autocommit and the sorting committed at the end: a
+        # first start cut off in between left the column without the sorting, so the marker decides
+        # (a library with folders but no marker was sorted by an older version)
+        cur.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        sorted_once = cur.execute("SELECT 1 FROM settings WHERE key = 'folders_sorted_v1'").fetchone()
+        if not sorted_once and ("folder_id" not in existing_cols
+                                or not cur.execute("SELECT 1 FROM meetings WHERE folder_id IS NOT NULL LIMIT 1").fetchone()):
             _sort_existing_meetings(cur)
+        cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('folders_sorted_v1', '1')")
 
         cur.execute(
             """
@@ -1068,14 +1075,22 @@ def delete_meeting(meeting_id: int, with_source: bool = False, with_exports: boo
 def clear_results(meeting_id: int) -> bool:
     """Everything the processing made (transcript, speakers, summaries, translations, promises,
     search index) is deleted; the sound, the title and the user's notes stay. Status "cleared": the
-    recording waits for Retry."""
-    if not get_meeting(meeting_id):
+    recording waits for Retry. Dubs (made from the old transcript) go with their files, and exports
+    waiting for the end of processing are dropped: they would run on the next Retry unasked."""
+    m = get_meeting(meeting_id)
+    if not m:
         return False
+    for d in m.get("dubs") or []:
+        for key in _DUB_PATH_KEYS:
+            p = Path(d.get(key) or "")
+            if p.name and p.exists() and DATA_DIR in p.resolve().parents:
+                delete_file(str(p))
     with _db_lock:
         conn = get_connection()
         conn.execute(
             "UPDATE meetings SET segments_json = '[]', speakers_json = '{}', summaries_json = '{}', translations_json = '{}', "
-            "segments_backup_json = '', status = 'cleared', progress = 0, stage_text = '', error_message = '', transcript_verified = 0 WHERE id = ?",
+            "segments_backup_json = '', dubs_json = '[]', pending_exports_json = '[]', status = 'cleared', progress = 0, "
+            "stage_text = '', error_message = '', transcript_verified = 0 WHERE id = ?",
             (meeting_id,))
         conn.execute("DELETE FROM segments_fts WHERE meeting_id = ?", (meeting_id,))
         conn.execute("DELETE FROM semantic_chunks WHERE meeting_id = ?", (meeting_id,))

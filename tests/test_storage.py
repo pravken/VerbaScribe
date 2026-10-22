@@ -247,3 +247,40 @@ class ShutdownTest(unittest.TestCase):
                 self.assertIn("Установка дубляжа", st["text"])
             with mock.patch.object(backup, "busy", 1):
                 self.assertIn("Резервная копия", app_status.snapshot()["text"])
+
+
+class ClearResultsTest(unittest.TestCase):
+    def test_dubs_and_waiting_exports_go_with_the_results(self):
+        from app.paths import DATA_DIR
+
+        database.init_db()
+        m = database.create_meeting(title="Очистка", filename="a.wav", media_path="a.wav")
+        dub = DATA_DIR / "dubs" / f"{m['id']}_en.m4a"
+        dub.parent.mkdir(parents=True, exist_ok=True)
+        dub.write_bytes(b"x")
+        database.save_meeting_dub(m["id"], {"lang": "en", "path": str(dub)})
+        database.set_pending_exports(m["id"], [{"kind": "transcript", "fmt": "txt"}])
+        database.clear_results(m["id"])
+        after = database.get_meeting(m["id"])
+        self.assertEqual(after["dubs"], [])
+        self.assertEqual(after["pending_exports"], [])
+        self.assertFalse(dub.exists())
+
+
+class FolderSortMigrationTest(unittest.TestCase):
+    def test_sorting_cut_off_is_done_at_the_next_start(self):
+        """The column came (autocommit) but the sorting did not: the next start sorts."""
+        database.init_db()
+        m = database.create_meeting(title="Старая", filename="a.wav", media_path="a.wav")
+        with database._db_lock:
+            conn = database.get_connection()
+            conn.execute("UPDATE meetings SET folder_id = NULL")
+            conn.execute("DELETE FROM settings WHERE key = 'folders_sorted_v1'")
+            conn.commit()
+            conn.close()
+        database.init_db()
+        self.assertIsNotNone(database.get_meeting(m["id"])["folder_id"])
+        # sorted once: a recording the user moves to the top level stays there
+        database.set_meeting_folder(m["id"], None)
+        database.init_db()
+        self.assertIsNone(database.get_meeting(m["id"])["folder_id"])
