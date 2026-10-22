@@ -92,6 +92,11 @@ function renderTxModelBar() {
   mergeBtn.classList.toggle('hidden', [...done].filter(x => x !== 'merged').length < 2);
   mergeBtn.disabled = busy;
   mergeBtn.classList.toggle('opacity-40', busy);
+  // Clearing: the transcript of the model picked, when it made one (the one shown)
+  const delBtn = document.getElementById('tx-delete-version-btn');
+  delBtn.classList.toggle('hidden', !pick || pick !== shown);
+  delBtn.disabled = busy;
+  delBtn.classList.toggle('opacity-40', busy);
   const disputes = (m.segments || []).reduce((n, s) => n + (s.words || []).filter(w => w.alts && w.alts.length).length, 0);
   const status = document.getElementById('tx-model-status');
   let text, cls;
@@ -157,6 +162,22 @@ async function chooseWordAlt(segId, wi, text) {
   m.segments = data.segments;
   renderTranscript();
   renderTxModelBar();
+}
+
+async function deletePickedTranscript() {
+  const m = state.activeMeeting;
+  if (!m) return;
+  const model = document.getElementById('tx-model-select').value;
+  const others = (m.transcript_versions || []).filter(v => v.model !== model).length;
+  if (!(await confirmDialog(t('txDeleteVersionTitle').replace('{model}', () => formatModelName(model)),
+    t(others ? 'txDeleteVersionText' : 'txDeleteVersionLast'), t('txDeleteVersion')))) return;
+  const res = await fetch(`/api/meetings/${m.id}/transcript-versions/${encodeURIComponent(model)}`, { method: 'DELETE' });
+  const data = await readJson(res);
+  if (!res.ok) { showToast(errorText(data, res)); return; }
+  state.txModelPick = null;
+  await loadMeetingsList();
+  await selectMeeting(m.id, false);
+  showToast(t('txVersionDeleted').replace('{model}', () => formatModelName(model)));
 }
 
 async function mergeTranscripts() {

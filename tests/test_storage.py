@@ -441,6 +441,37 @@ class TranscriptVersionsTest(unittest.TestCase):
         m = database.get_meeting(self.mid)
         self.assertEqual((m["segments"], m["transcript_versions"], m["transcript_model"]), ([], [], ""))
 
+    def test_deleting_the_shown_transcript_shows_the_best_other(self):
+        self._transcribe("large-v3-turbo", "turbo")
+        self._transcribe("large-v3", "pro")
+        self._transcribe("gigaam-v3", "gigaam")
+        self.assertTrue(database.delete_transcript_version(self.mid, "gigaam-v3"))
+        m = database.get_meeting(self.mid)
+        self.assertEqual((m["transcript_model"], self._texts()), ("large-v3", ["pro"]))  # more accurate than Turbo
+        self.assertEqual([v["model"] for v in m["transcript_versions"]], ["large-v3-turbo"])
+        self.assertFalse(any(h["meeting_id"] == self.mid for h in database.search_all_meetings("gigaam")))
+        # a stored one is just deleted
+        self.assertTrue(database.delete_transcript_version(self.mid, "large-v3-turbo"))
+        self.assertFalse(database.delete_transcript_version(self.mid, "large-v3-turbo"))
+        self.assertEqual(self._texts(), ["pro"])
+
+    def test_deleting_the_last_transcript_keeps_the_analysis(self):
+        self._transcribe("large-v3", "pro")
+        database.save_meeting_results(self.mid, summaries={"protocol": "итоги"})
+        self.assertTrue(database.delete_transcript_version(self.mid, "large-v3"))
+        m = database.get_meeting(self.mid)
+        self.assertEqual((m["segments"], m["transcript_model"], m["status"]), ([], "", "cleared"))
+        self.assertEqual(m["summaries"], {"protocol": "итоги"})
+        self.assertFalse(m["has_transcript"])
+
+    def test_the_merged_text_does_not_become_the_model_to_transcribe_with(self):
+        self._transcribe("large-v3", "pro")
+        database.stash_transcript_for(self.mid, "merged")
+        database.save_meeting_results(self.mid, segments=[{"id": 0, "start": 0, "end": 1, "text": "сведённый"}], transcript_model="merged")
+        database.switch_transcript_version(self.mid, "large-v3")
+        database.switch_transcript_version(self.mid, "merged")
+        self.assertEqual(database.get_meeting(self.mid)["model_name"], "large-v3")
+
     def test_a_transcript_made_before_the_versions_is_filed_under_its_model(self):
         database.save_meeting_results(self.mid, segments=[{"id": 0, "start": 0, "end": 1, "text": "старая"}])
         with database._db_lock:

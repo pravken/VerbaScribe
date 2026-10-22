@@ -806,19 +806,59 @@ def switch_transcript_version(meeting_id: int, model: str) -> bool:
                                (meeting_id, model)).fetchone()
             if not got:
                 return False
-            data = json.loads(got["data"])
             _stash_active(conn, meeting_id)
-            segments = [s for s in data.get("segments") or [] if isinstance(s, dict)]
-            backup = data.get("segments_backup") or []
-            conn.execute(
-                "UPDATE meetings SET transcript_model = ?, transcript_at = ?, speakers_json = ?, segments_backup_json = ?, "
-                "translations_json = ?, language = ?, transcript_verified = ?, model_name = ? WHERE id = ?",
-                (model, data.get("at") or "", json.dumps(data.get("speakers") or {}, ensure_ascii=False),
-                 json.dumps(backup, ensure_ascii=False) if backup else "", json.dumps(data.get("translations") or {}, ensure_ascii=False),
-                 data.get("language") or "", 1 if data.get("verified") else 0, model, meeting_id))
-            _write_segments(conn, meeting_id, segments)
-            _reindex_segments(conn, meeting_id, segments)
-            conn.execute("DELETE FROM transcript_versions WHERE meeting_id = ? AND model = ?", (meeting_id, model))
+            _show_version(conn, meeting_id, model, json.loads(got["data"]))
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+
+
+def _show_version(conn: sqlite3.Connection, meeting_id: int, model: str, data: Dict[str, Any]) -> None:
+    """A stored version takes the place of the transcript shown (which the caller has filed or dropped)."""
+    segments = [s for s in data.get("segments") or [] if isinstance(s, dict)]
+    backup = data.get("segments_backup") or []
+    # A model's name stays the one the next Transcribe uses; the merged text is not made by one
+    next_model = ", model_name = ?" if model != "merged" else ""
+    conn.execute(
+        "UPDATE meetings SET transcript_model = ?, transcript_at = ?, speakers_json = ?, segments_backup_json = ?, "
+        f"translations_json = ?, language = ?, transcript_verified = ?{next_model} WHERE id = ?",
+        (model, data.get("at") or "", json.dumps(data.get("speakers") or {}, ensure_ascii=False),
+         json.dumps(backup, ensure_ascii=False) if backup else "", json.dumps(data.get("translations") or {}, ensure_ascii=False),
+         data.get("language") or "", 1 if data.get("verified") else 0, *([model] if next_model else []), meeting_id))
+    _write_segments(conn, meeting_id, segments)
+    _reindex_segments(conn, meeting_id, segments)
+    conn.execute("DELETE FROM transcript_versions WHERE meeting_id = ? AND model = ?", (meeting_id, model))
+
+
+def delete_transcript_version(meeting_id: int, model: str) -> bool:
+    """Deletes the transcript one model made (the button next to the model dropdown). When it is the
+    one shown, the best of the others takes its place (the merged one, then by the models'
+    accuracy); with none left the recording has no transcript (its analysis stays). False when the
+    recording has no transcript of this model."""
+    from app.transcript_merge import MERGED, ranked
+
+    with _db_lock:
+        conn = get_connection()
+        try:
+            row = conn.execute("SELECT transcript_model, language FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+            if not row:
+                return False
+            if row["transcript_model"] != model:
+                gone = conn.execute("DELETE FROM transcript_versions WHERE meeting_id = ? AND model = ?", (meeting_id, model)).rowcount
+                conn.commit()
+                return bool(gone)
+            others = {r["model"]: r["data"] for r in conn.execute(
+                "SELECT model, data FROM transcript_versions WHERE meeting_id = ?", (meeting_id,))}
+            order = ([MERGED] if MERGED in others else []) + ranked([m for m in others if m != MERGED], row["language"] or "")
+            if order:
+                _show_version(conn, meeting_id, order[0], json.loads(others[order[0]]))
+            else:
+                conn.execute("UPDATE meetings SET transcript_model = '', transcript_at = '', speakers_json = '{}', "
+                             "segments_backup_json = '', translations_json = '{}', transcript_verified = 0, "
+                             "status = 'cleared', progress = 0, stage_text = '', error_message = '' WHERE id = ?", (meeting_id,))
+                _write_segments(conn, meeting_id, [])
+                _reindex_segments(conn, meeting_id, [])
             conn.commit()
             return True
         finally:

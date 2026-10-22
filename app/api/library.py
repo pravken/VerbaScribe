@@ -544,6 +544,19 @@ def api_switch_transcript_version(meeting_id: int, payload: TranscriptVersionPay
     return get_meeting(meeting_id)
 
 
+@router.delete("/api/meetings/{meeting_id}/transcript-versions/{model}")
+def api_delete_transcript_version(meeting_id: int, model: str) -> Dict[str, Any]:
+    """Deletes one model's transcript; the texts of the other models stay."""
+    from app.database import delete_transcript_version
+
+    if not get_meeting(meeting_id):
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    _ensure_not_processing(meeting_id)
+    if not delete_transcript_version(meeting_id, model):
+        raise HTTPException(status_code=404, detail="Этой моделью запись ещё не расшифрована")
+    return get_meeting(meeting_id)
+
+
 @router.post("/api/meetings/{meeting_id}/merge-transcripts")
 def api_merge_transcripts(meeting_id: int) -> Dict[str, Any]:
     """One transcript from the transcripts of every model (app/transcript_merge.py), in the background."""
