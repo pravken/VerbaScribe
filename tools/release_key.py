@@ -59,6 +59,7 @@ def main() -> None:
         if ROOT in out.resolve().parents:
             print("Warning: the secret is written inside the program folder. Move it out and never commit it.")
         seed, key_id = release_sign.new_key()
+        out.parent.mkdir(parents=True, exist_ok=True)
         secret = f"verbascribe-release-key:{base64.b64encode(seed).decode()}:{base64.b64encode(key_id).decode()}"
         out.write_text(secret + "\n", encoding="utf-8")
         print(f"Secret key written to {out.resolve()}")

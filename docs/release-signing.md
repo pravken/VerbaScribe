@@ -6,13 +6,15 @@
 
 ## Как включить (один раз)
 
-1. **Создайте ключ на своём компьютере**, не в облачной сессии и не в папке репозитория:
+1. **Создайте ключ на своём компьютере**, не в облачной сессии. Скрипт лежит в репозитории (ветка `claude/sweet-maxwell-uaextf`, после слияния — `main`), поэтому команду запускают из папки клона. Подойдёт любой Python 3, пакеты программы не нужны:
 
    ```
-   python tools/release_key.py generate --out D:\keys\verbascribe-release.key
+   git clone --branch claude/sweet-maxwell-uaextf https://github.com/pravken/VerbaScribe D:\Temp\VerbaScribe-key
+   cd /d D:\Temp\VerbaScribe-key
+   python tools\release_key.py generate --out D:\Projects\_Secret_Keys\VerbaScribe\verbascribe-release.key
    ```
 
-   Скрипт напишет путь к файлу секрета и строку открытого ключа.
+   Секрет кладите вне клона (`--out` с полным путём, папка создаётся сама). Скрипт напишет путь к файлу секрета и строку открытого ключа. Клон потом можно удалить.
 
 2. **Секрет — в GitHub.** Откройте репозиторий → Settings → Secrets and variables → Actions → New repository secret. Имя `RELEASE_SIGNING_KEY`, значение — весь текст файла секрета (строка `verbascribe-release-key:…`).
 
