@@ -539,35 +539,14 @@ def _pick_path_native(mode: str, directory: Path, filename: str = "", fmt: str =
     Spawns an isolated native file/folder dialog via app.native_dialog in a subprocess.
     This avoids thread-affinity problems and deadlocks with pywebview or uvicorn.
     """
-    import subprocess
+    from app import native_dialog
 
     desc, pat, ext = _EXPORT_FILE_TYPES.get(fmt.lower(), ("All files (*.*)", "*.*", ""))
     filter_arg = f"{desc}|{pat}|Все файлы (*.*)|*.*" if ext else "Все файлы (*.*)|*.*"
-
-    cmd = [
-        sys.executable,
-        "-m",
-        "app.native_dialog",
-        "--mode",
-        mode,
-        "--dir",
-        str(directory),
-        "--filename",
-        filename,
-        "--filter",
-        filter_arg,
-        "--ext",
-        ext,
-        "--title",
-        "Сохранить как" if mode == "save" else "Выбор папки для экспорта",
-    ]
-    try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=300)
-        out = (proc.stdout or "").strip()
-        return out if out else None
-    except Exception as e:
-        print(f"[export] Native dialog failed: {e}")
-        return None
+    return native_dialog.run([
+        "--mode", mode, "--dir", str(directory), "--filename", filename, "--filter", filter_arg, "--ext", ext,
+        "--title", "Сохранить как" if mode == "save" else "Выбор папки для экспорта",
+    ])
 
 
 # --- The endpoints, one router per part of the program, in the order they were written (the order of

@@ -267,3 +267,18 @@ class PyEnvTest(unittest.TestCase):
             with mock.patch.object(pyenv.shutil, "which", return_value=None), \
                     mock.patch.dict(pyenv.os.environ, {"USERPROFILE": home, "LOCALAPPDATA": home}):
                 self.assertEqual(pyenv.find_uv(), str(uv))
+
+
+class NativeDialogTest(unittest.TestCase):
+    def test_dialog_runs_in_the_program_folder(self):
+        from app import native_dialog
+        from app.paths import APP_DIR
+
+        done = mock.Mock(returncode=0, stdout="C:/out/file.docx\n", stderr="")
+        with mock.patch("subprocess.run", return_value=done) as run:
+            self.assertEqual(native_dialog.run(["--mode", "save"]), "C:/out/file.docx")
+        # other tests' background jobs may call subprocess.run meanwhile: only the dialog's call counts
+        ours = [c for c in run.call_args_list if c.args and "app.native_dialog" in c.args[0]]
+        self.assertEqual(ours[0].kwargs["cwd"], str(APP_DIR))
+        with mock.patch("subprocess.run", return_value=mock.Mock(returncode=1, stdout="", stderr="No module named app")):
+            self.assertIsNone(native_dialog.run(["--mode", "save"]))

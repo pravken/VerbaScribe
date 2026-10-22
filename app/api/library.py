@@ -2,7 +2,6 @@
 
 import re
 import shutil
-import sys
 import traceback
 import uuid
 from pathlib import Path
@@ -113,17 +112,13 @@ def api_calls_status() -> Dict[str, Any]:
 
 # --- Backup of the library (app/backup.py) ---
 def _backup_dialog(mode: str, filename: str = "") -> Optional[str]:
-    import subprocess
+    from app import native_dialog
 
-    cmd = [sys.executable, "-m", "app.native_dialog", "--mode", mode, "--dir", str(Path.home() / "Documents"),
-           "--filename", filename, "--filter", "Резервная копия VerbaScribe (*.zip)|*.zip", "--ext", ".zip",
-           "--title", "Сохранить резервную копию" if mode == "save" else "Восстановить из резервной копии"]
-    try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=600)
-        return (proc.stdout or "").strip() or None
-    except Exception as e:
-        print(f"[backup] dialog failed: {e}", flush=True)
-        return None
+    return native_dialog.run(
+        ["--mode", mode, "--dir", str(Path.home() / "Documents"), "--filename", filename,
+         "--filter", "Резервная копия VerbaScribe (*.zip)|*.zip", "--ext", ".zip",
+         "--title", "Сохранить резервную копию" if mode == "save" else "Восстановить из резервной копии"],
+        timeout=600)
 
 @router.get("/api/backup")
 def api_backup_estimate() -> Dict[str, Any]:
