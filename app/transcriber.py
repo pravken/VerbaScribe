@@ -143,6 +143,44 @@ def queue_snapshot() -> List[Dict[str, Any]]:
     return out
 
 
+def _drop_work_audio(meeting_id: int, wav_path: Path) -> None:
+    """The 16 kHz WAV is for recognition only (345 MB for three hours). The player's waveform is kept
+    as a small envelope and the WAV deleted when the app holds its own copy of the sound; a file used
+    in place (added by its path) may be moved by its owner, so its WAV stays as the sound to play."""
+    import json
+
+    from app.audio_utils import loudness_peaks, peaks_file
+    from app.database import delete_file, update_meeting_fields
+
+    m = get_meeting(meeting_id) or {}
+    if not m.get("owns_media") or not Path(m.get("media_path") or "").is_file() or not wav_path.is_file():
+        return
+    try:
+        peaks_file(meeting_id).write_text(json.dumps(loudness_peaks(wav_path)), encoding="utf-8")
+    except Exception:
+        traceback.print_exc()
+        return
+    update_meeting_fields(meeting_id, audio_path="")
+    delete_file(str(wav_path))
+
+
+def drop_old_work_audio() -> int:
+    """_drop_work_audio for finished recordings that still have their WAV; returns how many."""
+    from app.database import _db_lock, get_connection
+
+    with _db_lock:
+        conn = get_connection()
+        rows = conn.execute("SELECT id, audio_path FROM meetings WHERE status = 'completed' AND owns_media = 1 "
+                            "AND COALESCE(audio_path, '') != ''").fetchall()
+        conn.close()
+    n = 0
+    for r in rows:
+        if not is_job_active(int(r["id"])) and Path(r["audio_path"]).is_file():
+            _drop_work_audio(int(r["id"]), Path(r["audio_path"]))
+            n += 1
+    return n
+
+
 def _cancel_wanted(meeting_id: int) -> bool:
     with _jobs_lock:
         return meeting_id in _cancel_requested
@@ -1076,6 +1114,8 @@ def _process_meeting_job(meeting_id: int) -> None:
             from app.database import remove_media
 
             remove_media(meeting_id)
+        else:
+            _drop_work_audio(meeting_id, wav_path)
 
     except JobCancelled:
         whisper_model = None

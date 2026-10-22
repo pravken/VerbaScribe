@@ -734,7 +734,7 @@ def restore_segments_backup(meeting_id: int) -> bool:
 
 def update_meeting_fields(meeting_id: int, **fields: Any) -> None:
     allowed = {"title", "model_name", "language", "num_speakers_hint", "folder_id", "title_is_default", "obsidian_path", "obsidian_hash", "user_notes",
-               "transcript_verified",
+               "transcript_verified", "audio_path",
                "local_only", "series_id"}
     items = [(k, v) for k, v in fields.items() if k in allowed]
     if not items:
@@ -1082,6 +1082,7 @@ def delete_meeting(meeting_id: int, with_source: bool = False, with_exports: boo
                 delete_file(p_str)
     thumb = DATA_DIR / "thumbs" / f"{meeting_id}.jpg"
     thumb.unlink(missing_ok=True)
+    (AUDIO_DIR / f"meeting_{meeting_id}.peaks.json").unlink(missing_ok=True)  # the player's waveform
 
     with _db_lock:
         conn = get_connection()

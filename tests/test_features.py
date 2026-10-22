@@ -538,3 +538,44 @@ class DubMemoryTest(unittest.TestCase):
 
         self.assertLess(dub_memory_gb(3600), 7)          # an hour fits 16 GB
         self.assertGreater(dub_memory_gb(3 * 3600), 14)  # three hours do not
+
+
+class WorkAudioTest(unittest.TestCase):
+    def test_wav_goes_waveform_stays(self):
+        import tempfile
+        from pathlib import Path
+
+        import soundfile as sf
+        from fastapi.testclient import TestClient
+
+        from app import main, transcriber
+        from app.audio_utils import peaks_file
+        from app.database import create_meeting, get_meeting, init_db, update_meeting_progress
+        from app.paths import AUDIO_DIR
+
+        init_db()
+        media = Path(tempfile.mkdtemp()) / "rec.m4a"
+        media.write_bytes(b"sound")
+        m = create_meeting(title="Своя запись", filename="rec.m4a", media_path=str(media), owns_media=True)
+        wav = AUDIO_DIR / f"meeting_{m['id']}.wav"
+        t = np.linspace(0, 10, 160000, dtype=np.float32)
+        sf.write(str(wav), (np.sin(t * 2000) * (t > 5)).astype(np.float32), 16000)  # silence, then sound
+        update_meeting_progress(m["id"], audio_path=str(wav))
+        with TestClient(main.app, base_url="http://127.0.0.1:8790") as c:
+            c.get(f"/?token={main.SESSION_TOKEN}")
+            before = c.get(f"/api/meetings/{m['id']}/peaks", params={"bars": 40}).json()["peaks"]
+            transcriber._drop_work_audio(m["id"], wav)
+            after = c.get(f"/api/meetings/{m['id']}/peaks", params={"bars": 40}).json()["peaks"]
+        self.assertFalse(wav.exists())
+        self.assertTrue(peaks_file(m["id"]).exists())
+        self.assertEqual(get_meeting(m["id"])["audio_path"], "")
+        self.assertEqual(len(after), 40)
+        self.assertLess(max(after[:15]), 0.1)
+        self.assertGreater(min(after[25:]), 0.5)
+        self.assertEqual(len(before), 40)
+        # a file used in place keeps its WAV: its owner may move the file away
+        m2 = create_meeting(title="По месту", filename="rec.m4a", media_path=str(media), source="local")
+        wav2 = AUDIO_DIR / f"meeting_{m2['id']}.wav"
+        sf.write(str(wav2), np.zeros(16000, dtype=np.float32), 16000)
+        transcriber._drop_work_audio(m2["id"], wav2)
+        self.assertTrue(wav2.exists())

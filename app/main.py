@@ -407,6 +407,12 @@ def _retention_loop() -> None:
                     remove_media(mid)
         except Exception:
             traceback.print_exc()
+        try:  # 16 kHz WAVs of recordings processed by older versions (see transcriber._drop_work_audio)
+            from app.transcriber import drop_old_work_audio
+
+            drop_old_work_audio()
+        except Exception:
+            traceback.print_exc()
         _time.sleep(6 * 3600)
 
 

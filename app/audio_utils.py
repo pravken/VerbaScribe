@@ -1,5 +1,6 @@
 import subprocess
 from pathlib import Path
+from typing import List
 
 from app.ffmpeg_manager import find_tool, tool_cmd
 
@@ -135,6 +136,39 @@ def get_media_duration(media_path: str | Path) -> float:
         return round(float(info.duration), 2)
     except Exception:
         return 0.0
+
+
+PEAK_BARS = 400  # the loudness envelope kept for the player's waveform (it asks for 20-400 bars)
+
+
+def peaks_file(meeting_id: int) -> Path:
+    from app.paths import AUDIO_DIR
+
+    return AUDIO_DIR / f"meeting_{meeting_id}.peaks.json"
+
+
+def loudness_peaks(wav: Path, bars: int = PEAK_BARS) -> List[float]:
+    """RMS loudness of `bars` equal parts of a WAV, scaled to 0..1 (98th percentile = 1)."""
+    import numpy as np
+    import soundfile as sf
+
+    data, _sr = sf.read(str(wav), dtype="float32", always_2d=False)
+    if data.ndim > 1:
+        data = data.mean(axis=1)
+    if len(data) < bars:
+        return []
+    usable = len(data) - (len(data) % bars)
+    rms = np.sqrt(np.mean(np.square(data[:usable].reshape(bars, -1)), axis=1))
+    top = float(np.percentile(rms, 98)) or 1.0
+    return [round(float(v), 3) for v in np.clip(rms / top, 0.0, 1.0)]
+
+
+def resample_peaks(peaks: List[float], bars: int) -> List[float]:
+    """Fewer bars from the kept envelope: the loudest of each group (a short loud word stays visible)."""
+    if not peaks or bars >= len(peaks):
+        return list(peaks)
+    step = len(peaks) / bars
+    return [max(peaks[int(i * step):max(int(i * step) + 1, int((i + 1) * step))]) for i in range(bars)]
 
 
 def format_timestamp(seconds: float, srt: bool = False) -> str:

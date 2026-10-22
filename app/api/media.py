@@ -463,27 +463,24 @@ def api_video_subtitles(meeting_id: int, payload: SubtitlesRequestPayload) -> Di
 
 @router.get("/api/meetings/{meeting_id}/peaks")
 def api_media_peaks(meeting_id: int, bars: int = 120) -> Dict[str, Any]:
-    """Real loudness envelope of the extracted 16 kHz WAV for the player waveform."""
-    import numpy as np
-    import soundfile as sf
+    """Real loudness envelope of the recording for the player waveform: from the 16 kHz WAV, or from
+    the envelope kept when the WAV was deleted after processing."""
+    import json
+
+    from app.audio_utils import loudness_peaks, peaks_file, resample_peaks
 
     m = get_meeting(meeting_id)
     if not m:
         raise HTTPException(status_code=404, detail="Встреча не найдена")
-    wav = Path(m.get("audio_path") or "")
-    if not wav.is_file():
-        return {"peaks": []}
     bars = max(20, min(400, int(bars)))
+    wav = Path(m.get("audio_path") or "")
+    if wav.is_file():
+        try:
+            return {"peaks": loudness_peaks(wav, bars)}
+        except Exception:
+            return {"peaks": []}
     try:
-        data, _sr = sf.read(str(wav), dtype="float32", always_2d=False)
-    except Exception:
+        kept = json.loads(peaks_file(meeting_id).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
         return {"peaks": []}
-    if data.ndim > 1:
-        data = data.mean(axis=1)
-    if len(data) < bars:
-        return {"peaks": []}
-    usable = len(data) - (len(data) % bars)
-    rms = np.sqrt(np.mean(np.square(data[:usable].reshape(bars, -1)), axis=1))
-    top = float(np.percentile(rms, 98)) or 1.0
-    peaks = np.clip(rms / top, 0.0, 1.0)
-    return {"peaks": [round(float(v), 3) for v in peaks]}
+    return {"peaks": resample_peaks([float(x) for x in kept], bars)}
