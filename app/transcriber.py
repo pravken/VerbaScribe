@@ -435,11 +435,48 @@ def enqueue_cut_job(meeting_id: int, kind: str, intervals: List[Tuple[float, flo
     )
 
 
+def _merge_runner(meeting_id: int) -> str:
+    """One transcript from the transcripts of several models (app/transcript_merge.py), shown as the
+    version "merged"; the others stay."""
+    from app import llm
+    from app.database import all_transcripts, is_local_only
+    from app.model_manager import format_whisper_model_name
+    from app.transcript_merge import MERGED, merge
+
+    meeting = get_meeting(meeting_id)
+    if not meeting:
+        raise RuntimeError("Запись не найдена")
+    versions = all_transcripts(meeting_id)
+    update_meeting_progress(meeting_id, progress=5, stage_text="Сведение версий: сопоставление слов...")
+    chat, note = None, ""
+    try:
+        chat = llm.target(None, local_only=is_local_only(meeting)).chat
+    except Exception as e:  # no analysis model: the disputed places go to the more accurate model
+        print(f"[merge] no analysis model: {e}", flush=True)
+        note = " Модель анализа недоступна: спорные места решены по точности моделей."
+    res = merge(versions, meeting.get("language") or "", chat,
+                progress=lambda pct, text: update_meeting_progress(meeting_id, progress=pct, stage_text=text),
+                check_cancel=lambda: _check_cancel(meeting_id))
+    _check_cancel(meeting_id)
+    stash_transcript_for(meeting_id, MERGED)
+    save_segments_backup(meeting_id, [])
+    save_meeting_results(meeting_id, speakers=res["speakers"], segments=res["segments"],
+                         language=versions[res["base"]].get("language") or meeting.get("language"), transcript_model=MERGED)
+    names = ", ".join(format_whisper_model_name(m) for m in res["models"])
+    return (f"Сведено из {len(res['models'])} версий ({names}): спорных мест {res['disputed']}, "
+            f"из них выбрала модель анализа {res['by_llm']}.{note}")
+
+
+def enqueue_merge_job(meeting_id: int) -> bool:
+    return _enqueue_side_job(meeting_id, "merge", "", "merging", "Сведение версий в очереди...", _merge_runner)
+
+
 # runner -> (name for error messages, text after a cancel)
 _SIDE_JOB_NAMES = {
     _cut_runner: ("нарезка записи", "Нарезка отменена"),
     _translate_runner: ("перевод", "Перевод отменён"),
     _burn_runner: ("встраивание субтитров", "Встраивание субтитров отменено"),
+    _merge_runner: ("сведение версий", "Сведение версий отменено"),
 }
 
 

@@ -891,7 +891,7 @@ const REC_BADGE_ICONS = {
 };
 const REC_STEP_OF_STATUS = {
   queued: 'transcript', extracting_audio: 'transcript', transcribing: 'transcript', diarizing: 'transcript',
-  summarizing: 'summary', translating: 'translation', dubbing: 'dub', rendering: 'dub',
+  summarizing: 'summary', translating: 'translation', dubbing: 'dub', rendering: 'dub', merging: 'transcript',
 };
 
 function recordingBadgesHtml(m) {

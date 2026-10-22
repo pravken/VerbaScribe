@@ -1342,6 +1342,12 @@ document.addEventListener('contextmenu', (e) => {
   const items = textMenuItems(e);
   if (!items || !items.some(i => !i.sep)) return;
   e.preventDefault();
+  openTextMenuAt(items, e.clientX, e.clientY);
+});
+
+// A small menu of items ({label, key, run, disabled} or {sep}) at a point of the window
+function openTextMenuAt(items, x, y) {
+  closeTextMenu();
   closeQuickLangMenu();
   const menu = document.createElement('div');
   menu.id = 'text-menu';
@@ -1362,9 +1368,9 @@ document.addEventListener('contextmenu', (e) => {
   });
   document.body.appendChild(menu);
   const r = menu.getBoundingClientRect();
-  menu.style.left = `${Math.max(4, Math.min(e.clientX, window.innerWidth - r.width - 4))}px`;
-  menu.style.top = `${Math.max(4, Math.min(e.clientY, window.innerHeight - r.height - 4))}px`;
-});
+  menu.style.left = `${Math.max(4, Math.min(x, window.innerWidth - r.width - 4))}px`;
+  menu.style.top = `${Math.max(4, Math.min(y, window.innerHeight - r.height - 4))}px`;
+}
 document.addEventListener('click', closeTextMenu);
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeTextMenu(); });
 window.addEventListener('blur', closeTextMenu);

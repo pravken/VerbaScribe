@@ -333,6 +333,7 @@ async function deleteOnnxModel(id) {
 function formatModelName(modelId) {
   const raw = String(modelId || '').trim();
   if (!raw) return 'AI';
+  if (raw === 'merged') return t('mergedVersion');  // one text from several models (app/transcript_merge.py)
   const lower = raw.toLowerCase();
   if (MODEL_DISPLAY_NAMES[lower]) return MODEL_DISPLAY_NAMES[lower];
   for (const [k, v] of Object.entries(MODEL_DISPLAY_NAMES)) {

@@ -202,6 +202,12 @@ input[type="range"].volume-slider::-webkit-slider-thumb:hover {
   background-color: rgba(255, 255, 255, 0.1);
   border-radius: 4px;
 }
+/* A place of a merged transcript the models heard differently (app/transcript_merge.py) */
+.word-disputed {
+  text-decoration: underline dotted rgba(255, 159, 10, 0.85);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+}
 
 /* Markdown Summary Styling */
 .markdown-body h1, .markdown-body h2, .markdown-body h3 {

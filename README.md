@@ -18,6 +18,7 @@ Recordings and transcripts are processed and stored locally (NVIDIA GPU via CUDA
 ### Features
 
 - **Speech recognition** with [faster-whisper](https://github.com/SYSTRAN/faster-whisper) and Silero VAD. Models: `large-v3-turbo`, `large-v3`; GigaAM v3 and Parakeet TDT v3 on ONNX Runtime; recordings that mix languages are recognized phrase by phrase. Compute precision (`float16`, `int8_float16`, `int8`) is chosen from available VRAM, with fallback to CPU.
+- **Several models, one text.** Each model's transcript of a recording is kept; the dropdown above the text switches between them. "Merge versions" makes one text from them: where the models agree, their word; the places they heard differently are chosen by the analysis model (only among the variants) and stay underlined, a click shows every model's variant.
 - **Speaker separation** by clustering SpeechBrain ECAPA-TDNN voice embeddings. Works without tokens. Accuracy drops with overlapping speech, very short replies, or similar voices, so check the result and fix speakers where needed.
 - **Optional audio cleanup** before recognition: FFmpeg filters for noise reduction, click removal and loudness leveling. A simple voice filter is also available in the player.
 - **Filler-word removal** ("uh", "um", "э-э", "ммм"…). The original text is kept and can be restored.
@@ -218,6 +219,7 @@ To update Python dependencies, edit `requirements.in` and regenerate the lock (c
 ### Возможности
 
 - **Распознавание речи**: [faster-whisper](https://github.com/SYSTRAN/faster-whisper) и Silero VAD. Модели `large-v3-turbo`, `large-v3`, а также GigaAM v3 и Parakeet TDT v3 на ONNX Runtime; записи на нескольких языках распознаются пофразово. Точность вычислений (`float16`, `int8_float16`, `int8`) подбирается под объём видеопамяти, при необходимости работа переходит на CPU.
+- **Несколько моделей — один текст.** Расшифровка каждой модели хранится отдельно, список над текстом переключает между ними. «Свести версии» собирает из них один текст: где модели согласны — их слово, места, которые они услышали по-разному, выбирает модель анализа (только из вариантов). Такие места остаются подчёркнутыми, щелчок показывает вариант каждой модели.
 - **Разделение по спикерам**: кластеризация голосовых эмбеддингов SpeechBrain ECAPA-TDNN, без токенов. Точность снижается при перебиваниях, очень коротких репликах и похожих голосах, поэтому результат стоит проверять и при необходимости поправлять спикеров вручную.
 - **Очистка звука перед распознаванием** (по желанию): фильтры FFmpeg для шумоподавления, удаления щелчков и выравнивания громкости. В плеере также есть простой голосовой фильтр.
 - **Удаление слов-паразитов** («э-э», «ммм», «uh», «um»…). Исходный текст сохраняется, его можно вернуть.

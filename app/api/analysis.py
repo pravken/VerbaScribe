@@ -175,6 +175,36 @@ def api_update_segment(
         raise HTTPException(status_code=404, detail="Встреча не найдена")
     return m
 
+class AlternativePayload(BaseModel):
+    word: int
+    text: str
+
+
+@router.post("/api/meetings/{meeting_id}/segments/{segment_id}/alternative")
+def api_choose_alternative(meeting_id: int, segment_id: int, payload: AlternativePayload) -> Dict[str, Any]:
+    """A disputed word of a merged transcript: another model's variant (app/transcript_merge.py)."""
+    from app.transcript_merge import choose_alternative
+
+    _ensure_not_transcribing(meeting_id)
+
+    def change(m: Dict[str, Any]) -> tuple:
+        seg = next((s for s in m.get("segments") or [] if int(s.get("id", -1)) == segment_id), None)
+        if seg is None:
+            raise HTTPException(status_code=404, detail="Реплика не найдена")
+        try:
+            choose_alternative(seg, payload.word, payload.text)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        if not seg["text"]:
+            raise HTTPException(status_code=400, detail="Текст реплики не может быть пустым")
+        return ("segments",)
+
+    m = edit_meeting(meeting_id, change)
+    if m is None:
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    return m
+
+
 @router.post("/api/meetings/{meeting_id}/segments/{segment_id}/merge")
 def api_merge_segment(meeting_id: int, segment_id: int) -> Dict[str, Any]:
     from app.database import merge_segment_with_previous

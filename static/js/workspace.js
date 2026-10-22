@@ -85,10 +85,19 @@ function renderTxModelBar() {
   const btn = document.getElementById('tx-transcribe-btn');
   btn.disabled = busy || !!m.media_removed;  // without the sound there is nothing to transcribe
   btn.classList.toggle('opacity-40', btn.disabled);
+  btn.classList.toggle('hidden', pick === 'merged');  // the merged text is not made by a model
   document.getElementById('tx-transcribe-label').textContent = t(pick && pick === shown ? 'txTranscribeAgain' : 'txTranscribe');
+  // Merging: once two models have transcribed the recording
+  const mergeBtn = document.getElementById('tx-merge-btn');
+  mergeBtn.classList.toggle('hidden', [...done].filter(x => x !== 'merged').length < 2);
+  mergeBtn.disabled = busy;
+  mergeBtn.classList.toggle('opacity-40', busy);
+  const disputes = (m.segments || []).reduce((n, s) => n + (s.words || []).filter(w => w.alts && w.alts.length).length, 0);
   const status = document.getElementById('tx-model-status');
   let text, cls;
-  if (busy) [text, cls] = [t('txModelBusy').replace('{model}', () => formatModelName(m.model_name)), 'text-apple-secondary'];
+  if (busy) [text, cls] = [m.status === 'merging' ? t('txMergingBusy') : t('txModelBusy').replace('{model}', () => formatModelName(m.model_name)), 'text-apple-secondary'];
+  else if (pick === 'merged' && shown === 'merged') [text, cls] = [`✓ ${t('txMergedDone')}${m.transcript_at ? ' · ' + formatDateTime(m.transcript_at) : ''}${
+    disputes ? ' · ' + t('txDisputes').replace('{n}', () => disputes) : ''}`, 'text-apple-green'];
   else if (pick && pick === shown) [text, cls] = [`✓ ${t('txModelDone')}${m.transcript_at ? ' · ' + formatDateTime(m.transcript_at) : ''}`, 'text-apple-green'];
   else if (!shown) [text, cls] = [t('txModelNone'), 'text-apple-secondary'];
   else [text, cls] = [t('txModelNotYet').replace('{model}', () => formatModelName(shown)), 'text-apple-amber'];
@@ -114,6 +123,54 @@ async function pickTxModel(sel) {
     return;
   }
   renderTxModelBar();
+}
+
+function disputeTitle(w) {
+  return [t('tipDisputed'), ...w.alts.map(a => `${a.text ? '«' + a.text + '»' : t('altNothing')} — ${a.models.map(formatModelName).join(', ')}`)].join('\n');
+}
+
+function openWordAlts(e, segId, wi) {
+  e.stopPropagation();  // the click would close the menu it opens
+  const seg = ((state.activeMeeting && state.activeMeeting.segments) || []).find(s => s.id === segId);
+  const w = seg && (seg.words || [])[wi];
+  if (!w || !w.alts) return;
+  const shown = seg.words.slice(wi, wi + Number(w.span || 1)).map(x => String(x.word).trim()).join(' ');
+  const items = w.alts.map(a => ({
+    label: `${a.text ? '«' + a.text + '»' : t('altNothing')}${a.text === shown ? '  ✓' : ''}`,
+    key: a.models.map(formatModelName).join(', '),
+    run: () => chooseWordAlt(segId, wi, a.text),
+  }));
+  items.push({ sep: true }, { label: t('ctxPlayFromHere'), key: formatTime(Number(w.start)), run: () => seekPlayer(Number(w.start)) });
+  const r = e.target.getBoundingClientRect();
+  openTextMenuAt(items, r.left, r.bottom + 4);
+}
+
+async function chooseWordAlt(segId, wi, text) {
+  const m = state.activeMeeting;
+  if (!m) return;
+  const res = await fetch(`/api/meetings/${m.id}/segments/${segId}/alternative`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ word: wi, text }),
+  });
+  const data = await readJson(res);
+  if (!res.ok) { showToast(errorText(data, res)); return; }
+  if (state.activeMeeting !== m) return;
+  m.segments = data.segments;
+  renderTranscript();
+  renderTxModelBar();
+}
+
+async function mergeTranscripts() {
+  const m = state.activeMeeting;
+  if (!m) return;
+  const hasMerged = m.transcript_model === 'merged' || (m.transcript_versions || []).some(v => v.model === 'merged');
+  if (hasMerged && !(await confirmDialog(t('txMergeAgainTitle'), t('txMergeAgainText'), t('txMerge'), false))) return;
+  const res = await fetch(`/api/meetings/${m.id}/merge-transcripts`, { method: 'POST' });
+  const data = await readJson(res);
+  if (!res.ok) { showToast(errorText(data, res)); return; }
+  state.txModelPick = null;
+  await loadMeetingsList();
+  await selectMeeting(m.id, false);
+  showToast(t('txMergeStarted'));
 }
 
 async function transcribeWithPickedModel() {
@@ -1355,8 +1412,10 @@ function transcriptSegmentHtml(seg, idx) {
     bodyHtml = translationHtml(seg, tr, query, false);
   } else {
     if (words.length > 0 && !query) {
-      bodyHtml = words.map(w =>
-        `<span class="word-token cursor-pointer" data-start="${Number(w.start) || 0}" data-end="${Number(w.end) || 0}" data-click="seekPlayer" data-click-args='[${Number(w.start) || 0}]'>${escapeHtml(w.word)}</span>`
+      bodyHtml = words.map((w, wi) => (w.alts && w.alts.length)
+        // A place the models heard differently (a merged transcript): a click shows the variants
+        ? `<span class="word-token word-disputed cursor-pointer" data-start="${Number(w.start) || 0}" data-end="${Number(w.end) || 0}" title="${escapeHtml(disputeTitle(w))}" data-click="openWordAlts" data-click-args='[{"$": "event"}, ${Number(seg.id)}, ${wi}]'>${escapeHtml(w.word)}</span>`
+        : `<span class="word-token cursor-pointer" data-start="${Number(w.start) || 0}" data-end="${Number(w.end) || 0}" data-click="seekPlayer" data-click-args='[${Number(w.start) || 0}]'>${escapeHtml(w.word)}</span>`
       ).join('');
     } else {
       bodyHtml = `<span class="cursor-pointer" data-click="seekPlayer" data-click-args='[${Number(seg.start) || 0}]'>${highlightSearch(escapeHtml(seg.text), query)}</span>`;

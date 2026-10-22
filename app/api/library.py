@@ -544,6 +544,23 @@ def api_switch_transcript_version(meeting_id: int, payload: TranscriptVersionPay
     return get_meeting(meeting_id)
 
 
+@router.post("/api/meetings/{meeting_id}/merge-transcripts")
+def api_merge_transcripts(meeting_id: int) -> Dict[str, Any]:
+    """One transcript from the transcripts of every model (app/transcript_merge.py), in the background."""
+    from app.database import all_transcripts
+    from app.transcript_merge import MERGED
+    from app.transcriber import enqueue_merge_job
+
+    if not get_meeting(meeting_id):
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    _ensure_not_processing(meeting_id)
+    if len([m for m in all_transcripts(meeting_id) if m != MERGED]) < 2:
+        raise HTTPException(status_code=400, detail="Для сведения нужны расшифровки хотя бы двух моделей")
+    if not enqueue_merge_job(meeting_id):
+        raise HTTPException(status_code=409, detail="Запись уже обрабатывается. Дождитесь окончания или отмените обработку.")
+    return get_meeting(meeting_id)
+
+
 @router.post("/api/meetings/{meeting_id}/cancel")
 def api_cancel_meeting(meeting_id: int) -> Dict[str, Any]:
     m = get_meeting(meeting_id)

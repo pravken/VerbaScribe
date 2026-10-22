@@ -224,7 +224,7 @@ async def lifespan(_app: FastAPI):
         elif m.get("status") == "downloading":
             update_meeting_progress(int(m["id"]), status="failed", progress=0, stage_text="",
                                     error_message="Скачивание по ссылке прервано перезапуском — нажмите «Повторить»")
-        elif m.get("status") in ("translating", "rendering"):
+        elif m.get("status") in ("translating", "rendering", "merging"):
             # Partial translations are kept and can be completed with "Update translation"
             update_meeting_progress(int(m["id"]), status="completed", progress=100, stage_text="Задача прервана перезапуском")
     yield

@@ -770,6 +770,27 @@ def transcript_versions(conn: sqlite3.Connection, meeting_id: int) -> List[Dict[
     return out
 
 
+def all_transcripts(meeting_id: int) -> Dict[str, Dict[str, Any]]:
+    """Every transcript of a recording by model: the one shown and the stored versions (for merging)."""
+    with _db_lock:
+        conn = get_connection()
+        try:
+            out = {}
+            for r in conn.execute("SELECT model, data FROM transcript_versions WHERE meeting_id = ?", (meeting_id,)):
+                try:
+                    out[r["model"]] = json.loads(r["data"])
+                except ValueError:
+                    pass
+            row = conn.execute(f"SELECT {_VERSION_COLUMNS} FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+            segments = _read_segments(conn, meeting_id)
+            if row and row["transcript_model"] and segments:
+                out[row["transcript_model"]] = {"segments": segments, "speakers": _loads_dict(row["speakers_json"]),
+                                                "language": row["language"] or ""}
+            return out
+        finally:
+            conn.close()
+
+
 def switch_transcript_version(meeting_id: int, model: str) -> bool:
     """Shows the transcript `model` made: the one shown goes to the versions, this one takes its
     place (search index included). False when there is no such version."""
