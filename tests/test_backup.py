@@ -43,6 +43,7 @@ class BackupTest(unittest.TestCase):
         self.assertFalse(backup.PENDING.exists())
         self.assertEqual(len(list_meetings()), before)
         self.assertEqual(get_meeting(m["id"])["title"], "Встреча для копии")
+        self.assertEqual(secret_store.get_secret("llm_key_openai"), "sk-test")  # the keys of this computer stay
         moved = Path(get_meeting(m["id"])["media_path"])
         self.assertEqual(moved.parent.name, backup.RESTORED_FOLDER)
         self.assertEqual(moved.read_bytes(), b"sound")

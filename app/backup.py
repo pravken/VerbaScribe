@@ -15,7 +15,8 @@ user may have been sent, so nothing in it decides where files go or where data i
 - media files are put back where they were only inside this computer's data folder or recordings
   folder (never over an existing file); a file that lived anywhere else goes to the recordings folder
   under RESTORED_FOLDER, and the restored database points to it;
-- the settings that hold addresses, folders and the cloud choice (LOCAL_SETTINGS) stay this computer's.
+- the settings that hold addresses, folders and the cloud choice (LOCAL_SETTINGS) stay this computer's,
+  and so do the cloud API keys (they are moved into the restored database at the next start).
 """
 
 import json
@@ -181,6 +182,7 @@ def restore(src: Path) -> Dict[str, Any]:
                         conn.execute("UPDATE meetings SET media_path = ?, owns_media = 1 WHERE id = ?", (str(target), mid))
                     restored += 1
                 _keep_local_settings(conn)
+                conn.execute("DROP TABLE IF EXISTS secrets")  # keys come from this computer (apply_pending)
                 conn.commit()
             except sqlite3.DatabaseError:
                 raise ValueError("База в копии повреждена")
@@ -191,6 +193,20 @@ def restore(src: Path) -> Dict[str, Any]:
             (DATA_DIR / "bench.json").write_bytes(z.read("bench.json"))
     return {"recordings": n, "media_restored": restored, "media_kept": skipped, "created": manifest.get("created", ""),
             "restart_needed": True}
+
+
+def _carry_secrets(old_db: Path, new_db: Path) -> None:
+    """The cloud API keys of this computer (encrypted for this Windows user) into the restored database."""
+    conn = sqlite3.connect(str(new_db))
+    try:
+        conn.execute("ATTACH DATABASE ? AS old", (str(old_db),))
+        if conn.execute("SELECT 1 FROM old.sqlite_master WHERE type = 'table' AND name = 'secrets'").fetchone():
+            conn.execute("CREATE TABLE IF NOT EXISTS secrets (name TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)")
+            conn.execute("INSERT OR REPLACE INTO secrets (name, value, updated_at) SELECT name, value, updated_at FROM old.secrets")
+        conn.commit()
+        conn.execute("DETACH DATABASE old")
+    finally:
+        conn.close()
 
 
 def apply_pending() -> Optional[str]:
@@ -206,6 +222,10 @@ def apply_pending() -> Optional[str]:
         finally:
             conn.close()
         shutil.copyfile(DB_PATH, kept)
+        try:
+            _carry_secrets(kept, PENDING)
+        except sqlite3.DatabaseError as e:
+            print(f"[backup] the API keys were not carried over: {e}", flush=True)
     for suffix in ("-wal", "-shm"):
         Path(str(DB_PATH) + suffix).unlink(missing_ok=True)
     PENDING.replace(DB_PATH)
