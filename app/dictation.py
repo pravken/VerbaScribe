@@ -125,7 +125,11 @@ def type_text(text: str) -> None:
     kernel32.GlobalAlloc.restype = wintypes.HGLOBAL
     kernel32.GlobalLock.restype = ctypes.c_void_p
     kernel32.GlobalLock.argtypes = [wintypes.HGLOBAL]
+    # Handles are 64-bit: without argtypes ctypes passes them as a 32-bit int and fails (OverflowError)
+    kernel32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
     user32.GetClipboardData.restype = wintypes.HANDLE
+    user32.SetClipboardData.argtypes = [wintypes.UINT, wintypes.HANDLE]
+    user32.SetClipboardData.restype = wintypes.HANDLE
     CF_UNICODETEXT, GMEM_MOVEABLE = 13, 0x0002
 
     def read_clip() -> Optional[str]:
