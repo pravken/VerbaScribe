@@ -1650,6 +1650,23 @@
           <button onclick="openCloudLog()" class="ui-btn ui-btn-subtle h-7 text-[11px]" data-i18n="cloudLogBtn">Журнал облачных запросов</button>
         </div>
 
+        <!-- Backup of the library (app/backup.py) -->
+        <div class="settings-card">
+          <div class="min-w-0">
+            <h4 class="text-[13px] font-semibold text-white" data-i18n="backupTitle">Резервная копия</h4>
+            <p class="text-[11px] text-apple-secondary leading-snug mt-0.5" data-i18n="backupDesc">Все записи, расшифровки, анализ, заметки, папки, голоса и настройки в одном файле .zip — перед переустановкой или переездом на другой компьютер. Ключи облачных моделей в копию не попадают.</p>
+          </div>
+          <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label">
+            <input type="checkbox" id="backup-with-media" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <span><span data-i18n="backupWithMedia">Вместе со звуком и видео</span> <span id="backup-media-size" class="text-apple-tertiary"></span></span>
+          </label>
+          <div class="flex items-center gap-2 flex-wrap">
+            <button onclick="makeBackup()" id="backup-make-btn" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px]" data-i18n="backupMake">Сохранить копию…</button>
+            <button onclick="restoreBackup()" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px]" data-i18n="backupRestore">Восстановить из копии…</button>
+            <span id="backup-status" class="text-[11px] text-apple-tertiary"></span>
+          </div>
+        </div>
+
         <!-- Memory (app/idle_unload.py) and notifications -->
         <div class="settings-card">
           <div class="flex items-start justify-between gap-3">

@@ -619,6 +619,63 @@ def api_calls_status() -> Dict[str, Any]:
     return call_watch.status()
 
 
+# --- Backup of the library (app/backup.py) ---
+def _backup_dialog(mode: str, filename: str = "") -> Optional[str]:
+    import subprocess
+
+    cmd = [sys.executable, "-m", "app.native_dialog", "--mode", mode, "--dir", str(Path.home() / "Documents"),
+           "--filename", filename, "--filter", "Резервная копия VerbaScribe (*.zip)|*.zip", "--ext", ".zip",
+           "--title", "Сохранить резервную копию" if mode == "save" else "Восстановить из резервной копии"]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=600)
+        return (proc.stdout or "").strip() or None
+    except Exception as e:
+        print(f"[backup] dialog failed: {e}", flush=True)
+        return None
+
+
+@app.get("/api/backup")
+def api_backup_estimate() -> Dict[str, Any]:
+    from app import backup
+
+    return backup.estimate()
+
+
+class BackupPayload(BaseModel):
+    with_media: bool = False
+
+
+@app.post("/api/backup")
+async def api_backup_make(payload: BackupPayload) -> Dict[str, Any]:
+    from datetime import datetime
+
+    from app import backup
+
+    name = f"VerbaScribe {datetime.now().strftime('%Y-%m-%d')}{' с медиа' if payload.with_media else ''}.zip"
+    dest = await run_in_threadpool(_backup_dialog, "save", name)
+    if not dest:
+        return {"ok": False, "cancelled": True}
+    try:
+        return {"ok": True, **await run_in_threadpool(backup.make, Path(dest), payload.with_media)}
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Не удалось сохранить копию: {e}")
+
+
+@app.post("/api/backup/restore")
+async def api_backup_restore() -> Dict[str, Any]:
+    import zipfile
+
+    from app import backup
+
+    src = await run_in_threadpool(_backup_dialog, "open")
+    if not src:
+        return {"ok": False, "cancelled": True}
+    try:
+        return {"ok": True, **await run_in_threadpool(backup.restore, Path(src))}
+    except (ValueError, OSError, zipfile.BadZipFile) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.get("/api/about")
 def api_about() -> Dict[str, Any]:
     """The About window: version, and how much the program has transcribed on this computer."""

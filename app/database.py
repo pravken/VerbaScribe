@@ -30,6 +30,12 @@ def get_connection() -> sqlite3.Connection:
 
 
 def init_db() -> None:
+    try:
+        from app import backup
+
+        backup.apply_pending()  # a backup restored in Settings takes the place of this database
+    except Exception as e:
+        print(f"[backup] restore failed: {e}", flush=True)
     hw = get_hardware_info()
     with _db_lock:
         conn = get_connection()

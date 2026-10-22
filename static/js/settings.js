@@ -108,6 +108,7 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     document.getElementById('set-calendar-ics').value = s.calendar_ics || '';
     loadCalendarSource();
     document.getElementById('set-onnx-gpu').checked = s.onnx_gpu !== 'false';
+    loadBackupInfo();
     loadOnnxGpu();
     document.getElementById('calendar-status').textContent = '';
     fillCallSettings(s);
@@ -828,6 +829,46 @@ async function pickWatchFolder() {
 async function watchFolderOff() {
   const st = await fetch('/api/watch-folder/off', { method: 'POST' }).then(r => r.json()).catch(() => null);
   if (st) renderWatchFolder(st);
+}
+
+// --- Backup of the library (app/backup.py) ---
+async function loadBackupInfo() {
+  const st = await fetch('/api/backup').then(r => r.json()).catch(() => null);
+  const el = document.getElementById('backup-media-size');
+  if (st && el) el.textContent = st.media_files ? `(${st.media_files} · ${st.media_mb} MB)` : '';
+}
+
+async function makeBackup() {
+  const box = document.getElementById('backup-status');
+  const btn = document.getElementById('backup-make-btn');
+  btn.disabled = true;
+  box.className = 'text-[11px] text-apple-tertiary';
+  box.textContent = t('backupMaking');
+  try {
+    const res = await fetch('/api/backup', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ with_media: document.getElementById('backup-with-media').checked }) });
+    const data = await readJson(res);
+    if (!res.ok) throw new Error(data.detail || 'Error');
+    box.textContent = data.cancelled ? '' : t('backupMade').replace('{path}', data.path).replace('{mb}', data.size_mb);
+  } catch (e) {
+    box.className = 'text-[11px] text-apple-amber';
+    box.textContent = e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function restoreBackup() {
+  if (!(await confirmDialog(t('backupRestoreTitle'), t('backupRestoreText'), t('backupRestore').replace('…', '')))) return;
+  const box = document.getElementById('backup-status');
+  box.className = 'text-[11px] text-apple-tertiary';
+  box.textContent = t('backupReading');
+  const res = await fetch('/api/backup/restore', { method: 'POST' });
+  const data = await readJson(res);
+  if (!res.ok) { box.className = 'text-[11px] text-apple-amber'; box.textContent = data.detail || 'Error'; return; }
+  if (data.cancelled) { box.textContent = ''; return; }
+  box.className = 'text-[11px] text-apple-green';
+  box.textContent = t('backupRestored').replace('{n}', data.recordings).replace('{m}', data.media_restored);
 }
 
 // --- GigaAM / Parakeet on the NVIDIA GPU (app/onnx_gpu.py) ---
