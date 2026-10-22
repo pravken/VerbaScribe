@@ -911,15 +911,11 @@ async function refreshCallMicNow() {
   if (!box || !modal || modal.classList.contains('hidden') || !block || block.classList.contains('hidden') || !block.offsetParent) return;
   const st = await fetch('/api/calls/status').then(r => r.json()).catch(() => null);
   if (st) {
-    const names = (st.mic_now || []).map(n => n.replace(/_[a-z0-9]{13}$/, ''));
+    // Program names as people know them: "chrome.exe" -> "chrome", no store package suffixes
+    const names = [...new Set((st.mic_now || []).map(n => n.replace(/_[a-z0-9]{13}$/, '').replace(/\.exe$/i, '')))];
     box.textContent = `${t('callMicNow')}: ${names.length ? names.join(', ') : t('callMicNobody')}`
       + (st.active ? ` · ${t('callActive').replace('{app}', st.active)}` : '')
       + (st.running ? '' : ` · ${t('callWatcherOff')}`);
-    // Raw registry data: what Windows reports, to tell a missing record from a misread one
-    if (!names.length) {
-      box.textContent += ` · ${t('callRecords').replace('{n}', st.records_count || 0)}: `
-        + (st.records || []).map(r => `${r.name} (start ${r.start}, stop ${r.stop}${r.start && r.stop && r.start > r.stop ? ' ▶' : ''})`).join('; ');
-    }
   }
 }
 

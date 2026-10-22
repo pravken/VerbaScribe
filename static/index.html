@@ -1727,7 +1727,7 @@
           </div>
 
           <div>
-            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="hotkeyLabel">Горячая клавиша записи</label>
+            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="hotkeyLabel">Записать встречу</label>
             <div class="flex items-center gap-2">
               <input id="set-record-hotkey" type="text" readonly onkeydown="captureHotkey(event)" onfocus="this.select()"
                 data-i18n-title="tipHotkey" title="Нажмите сочетание клавиш: запись начнётся и остановится из любой программы, окно не разворачивается"
@@ -1735,10 +1735,11 @@
               <button onclick="clearHotkey()" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" data-i18n="hotkeyClear">Отключить</button>
               <span id="hotkey-status" class="text-[11px] text-apple-tertiary"></span>
             </div>
+            <p class="text-[10.5px] text-apple-tertiary mt-1" data-i18n="hotkeyHint">Начинает и останавливает запись из любой программы, источник — как в студии. Запись попадает в медиатеку и расшифровывается.</p>
           </div>
 
           <div>
-            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="dictationLabel">Диктовка в любую программу</label>
+            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="dictationLabel">Надиктовать текст</label>
             <div class="flex items-center gap-2 flex-wrap">
               <input id="set-dictation-hotkey" type="text" readonly onkeydown="captureHotkey(event)" onfocus="this.select()"
                 data-i18n-title="tipDictation" title="Нажмите сочетание: начнётся запись микрофона; нажмите ещё раз — текст появится там, где стоит курсор (в любой программе)"
@@ -1750,7 +1751,7 @@
                 <option value="en">English</option>
               </select>
             </div>
-            <p class="text-[10.5px] text-apple-tertiary mt-1" data-i18n="dictationHint">Распознаёт GigaAM (русский) или Parakeet на процессоре, иначе Whisper. В медиатеку ничего не сохраняется.</p>
+            <p class="text-[10.5px] text-apple-tertiary mt-1" data-i18n="dictationHint">Нажмите и говорите, нажмите ещё раз — текст напечатается там, где стоит курсор, в любой программе. Только микрофон, в медиатеку ничего не сохраняется.</p>
           </div>
 
           <div id="call-record-block" class="space-y-2">
