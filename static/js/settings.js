@@ -1583,7 +1583,7 @@ async function loadDictionary() {
   const box = document.getElementById('dictionary-list');
   document.getElementById('dict-clear-btn').classList.toggle('hidden', state.dictionary.length === 0);
   if (state.dictionary.length === 0) {
-    box.innerHTML = `<div class="p-6 text-center text-xs text-apple-tertiary">—</div>`;
+    box.innerHTML = `<div class="p-6 text-center text-xs text-apple-tertiary">${escapeHtml(t('emptyDictionary'))}</div>`;
     return;
   }
 

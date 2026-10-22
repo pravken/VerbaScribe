@@ -1029,7 +1029,7 @@ function renderSpeakersPanel() {
   const keys = Object.keys(speakers);
 
   if (keys.length === 0) {
-    box.innerHTML = `<div class="p-6 text-xs text-apple-tertiary text-center">—</div>`;
+    box.innerHTML = `<div class="p-6 text-xs text-apple-tertiary text-center">${escapeHtml(t('emptySpeakers'))}</div>`;
     return;
   }
 
@@ -1157,9 +1157,12 @@ function renderTranscript() {
   tx.speakers = speakers;
 
   if (filtered.length === 0) {
-    container.innerHTML = `<div class="py-20 text-center text-xs text-apple-tertiary">
-      ${segments.length === 0 ? '…' : '—'}
-    </div>`;
+    const m = state.activeMeeting || {};
+    const why = segments.length ? 'emptyTxFiltered'
+      : m.status === 'cleared' ? 'emptyTxCleared'
+      : ['failed', 'cancelled'].includes(m.status) ? 'emptyTxFailed'
+      : DONE_STATUSES.includes(m.status) ? 'emptyTxNoSpeech' : 'emptyTxProcessing';
+    container.innerHTML = `<div class="py-20 text-center text-xs text-apple-tertiary">${escapeHtml(t(why))}</div>`;
     rebuildPlaybackIndex();
     return;
   }
