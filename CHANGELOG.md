@@ -35,6 +35,8 @@
   вместо модели для текста — Ollama отвечала на неё «400 Bad Request». Если она была выбрана моделью
   анализа, её место один раз занимает модель для текста. Ошибки Ollama показываются её словами.
 - Волна звука на плеере снова видна у обработанных записей (была ровная линия).
+- Снова открывается меню вида и сортировки медиатеки (⇅), папка подсвечивается при перетаскивании
+  записи, окно закрывается щелчком по фону.
 
 ## 0.5.1 — English
 
@@ -62,6 +64,8 @@
   (bge-m3) as the text model, which Ollama refused with "400 Bad Request"; such a setting is replaced
   once; Ollama errors keep its words.
 - The player waveform is back for processed recordings.
+- The library view / sort menu opens again, a folder lights up when a recording is dragged over it,
+  a click on a window's backdrop closes it.
 
 ---
 
