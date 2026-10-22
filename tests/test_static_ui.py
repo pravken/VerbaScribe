@@ -104,6 +104,20 @@ class StaticUiTest(unittest.TestCase):
                 unnamed.append(sid)
         self.assertEqual(unnamed, [])
 
+    def test_every_class_has_its_css(self):
+        """static/vendor/tailwind.css is built ahead (npm run vendor) from the classes the page uses: a
+        class added without a rebuild does nothing (a gap of 0, a button that does not grey out)."""
+        css = (ROOT / "static" / "vendor" / "tailwind.css").read_text(encoding="utf-8") \
+            + (ROOT / "static" / "styles.css").read_text(encoding="utf-8")
+        defined = {c.replace("\\", "") for c in re.findall(r"\.((?:\\.|[A-Za-z0-9_-])+)", css)}
+        # Names the scripts look for, with no style of their own
+        hooks = {"dark", "rec-app-video", "ask-body", "cap-o-tag", "cap-t-tag", "del-opt", "row-more", "tr-word", "tx-chunk"}
+        used = {c for m in re.finditer(r'\sclass="([^"]*)"', HTML) for c in m.group(1).split() if "${" not in c}
+        for f in sorted((ROOT / "static" / "js").glob("*.js")):
+            for m in re.finditer(r"""class(?:Name)?\s*=\s*["']([^"'$]*)["']""", f.read_text(encoding="utf-8")):
+                used.update(m.group(1).split())
+        self.assertEqual(sorted(used - defined - hooks), [], "run npm run vendor")
+
     def test_vendor_files_match_package_json(self):
         """static/vendor is what `npm run vendor` built from the versions in package.json."""
         import json

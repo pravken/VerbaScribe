@@ -557,7 +557,7 @@ label.settings-toggle { display: flex; }
 #wview-transcript > div:first-child { container-type: inline-size; }
 .tx-toolbar.tx-compact .tx-tool-label { display: none; }
 @container (max-width: 900px) {
-  .tx-toolbar .tx-tool-label { display: none; }
+  .tx-toolbar .tx-tool-label, .tx-section-panel .tx-tool-label { display: none; }
 }
 
 /* Recording header: in a narrow window the Translate and Export buttons keep only their icons
