@@ -124,7 +124,7 @@
           </div>
           <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
             <span class="text-xs text-apple-label" data-i18n="scMulti">Выбрать несколько записей</span>
-            <kbd class="sc-kbd">Ctrl / Shift + клик</kbd>
+            <kbd class="sc-kbd" data-i18n="kbdCtrlShiftClick">Ctrl / Shift + клик</kbd>
           </div>
           <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
             <span class="text-xs text-apple-label" data-i18n="scSelectAll">Выбрать все записи (после клика в медиатеке)</span>
@@ -358,9 +358,9 @@
             placeholder="Слова через запятую…"
             class="flex-1 h-8 bg-apple-sidebar border apple-border rounded-lg px-3 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
           <select id="dict-category-input" data-i18n-title="tipDictCategory" title="Категория термина" class="h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
-            <option value="Имя">Имя / Name</option>
-            <option value="Проект">Проект / Project</option>
-            <option value="Термин">Термин / Term</option>
+            <option value="Имя" data-i18n="dictCatName">Имя</option>
+            <option value="Проект" data-i18n="dictCatProject">Проект</option>
+            <option value="Термин" data-i18n="dictCatTerm">Термин</option>
           </select>
           <button onclick="addDictionaryItems()"
             data-i18n-title="tipDictAddBtn"

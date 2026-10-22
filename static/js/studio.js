@@ -588,7 +588,8 @@ async function prepareStudio(presetId) {
 
   const titleInput = document.getElementById('record-title-input');
   if (!titleInput.value.trim()) {
-    const nowStr = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }).replace(':', '-');
+    const now = new Date();  // 24-hour HH-MM in any language: the title becomes a file name
+    const nowStr = `${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}`;
     titleInput.value = `${t('recordDefaultTitle')} ${nowStr}`;
   }
   document.getElementById('record-timer-display').textContent = '00:00';

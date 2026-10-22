@@ -95,6 +95,13 @@ function setUILanguage(lang) {
     renderTranscript();
     renderSummaryPanel();
   }
+  // Texts the scripts wrote (not data-i18n): drawn again in the new language
+  loadSystemInfo().catch(() => {});
+  if (typeof scheduleVramRefresh === 'function') scheduleVramRefresh(50);  // the memory badges
+  if (typeof renderUpdateStatus === 'function') renderUpdateStatus();
+  renderQueuePanel();
+  if (state.activeMeeting) { renderTranslationControls(); updateProcessingBanner(state.activeMeeting); }
+  if (typeof renderRecordSaveHint === 'function') renderRecordSaveHint();
   applyVideoLayout();
   if (typeof relabelStudioLanguages === 'function') relabelStudioLanguages();
   if (state.appView === 'studio') { renderStudioState(); syncStudioCaptions(); }

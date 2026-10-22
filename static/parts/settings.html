@@ -205,7 +205,7 @@
                 data-i18n-title="tipRecordMicSelect"
                 title="Выберите конкретное устройство микрофона"
                 class="w-full h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
-                <option value="">По умолчанию</option>
+                <option value="" data-i18n="optDefault">По умолчанию</option>
               </select>
             </div>
           </div>
@@ -348,7 +348,7 @@
           <!-- Live Whisper & Diarizer Download Progress Window -->
           <div id="whisper-download-panel" class="hidden rounded-xl bg-apple-bg border border-apple-blue/40 p-3.5 space-y-2.5">
             <div class="flex items-center justify-between gap-2 text-xs">
-              <span id="whisper-pull-status" class="font-medium text-white truncate">Подготовка к загрузке…</span>
+              <span id="whisper-pull-status" class="font-medium text-white truncate" data-i18n="dlPreparing">Подготовка к загрузке…</span>
               <div class="flex items-center gap-2 shrink-0">
                 <span id="whisper-pull-pct" class="font-mono text-apple-blue font-semibold">0%</span>
                 <button onclick="closeModal('settings')"
@@ -543,7 +543,7 @@
           <!-- Live Download & Installation Status Window -->
           <div id="ollama-download-panel" class="hidden rounded-xl bg-apple-bg border border-apple-blue/40 p-3.5 space-y-2.5">
             <div class="flex items-center justify-between gap-2 text-xs">
-              <span id="ollama-pull-status" class="font-medium text-white truncate">Подготовка к загрузке…</span>
+              <span id="ollama-pull-status" class="font-medium text-white truncate" data-i18n="dlPreparing">Подготовка к загрузке…</span>
               <div class="flex items-center gap-2 shrink-0">
                 <span id="ollama-pull-pct" class="font-mono text-apple-blue font-semibold">0%</span>
                 <button onclick="closeModal('settings')"
