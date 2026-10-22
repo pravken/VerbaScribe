@@ -7,6 +7,8 @@ async function loadMeetingsList() {
   const list = await readJson(res);
   if (!res.ok || !Array.isArray(list)) return;  // the list shown stays (a lost session reloads the page)
   state.meetings = list;
+  // The empty editor points to the list on the left when there is something in it
+  document.getElementById('workspace-empty-pick')?.classList.toggle('hidden', !list.length);
   if (!state.globalSearchQuery) {
     renderMeetingsSidebar();
   } else if (typeof rerunGlobalSearch === 'function') {
