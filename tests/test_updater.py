@@ -73,6 +73,25 @@ class BetaChannelTest(unittest.TestCase):
         self.assertTrue(updater.is_newer("0.6.0", "0.6.0-beta.2"))
 
 
+class ReleaseNotesTest(unittest.TestCase):
+    """The text of a release page comes from the version's sections of CHANGELOG.md."""
+
+    def test_a_version_and_its_betas_get_both_languages(self):
+        import importlib.util
+
+        root = Path(__file__).resolve().parents[1]
+        spec = importlib.util.spec_from_file_location("release_notes", root / "tools" / "release_notes.py")
+        rn = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(rn)
+        text = "# Log\n\n## 1.2.0\nру\n\n---\n\n## 1.2.0 — English\nen\n\n## 1.1.0\nold\n"
+        self.assertEqual(rn.notes("v1.2.0-beta.2", text), "## 1.2.0\nру\n\n\n## 1.2.0 — English\nen")
+        self.assertEqual(rn.notes("v1.3.0", text), "")
+        # the changelog of this repository has the section of the version in app/__init__.py
+        from app import __version__
+
+        self.assertIn(f"## {__version__.split('-')[0]}", rn.notes(__version__, (root / "CHANGELOG.md").read_text(encoding="utf-8")))
+
+
 class ApplyUpdateTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
