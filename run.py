@@ -163,7 +163,8 @@ def start_server_in_thread(host: str, port: int) -> threading.Thread:
 
     os.environ["VERBASCRIBE_TOKEN"] = secrets.token_urlsafe(32)
     register_cuda_dlls()
-    config = uvicorn.Config("app.main:app", host=host, port=port, log_level="warning", timeout_graceful_shutdown=3)
+    config = uvicorn.Config("app.main:app", host=host, port=port, log_level="warning", access_log=False,
+                            timeout_graceful_shutdown=3)
     server = uvicorn.Server(config)
 
     def _run() -> None:
@@ -691,7 +692,8 @@ def main() -> None:
                 and print(f"VerbaScribe: {app_url(args.host, args.port)}", flush=True),
                 daemon=True,
             ).start()
-            uvicorn.run("app.main:app", host=args.host, port=args.port, log_level="info", timeout_graceful_shutdown=3)
+            uvicorn.run("app.main:app", host=args.host, port=args.port, log_level="info", access_log=False,  # the address holds the session token
+                timeout_graceful_shutdown=3)
         return
 
     if not args.browser:
@@ -790,7 +792,8 @@ def main() -> None:
 
     threading.Thread(target=_open_browser, daemon=True).start()
     register_cuda_dlls()
-    uvicorn.run("app.main:app", host=args.host, port=args.port, log_level="info", timeout_graceful_shutdown=3)
+    uvicorn.run("app.main:app", host=args.host, port=args.port, log_level="info", access_log=False,  # the address holds the session token
+                timeout_graceful_shutdown=3)
 
 
 def _startup_failed(log_file) -> None:
