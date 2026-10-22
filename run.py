@@ -7,7 +7,7 @@ import threading
 import time
 import webbrowser
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 BASE_DIR = Path(__file__).resolve().parent
 ICO_PATH = BASE_DIR / "assets" / "icon.ico"
@@ -113,6 +113,39 @@ def is_port_in_use(host: str, port: int) -> bool:
         return s.connect_ex((host, port)) == 0
 
 
+def probe_server(host: str, port: int) -> bool:
+    """True when the program on the port is this user's VerbaScribe: it accepts the session token
+    from our data folder. Another program on the port (a dev server, another app) or VerbaScribe
+    of another Windows user does not, and the window must not open their page."""
+    import http.client
+
+    token = read_session_token(timeout=0)
+    if not token:
+        return False
+    try:
+        conn = http.client.HTTPConnection(host, port, timeout=3)
+        try:
+            conn.request("GET", f"/?token={token}")
+            resp = conn.getresponse()
+            return resp.status == 303 and "vs_session" in (resp.getheader("set-cookie") or "")
+        finally:
+            conn.close()
+    except (OSError, http.client.HTTPException):
+        return False
+
+
+def choose_port(host: str, port: int, tries: int = 20) -> Tuple[int, bool]:
+    """The port to use and whether our server already runs there. A port taken by another program
+    is skipped for the next free one."""
+    for p in range(port, port + tries):
+        if not is_port_in_use(host, p):
+            return p, False
+        if probe_server(host, p):
+            return p, True
+        print(f"Port {p} is taken by another program")
+    return port, False
+
+
 def wait_for_server(host: str, port: int, timeout: float = 120.0) -> bool:
     # The first start after boot imports torch & co. from a cold disk: that can take a minute
     deadline = time.time() + timeout
@@ -132,15 +165,16 @@ def read_session_token(timeout: float = 5.0) -> str:
         return os.environ["VERBASCRIBE_TOKEN"]
 
     deadline = time.time() + timeout
-    while time.time() < deadline:
+    while True:
         try:
             token = token_file.read_text(encoding="utf-8").strip()
             if token:
                 return token
         except OSError:
             pass
+        if time.time() >= deadline:
+            return ""
         time.sleep(0.1)
-    return ""
 
 
 def app_url(host: str, port: int) -> str:
@@ -682,7 +716,7 @@ def main() -> None:
     if args.host not in ("127.0.0.1", "localhost", "::1"):
         # Allow the explicitly chosen host in the server's Host header check
         os.environ["VERBASCRIBE_ALLOWED_HOSTS"] = args.host
-    already_running = is_port_in_use(args.host, args.port)
+    args.port, already_running = choose_port(args.host, args.port)
 
     if args.headless:
         if not already_running:
@@ -707,10 +741,10 @@ def main() -> None:
         write_pid_file()
         # A previous instance may still be releasing the port for a moment
         for _ in range(50):
-            if not is_port_in_use(args.host, args.port):
+            if not is_port_in_use(args.host, args.port) or not probe_server(args.host, args.port):
                 break
             time.sleep(0.2)
-        already_running = is_port_in_use(args.host, args.port)
+        args.port, already_running = choose_port(args.host, args.port)
         try:
             import webview
 

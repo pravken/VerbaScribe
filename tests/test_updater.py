@@ -151,3 +151,44 @@ class StartupFailureTest(unittest.TestCase):
         self.assertIn("Не удалось запустить VerbaScribe", res.stderr)
         self.assertIn("setup.bat", res.stderr)
         self.assertIn("blocked by policy", res.stderr)
+
+
+class PortChoiceTest(unittest.TestCase):
+    """A port taken by another program is skipped; our own running server is reused."""
+
+    def _serve(self, status: int, cookie: str = ""):
+        import http.server
+        import threading
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(status)
+                if cookie:
+                    self.send_header("Set-Cookie", cookie)
+                self.end_headers()
+
+            def log_message(self, *a):
+                pass
+
+        srv = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.server_close)
+        self.addCleanup(srv.shutdown)
+        return srv.server_address[1]
+
+    def test_foreign_program_is_skipped_and_our_server_reused(self):
+        import run
+
+        foreign = self._serve(200)
+        ours = self._serve(303, "vs_session_1=abc; HttpOnly")
+        with mock.patch.object(run, "read_session_token", return_value="tok"):
+            self.assertFalse(run.probe_server("127.0.0.1", foreign))
+            self.assertTrue(run.probe_server("127.0.0.1", ours))
+            port, running = run.choose_port("127.0.0.1", foreign, tries=1)
+            self.assertFalse(running)
+        with mock.patch.object(run, "read_session_token", return_value="tok"), \
+                mock.patch.object(run, "is_port_in_use", side_effect=lambda h, p: p in (foreign, foreign + 1)), \
+                mock.patch.object(run, "probe_server", side_effect=lambda h, p: False):
+            self.assertEqual(run.choose_port("127.0.0.1", foreign), (foreign + 2, False))
+        with mock.patch.object(run, "read_session_token", return_value="tok"):
+            self.assertEqual(run.choose_port("127.0.0.1", ours), (ours, True))
