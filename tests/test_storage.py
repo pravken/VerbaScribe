@@ -284,3 +284,23 @@ class FolderSortMigrationTest(unittest.TestCase):
         database.set_meeting_folder(m["id"], None)
         database.init_db()
         self.assertIsNone(database.get_meeting(m["id"])["folder_id"])
+
+
+class WhisperModelFilesTest(unittest.TestCase):
+    def test_cut_off_download_is_not_installed_and_delete_is_whole(self):
+        from app import model_manager as mm
+
+        mid = next(iter(mm._WHISPER_REPOS))
+        d = mm._whisper_model_dir(mid)
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "model.bin").write_bytes(b"w")
+        (d / "config.json").write_text("{}")
+        self.assertFalse(mm.is_whisper_model_installed(mid))  # the tokenizer never came
+        (d / "tokenizer.json").write_text("{}")
+        self.assertTrue(mm.is_whisper_model_installed(mid))  # an older complete download
+        (d / "tokenizer.json").unlink()
+        (d / mm.COMPLETE_MARK).write_text("repo")
+        self.assertTrue(mm.is_whisper_model_installed(mid))
+        self.assertTrue(mm.delete_whisper_model(mid))
+        self.assertFalse(d.exists())
+        self.assertEqual(list(d.parent.glob(d.name + ".deleting-*")), [])

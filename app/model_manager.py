@@ -121,11 +121,24 @@ def dir_size_mb(d: Path) -> int:
         return 0
 
 
+COMPLETE_MARK = ".complete"  # written once every file of a model is downloaded
+
+
+def _own_copy_complete(d: Path) -> bool:
+    """A model downloaded by the app: all its files, not one cut off halfway (model.bin comes before
+    the tokenizer, so model.bin alone is no proof). Older downloads have no mark: their files decide."""
+    if not (d / "model.bin").exists():
+        return False
+    if (d / COMPLETE_MARK).exists():
+        return True
+    return (d / "config.json").exists() and (d / "tokenizer.json").exists() and not any(d.glob("*.part"))
+
+
 def whisper_model_location(model_id: str) -> Optional[Path]:
     """The folder a downloaded Whisper model is in (our own layout or the Hugging Face cache)."""
     if model_id not in _WHISPER_REPOS:
         return None
-    if (_whisper_model_dir(model_id) / "model.bin").exists():
+    if _own_copy_complete(_whisper_model_dir(model_id)):
         return _whisper_model_dir(model_id)
     cache = _hf_cache_dir(model_id)
     return cache if cache and any(cache.glob("snapshots/*/model.bin")) else None
@@ -134,7 +147,7 @@ def whisper_model_location(model_id: str) -> Optional[Path]:
 def is_whisper_model_installed(model_id: str) -> bool:
     if model_id not in _WHISPER_REPOS:
         return False
-    if (_whisper_model_dir(model_id) / "model.bin").exists():
+    if _own_copy_complete(_whisper_model_dir(model_id)):
         return True
     cache = _hf_cache_dir(model_id)  # the Hugging Face cache layout
     return bool(cache and any(cache.glob("snapshots/*/model.bin")))
@@ -145,7 +158,7 @@ def get_whisper_model_path(model_id: str) -> str:
     Returns local folder path if model was downloaded via our manager,
     otherwise returns model_id so faster-whisper can resolve it.
     """
-    if model_id in _WHISPER_REPOS and (_whisper_model_dir(model_id) / "model.bin").exists():
+    if model_id in _WHISPER_REPOS and _own_copy_complete(_whisper_model_dir(model_id)):
         return str(_whisper_model_dir(model_id))
     return model_id
 
@@ -214,9 +227,14 @@ def _download_hf_repo_with_progress(
     siblings = info.siblings or []
     files_to_get = []
     total_bytes = 0
+    root = target_dir.resolve()
     for s in siblings:
         fname = s.rfilename
         if fname.startswith(".") or fname.endswith((".md", ".txt", ".png", ".jpg")):
+            continue
+        try:  # a name of the repository never leads out of the model's folder
+            (root / fname).resolve().relative_to(root)
+        except ValueError:
             continue
         fsize = getattr(s, "size", None) or 0
         files_to_get.append((fname, fsize))
@@ -265,6 +283,7 @@ def _download_hf_repo_with_progress(
             if dest_file.exists():
                 dest_file.unlink()
             tmp_file.rename(dest_file)
+    (target_dir / COMPLETE_MARK).write_text(repo_id, encoding="utf-8")
 
 
 def start_models_setup(
@@ -349,6 +368,13 @@ def delete_whisper_model(model_id: str) -> bool:
     deleted = False
     for d in (_whisper_model_dir(model_id), _hf_cache_dir(model_id)):
         if d and d.is_dir():
-            shutil.rmtree(d, ignore_errors=True)
+            # Renamed first: on Windows an open file stops the deletion halfway, and a half-deleted
+            # folder would still look installed. The rename fails as a whole while a file is in use.
+            gone = d.with_name(d.name + f".deleting-{datetime.now():%Y%m%d%H%M%S}")
+            try:
+                d.rename(gone)
+            except OSError:
+                raise RuntimeError("Файлы модели заняты (её использует программа) — закройте субтитры и повторите")
+            shutil.rmtree(gone, ignore_errors=True)
             deleted = True
     return deleted
