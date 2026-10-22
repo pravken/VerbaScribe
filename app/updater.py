@@ -445,11 +445,17 @@ def _freeze(py: Path, uv: Optional[str]) -> str:
         return ""
 
 
+# The PyTorch wheels of this version (requirements.txt names its index too) and of the versions before
+# it: putting back the packages of an older version needs that one's (torch 2.6 was cu124)
+TORCH_INDEX = "https://download.pytorch.org/whl/cu126"
+OLDER_TORCH_INDEXES = ["https://download.pytorch.org/whl/cu124"]
+
+
 def _reinstall(py: Path, uv: Optional[str], frozen_file: Path, log_dir: Path) -> None:
-    torch_index = "https://download.pytorch.org/whl/cu124"
+    indexes = [a for url in [TORCH_INDEX, *OLDER_TORCH_INDEXES] for a in ("--extra-index-url", url)]
     cmd = ([uv, "pip", "install", "--python", str(py), "-r", str(frozen_file),
-            "--index-strategy", "unsafe-best-match", "--extra-index-url", torch_index]
-           if uv else [str(py), "-m", "pip", "install", "-r", str(frozen_file), "--extra-index-url", torch_index])
+            "--index-strategy", "unsafe-best-match", *indexes]
+           if uv else [str(py), "-m", "pip", "install", "-r", str(frozen_file), *indexes])
     with open(log_dir / "update.log", "a", encoding="utf-8") as lf:
         subprocess.run(cmd, stdout=lf, stderr=subprocess.STDOUT, creationflags=_NO_WINDOW)
 
@@ -528,12 +534,11 @@ def apply_update(zip_path: Path, app_dir: Path, data_dir: Path, report: Callable
                     frozen_file = data_dir / "updates" / "packages-before-update.txt"
                     frozen_file.write_text(frozen, encoding="utf-8")
                     restore_packages = (lambda: _reinstall(py, uv, frozen_file, log_dir))
-                torch_index = "https://download.pytorch.org/whl/cu124"
                 cmd = ([uv, "pip", "install", "--python", str(py), "-r", str(app_dir / "requirements.txt"),
-                        "--require-hashes", "--index-strategy", "unsafe-best-match", "--extra-index-url", torch_index]
+                        "--require-hashes", "--index-strategy", "unsafe-best-match", "--extra-index-url", TORCH_INDEX]
                        if uv else
                        [str(py), "-m", "pip", "install", "-r", str(app_dir / "requirements.txt"),
-                        "--require-hashes", "--extra-index-url", torch_index])
+                        "--require-hashes", "--extra-index-url", TORCH_INDEX])
                 with open(log_dir / "update.log", "a", encoding="utf-8") as lf:
                     res = subprocess.run(cmd, cwd=str(app_dir), stdout=lf, stderr=subprocess.STDOUT,
                                          creationflags=_NO_WINDOW)

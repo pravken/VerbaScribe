@@ -78,9 +78,9 @@ jobs:
         run: |
           uv pip install --dry-run --require-hashes -r requirements.txt \
             --python-platform x86_64-pc-windows-msvc --python-version 3.10 --target "$RUNNER_TEMP/resolve" \
-            --index-strategy unsafe-best-match --extra-index-url https://download.pytorch.org/whl/cu124
+            --index-strategy unsafe-best-match --extra-index-url https://download.pytorch.org/whl/cu126
 
-      # Known vulnerabilities of the pinned versions. torch/torchaudio (+cu124 builds) are not on PyPI
+      # Known vulnerabilities of the pinned versions. torch/torchaudio (+cu126 builds) are not on PyPI
       # and are skipped.
       - name: pip-audit
         run: pip-audit -r requirements.txt --disable-pip --no-deps --progress-spinner off

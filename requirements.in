@@ -1,10 +1,13 @@
-# Top-level dependencies of VerbaScribe (Python 3.10, Windows x64, NVIDIA CUDA 12.4 wheels).
+# Top-level dependencies of VerbaScribe (Python 3.10, Windows x64, NVIDIA CUDA 12.6 wheels).
 # requirements.txt is the exact, hash-checked lock generated from this file; regenerate it with:
 #   uv pip compile requirements.in -o requirements.txt --generate-hashes --python-version 3.10 ^
 #     --python-platform x86_64-pc-windows-msvc --index-strategy unsafe-best-match ^
-#     --extra-index-url https://download.pytorch.org/whl/cu124
-torch==2.6.0+cu124
-torchaudio==2.6.0+cu124
+#     --extra-index-url https://download.pytorch.org/whl/cu126 --emit-index-url
+# --emit-index-url writes the PyTorch index into requirements.txt itself: the updater of an older
+# version installs it with that version's index in its own code, and finds these wheels only so.
+# torch 2.10+ (PYSEC-2026-2286: torch.load weights_only bypass); torchaudio for cu126 ends at 2.11
+torch==2.11.0+cu126
+torchaudio==2.11.0+cu126
 faster-whisper>=1.2.0
 # CTranslate2 (faster-whisper) loads cuBLAS 12 and cuDNN 9 from these wheels on Windows
 nvidia-cublas-cu12
