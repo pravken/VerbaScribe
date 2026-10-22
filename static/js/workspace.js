@@ -832,8 +832,8 @@ function renderTranslationControls() {
   if (canTranslate) html += sep + item("setTxViewChoice('__new')", '＋', t('txTranslateNew').replace(/^＋\s*/, ''));
   // Clearing: one translation, or everything the processing made
   if (langs.length) html += sep + langs.map(c => item(`deleteTranslation('${c}')`, '✕', `${t('txDeleteTr')}: ${langName(c)}`)).join('');
-  if (m && m.status === 'completed') html += sep + item('clearActiveResults()', '✕', t('ctxClearResults'));
   document.getElementById('tx-view-menu').innerHTML = html;
+  document.getElementById('tx-clear-btn')?.classList.toggle('hidden', !(m && m.status === 'completed'));
   renderExportTranslatedMenu();
 }
 
