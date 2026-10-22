@@ -538,8 +538,10 @@ label.settings-toggle { display: flex; }
 #meetings-list.lib-dragging .folder-row { outline: 1px dashed rgba(255, 255, 255, 0.12); outline-offset: -1px; }
 
 /* Transcript toolbar: when the column is narrow the text buttons keep only their icons (their
-   titles explain them), so the speaker pills keep enough room instead of stacking up */
+   titles explain them), so the speaker pills keep enough room instead of stacking up; tx-compact
+   does the same when the speakers would not fit beside the labels (fitTranscriptToolbar) */
 #wview-transcript > div:first-child { container-type: inline-size; }
+.tx-toolbar.tx-compact .tx-tool-label { display: none; }
 @container (max-width: 900px) {
   .tx-toolbar .tx-tool-label { display: none; }
 }

@@ -445,14 +445,14 @@
 
         <!-- Contextual Transcript Sub-Toolbar: Speaker Pills on Left + Transcript Action Buttons & Search on Right -->
         <div class="border-b apple-border bg-apple-bg/95 px-6 py-2 shrink-0">
-          <div class="tx-toolbar max-w-4xl mx-auto flex items-center justify-between gap-3">
+          <div class="tx-toolbar max-w-6xl mx-auto flex items-center justify-between gap-3">
             <!-- Left: Speaker Filter Pills (they wrap within their part; the tools stay on one line) -->
             <div class="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap min-h-[28px]" id="speaker-pills-container">
               <!-- Populated dynamically -->
             </div>
 
             <!-- Right: Transcript Editing, Auto-Scroll & Search Tools -->
-            <div class="flex items-center gap-1.5 shrink-0 ml-auto">
+            <div id="tx-tools" class="flex items-center gap-1.5 shrink-0 ml-auto">
               <!-- Quick translation languages (the studio's): show the translation, or make it -->
               <div id="tx-quick-langs" class="flex items-center gap-1"></div>
               <!-- Language of the text: original, a translation, or both side by side (menu filled by renderTranslationControls) -->

@@ -987,6 +987,7 @@ function renderSpeakerPillsBar() {
 
   if (keys.length === 0) {
     container.innerHTML = '';
+    fitTranscriptToolbar();
     return;
   }
 
@@ -1006,6 +1007,24 @@ function renderSpeakerPillsBar() {
   }).join('');
 
   container.innerHTML = html;
+  fitTranscriptToolbar();
+}
+
+// The tools on the right keep only their icons (their titles explain them) when the speaker
+// circles would not fit on one line beside them; a ResizeObserver repeats the check when the
+// window, the sidebar or a button's label changes
+let txToolbarObserver = null;
+function fitTranscriptToolbar() {
+  const bar = document.querySelector('#wview-transcript .tx-toolbar');
+  const pills = document.getElementById('speaker-pills-container');
+  if (!bar || !pills) return;
+  if (!txToolbarObserver && window.ResizeObserver) {
+    txToolbarObserver = new ResizeObserver(() => fitTranscriptToolbar());
+    [bar.parentElement, document.getElementById('tx-tools'), pills].forEach(el => el && txToolbarObserver.observe(el));
+  }
+  bar.classList.remove('tx-compact');
+  const crowded = pills.children.length && (pills.scrollWidth > pills.clientWidth + 1 || pills.offsetHeight > 34);
+  if (crowded || bar.scrollWidth > bar.clientWidth + 1) bar.classList.add('tx-compact');
 }
 
 async function renderTalkAnalytics() {
