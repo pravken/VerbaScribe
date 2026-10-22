@@ -20,7 +20,7 @@ PACKAGE = "yt-dlp"
 
 
 def ensure_package() -> None:
-    """Installs yt-dlp when it is missing (uv first, then pip, as for onnx-asr)."""
+    """Installs yt-dlp when it is missing: the version and file pinned in asr_onnx.PINNED."""
     try:
         importlib.import_module("yt_dlp")
         return
@@ -28,16 +28,7 @@ def ensure_package() -> None:
         pass
     from app import asr_onnx
 
-    print(f"[url] installing {PACKAGE}", flush=True)
-    errors = []
-    for cmd in asr_onnx._install_commands():
-        cmd = cmd[:-1] + [PACKAGE]  # the same commands, for another package
-        proc = asr_onnx._run(cmd)
-        if proc.returncode == 0:
-            importlib.invalidate_caches()
-            return
-        errors.append((proc.stderr or proc.stdout or "").strip()[-300:])
-    raise RuntimeError("Не удалось установить yt-dlp: " + (errors[-1] if errors else "нет uv и pip"))
+    asr_onnx.install_pinned(PACKAGE)
 
 
 def valid_url(url: str) -> bool:

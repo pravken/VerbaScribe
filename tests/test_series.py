@@ -1,5 +1,6 @@
 import tests  # noqa: F401 - keeps the real user data out of reach (see tests/__init__.py)
 import unittest
+from pathlib import Path
 
 from app.series import matching_meeting, people, title_key
 
@@ -35,13 +36,24 @@ class OnnxEnsurePackageTest(unittest.TestCase):
         from unittest import mock
         from app import asr_onnx
 
-        with mock.patch.object(asr_onnx, "_run", return_value=mock.Mock(returncode=0)) as run, \
-             mock.patch("shutil.which", return_value="uv"), \
-             mock.patch("importlib.import_module", side_effect=ImportError):
-            asr_onnx.ensure_package()
-        cmd = run.call_args[0][0]
-        self.assertEqual(cmd[:3], ["uv", "pip", "install"])
-        self.assertIn(asr_onnx.ONNX_ASR_PIN, cmd)
+        from app import url_import
+
+        for ensure, package in ((asr_onnx.ensure_package, "onnx-asr"), (url_import.ensure_package, "yt-dlp")):
+            reqs = []
+
+            def run(cmd):
+                reqs.append(Path(cmd[cmd.index("-r") + 1]).read_text())
+                return mock.Mock(returncode=0)
+
+            with mock.patch.object(asr_onnx, "_run", side_effect=run) as ran, \
+                 mock.patch("shutil.which", return_value="uv"), \
+                 mock.patch("importlib.import_module", side_effect=ImportError):
+                ensure()
+            cmd = ran.call_args[0][0]
+            self.assertEqual(cmd[:3], ["uv", "pip", "install"])
+            self.assertIn("--require-hashes", cmd)
+            version, sha = asr_onnx.PINNED[package]
+            self.assertEqual(reqs, [f"{package}=={version} --hash=sha256:{sha}\n"])
 
     def test_fetch_downloads_into_existing_folder(self):
         import tempfile

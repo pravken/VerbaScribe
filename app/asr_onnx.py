@@ -100,6 +100,38 @@ def catalog() -> List[Dict[str, Any]]:
 
 
 ONNX_ASR_PIN = "onnx-asr==0.12.0"
+# Packages the app installs by itself when they are missing: the exact files (PyPI wheels), so a
+# replaced package or index installs nothing (requirements.txt is checked the same way). Their
+# dependencies are in requirements.txt already, hence --no-deps.
+PINNED = {
+    "onnx-asr": ("0.12.0", "5e7ceca454609819ea7833f61e2302e0c8f6ece4f8a78b66c5daba53cb51de4a"),
+    "yt-dlp": ("2026.8.19", "1d57897e94c6665a0a6f9bc54b34e584284e32c034ffab3a7df25d8f7b24eedf"),
+}
+
+
+def pinned_args(package: str, folder: Path) -> List[str]:
+    """pip / uv arguments that install exactly PINNED[package] (a requirements file with its hash)."""
+    version, sha = PINNED[package]
+    req = folder / f"{package}.requirements.txt"
+    req.write_text(f"{package}=={version} --hash=sha256:{sha}\n", encoding="utf-8")
+    return ["-r", str(req), "--require-hashes", "--no-deps"]
+
+
+def install_pinned(package: str) -> None:
+    """Installs PINNED[package] into the program's Python (uv first, then pip); RuntimeError if it fails."""
+    import importlib
+    import tempfile
+
+    print(f"[setup] installing {package}=={PINNED[package][0]}", flush=True)
+    errors = []
+    with tempfile.TemporaryDirectory(prefix="vs_pkg_") as tmp:
+        for cmd in _install_commands(pinned_args(package, Path(tmp))):
+            proc = _run(cmd)
+            if proc.returncode == 0:
+                importlib.invalidate_caches()
+                return
+            errors.append((proc.stderr or proc.stdout or "").strip()[-300:])
+    raise RuntimeError(f"Не удалось установить {package}: " + (errors[-1] if errors else "нет uv и pip"))
 
 
 def ensure_package() -> None:
@@ -112,15 +144,7 @@ def ensure_package() -> None:
         return
     except ImportError:
         pass
-    print(f"[onnx] installing {ONNX_ASR_PIN}")
-    errors = []
-    for cmd in _install_commands():
-        proc = _run(cmd)
-        if proc.returncode == 0:
-            importlib.invalidate_caches()
-            return
-        errors.append((proc.stderr or proc.stdout or "").strip()[-300:])
-    raise RuntimeError("Не удалось установить onnx-asr: " + (errors[-1] if errors else "нет uv и pip"))
+    install_pinned("onnx-asr")
 
 
 def _run(cmd):
