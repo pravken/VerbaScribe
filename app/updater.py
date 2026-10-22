@@ -31,13 +31,23 @@ import time
 import traceback
 import zipfile
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+# Loaded before the update replaces the program files
+from app.pyenv import ensure_pip, find_uv
 
 GITHUB_REPO = "pravken/VerbaScribe"
 LATEST_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+# With "Get beta versions" on: the newest of the recent releases, pre-releases (v0.5.0-beta.1) too;
+# releases/latest never names a pre-release
+RELEASES_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases?per_page=30"
 CHECK_INTERVAL_SEC = 6 * 3600
 # Files are only ever downloaded from this repository's releases
 DOWNLOAD_PREFIX = f"https://github.com/{GITHUB_REPO}/releases/download/"
+# The author's release key (minisign format, app/release_sign.py, docs/release-signing.md). Set: an
+# update installs only with SHA256SUMS.txt.minisig signed by it for that very release. Empty: the
+# checksum alone is checked, as before the key existed.
+RELEASE_PUBLIC_KEY = "RWT8fmjh8HjA/sAFcnc7vHWhzK+i+OircfoKXDPiKs5QnNnrGdiRRIpB"
 # Never replaced by an update: user data, models and the Python environments
 PROTECTED = {".venv", ".venv-dub", ".python", "models", "data", "node_modules", ".git"}
 
@@ -91,20 +101,28 @@ def check(force: bool = False) -> Dict[str, Any]:
 
     from app.database import get_all_settings
 
-    enabled = get_all_settings().get("update_check", "true").lower() == "true"
+    settings = get_all_settings()
+    enabled = settings.get("update_check", "true").lower() == "true"
+    beta = settings.get("update_beta", "false").lower() == "true"
     with _lock:
-        fresh = time.time() - _state["checked_at"] < CHECK_INTERVAL_SEC
+        # switching the beta channel asks again at once
+        fresh = time.time() - _state["checked_at"] < CHECK_INTERVAL_SEC and _state.get("beta") == beta
     if (enabled or force) and (force or not fresh):
         try:
             with httpx.Client(timeout=8.0, follow_redirects=True,
                               headers={"Accept": "application/vnd.github+json",
                                        "User-Agent": f"VerbaScribe/{current_version()}"}) as c:
-                r = c.get(LATEST_URL)
-            if r.status_code == 404:  # no release published yet
-                latest = None
-            else:
+                r = c.get(RELEASES_URL if beta else LATEST_URL)
+            rel = None
+            if r.status_code != 404:  # 404: no release published yet
                 r.raise_for_status()
                 rel = r.json()
+                if beta:
+                    rel = max((x for x in rel if isinstance(x, dict) and not x.get("draft")),
+                              key=lambda x: parse_version(x.get("tag_name") or ""), default=None)
+            if rel is None:
+                latest = None
+            else:
                 assets = {a.get("name"): a.get("browser_download_url") for a in rel.get("assets") or []
                           if str(a.get("browser_download_url") or "").startswith(DOWNLOAD_PREFIX)}
                 # GitHub's own SHA-256 of each uploaded file ("sha256:<hex>"), independent of SHA256SUMS.txt
@@ -120,13 +138,14 @@ def check(force: bool = False) -> Dict[str, Any]:
                     "zip_url": assets.get(zip_name) if zip_name else None,
                     "zip_name": zip_name,
                     "sums_url": assets.get("SHA256SUMS.txt"),
+                    "sig_url": assets.get("SHA256SUMS.txt.minisig"),
                     "zip_digest": digests.get(zip_name, "").removeprefix("sha256:").lower() if zip_name else "",
                 }
             with _lock:
-                _state.update(checked_at=time.time(), latest=latest, error="")
+                _state.update(checked_at=time.time(), latest=latest, error="", beta=beta)
         except Exception as e:
             with _lock:
-                _state.update(checked_at=time.time(), error=str(e)[:200])
+                _state.update(checked_at=time.time(), error=str(e)[:200], beta=beta)
     st = status()
     _auto_download(st)
     return status()
@@ -148,7 +167,8 @@ def status() -> Dict[str, Any]:
             "download": dict(_state["download"]),
         }
     out["auto"] = auto_enabled()
-    out["can_install"] = out["available"] and bool(latest and latest.get("zip_url"))
+    # A git clone is updated with git: an archive would overwrite the working copy (and its changes)
+    out["can_install"] = out["available"] and bool(latest and latest.get("zip_url")) and not out["git_checkout"]
     return out
 
 
@@ -173,7 +193,7 @@ def install_on_exit() -> bool:
     try:
         with _lock:
             path = _state["download"].get("path") if _state["download"].get("done") else ""
-        if not path or not auto_enabled():
+        if not path or not auto_enabled() or is_git_checkout():
             return False
         launch_installer(restart=False)
         return True
@@ -203,6 +223,22 @@ def start_download() -> Dict[str, Any]:
     return status()
 
 
+def check_signature(sums: bytes, sig_text: str, tag: str, key: Optional[str] = None) -> None:
+    """RuntimeError unless `sig_text` is the release key's signature of `sums` for release `tag`."""
+    from app import release_sign
+
+    if not sig_text.strip():
+        raise RuntimeError("Релиз не подписан ключом автора — обновление отменено")
+    try:
+        comment = release_sign.verify_file(key or RELEASE_PUBLIC_KEY, sums, sig_text)
+    except release_sign.SignatureError as e:
+        print(f"[update] signature: {e}", flush=True)
+        raise RuntimeError("Подпись релиза не прошла проверку — обновление отменено")
+    if f"tag:{tag}" not in comment.split():  # a signature of another release, put next to this one
+        print(f"[update] signature is for another release: {comment}", flush=True)
+        raise RuntimeError("Подпись релиза не прошла проверку — обновление отменено")
+
+
 def _download(latest: Dict[str, Any]) -> None:
     import httpx
 
@@ -217,7 +253,10 @@ def _download(latest: Dict[str, Any]) -> None:
                           headers={"User-Agent": f"VerbaScribe/{current_version()}"}) as c:
             expected = None
             if latest.get("sums_url"):
-                for line in c.get(latest["sums_url"]).text.splitlines():
+                sums = c.get(latest["sums_url"]).content
+                if RELEASE_PUBLIC_KEY:
+                    check_signature(sums, c.get(latest["sig_url"]).text if latest.get("sig_url") else "", latest.get("tag") or "")
+                for line in sums.decode("utf-8", "replace").splitlines():
                     parts = line.split()
                     if len(parts) == 2 and parts[1].lstrip("*") == latest["zip_name"]:
                         expected = parts[0].lower()
@@ -285,31 +324,103 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else ""
 
 
-def _wait_for_exit(pid: int, timeout: float = 60.0) -> None:
+class UpdateFailed(RuntimeError):
+    """An update that did not install. `outcome` says what the program folder holds now:
+    "untouched" (nothing was replaced yet), "restored" (the previous version is back) or "broken"
+    (putting it back failed too)."""
+
+    def __init__(self, message: str, outcome: str = "untouched") -> None:
+        super().__init__(message)
+        self.outcome = outcome
+
+
+OUTCOME_TEXT = {
+    "untouched": "Файлы программы не изменены.",
+    "restored": "Прежняя версия восстановлена.",
+    "broken": "Прежнюю версию восстановить не удалось: скачайте и распакуйте VerbaScribe заново "
+              "(ваши записи и настройки в папке data не пострадают; подробности в logs\\update.log).",
+}
+
+# Program code an update owns: a file of these kinds that the new version no longer has is removed
+# (an old module left in app/ could still be imported)
+CODE_DIRS = ("app", "static")
+CODE_SUFFIXES = {".py", ".js", ".html", ".css"}
+# The dubbing environment's ready mark (app/dub_setup.py DUB_READY_MARKER)
+DUB_MARKER = Path(".venv-dub") / "verbascribe-dub-ready.txt"
+
+
+def _wait_for_exit(pid: int, timeout: float = 120.0) -> bool:
+    """False if the process is still running after `timeout` (it may be finishing a job)."""
     if sys.platform != "win32":
-        return
+        return True
     import ctypes
 
-    SYNCHRONIZE = 0x00100000
+    SYNCHRONIZE, WAIT_OBJECT_0 = 0x00100000, 0
     h = ctypes.windll.kernel32.OpenProcess(SYNCHRONIZE, False, pid)
     if h:
-        ctypes.windll.kernel32.WaitForSingleObject(h, int(timeout * 1000))
+        ended = ctypes.windll.kernel32.WaitForSingleObject(h, int(timeout * 1000)) == WAIT_OBJECT_0
         ctypes.windll.kernel32.CloseHandle(h)
+        if not ended:
+            return False
     time.sleep(1.0)  # files and the port are released a moment later
+    return True
 
 
-def _find_uv() -> Optional[str]:
-    found = shutil.which("uv")
-    if found:
-        return found
-    for p in (Path.home() / ".local" / "bin" / "uv.exe",
-              Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "WinGet" / "Links" / "uv.exe"):
-        if p.is_file():
-            return str(p)
-    return None
+def _stale_code_files(app_dir: Path, new_files: List[str]) -> List[str]:
+    """Code files of the installed version that the new one does not ship."""
+    new = set(new_files)
+    if not any(rel.startswith("app/") for rel in new):  # not a full program archive: remove nothing
+        return []
+    out = []
+    for top in CODE_DIRS:
+        base = app_dir / top
+        if not base.is_dir():
+            continue
+        for p in base.rglob("*"):
+            if p.suffix.lower() in CODE_SUFFIXES and p.is_file() and "__pycache__" not in p.parts:
+                rel = p.relative_to(app_dir).as_posix()
+                if rel not in new:
+                    out.append(rel)
+    return sorted(out)
+
+
+def _preflight(app_dir: Path, need_bytes: int) -> None:
+    """Fails before anything is replaced when the program folder is not writable or the disk is full."""
+    probe = app_dir / ".update-write-test"
+    try:
+        probe.write_bytes(b"ok")
+        probe.unlink()
+    except OSError as e:
+        raise UpdateFailed(f"Нет права записи в папку программы {app_dir} ({e}). "
+                           "Переместите VerbaScribe в папку пользователя или запустите от имени администратора.")
+    try:
+        free = shutil.disk_usage(app_dir).free
+    except OSError:
+        return
+    if free < need_bytes:
+        raise UpdateFailed(f"Недостаточно места на диске: нужно около {need_bytes / 1e9:.1f} ГБ, "
+                           f"свободно {free / 1e9:.1f} ГБ.")
+
+
+def _mark_dub_outdated(app_dir: Path, old_hash: str) -> None:
+    """requirements-dub.txt changed: the dubbing environment needs its packages updated. A ready
+    mark that records the requirements it was made with notices that itself; an older mark gets
+    the previous requirements written in, so it reads as outdated."""
+    marker = app_dir / DUB_MARKER
+    try:
+        text = marker.read_text(encoding="utf-8")
+    except OSError:
+        return
+    if not re.search(r"^requirements=", text, re.M):
+        try:
+            marker.write_text(text.rstrip("\n") + f"\nrequirements={old_hash}\n", encoding="utf-8")
+        except OSError:  # the update itself is fine; the next dub check shows what is missing
+            pass
 
 
 def _freeze(py: Path, uv: Optional[str]) -> str:
+    if not uv:
+        ensure_pip(str(py))
     cmd = [uv, "pip", "freeze", "--python", str(py)] if uv else [str(py), "-m", "pip", "freeze"]
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
@@ -328,26 +439,48 @@ def _reinstall(py: Path, uv: Optional[str], frozen_file: Path, log_dir: Path) ->
         subprocess.run(cmd, stdout=lf, stderr=subprocess.STDOUT, creationflags=_NO_WINDOW)
 
 
+def archive_files(names: List[str], app_dir: Path) -> List[Tuple[str, str]]:
+    """(name in the archive, path in the program folder) of the files an update writes. The archive
+    holds one top folder (VerbaScribe-vX.Y.Z/); a name that would land outside the program folder
+    (absolute, a drive, "..", backslashes from another zip tool) or in a protected folder is left out."""
+    root = app_dir.resolve()
+    norm = [(n, n.replace("\\", "/")) for n in names if not n.replace("\\", "/").endswith("/")]
+    first = {x.split("/")[0] for _n, x in norm}
+    prefix = first.pop() + "/" if len(first) == 1 and all("/" in x for _n, x in norm) else ""
+    out = []
+    for n, x in norm:
+        rel = x[len(prefix):] if prefix and x.startswith(prefix) else x
+        parts = rel.split("/")
+        if (not rel or rel.startswith("/") or ":" in rel or any(p in ("", ".", "..") for p in parts)
+                or parts[0].lower() in PROTECTED):
+            continue
+        try:
+            (root / rel).resolve().relative_to(root)
+        except ValueError:
+            continue
+        out.append((n, rel))
+    return out
+
+
 def apply_update(zip_path: Path, app_dir: Path, data_dir: Path, report: Callable[[str], None]) -> None:
     log_dir = data_dir / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     backup = data_dir / "updates" / "backup.zip"
     old_req = _sha256(app_dir / "requirements.txt")
+    old_dub_req = _sha256(app_dir / "requirements-dub.txt")
     replaced: List[str] = []
     restore_packages: Optional[Callable[[], None]] = None
 
     with zipfile.ZipFile(zip_path) as z:
-        names = [n for n in z.namelist() if not n.endswith("/")]
-        prefix = os.path.commonprefix(names).split("/")[0] + "/" if names and "/" in names[0] else ""
-        files = []
-        for n in names:
-            rel = n[len(prefix):] if prefix and n.startswith(prefix) else n
-            if not rel or rel.split("/")[0] in PROTECTED or ".." in Path(rel).parts:
-                continue
-            files.append((n, rel))
+        files = archive_files(z.namelist(), app_dir)
+        stale = _stale_code_files(app_dir, [rel for _n, rel in files])
+        new_req = next((hashlib.sha256(z.read(n)).hexdigest() for n, rel in files if rel == "requirements.txt"), old_req)
+        # The new files, their backup in the data folder and, with new libraries, room to install them
+        size = sum(z.getinfo(n).file_size for n, _rel in files)
+        _preflight(app_dir, 2 * size + 200_000_000 + (3_000_000_000 if new_req != old_req else 0))
         report(f"Резервная копия ({len(files)} файлов)…")
         with zipfile.ZipFile(backup, "w", zipfile.ZIP_DEFLATED) as bz:
-            for _n, rel in files:
+            for rel in [rel for _n, rel in files] + stale:
                 p = app_dir / rel
                 if p.is_file():
                     bz.write(p, rel)
@@ -368,10 +501,12 @@ def apply_update(zip_path: Path, app_dir: Path, data_dir: Path, report: Callable
                         time.sleep(1.0)
                 if i % 50 == 0:
                     report(f"Замена файлов программы… {i}/{len(files)}")
+            for rel in stale:
+                (app_dir / rel).unlink(missing_ok=True)
             if _sha256(app_dir / "requirements.txt") != old_req:
                 report("Установка библиотек Python (может занять несколько минут)…")
                 py = app_dir / ".venv" / "Scripts" / "python.exe"
-                uv = _find_uv()
+                uv = find_uv()
                 # What is installed now: put back if the new libraries fail half way
                 frozen = _freeze(py, uv)
                 if frozen:
@@ -389,8 +524,11 @@ def apply_update(zip_path: Path, app_dir: Path, data_dir: Path, report: Callable
                                          creationflags=_NO_WINDOW)
                 if res.returncode != 0:
                     raise RuntimeError("Не удалось установить библиотеки (подробности в logs\\update.log)")
-        except Exception:
+            if _sha256(app_dir / "requirements-dub.txt") != old_dub_req:
+                _mark_dub_outdated(app_dir, old_dub_req)
+        except Exception as e:
             report("Ошибка — восстановление прежней версии…")
+            outcome = "restored"
             # Each step on its own: a failure here must not hide the original error
             try:
                 with zipfile.ZipFile(backup) as bz:
@@ -400,6 +538,7 @@ def apply_update(zip_path: Path, app_dir: Path, data_dir: Path, report: Callable
                     if rel not in kept:
                         (app_dir / rel).unlink(missing_ok=True)
             except Exception:
+                outcome = "broken"
                 with open(log_dir / "update.log", "a", encoding="utf-8") as lf:
                     lf.write("restore of the program files failed:\n" + traceback.format_exc())
             if restore_packages:
@@ -407,9 +546,10 @@ def apply_update(zip_path: Path, app_dir: Path, data_dir: Path, report: Callable
                 try:
                     restore_packages()
                 except Exception:
+                    outcome = "broken"
                     with open(log_dir / "update.log", "a", encoding="utf-8") as lf:
                         lf.write("restore of the Python packages failed:\n" + traceback.format_exc())
-            raise
+            raise UpdateFailed(str(e), outcome) from e
 
 
 def _main(argv: List[str]) -> int:
@@ -432,19 +572,20 @@ def _main(argv: List[str]) -> int:
         nonlocal ok, message
         try:
             ui.set("Ожидание закрытия VerbaScribe…")
-            if a.pid:
-                _wait_for_exit(a.pid)
+            if a.pid and not _wait_for_exit(a.pid):
+                # Replacing files under a running program would mix two versions
+                raise UpdateFailed("VerbaScribe не закрылся за две минуты. Закройте программу и установите обновление снова.")
             apply_update(Path(a.zip), app_dir, data_dir, ui.set)
             ui.set("Готово." if a.no_restart else "Готово. Запуск VerbaScribe…")
         except Exception as e:
-            ok, message = False, str(e)
+            ok, message = False, f"{e}\n{OUTCOME_TEXT[getattr(e, 'outcome', 'untouched')]}"
             with open(data_dir / "logs" / "update.log", "a", encoding="utf-8") as lf:
                 lf.write(traceback.format_exc())
         finally:
             launcher = app_dir / "VerbaScribe.exe"
             if launcher.is_file() and not (a.no_restart and ok):
                 subprocess.Popen([str(launcher)], cwd=str(app_dir))
-            ui.close(None if ok else f"Обновление не установлено: {message}\nПрежняя версия восстановлена.")
+            ui.close(None if ok else f"Обновление не установлено: {message}")
 
     threading.Thread(target=work, daemon=True).start()
     ui.run()

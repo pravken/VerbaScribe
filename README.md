@@ -18,6 +18,7 @@ Recordings and transcripts are processed and stored locally (NVIDIA GPU via CUDA
 ### Features
 
 - **Speech recognition** with [faster-whisper](https://github.com/SYSTRAN/faster-whisper) and Silero VAD. Models: `large-v3-turbo`, `large-v3`; GigaAM v3 and Parakeet TDT v3 on ONNX Runtime; recordings that mix languages are recognized phrase by phrase. Compute precision (`float16`, `int8_float16`, `int8`) is chosen from available VRAM, with fallback to CPU.
+- **Several models, one text.** Each model's transcript of a recording is kept; the dropdown above the text switches between them. "Merge versions" makes one text from them: where the models agree, their word; the places they heard differently are chosen by the analysis model (only among the variants) and stay underlined, a click shows every model's variant.
 - **Speaker separation** by clustering SpeechBrain ECAPA-TDNN voice embeddings. Works without tokens. Accuracy drops with overlapping speech, very short replies, or similar voices, so check the result and fix speakers where needed.
 - **Optional audio cleanup** before recognition: FFmpeg filters for noise reduction, click removal and loudness leveling. A simple voice filter is also available in the player.
 - **Filler-word removal** ("uh", "um", "э-э", "ммм"…). The original text is kept and can be restored.
@@ -39,12 +40,12 @@ Recordings and transcripts are processed and stored locally (NVIDIA GPU via CUDA
 - **Custom vocabulary** (names, terms) passed to Whisper as hotwords.
 - **Export** to Word (`.docx`), Markdown, plain text, SRT subtitles, JSON and video with subtitles, all from one menu. A translated or dubbed export that does not exist yet is made first and then saved to the export folder by itself.
 - **Obsidian**: a note per meeting (properties, summary, overview, tasks as a checklist, transcript) named `{date} {title}`, saved by hand or automatically after processing (Settings → Export).
-- **Translate & dub (prototype, optional)**: translates a finished recording with Ollama and re-voices it in each speaker's cloned voice over the original background. See [Translate & dub](#translate-dub).
+- **Translate & dub (optional)**: translates a finished recording with Ollama and re-voices it in each speaker's cloned voice over the original background. See [Translate & dub](#translate-dub).
 - **Model comparison** (Settings → Comparison): every downloaded speech model recognizes a fragment of a recording you have corrected, and you see its error rate (WER), speed and memory; language models write the same protocol and you see how many points the transcript does not support.
 - **Checked summaries**: each point of an overview gets the time it comes from, and points the transcript does not support are marked `[?]`. **My notes** taken during the meeting go into every summary; your own summary templates.
 - **Promises across meetings**: who promised what to whom and by when, collected after each summary, shown before the next meeting of the series, exported to Obsidian, Todoist (CSV) or Markdown, and a follow-up email draft.
 - **Calendar** (an `.ics` file or link, read only): a recording made during a meeting gets its title and participants; the Studio lists the next meetings with a brief.
-- **Dictation into any program**: `Ctrl+Alt+D` records the microphone and types the text where the cursor is.
+- **Dictation into any program**: `Ctrl+Alt+D` records the microphone and types the text where the cursor is. `Ctrl+Alt+T` does the same with translation: speak Russian, and the English text (or another language chosen in Settings → Recording) is typed. The local Ollama model translates; a cloud model only if you allow it for dictation.
 - **Import by link** (YouTube and other sites, via yt-dlp installed on first use); **noise cleanup** export; **privacy** options: delete the sound after transcription or after N days, and a log of everything sent to a cloud model.
 - **Translate text**: machine translation of a transcript with your local Ollama model, shown under or instead of the original, exported as translated or bilingual files and as video subtitles. See [Translate text](#translate-text).
 
@@ -61,6 +62,8 @@ Recordings and transcripts are processed and stored locally (NVIDIA GPU via CUDA
 **Option A — release archive.** Download `VerbaScribe-vX.Y.Z.zip` from [Releases](https://github.com/pravken/VerbaScribe/releases), check it against `SHA256SUMS.txt`, unpack it and run `VerbaScribe.exe`. The launcher is built from [`build_exe.py`](build_exe.py) by the [release workflow](.github/workflows/release.yml).
 
 Unpack the archive to a regular folder you can write to, such as `D:\VerbaScribe`, not `Program Files`: the app creates `.venv` and `models` next to itself. The `.exe` alone is not enough, it is only the launcher for the program files in the archive. On the first start the launcher offers to install the Python environment (`setup.bat`). This downloads several gigabytes and usually takes 10–20 minutes, depending on your connection. Later starts take seconds, and new versions are installed from **Settings → General**.
+
+`VerbaScribe.exe` is not code-signed. On the first start Windows SmartScreen may say "Windows protected your PC": click **More info → Run anyway** (compare the file with `SHA256SUMS.txt` first). If Windows blocks the scripts of the unpacked folder, right-click the downloaded `.zip` → **Properties → Unblock** before unpacking. Keep the folder path short (under about 150 characters, e.g. `D:\VerbaScribe`): some CUDA libraries and model files have long names, and Windows refuses paths over 260 characters unless long paths are turned on.
 
 **Option B — from source.**
 
@@ -98,7 +101,7 @@ what was translated before a cancel is kept.
   as is (an audio codec MP4 cannot hold makes the job fail).
 
 <a name="translate-dub"></a>
-### Translate & dub (prototype)
+### Translate & dub
 
 The **Dub** button in a recording's header translates every phrase with your local Ollama model, synthesizes it in the
 original speaker's voice with [Chatterbox Multilingual](https://github.com/resemble-ai/chatterbox) (23 languages,
@@ -121,6 +124,11 @@ processing queue, with progress and **Cancel**.
 - **Limitations:** no lip-sync; phrases are sped up (max 1.6×) or trimmed to fit; some accent of the source
   language remains; overlapping speech and diarization errors are carried into the dub; translation can be
   wrong, especially with small models.
+- **Licenses of the dubbing environment:** everything in it is free for commercial use; the one copyleft
+  package is [pykakasi](https://codeberg.org/miurahr/pykakasi) (**GPL v3**), which Chatterbox uses to read
+  kanji in Japanese dubs. It runs only in the separate dubbing process and is downloaded by the installer,
+  not shipped with VerbaScribe. If you do not want it: `.venv-dub\Scripts\python.exe -m pip uninstall pykakasi`
+  (Japanese dubs then skip the kanji conversion; other languages are not affected).
 
 <a name="network-access"></a>
 ### Network access
@@ -130,7 +138,8 @@ VerbaScribe has no telemetry. It connects to the internet only for these actions
 | When | Where |
 | :--- | :--- |
 | First-time setup (`setup.bat`) | PyPI and download.pytorch.org (Python packages); winget, if `uv` is missing |
-| You download a Whisper or speaker model | Hugging Face (`huggingface.co`) |
+| You download a speech model (Whisper, GigaAM, Parakeet with the Silero VAD) or a speaker model | Hugging Face (`huggingface.co`); for GigaAM and Parakeet the first time also PyPI (`onnx-asr`, checked by its hash) |
+| App start with an NVIDIA video card, once (Settings → Recognition, "GigaAM and Parakeet on the video card"; on by default) | PyPI: the GPU build of ONNX Runtime (`onnxruntime-gpu`, about 300 MB, checked by its hash) |
 | You import by link | The site of the link, and PyPI the first time (yt-dlp) |
 | You set a calendar link (Settings → General) | That link, at most every 15 minutes, to read the calendar |
 | You download an Ollama model | Ollama's model registry, via your local Ollama |
@@ -139,7 +148,7 @@ VerbaScribe has no telemetry. It connects to the internet only for these actions
 | Your first dubbing job | Hugging Face (Chatterbox and Demucs weights) |
 | You click **Download FFmpeg** in Settings | github.com (release `9.0.2` of `GyanD/codexffmpeg`) |
 | App start, at most every 6 hours (can be turned off in Settings → General) | api.github.com: the number of the latest VerbaScribe release, nothing about you or your computer |
-| You click **Install** for an update | github.com: the release archive and `SHA256SUMS.txt`; PyPI and download.pytorch.org if the new version needs other Python packages |
+| You click **Install** for an update | github.com: the release archive and `SHA256SUMS.txt`; PyPI and download.pytorch.org if the new version needs other Python packages. The checksum proves the archive arrived complete and unchanged. Once the author's release key is set up, `SHA256SUMS.txt` is also signed (`SHA256SUMS.txt.minisig`, minisign format) and the app installs only releases signed with it ([docs/release-signing.md](docs/release-signing.md)) |
 | Only if you turned on a cloud model in Settings → Analysis: an overview, a question, a title or an Obsidian note is made | The chosen service (`api.openai.com`, `api.anthropic.com`, `generativelanguage.googleapis.com` or your Base URL): the transcript text of that recording, or the fragments found for a library question. Audio and video are never sent. The API key is stored encrypted with Windows DPAPI |
 
 The user interface, fonts and scripts are served locally. The built-in server listens only on `127.0.0.1`. Every launch creates a random session token, so other websites open in your browser cannot read or control the app.
@@ -156,18 +165,25 @@ VerbaScribe's own code is released under the [MIT License](LICENSE). Models and 
 | :--- | :--- |
 | Whisper models (OpenAI) / faster-whisper | MIT |
 | Silero VAD | MIT |
-| GigaAM v3 (Sber, ONNX export by istupakov) / onnx-asr | MIT |
-| NVIDIA Parakeet TDT 0.6B v3 (ONNX export by istupakov) | CC-BY-4.0: credit "Parakeet TDT 0.6B v3 by NVIDIA" |
+| [GigaAM v3](https://github.com/salute-developers/GigaAM) (Sber, ONNX export by istupakov) / onnx-asr | MIT |
+| [NVIDIA Parakeet TDT 0.6B v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) (ONNX export by istupakov) | [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/): credit "Parakeet TDT 0.6B v3 by NVIDIA" |
 | BGE-M3 embeddings (BAAI) | MIT |
 | SpeechBrain ECAPA-TDNN (`spkrec-ecapa-voxceleb`) | Apache 2.0 |
 | Qwen3.5 4B, Qwen3 8B / 14B, Qwen 2.5 1.5B / 7B / 14B, Mistral 7B | Apache 2.0 |
 | Ollama, FastAPI, pywebview | MIT / BSD-3 |
+| ONNX Runtime, CTranslate2, pythonnet | MIT |
+| scikit-learn, httpx, uvicorn | BSD-3 |
+| NVIDIA CUDA libraries (`nvidia-*` packages for the video card) | NVIDIA's own license: free to use and to ship with applications, not open source |
+| Microsoft Edge WebView2 Runtime (the app window, part of Windows) | Microsoft's license |
+| Tailwind CSS, marked (in `static/vendor`) | MIT |
+| DOMPurify (in `static/vendor`) | Apache 2.0 or MPL 2.0 |
 | PyTorch, torchaudio | BSD-3 |
 | SoundCard (system audio recording) | BSD-3 |
 | yt-dlp (installed when you first import by link) | Unlicense |
 | FFmpeg (optional download, Gyan.dev essentials build) | GPL v3 |
 | Chatterbox Multilingual TTS (optional dubbing) | MIT |
 | Demucs `htdemucs` (optional dubbing) | MIT |
+| pykakasi (optional dubbing, Japanese only, see [Translate & dub](#translate-dub)) | GPL v3 |
 | Inter, JetBrains Mono fonts | SIL Open Font License |
 
 Not every Qwen 2.5 size is Apache 2.0 (the 3B and 72B models use a different license). If you download other models through Ollama, check their terms.
@@ -203,6 +219,7 @@ To update Python dependencies, edit `requirements.in` and regenerate the lock (c
 ### Возможности
 
 - **Распознавание речи**: [faster-whisper](https://github.com/SYSTRAN/faster-whisper) и Silero VAD. Модели `large-v3-turbo`, `large-v3`, а также GigaAM v3 и Parakeet TDT v3 на ONNX Runtime; записи на нескольких языках распознаются пофразово. Точность вычислений (`float16`, `int8_float16`, `int8`) подбирается под объём видеопамяти, при необходимости работа переходит на CPU.
+- **Несколько моделей — один текст.** Расшифровка каждой модели хранится отдельно, список над текстом переключает между ними. «Свести версии» собирает из них один текст: где модели согласны — их слово, места, которые они услышали по-разному, выбирает модель анализа (только из вариантов). Такие места остаются подчёркнутыми, щелчок показывает вариант каждой модели.
 - **Разделение по спикерам**: кластеризация голосовых эмбеддингов SpeechBrain ECAPA-TDNN, без токенов. Точность снижается при перебиваниях, очень коротких репликах и похожих голосах, поэтому результат стоит проверять и при необходимости поправлять спикеров вручную.
 - **Очистка звука перед распознаванием** (по желанию): фильтры FFmpeg для шумоподавления, удаления щелчков и выравнивания громкости. В плеере также есть простой голосовой фильтр.
 - **Удаление слов-паразитов** («э-э», «ммм», «uh», «um»…). Исходный текст сохраняется, его можно вернуть.
@@ -224,12 +241,12 @@ To update Python dependencies, edit `requirements.in` and regenerate the lock (c
 - **Словарь** имён и терминов, который передаётся в Whisper как hotwords.
 - **Экспорт** в Word (`.docx`), Markdown, текст, субтитры SRT, JSON и видео с субтитрами — всё в одном меню. Если нужного перевода или дубляжа ещё нет, он сначала выполняется, а файл затем сам сохраняется в папку экспорта.
 - **Obsidian**: заметка на каждую встречу (свойства, резюме, обзор, задачи чек-листом, расшифровка) с именем `{дата} {название}` — вручную или автоматически после обработки (Настройки → Экспорт).
-- **Перевод и дубляж (прототип, по желанию)**: готовая запись переводится через Ollama и озвучивается клонами голосов участников поверх исходного фона. Подробнее — в разделе [Перевод и дубляж](#дубляж).
+- **Перевод и дубляж (по желанию)**: готовая запись переводится через Ollama и озвучивается клонами голосов участников поверх исходного фона. Подробнее — в разделе [Перевод и дубляж](#дубляж).
 - **Сравнение моделей** («Настройки → Сравнение»): каждая скачанная модель распознавания расшифровывает фрагмент исправленной вами записи — видно долю ошибок (WER), скорость и память; языковые модели пишут один и тот же протокол — видно, сколько пунктов не подтверждает расшифровка.
 - **Проверенные саммари**: у каждого пункта обзора есть время, откуда он взят, а пункты, которых нет в расшифровке, помечены `[?]`. **Мои заметки** во время встречи учитываются в каждом саммари; свои шаблоны саммари.
 - **Обещания между встречами**: кто, что, кому и к какому сроку пообещал — собирается после саммари, показывается перед следующей встречей серии, выгружается в Obsidian, Todoist (CSV) или Markdown; черновик письма по итогам.
 - **Календарь** (файл или ссылка `.ics`, только чтение): запись во время встречи получает её название и участников; в Студии видны ближайшие встречи со справкой.
-- **Диктовка в любую программу**: `Ctrl+Alt+D` записывает микрофон и печатает текст там, где стоит курсор.
+- **Диктовка в любую программу**: `Ctrl+Alt+D` записывает микрофон и печатает текст там, где стоит курсор. `Ctrl+Alt+T` делает то же с переводом: говорите по-русски, а вставляется английский текст (или другой язык из «Настройки → Запись»). Переводит локальная модель Ollama; облачная — только если вы разрешите её для диктовки.
 - **Импорт по ссылке** (YouTube и другие сайты, через yt-dlp, который ставится при первом использовании); экспорт **с очисткой шума**; **приватность**: удаление звука после расшифровки или через N дней и журнал всего, что отправлялось облачной модели.
 - **Перевод текста**: машинный перевод расшифровки локальной моделью Ollama — под оригиналом или вместо него, экспорт переведённых и двуязычных файлов, субтитры для видео. Подробнее — в разделе [Перевод текста](#перевод-текста).
 
@@ -246,6 +263,8 @@ To update Python dependencies, edit `requirements.in` and regenerate the lock (c
 **Вариант А — архив релиза.** Скачайте `VerbaScribe-vX.Y.Z.zip` со страницы [Releases](https://github.com/pravken/VerbaScribe/releases), сверьте его с `SHA256SUMS.txt`, распакуйте и запустите `VerbaScribe.exe`. Лаунчер собирается из [`build_exe.py`](build_exe.py) в [workflow релиза](.github/workflows/release.yml).
 
 Распакуйте архив в обычную папку с правом записи, например `D:\VerbaScribe`, а не в `Program Files`: рядом с программой создаются `.venv` и `models`. Одного `.exe` недостаточно, это лишь лаунчер для файлов программы из архива. При первом запуске лаунчер предложит установить окружение Python (`setup.bat`). Скачивается несколько гигабайт, обычно это занимает 10–20 минут, в зависимости от скорости интернета. Следующие запуски занимают секунды, а новые версии устанавливаются из **Настройки → Общие**.
+
+`VerbaScribe.exe` не подписан цифровой подписью. При первом запуске SmartScreen может показать «Система Windows защитила ваш компьютер»: нажмите **Подробнее → Выполнить в любом случае** (перед этим сверьте файл с `SHA256SUMS.txt`). Если Windows блокирует скрипты распакованной папки, перед распаковкой откройте свойства скачанного `.zip` и отметьте **Разблокировать**. Путь к папке лучше держать коротким (не длиннее ~150 символов, например `D:\VerbaScribe`): у некоторых библиотек CUDA и файлов моделей длинные имена, а Windows не принимает пути длиннее 260 символов, если не включены длинные пути.
 
 **Вариант Б — из исходников.**
 
@@ -283,7 +302,7 @@ start.bat
   текста, поэтому тайминг внутри реплики приблизительный; вшивание перекодирует всё видео, а звук копирует как есть
   (если кодек звука не подходит для MP4, задача завершится ошибкой).
 
-### Перевод и дубляж (прототип)
+### Перевод и дубляж
 
 Кнопка **Дубляж** в шапке записи переводит каждую фразу локальной моделью Ollama, озвучивает её голосом участника
 через [Chatterbox Multilingual](https://github.com/resemble-ai/chatterbox) (23 языка, в том числе русский и английский),
@@ -305,6 +324,11 @@ start.bat
 - **Ограничения:** нет синхронизации губ; фразы ускоряются (до 1,6×) или обрезаются под тайминг; остаётся акцент
   исходного языка; перебивания и ошибки диаризации переходят в дубляж; перевод может быть неточным, особенно на
   маленьких моделях.
+- **Лицензии окружения дубляжа:** всё в нём бесплатно и для коммерческого использования; единственный пакет с
+  копилефтом — [pykakasi](https://codeberg.org/miurahr/pykakasi) (**GPL v3**), через него Chatterbox читает
+  иероглифы в японском дубляже. Он работает только в отдельном процессе дубляжа и скачивается установщиком, в
+  поставку VerbaScribe не входит. Если он вам не нужен: `.venv-dub\Scripts\python.exe -m pip uninstall pykakasi`
+  (японский дубляж тогда пропускает перевод иероглифов в каны, другие языки не затронуты).
 
 <a name="сеть"></a>
 ### Сетевые подключения
@@ -314,7 +338,8 @@ start.bat
 | Когда | Куда |
 | :--- | :--- |
 | Первичная установка (`setup.bat`) | PyPI и download.pytorch.org (пакеты Python); winget, если нет `uv` |
-| Вы скачиваете модель Whisper или модель спикеров | Hugging Face (`huggingface.co`) |
+| Вы скачиваете модель распознавания (Whisper, GigaAM, Parakeet вместе с Silero VAD) или модель спикеров | Hugging Face (`huggingface.co`); для GigaAM и Parakeet в первый раз ещё PyPI (`onnx-asr`, проверяется по хешу) |
+| Запуск приложения с видеокартой NVIDIA, один раз («Настройки → Распознавание», «GigaAM и Parakeet на видеокарте»; включено по умолчанию) | PyPI: сборка ONNX Runtime для видеокарты (`onnxruntime-gpu`, около 300 МБ, проверяется по хешу) |
 | Вы импортируете запись по ссылке | Сайт ссылки, а в первый раз — PyPI (yt-dlp) |
 | Вы указали ссылку на календарь («Настройки → Общие») | Эта ссылка, не чаще раза в 15 минут, чтобы прочитать календарь |
 | Вы скачиваете модель Ollama | Реестр моделей Ollama, через вашу локальную Ollama |
@@ -323,7 +348,7 @@ start.bat
 | Первый запуск дубляжа | Hugging Face (веса Chatterbox и Demucs) |
 | Вы нажимаете **Скачать FFmpeg** в настройках | github.com (релиз `9.0.2` репозитория `GyanD/codexffmpeg`) |
 | Запуск приложения, не чаще раза в 6 часов (отключается в «Настройки → Общие») | api.github.com: номер последней версии VerbaScribe, без каких-либо данных о вас или компьютере |
-| Вы нажимаете **Установить** для обновления | github.com: архив релиза и `SHA256SUMS.txt`; PyPI и download.pytorch.org, если новой версии нужны другие пакеты Python |
+| Вы нажимаете **Установить** для обновления | github.com: архив релиза и `SHA256SUMS.txt`; PyPI и download.pytorch.org, если новой версии нужны другие пакеты Python. Контрольная сумма подтверждает, что архив дошёл целым и неизменным. Когда настроен ключ автора, `SHA256SUMS.txt` ещё и подписан (`SHA256SUMS.txt.minisig`, формат minisign), и программа ставит только релизы с этой подписью ([docs/release-signing.md](docs/release-signing.md)) |
 | Только если в «Настройки → Анализ» включена облачная модель: создаётся обзор, ответ на вопрос, название или заметка Obsidian | Выбранный сервис (`api.openai.com`, `api.anthropic.com`, `generativelanguage.googleapis.com` или ваш Base URL): текст расшифровки этой записи, а для вопросов по медиатеке — найденные фрагменты. Аудио и видео не отправляются. API-ключ хранится зашифрованным (Windows DPAPI) |
 
 Интерфейс, шрифты и скрипты загружаются локально. Встроенный сервер слушает только `127.0.0.1`. При каждом запуске создаётся случайный токен сессии, поэтому другие сайты, открытые в браузере, не могут читать данные приложения или управлять им.
@@ -334,7 +359,7 @@ start.bat
 
 ### Лицензии
 
-Код VerbaScribe распространяется по [лицензии MIT](LICENSE). У моделей и библиотек свои лицензии; перед коммерческим использованием проверьте их самостоятельно (таблица выше, в английском разделе). Не все размеры Qwen 2.5 выпущены под Apache 2.0: у моделей 3B и 72B другая лицензия. Если скачиваете через Ollama другие модели, проверьте и их условия.
+Код VerbaScribe распространяется по [лицензии MIT](LICENSE). У моделей и библиотек свои лицензии; перед коммерческим использованием проверьте их самостоятельно (таблица выше, в английском разделе). Не все размеры Qwen 2.5 выпущены под Apache 2.0: у моделей 3B и 72B другая лицензия. Единственный пакет с копилефтом — pykakasi (GPL v3) в необязательном окружении дубляжа, только для японского (см. [Перевод и дубляж](#дубляж)). Если скачиваете через Ollama другие модели, проверьте и их условия.
 
 ### Поддержать проект
 

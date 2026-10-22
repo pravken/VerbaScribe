@@ -64,9 +64,20 @@ class SemanticIndexTest(unittest.TestCase):
         self.assertIn("пятницу", hits[0]["text"])
         self.assertIn("Анна:", hits[0]["text"])  # chunks carry the speaker names
         self.assertEqual(semantic.search("дедлайн", meeting_ids=[self.b]), [])  # scoped and below MIN_SCORE
-        # An edited transcript drops out of the index until it is indexed again
+        # An edited transcript is indexed again once the edits have stopped for a while
         db.save_meeting_results(self.b, segments=[_seg(1, 0, "Про котов и собак.")])
-        self.assertEqual(semantic.pending_ids(), [self.b])
+        self.assertEqual(semantic.pending_ids(), [])  # edited a moment ago
+        with mock.patch.object(semantic, "EDIT_QUIET_SEC", -1):
+            self.assertEqual(semantic.pending_ids(), [self.b])
+        # only the chunks whose text changed are embedded again
+        db.save_meeting_results(self.a, segments=[
+            _seg(1, 0, "Привет всем."), _seg(2, 30, "Давайте перенесём релиз на пятницу."), _seg(3, 400, "Совсем новая тема."),
+        ])
+        before = semantic.embed.call_count
+        semantic.index_meeting(self.a)
+        embedded = [t for c in semantic.embed.call_args_list[before:] for t in c.args[0]]
+        self.assertEqual(len(embedded), 1)
+        self.assertIn("Совсем новая тема", embedded[0])
 
     def test_assistant_gets_fragments_without_shared_words(self):
         for mid in semantic.pending_ids():

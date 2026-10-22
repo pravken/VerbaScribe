@@ -25,6 +25,33 @@ class SessionAndSearchApiTest(unittest.TestCase):
             other.cookies.set("vs_session_8790", main.SESSION_TOKEN)
             self.assertEqual(other.get("/api/meetings").status_code, 401)
 
+    def test_window_signs_in_without_the_token_in_an_address(self):
+        with self._client(8790) as c:
+            self.assertEqual(c.post("/api/session", json={"token": "wrong"}).status_code, 401)
+            self.assertEqual(c.post("/api/session", content=b"not json").status_code, 401)
+            self.assertEqual(c.post("/api/session", json={"token": main.SESSION_TOKEN},
+                                    headers={"Sec-Fetch-Site": "cross-site"}).status_code, 403)
+            self.assertEqual(c.get("/api/meetings").status_code, 401)
+            r = c.post("/api/session", json={"token": main.SESSION_TOKEN}, headers={"Sec-Fetch-Site": "same-origin"})
+            self.assertEqual(r.status_code, 204)
+            self.assertIn("vs_session_8790=", r.headers["set-cookie"])
+            self.assertEqual(c.get("/api/meetings").status_code, 200)
+
+    def test_requests_of_other_pages_are_refused(self):
+        """Another local program's page gets the cookie sent along (same site): it is told by its headers."""
+        with self._client(8790) as c:
+            c.get(f"/?token={main.SESSION_TOKEN}")
+            other = {"Sec-Fetch-Site": "same-site", "Origin": "http://127.0.0.1:9999"}
+            self.assertEqual(c.post("/api/settings", json={"settings": {}}, headers=other).status_code, 403)
+            self.assertEqual(c.get("/api/meetings", headers={"Sec-Fetch-Site": "cross-site"}).status_code, 403)
+            self.assertEqual(c.post("/api/settings", json={"settings": {}}, headers={"Origin": "http://127.0.0.1:9999"}).status_code, 403)
+            # the app's own page, a typed address, and a program without browser headers
+            self.assertEqual(c.post("/api/settings", json={"settings": {}}, headers={"Sec-Fetch-Site": "same-origin"}).status_code, 200)
+            self.assertEqual(c.post("/api/settings", json={"settings": {}}, headers={"Origin": "http://127.0.0.1:8790"}).status_code, 200)
+            self.assertEqual(c.get("/api/meetings", headers={"Sec-Fetch-Site": "none"}).status_code, 200)
+            self.assertEqual(c.get("/api/meetings").status_code, 200)
+            self.assertEqual(c.get("/static/js/app.js", headers={"Sec-Fetch-Site": "cross-site"}).status_code, 200)
+
     def test_search_endpoint_and_static_revalidation(self):
         with self._client(8790) as c:
             c.get(f"/?token={main.SESSION_TOKEN}")
@@ -33,6 +60,133 @@ class SessionAndSearchApiTest(unittest.TestCase):
             hits = c.get("/api/meetings/search", params={"q": "поиск"}).json()
             self.assertIn(m["id"], [h["meeting_id"] for h in hits])
             self.assertEqual(c.get("/static/js/app.js").headers.get("cache-control"), "no-cache")
+
+
+@unittest.skipIf(main is None, "fastapi and app dependencies not installed")
+class TranscriptEditApiTest(unittest.TestCase):
+    """PATCH of a line and of a participant, through HTTP as the page sends them."""
+
+    def setUp(self):
+        main.init_db()
+        words = [{"word": " старый", "start": 0.0, "end": 0.5}, {"word": " текст", "start": 0.5, "end": 1.0}]
+        m = main.create_meeting(title="Правка через API", filename="a.wav", media_path="a.wav")
+        main.save_meeting_results(m["id"], segments=[{"id": 1, "start": 0.0, "end": 1.0, "speaker": "SPEAKER_00",
+                                                      "text": "старый текст", "words": words}],
+                                  speakers={"SPEAKER_00": {"id": "SPEAKER_00", "name": "Анна", "color": "#0A84FF"}})
+        self.mid = m["id"]
+        from app.database import update_meeting_progress
+
+        update_meeting_progress(self.mid, status="completed")
+        # Without "with": the app's start-up (queue restart, background loops) is not needed here
+        self.c = TestClient(main.app, base_url="http://127.0.0.1:8790")
+        self.c.get(f"/?token={main.SESSION_TOKEN}")
+
+    def test_line_text_and_speaker(self):
+        url = f"/api/meetings/{self.mid}/segments/1"
+        r = self.c.patch(url, json={"text": "  новый длинный текст  "})
+        self.assertEqual(r.status_code, 200)
+        seg = r.json()["segments"][0]
+        self.assertEqual(seg["text"], "новый длинный текст")
+        self.assertEqual([w["word"].strip() for w in seg["words"]], ["новый", "длинный", "текст"])  # the player follows
+        self.assertEqual(self.c.patch(url, json={"text": "   "}).status_code, 400)
+        self.assertEqual(self.c.patch(url, json={"speaker": "SPEAKER_99"}).status_code, 400)
+        self.assertEqual(self.c.patch(f"/api/meetings/{self.mid}/segments/42", json={"text": "x"}).status_code, 404)
+        self.assertEqual(self.c.patch(f"/api/meetings/999999/segments/1", json={"text": "x"}).status_code, 404)
+        self.assertEqual(main.get_meeting(self.mid)["segments"][0]["text"], "новый длинный текст")
+
+    def test_participant(self):
+        url = f"/api/meetings/{self.mid}/speakers"
+        r = self.c.patch(url, json={"speaker_id": "SPEAKER_00", "name": "Анна Петрова", "color": "#FF9F0A"})
+        self.assertEqual(r.status_code, 200)
+        spk = main.get_meeting(self.mid)["speakers"]["SPEAKER_00"]
+        self.assertEqual((spk["name"], spk["color"]), ("Анна Петрова", "#FF9F0A"))
+        self.assertEqual(self.c.patch(url, json={"speaker_id": "<script>", "name": "x"}).status_code, 400)
+        self.assertEqual(self.c.patch(url, json={"speaker_id": "SPEAKER_00", "name": "x", "color": "red"}).status_code, 400)
+
+    def test_edits_wait_while_the_recording_is_transcribed(self):
+        from unittest import mock
+
+        with mock.patch("app.transcriber.is_transcribing", return_value=True):
+            r = self.c.patch(f"/api/meetings/{self.mid}/segments/1", json={"text": "правка"})
+            self.assertEqual(r.status_code, 409)
+            r = self.c.patch(f"/api/meetings/{self.mid}/speakers", json={"speaker_id": "SPEAKER_00", "name": "Б"})
+            self.assertEqual(r.status_code, 409)
+        self.assertEqual(main.get_meeting(self.mid)["segments"][0]["text"], "старый текст")
+
+
+@unittest.skipIf(main is None, "fastapi and app dependencies not installed")
+class StartupResumeTest(unittest.TestCase):
+    """Work cut off by a restart: recognition is queued again, a dub or a link download is closed."""
+
+    def test_interrupted_work_after_a_restart(self):
+        from unittest import mock
+
+        from app.database import delete_meeting, update_meeting_progress
+
+        main.init_db()
+        ids = {}
+        for state in ("transcribing", "dubbing", "downloading", "completed"):
+            m = main.create_meeting(title=f"После перезапуска {state}", filename="a.wav", media_path="a.wav")
+            update_meeting_progress(m["id"], status=state)
+            ids[state] = m["id"]
+            # the next start of the app in another test would queue it for real
+            self.addCleanup(delete_meeting, m["id"])
+        with mock.patch.object(main, "enqueue_meeting_job") as enqueue:
+            with TestClient(main.app, base_url="http://127.0.0.1:8790"):
+                pass
+        queued = {c.args[0] for c in enqueue.call_args_list}
+        self.assertIn(ids["transcribing"], queued)
+        self.assertNotIn(ids["completed"], queued)
+        self.assertEqual(main.get_meeting(ids["dubbing"])["status"], "completed")
+        self.assertEqual(main.get_meeting(ids["downloading"])["status"], "failed")
+
+
+@unittest.skipIf(main is None, "fastapi and app dependencies not installed")
+class ConcurrentEditsTest(unittest.TestCase):
+    """Edits that arrive at once (two segments, two participants) must all stay."""
+
+    def _meeting(self):
+        main.init_db()
+        segs = [{"id": i, "start": i, "end": i + 1, "speaker": "SPEAKER_00", "text": f"реплика {i}"} for i in range(1, 31)]
+        spk = {f"SPEAKER_0{i}": {"id": f"SPEAKER_0{i}", "name": f"Участник {i}", "color": "#0A84FF"} for i in range(4)}
+        m = main.create_meeting(title="Правки сразу", filename="a.wav", media_path="a.wav")
+        main.save_meeting_results(m["id"], segments=segs, speakers=spk)
+        return m["id"]
+
+    def test_segments_and_speakers_edited_at_once(self):
+        from concurrent.futures import ThreadPoolExecutor
+
+        from app.api.analysis import SegmentUpdatePayload, api_update_segment
+        from app.api.library import SpeakerUpdatePayload, api_update_speaker
+
+        mid = self._meeting()
+        with ThreadPoolExecutor(16) as pool:
+            jobs = [pool.submit(api_update_segment, mid, i, SegmentUpdatePayload(text=f"правка {i}")) for i in range(1, 31)]
+            jobs += [pool.submit(api_update_speaker, mid, SpeakerUpdatePayload(speaker_id=f"SPEAKER_0{i}", name=f"Имя {i}"))
+                     for i in range(4)]
+            for j in jobs:
+                j.result()
+        m = main.get_meeting(mid)
+        self.assertEqual([s["text"] for s in m["segments"]], [f"правка {i}" for i in range(1, 31)])
+        self.assertEqual(sorted(s["name"] for s in m["speakers"].values()), [f"Имя {i}" for i in range(4)])
+
+    def test_failed_edit_changes_nothing(self):
+        from fastapi import HTTPException
+
+        from app.api.analysis import SegmentUpdatePayload, api_update_segment
+
+        mid = self._meeting()
+        with self.assertRaises(HTTPException):
+            api_update_segment(mid, 5, SegmentUpdatePayload(speaker="SPEAKER_99"))
+        with self.assertRaises(HTTPException):
+            api_update_segment(mid, 999, SegmentUpdatePayload(text="нет такой"))
+        self.assertEqual(main.get_meeting(mid)["segments"][4]["text"], "реплика 5")
+        from app.database import merge_segment_with_previous
+
+        m = main.get_meeting(mid)
+        merged = merge_segment_with_previous(mid, 2)
+        self.assertEqual(merged["segments"][0]["text"], "реплика 1 реплика 2")
+        self.assertEqual(len(merged["segments"]), len(m["segments"]) - 1)
 
 
 @unittest.skipIf(main is None, "fastapi and app dependencies not installed")

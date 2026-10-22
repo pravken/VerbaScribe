@@ -20,7 +20,7 @@ function renderFfmpegStatus(st) {
   textEl.title = textEl.textContent;
   btn.classList.toggle('hidden', st.available || dl.active || !st.can_download);
   const info = st.download_info || {};
-  btn.title = t('tipFfmpegDownload').replace('{version}', info.version || '').replace('{size}', info.size_mb || '');
+  btn.title = t('tipFfmpegDownload').replace('{version}', () => info.version || '').replace('{size}', () => info.size_mb || '');
 }
 
 async function installFfmpeg() {
@@ -57,9 +57,9 @@ ${t('modelsFolder')}: ${data.paths.models}`;
       document.getElementById('legacy-conflict-banner').classList.toggle('hidden', !conflict);
       if (conflict) {
         document.getElementById('legacy-conflict-text').textContent = t('legacyConflictText')
-          .replace('{legacy}', conflict.legacy)
-          .replace('{count}', conflict.legacy_recordings)
-          .replace('{current}', conflict.current);
+          .replace('{legacy}', () => conflict.legacy)
+          .replace('{count}', () => conflict.legacy_recordings)
+          .replace('{current}', () => conflict.current);
       }
     }
 
@@ -79,6 +79,7 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     document.getElementById('set-delete-media-after').checked = s.delete_media_after === 'true';
     document.getElementById('set-media-retention').value = s.media_retention_days || '0';
     document.getElementById('set-update-auto').checked = s.update_auto !== 'false';
+    document.getElementById('set-update-beta').checked = s.update_beta === 'true';
     document.getElementById('set-vad').checked = s.vad_filter !== 'false';
     if (document.getElementById('set-audio-enhance')) {
       document.getElementById('set-audio-enhance').checked = s.audio_enhance !== 'false';
@@ -105,10 +106,14 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     document.getElementById('set-record-hotkey').value = s.record_hotkey ?? 'Ctrl+Alt+R';
     document.getElementById('set-dictation-hotkey').value = s.dictation_hotkey ?? 'Ctrl+Alt+D';
     document.getElementById('set-dictation-language').value = s.dictation_language || 'auto';
+    document.getElementById('set-translate-hotkey').value = s.dictation_translate_hotkey ?? 'Ctrl+Alt+T';
+    document.getElementById('set-dictation-translate-cloud').checked = s.dictation_translate_cloud === 'true';
+    fillDictationTranslateLangs(s.dictation_translate_to || 'en');
     document.getElementById('set-calendar-ics').value = s.calendar_ics || '';
     loadCalendarSource();
     document.getElementById('set-onnx-gpu').checked = s.onnx_gpu !== 'false';
     loadBackupInfo();
+    loadOrphans();
     loadOnnxGpu();
     document.getElementById('calendar-status').textContent = '';
     fillCallSettings(s);
@@ -161,7 +166,9 @@ async function loadVram() {
   } catch (e) {
     // the server may be restarting; try again later
   } finally {
-    scheduleVramRefresh(document.hidden ? VRAM_POLL_MS * 4 : VRAM_POLL_MS);
+    // Without a video card only the models in memory change: asked less often
+    const noGpu = state.system && state.system.hardware && !state.system.hardware.cuda_available;
+    scheduleVramRefresh(VRAM_POLL_MS * (document.hidden ? 4 : 1) * (noGpu ? 3 : 1));
   }
 }
 
@@ -176,10 +183,10 @@ function vramChipLabel(c) {
 
 function vramChipTitle(c) {
   if (c.kind === 'dub') return t('tipVramDub');
-  if (c.loading) return t('tipVramLoading').replace('{name}', vramChipLabel(c));
-  if (c.kind === 'live') return c.can_unload ? t('tipVramUnload').replace('{name}', vramChipLabel(c)) : t('tipVramInUse');
-  if (c.loaded) return c.can_unload ? t('tipVramUnload').replace('{name}', vramChipLabel(c)) : t('tipVramInUse');
-  return c.can_preload ? t('tipVramPreload').replace('{name}', vramChipLabel(c)) : t('tipVramNotLoaded');
+  if (c.loading) return t('tipVramLoading').replace('{name}', () => vramChipLabel(c));
+  if (c.kind === 'live') return c.can_unload ? t('tipVramUnload').replace('{name}', () => vramChipLabel(c)) : t('tipVramInUse');
+  if (c.loaded) return c.can_unload ? t('tipVramUnload').replace('{name}', () => vramChipLabel(c)) : t('tipVramInUse');
+  return c.can_preload ? t('tipVramPreload').replace('{name}', () => vramChipLabel(c)) : t('tipVramNotLoaded');
 }
 
 function renderSystemLoad(sys) {
@@ -191,7 +198,7 @@ function renderSystemLoad(sys) {
   const nameEl = document.getElementById('cpu-name');
   if (sys && sys.cpu_name && nameEl.textContent !== sys.cpu_name) {
     nameEl.textContent = sys.cpu_name;
-    document.getElementById('cpu-cell').title = `${sys.cpu_name}${sys.cores ? ` · ${t('hwThreads').replace('{n}', sys.cores)}` : ''}\n${t('tipCpuUsage')}`;
+    document.getElementById('cpu-cell').title = `${sys.cpu_name}${sys.cores ? ` · ${t('hwThreads').replace('{n}', () => sys.cores)}` : ''}\n${t('tipCpuUsage')}`;
   }
   if (cpu != null) {
     document.getElementById('cpu-text').textContent = `${Math.round(cpu)}%`;
@@ -201,10 +208,10 @@ function renderSystemLoad(sys) {
   if (ram) {
     const pct = (100 * ram.used_gb) / Math.max(0.1, ram.total_gb);
     document.getElementById('ram-text').textContent = `${ram.used_gb}/${ram.total_gb} ${t('unitGB')}`;
-    document.getElementById('ram-name').textContent = t('hwRamName').replace('{gb}', Math.round(ram.total_gb));
+    document.getElementById('ram-name').textContent = t('hwRamName').replace('{gb}', () => Math.round(ram.total_gb));
     document.getElementById('ram-bar').style.width = `${Math.min(100, pct)}%`;
     document.getElementById('ram-bar').className = `${pct > 90 ? 'bg-apple-red/80' : 'bg-apple-amber/70'}`;
-    document.getElementById('ram-cell').title = t('tipRamUsage').replace('{free}', ram.free_gb);
+    document.getElementById('ram-cell').title = t('tipRamUsage').replace('{free}', () => ram.free_gb);
   }
 }
 
@@ -213,7 +220,7 @@ function renderIdleStatus(idle) {
   if (!el || !idle) return;
   const loaded = (vram.chips || []).some(c => c.loaded && c.kind !== 'dub');
   el.textContent = idle.minutes && loaded && idle.unload_in_sec != null
-    ? t('idleUnloadIn').replace('{min}', Math.max(1, Math.ceil(idle.unload_in_sec / 60))) : '';
+    ? t('idleUnloadIn').replace('{min}', () => Math.max(1, Math.ceil(idle.unload_in_sec / 60))) : '';
 }
 
 function renderVram(data) {
@@ -226,7 +233,7 @@ function renderVram(data) {
   if (!gpu) { document.getElementById('vram-text').textContent = ''; vram.chips = data.chips || []; renderIdleStatus(data.idle); return; }
   document.getElementById('vram-text').textContent = `${gpu.used_gb}/${gpu.total_gb} ${t('unitGB')}`;
   document.getElementById('vram-bar').style.width = `${Math.min(100, (100 * gpu.used_gb) / Math.max(1, gpu.total_gb))}%`;
-  document.querySelector('#hw-block .hw-row-btn').title = `${t('tipVramUsage').replace('{free}', gpu.free_gb)}\n${t('tipHwStatus')}`;
+  document.querySelector('#hw-block .hw-row-btn').title = `${t('tipVramUsage').replace('{free}', () => gpu.free_gb)}\n${t('tipHwStatus')}`;
 
   const chips = data.chips || [];  // every model: loaded, loading or ready to load
   const html = chips.map((c, i) => {
@@ -239,7 +246,7 @@ function renderVram(data) {
     const icon = c.loaded
       ? (actionable ? '<span class="opacity-60 group-hover:opacity-100">×</span>' : '')
       : (actionable ? '<span class="opacity-70 group-hover:opacity-100">↑</span>' : '');
-    return `<button data-i="${i}" onclick="vramChipClick(this.dataset.i)" ${actionable || c.kind === 'dub' ? '' : 'disabled'}
+    return `<button data-i="${i}" data-click="vramChipClick" data-click-args='[{"$": "data", "k": "i"}]' ${actionable || c.kind === 'dub' ? '' : 'disabled'}
       title="${escapeHtml(vramChipTitle(c))}"
       class="group max-w-full inline-flex items-center gap-1 px-1.5 h-5 rounded-full border text-[10px] font-medium transition ${cls} ${actionable ? 'hover:bg-white/10' : 'cursor-default'}">
       <span class="w-1.5 h-1.5 rounded-full shrink-0 ${c.loaded || c.loading ? 'bg-current' : 'border border-current'}"></span>
@@ -267,7 +274,7 @@ async function vramChipClick(index) {
   if (action === 'preload' && !c.can_preload) return;
   vram.busy = true;
   renderVram(vram.data);
-  showToast(t(action === 'unload' ? 'vramUnloading' : 'vramPreloading').replace('{name}', vramChipLabel(c)));
+  showToast(t(action === 'unload' ? 'vramUnloading' : 'vramPreloading').replace('{name}', () => vramChipLabel(c)));
   try {
     const res = await fetch(`/api/vram/${action}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: c.kind, name: c.name || '' }),
@@ -327,6 +334,7 @@ async function deleteOnnxModel(id) {
 function formatModelName(modelId) {
   const raw = String(modelId || '').trim();
   if (!raw) return 'AI';
+  if (raw === 'merged') return t('mergedVersion');  // one text from several models (app/transcript_merge.py)
   const lower = raw.toLowerCase();
   if (MODEL_DISPLAY_NAMES[lower]) return MODEL_DISPLAY_NAMES[lower];
   for (const [k, v] of Object.entries(MODEL_DISPLAY_NAMES)) {
@@ -404,10 +412,10 @@ function updateWhisperModelsUI(models) {
   const diarInstalled = models.diarizer_installed || (models.diarizer && models.diarizer.installed);
   if (diarPill) {
     if (diarInstalled) {
-      diarPill.textContent = state.uiLang === 'en' ? 'Speaker model ready' : 'Модель участников готова';
+      diarPill.textContent = t('uiSpeakerModelReady');
       diarPill.className = 'text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-apple-green/15 text-apple-green shrink-0';
     } else {
-      diarPill.textContent = state.uiLang === 'en' ? 'Downloads with Whisper' : 'Скачается вместе с Whisper';
+      diarPill.textContent = t('uiDownloadsWithWhisper');
       diarPill.className = 'text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-white/5 text-apple-secondary shrink-0';
     }
   }
@@ -420,13 +428,14 @@ function updateWhisperModelsUI(models) {
   state.whisperCatalog = whisperList;
   fillRecognitionSelects(whisperList, activeModel);
   renderLiveModelSelect();
+  renderTxModelBar();
 
   if (catalogBox && whisperList.length > 0) {
     catalogBox.innerHTML = whisperList.map(item => {
       const isSelected = item.id === activeModel;
       const desc = state.uiLang === 'en' ? item.desc_en : item.desc_ru;
       const isDownloadingThis = (st.active && st.model_id === item.id) || (item.engine === 'onnx' && item.downloading);
-      const sizeLabel = item.size || (item.size_mb >= 1000 ? (item.size_mb / 1024).toFixed(1) + ' GB' : (item.size_mb || '') + ' MB');
+      const sizeLabel = modelSizeLabel(item);
       const badgeLabel = item.badge || sizeLabel;
 
       let actionHtml = '';
@@ -435,28 +444,28 @@ function updateWhisperModelsUI(models) {
       } else if (item.installed && isSelected) {
         actionHtml = `
           <div class="flex items-center gap-1.5">
-            <span class="ui-btn bg-apple-green/20 text-apple-green">${SVG_ICONS.check}<span>${state.uiLang === 'en' ? 'Active' : 'Активна'}</span></span>
-            <button data-id="${escapeHtml(item.id)}" onclick="${item.engine === 'onnx' ? 'deleteOnnxModel' : 'deleteWhisperModel'}(this.dataset.id)" title="${escapeHtml(t('tipDeleteModel'))}"
+            <span class="ui-btn bg-apple-green/20 text-apple-green">${SVG_ICONS.check}<span>${t('uiActive')}</span></span>
+            <button data-id="${escapeHtml(item.id)}" data-click="${item.engine === 'onnx' ? 'deleteOnnxModel' : 'deleteWhisperModel'}" data-click-args='[{"$": "data", "k": "id"}]' title="${escapeHtml(t('tipDeleteModel'))}"
               class="ui-btn ui-btn-subtle px-2 hover:text-apple-red">${SVG_ICONS.trash}</button>
           </div>
         `;
       } else if (item.installed) {
         actionHtml = `
           <div class="flex items-center gap-1.5">
-            <button data-id="${escapeHtml(item.id)}" onclick="selectActiveWhisperModel(this.dataset.id)" title="${escapeHtml(t('tipSelectModel'))}"
+            <button data-id="${escapeHtml(item.id)}" data-click="selectActiveWhisperModel" data-click-args='[{"$": "data", "k": "id"}]' title="${escapeHtml(t('tipSelectModel'))}"
               class="ui-btn ui-btn-subtle text-white hover:bg-apple-blue">
-              ${state.uiLang === 'en' ? 'Select' : 'Выбрать'}
+              ${t('uiSelect')}
             </button>
-            <button data-id="${escapeHtml(item.id)}" onclick="${item.engine === 'onnx' ? 'deleteOnnxModel' : 'deleteWhisperModel'}(this.dataset.id)" title="${escapeHtml(t('tipDeleteModel'))}"
+            <button data-id="${escapeHtml(item.id)}" data-click="${item.engine === 'onnx' ? 'deleteOnnxModel' : 'deleteWhisperModel'}" data-click-args='[{"$": "data", "k": "id"}]' title="${escapeHtml(t('tipDeleteModel'))}"
               class="ui-btn ui-btn-subtle px-2 hover:text-apple-red">${SVG_ICONS.trash}</button>
           </div>
         `;
       } else {
         actionHtml = `
-          <button data-id="${escapeHtml(item.id)}" onclick="${item.engine === 'onnx' ? 'startOnnxModelDownload' : 'startWhisperModelDownload'}(this.dataset.id)" title="${escapeHtml(item.error || t('tipDownloadModel'))}"
+          <button data-id="${escapeHtml(item.id)}" data-click="${item.engine === 'onnx' ? 'startOnnxModelDownload' : 'startWhisperModelDownload'}" data-click-args='[{"$": "data", "k": "id"}]' title="${escapeHtml(item.error || t('tipDownloadModel'))}"
             class="ui-btn ui-btn-primary">
             ${SVG_ICONS.download}
-            <span>${state.uiLang === 'en' ? 'Download' : 'Скачать'} (${escapeHtml(sizeLabel)})</span>
+            <span>${t('uiDownload')} (${escapeHtml(sizeLabel)})</span>
           </button>
         `;
       }
@@ -597,7 +606,7 @@ async function selectActiveWhisperModel(modelId) {
   });
   await loadSystemInfo();
   const pretty = formatModelName(modelId);
-  showToast(state.uiLang === 'en' ? `Speech model: ${pretty}` : `Модель речи: ${pretty}`);
+  showToast(t('modelSpeechPicked').replace('{name}', () => pretty));
 }
 
 // Where a downloaded model is on the disk, with its size and a button to show it in Explorer
@@ -607,12 +616,12 @@ function modelLocationHtml(path, mb, label) {
   return `<div class="mt-1.5 flex items-center gap-1.5 min-w-0 text-[10.5px] text-apple-tertiary">
       <span class="shrink-0">${escapeHtml(label || t('modelLocation'))}${size}:</span>
       <span class="font-mono truncate" title="${escapeHtml(path)}">${escapeHtml(path)}</span>
-      <button data-path="${escapeHtml(path)}" onclick="revealPath(this.dataset.path)" class="shrink-0 text-apple-blue hover:underline">${escapeHtml(t('modelReveal'))}</button>
+      <button data-path="${escapeHtml(path)}" data-click="revealPath" data-click-args='[{"$": "data", "k": "path"}]' class="shrink-0 text-apple-blue hover:underline">${escapeHtml(t('modelReveal'))}</button>
     </div>`;
 }
 
 async function confirmModelDelete(name, path) {
-  return confirmDialog(t('modelDeleteTitle'), t('modelDeleteText').replace('{name}', name) + (path ? `\n${path}` : ''), t('modelDeleteBtn'));
+  return confirmDialog(t('modelDeleteTitle'), t('modelDeleteText').replace('{name}', () => name) + (path ? `\n${path}` : ''), t('modelDeleteBtn'));
 }
 
 async function deleteWhisperModel(modelId) {
@@ -622,7 +631,7 @@ async function deleteWhisperModel(modelId) {
   const res = await fetch(`/api/models/${encodeURIComponent(modelId)}`, { method: 'DELETE' });
   if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
   await loadSystemInfo();
-  showToast(state.uiLang === 'en' ? `Deleted ${pretty} from disk` : `Модель ${pretty} удалена с диска`);
+  showToast(t('modelDeletedToast').replace('{name}', () => pretty));
 }
 
 async function deleteOllamaModel(name) {
@@ -630,7 +639,7 @@ async function deleteOllamaModel(name) {
   const res = await fetch(`/api/ollama/models/${encodeURIComponent(name)}`, { method: 'DELETE' });
   if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
   updateOllamaUI(await readJson(res));
-  showToast(t('modelDeleted').replace('{name}', formatModelName(name)));
+  showToast(t('modelDeleted').replace('{name}', () => formatModelName(name)));
 }
 
 function startWhisperPollingLoop(modelId) {
@@ -646,7 +655,7 @@ function startWhisperPollingLoop(modelId) {
         await loadSystemInfo();
         if (data.setup_state && data.setup_state.progress === 100) {
           const pretty = formatModelName(modelId);
-          showToast(state.uiLang === 'en' ? `${pretty} is ready!` : `Модель ${pretty} установлена и готова к работе!`);
+          showToast(t('modelReadyToast').replace('{name}', () => pretty));
         }
       }
     } catch (e) {}
@@ -662,7 +671,7 @@ async function startWhisperModelDownload(modelId) {
     active: true,
     model_id: modelId,
     progress: 1,
-    status: state.uiLang === 'en' ? `Starting download of ${pretty}` : `Запуск скачивания ${pretty}`,
+    status: t('modelDownloadStarting').replace('{name}', () => pretty),
     logs: []
   };
   syncSidebarDownloadWidget();
@@ -701,12 +710,12 @@ function updateOllamaUI(ollama) {
   const activeModel = document.getElementById('set-ollama-model').value || ollama.active_model || 'qwen2.5:7b';
 
   if (ollama.running) {
-    pill.textContent = state.uiLang === 'en' ? 'Ollama Active' : 'Ollama запущена';
+    pill.textContent = t('uiOllamaActive');
     pill.className = 'text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-apple-green/15 text-apple-green shrink-0';
   } else {
     pill.textContent = ollama.installed
-      ? (state.uiLang === 'en' ? 'Ollama not running' : 'Ollama не запущена')
-      : (state.uiLang === 'en' ? 'Ollama not installed' : 'Ollama не установлена');
+      ? t('uiOllamaNotRunning')
+      : t('uiOllamaNotInstalled');
     pill.className = 'text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-apple-amber/15 text-apple-amber shrink-0';
   }
 
@@ -726,21 +735,21 @@ function updateOllamaUI(ollama) {
       if (isPullingThis) {
         actionHtml = `<span class="ui-btn bg-apple-blue/20 text-apple-blue font-mono animate-pulse">${ps.progress || 1}%</span>`;
       } else if (item.installed) {
-        const del = `<button data-id="${escapeHtml(item.id)}" onclick="deleteOllamaModel(this.dataset.id)" title="${escapeHtml(t('tipDeleteModel'))}"
+        const del = `<button data-id="${escapeHtml(item.id)}" data-click="deleteOllamaModel" data-click-args='[{"$": "data", "k": "id"}]' title="${escapeHtml(t('tipDeleteModel'))}"
               class="ui-btn ui-btn-subtle px-2 hover:text-apple-red">${SVG_ICONS.trash}</button>`;
         actionHtml = isSelected
-          ? `<div class="flex items-center gap-1.5"><span class="ui-btn bg-apple-green/20 text-apple-green">${SVG_ICONS.check}<span>${state.uiLang === 'en' ? 'Active' : 'Активна'}</span></span>${del}</div>`
+          ? `<div class="flex items-center gap-1.5"><span class="ui-btn bg-apple-green/20 text-apple-green">${SVG_ICONS.check}<span>${t('uiActive')}</span></span>${del}</div>`
           : `<div class="flex items-center gap-1.5">
-          <button data-id="${escapeHtml(item.id)}" onclick="selectActiveOllamaModel(this.dataset.id)" title="${escapeHtml(t('tipSelectModel'))}"
+          <button data-id="${escapeHtml(item.id)}" data-click="selectActiveOllamaModel" data-click-args='[{"$": "data", "k": "id"}]' title="${escapeHtml(t('tipSelectModel'))}"
             class="ui-btn ui-btn-subtle text-white hover:bg-apple-blue">
-            ${state.uiLang === 'en' ? 'Select' : 'Выбрать'}
+            ${t('uiSelect')}
           </button>${del}</div>`;
       } else {
         actionHtml = `
-          <button data-id="${escapeHtml(item.id)}" onclick="pullOllamaModel(this.dataset.id)" title="${escapeHtml(t('tipDownloadModel'))}"
+          <button data-id="${escapeHtml(item.id)}" data-click="pullOllamaModel" data-click-args='[{"$": "data", "k": "id"}]' title="${escapeHtml(t('tipDownloadModel'))}"
             class="ui-btn ui-btn-primary">
             ${SVG_ICONS.download}
-            <span>${state.uiLang === 'en' ? 'Download' : 'Скачать'} (${escapeHtml(item.size)})</span>
+            <span>${t('uiDownload')} (${escapeHtml(item.size)})</span>
           </button>
         `;
       }
@@ -800,7 +809,7 @@ async function renderAnalysisEstimate() {
     html = `<span class="text-apple-green">${ICON_LOCK}</span><span class="text-apple-secondary">${escapeHtml(cloudSelected ? t('estLocalOnlyCloud') : t('estLocalOnly'))}</span>`;
   } else if (est.cloud) {
     const tokens = est.tokens >= 1000 ? `${(est.tokens / 1000).toFixed(est.tokens >= 10000 ? 0 : 1)} ${t('estThousand')}` : String(est.tokens);
-    html = `<span class="text-apple-amber">☁</span><span class="text-apple-secondary">${escapeHtml(t('estCloud').replace('{model}', est.label || '').replace('{tokens}', tokens))}</span>`;
+    html = `<span class="text-apple-amber">☁</span><span class="text-apple-secondary">${escapeHtml(t('estCloud').replace('{model}', () => est.label || '').replace('{tokens}', () => tokens))}</span>`;
   }
   box.innerHTML = html;
   box.classList.toggle('hidden', !html);
@@ -812,7 +821,7 @@ const ICON_LOCK = '<svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColo
 function renderWatchFolder(st) {
   document.getElementById('watch-folder-path').textContent = st.folder || t('watchOff');
   const box = document.getElementById('watch-folder-status');
-  box.textContent = st.error ? st.error : st.folder ? t('watchOn').replace('{n}', st.imported || 0) + (st.last_import ? ` · ${st.last_import}` : '') : '';
+  box.textContent = st.error ? st.error : st.folder ? t('watchOn').replace('{n}', () => st.imported || 0) + (st.last_import ? ` · ${st.last_import}` : '') : '';
   box.className = 'text-[11px] ' + (st.error ? 'text-apple-amber' : 'text-apple-tertiary');
 }
 
@@ -838,6 +847,35 @@ async function loadBackupInfo() {
   if (st && el) el.textContent = st.media_files ? `(${st.media_files} · ${st.media_mb} MB)` : '';
 }
 
+// Files in the data folder that no recording uses any more: shown with their size, removed on request
+async function loadOrphans() {
+  const st = await fetch('/api/storage/orphans').then(r => r.json()).catch(() => null);
+  const row = document.getElementById('orphans-row');
+  if (!row) return;
+  row.classList.toggle('hidden', !st || !st.files);
+  if (st && st.files) {
+    document.getElementById('orphans-text').textContent =
+      t('orphansFound').replace('{n}', () => st.files).replace('{size}', () => formatBytes(st.bytes));
+  }
+}
+
+async function deleteOrphans() {
+  if (!(await askConfirm(t('orphansConfirm'), true))) return;
+  const btn = document.getElementById('orphans-btn');
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/storage/orphans/delete', { method: 'POST' });
+    const data = await readJson(res);
+    if (!res.ok) throw new Error(data.detail || 'Error');
+    showToast(t('orphansDeleted').replace('{n}', () => data.files).replace('{size}', () => formatBytes(data.bytes)));
+  } catch (e) {
+    showToast(e.message);
+  } finally {
+    btn.disabled = false;
+    loadOrphans();
+  }
+}
+
 async function makeBackup() {
   const box = document.getElementById('backup-status');
   const btn = document.getElementById('backup-make-btn');
@@ -849,7 +887,7 @@ async function makeBackup() {
       body: JSON.stringify({ with_media: document.getElementById('backup-with-media').checked }) });
     const data = await readJson(res);
     if (!res.ok) throw new Error(data.detail || 'Error');
-    box.textContent = data.cancelled ? '' : t('backupMade').replace('{path}', data.path).replace('{mb}', data.size_mb);
+    box.textContent = data.cancelled ? '' : t('backupMade').replace('{path}', () => data.path).replace('{mb}', () => data.size_mb);
   } catch (e) {
     box.className = 'text-[11px] text-apple-amber';
     box.textContent = e.message;
@@ -868,7 +906,7 @@ async function restoreBackup() {
   if (!res.ok) { box.className = 'text-[11px] text-apple-amber'; box.textContent = data.detail || 'Error'; return; }
   if (data.cancelled) { box.textContent = ''; return; }
   box.className = 'text-[11px] text-apple-green';
-  box.textContent = t('backupRestored').replace('{n}', data.recordings).replace('{m}', data.media_restored);
+  box.textContent = t('backupRestored').replace('{n}', () => data.recordings).replace('{m}', () => data.media_restored);
 }
 
 // --- GigaAM / Parakeet on the NVIDIA GPU (app/onnx_gpu.py) ---
@@ -907,7 +945,7 @@ async function installOnnxGpu() {
 }
 
 async function removeOnnxGpu() {
-  if (!await askConfirm(t('onnxGpuRemoveConfirm'))) return;
+  if (!await askConfirm(t('onnxGpuRemoveConfirm'), true)) return;
   const data = await fetch('/api/onnx-gpu/remove', { method: 'POST' }).then(r => r.json()).catch(() => null);
   document.getElementById('set-onnx-gpu').checked = false;
   if (data) renderOnnxGpu(data);
@@ -934,7 +972,7 @@ async function checkCalendar() {
   const st = await fetch('/api/calendar/upcoming?refresh=true').then(r => r.json()).catch(() => null);
   if (!st || !st.configured) { box.textContent = source ? 'Error' : t('watchOff'); return; }
   if (st.error) { box.className = 'text-[11px] text-apple-amber'; box.textContent = st.error; return; }
-  box.textContent = t('calendarOk').replace('{n}', st.count).replace('{next}', st.events.length);
+  box.textContent = t('calendarOk').replace('{n}', () => st.count).replace('{next}', () => st.events.length);
 }
 
 // --- Calls recorded by themselves (app/call_watch.py) ---
@@ -966,7 +1004,7 @@ async function refreshCallMicNow() {
     // Program names as people know them: "chrome.exe" -> "chrome", no store package suffixes
     const names = [...new Set((st.mic_now || []).map(n => n.replace(/_[a-z0-9]{13}$/, '').replace(/\.exe$/i, '')))];
     box.textContent = `${t('callMicNow')}: ${names.length ? names.join(', ') : t('callMicNobody')}`
-      + (st.active ? ` · ${t('callActive').replace('{app}', st.active)}` : '')
+      + (st.active ? ` · ${t('callActive').replace('{app}', () => st.active)}` : '')
       + (st.running ? '' : ` · ${t('callWatcherOff')}`);
   }
 }
@@ -1012,27 +1050,57 @@ function clearHotkey() {
 }
 
 async function loadHotkeyStatus() {
-  const box = document.getElementById('hotkey-status');
   const st = await fetch('/api/hotkey').then(r => r.json()).catch(() => null);
-  if (!box || !st || st.ok === null || st.ok === undefined) { if (box) box.textContent = ''; return; }
-  box.textContent = st.ok ? t('hotkeyActive') : (st.error || t('hotkeyFailed'));
-  box.className = 'text-[11px] ' + (st.ok ? 'text-apple-green' : 'text-apple-amber');
+  // The recording hotkey, and the dictation with translation (registered by the tray, app/tray.py)
+  for (const [id, one] of [['hotkey-status', st], ['translate-hotkey-status', st && st.translate]]) {
+    const box = document.getElementById(id);
+    if (!box) continue;
+    if (!one || one.ok === null || one.ok === undefined) { box.textContent = ''; continue; }
+    box.textContent = one.ok ? t('hotkeyActive') : (one.error ? serverText(one.error) : t('hotkeyFailed'));
+    box.className = 'text-[11px] ' + (one.ok ? 'text-apple-green' : 'text-apple-amber');
+  }
+}
+
+// The languages a dictation can be translated into: the same as for text translation
+async function fillDictationTranslateLangs(value) {
+  const sel = document.getElementById('set-dictation-translate-to');
+  if (!sel) return;
+  sel.innerHTML = textLangOptions(await textLanguages(), false);
+  sel.value = value;
+  if (sel.value !== value) sel.value = 'en';
 }
 
 // Captions while recording: "auto" or one of the downloaded Whisper models
-// Upload and re-transcribe dialogs: the downloaded models (Whisper, GigaAM, Parakeet)
+// Upload and re-transcribe dialogs: every model (Whisper, GigaAM, Parakeet). One not downloaded yet
+// has ↓ and its size: the job downloads it first (app/transcriber.py), the hint under the list says so
+function modelSizeLabel(item) {
+  return item.size || (item.size_mb >= 1000 ? (item.size_mb / 1024).toFixed(1) + ' GB' : (item.size_mb || '') + ' MB');
+}
+
 function fillRecognitionSelects(list, active) {
-  const items = list.filter(i => i.installed);
+  if (!list.length) return;
+  const installed = list.filter(i => i.installed);
   ['upload-model', 'reconfig-model'].forEach(id => {
     const sel = document.getElementById(id);
     if (!sel) return;
-    if (!items.length) {  // nothing downloaded yet: no model to offer (a job would fail)
-      sel.innerHTML = `<option value="">${escapeHtml(t('noModelInstalled'))}</option>`;
-      return;
-    }
     const value = sel.value;
-    sel.innerHTML = items.map(i => `<option value="${escapeHtml(i.id)}">${escapeHtml(formatModelName(i.id))}</option>`).join('');
-    sel.value = items.some(i => i.id === value) ? value : (items.some(i => i.id === active) ? active : items[0].id);
+    sel.innerHTML = list.map(i => `<option value="${escapeHtml(i.id)}">${escapeHtml(formatModelName(i.id))}${
+      i.installed ? '' : `  ↓ ${escapeHtml(modelSizeLabel(i))}`}</option>`).join('');
+    sel.value = list.some(i => i.id === value) ? value
+      : list.some(i => i.id === active) ? active : (installed[0] || list[0]).id;
+  });
+  renderModelHints();
+}
+
+// Under the model lists: "not downloaded: downloads before the processing (1.5 GB)"
+function renderModelHints() {
+  ['upload-model', 'reconfig-model'].forEach(id => {
+    const sel = document.getElementById(id);
+    const hint = document.getElementById(`${id}-hint`);
+    if (!sel || !hint) return;
+    const item = (state.whisperCatalog || []).find(i => i.id === sel.value);
+    hint.classList.toggle('hidden', !item || item.installed);
+    if (item && !item.installed) hint.textContent = t('modelDownloadsFirst').replace('{size}', () => modelSizeLabel(item));
   });
 }
 
@@ -1053,7 +1121,7 @@ async function loadSemanticStatus() {
   if (!box) return;
   const st = await fetch('/api/semantic/status').then(r => r.json()).catch(() => null);
   if (!st) return;
-  const parts = [t('semanticIndexed').replace('{n}', st.indexed).replace('{total}', st.total)];
+  const parts = [t('semanticIndexed').replace('{n}', () => st.indexed).replace('{total}', () => st.total)];
   if (st.running) parts.push(t('semanticRunning'));
   box.textContent = parts.join(' · ');
   box.className = 'pl-6 text-[11px] ' + (st.error ? 'text-apple-amber' : 'text-apple-secondary');
@@ -1075,10 +1143,10 @@ function renderSemanticModelCard() {
   const action = pulling
     ? `<span class="ui-btn bg-apple-blue/20 text-apple-blue font-mono animate-pulse">${ps.progress || 1}%</span>`
     : installed
-      ? `<div class="flex items-center gap-1.5"><button onclick="buildSemanticIndex()" class="ui-btn ui-btn-subtle text-white hover:bg-apple-blue">${escapeHtml(t('semanticBuild'))}</button>
-          <button data-id="${escapeHtml((ollama.models || []).find(n => n === model || n.startsWith(model + ':')) || model)}" onclick="deleteOllamaModel(this.dataset.id)" title="${escapeHtml(t('tipDeleteModel'))}"
+      ? `<div class="flex items-center gap-1.5"><button data-click="buildSemanticIndex" class="ui-btn ui-btn-subtle text-white hover:bg-apple-blue">${escapeHtml(t('semanticBuild'))}</button>
+          <button data-id="${escapeHtml((ollama.models || []).find(n => n === model || n.startsWith(model + ':')) || model)}" data-click="deleteOllamaModel" data-click-args='[{"$": "data", "k": "id"}]' title="${escapeHtml(t('tipDeleteModel'))}"
             class="ui-btn ui-btn-subtle px-2 hover:text-apple-red">${SVG_ICONS.trash}</button></div>`
-      : `<button onclick="pullSemanticModel()" class="ui-btn ui-btn-primary">${SVG_ICONS.download}<span>${escapeHtml(t('semanticDownload'))} (1.2 GB)</span></button>`;
+      : `<button data-click="pullSemanticModel" class="ui-btn ui-btn-primary">${SVG_ICONS.download}<span>${escapeHtml(t('semanticDownload'))} (1.2 GB)</span></button>`;
   box.innerHTML = `<div class="p-3 rounded-xl border transition flex items-center justify-between gap-3 ${installed ? 'bg-apple-blue/10 border-apple-blue/50' : 'bg-apple-sidebar border-white/10'}">
     <div class="min-w-0 flex-1">
       <div class="flex items-center flex-wrap gap-2">
@@ -1191,7 +1259,7 @@ function renderLlmProvider(keepModel) {
   const hint = document.getElementById('llm-key-hint');
   hint.textContent = p.key.saved
     ? (p.key.readable ? t('llmKeySaved') : t('llmKeyUnreadable'))
-    : (p.keys_url ? t('llmKeyWhere').replace('{url}', p.keys_url) : t('llmKeyCompat'));
+    : (p.keys_url ? t('llmKeyWhere').replace('{url}', () => p.keys_url) : t('llmKeyCompat'));
   hint.className = `mt-1 text-[11px] leading-snug break-words select-text ${p.key.saved && !p.key.readable ? 'text-apple-red' : 'text-apple-tertiary'}`;
   const links = document.getElementById('llm-key-links');
   links.classList.toggle('hidden', !p.keys_url);
@@ -1224,7 +1292,7 @@ function renderLlmModelSelect(prov) {
   input.classList.toggle('hidden', !state.llmCustomModel);
   const hint = document.getElementById('llm-model-hint');
   hint.textContent = loaded
-    ? (custom ? t('llmModelNotInList') : t('llmModelsFromKey').replace('{n}', loaded.length))
+    ? (custom ? t('llmModelNotInList') : t('llmModelsFromKey').replace('{n}', () => loaded.length))
     : (p.key.saved ? '' : t('llmModelsAfterKey'));
   hint.className = `mt-1 text-[10.5px] leading-snug ${loaded && custom ? 'text-apple-amber' : 'text-apple-tertiary'}`;
 }
@@ -1307,13 +1375,13 @@ async function saveLlmKey() {
   state.llmCustomModel = false;
   renderLlmSettings();
   renderSummaryModelSelect();
-  if (data.model_changed) showToast(t('llmModelSwitched').replace('{model}', data.model));
+  if (data.model_changed) showToast(t('llmModelSwitched').replace('{model}', () => data.model));
   await testLlmConnection();
 }
 
 async function deleteLlmKey() {
   const provider = document.getElementById('set-llm-provider').value;
-  if (!await askConfirm(t('llmKeyDeleteConfirm'))) return;
+  if (!await askConfirm(t('llmKeyDeleteConfirm'), true)) return;
   await fetch(`/api/llm/key/${provider}`, { method: 'DELETE' });
   if (state.llmModels) delete state.llmModels[provider];
   await loadLlmStatus();
@@ -1336,10 +1404,10 @@ async function loadLlmModels(explicit) {
     // The chosen model is not available with this key: suggest the recommended one
     if (!state.llmCustomModel && data.recommended && !models.includes(input.value.trim())) {
       input.value = data.recommended;
-      if (explicit) showToast(t('llmModelSwitched').replace('{model}', data.recommended));
+      if (explicit) showToast(t('llmModelSwitched').replace('{model}', () => data.recommended));
     }
     renderLlmModelSelect(provider);
-    if (explicit) showToast(t('llmModelsLoaded').replace('{n}', models.length));
+    if (explicit) showToast(t('llmModelsLoaded').replace('{n}', () => models.length));
   } finally {
     btn.classList.remove('animate-spin');
   }
@@ -1355,7 +1423,7 @@ async function testLlmConnection() {
     const res = await fetch(`/api/llm/test/${provider}`, { method: 'POST' });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.detail || 'Error');
-    setLlmTestResult('ok', t('llmTestOk').replace('{model}', data.model).replace('{sec}', data.seconds));
+    setLlmTestResult('ok', t('llmTestOk').replace('{model}', () => data.model).replace('{sec}', () => data.seconds));
   } catch (e) {
     setLlmTestResult('err', e.message);
   } finally {
@@ -1445,7 +1513,7 @@ async function selectActiveOllamaModel(modelId) {
   });
   await loadSystemInfo();
   const pretty = formatModelName(modelId);
-  showToast(state.uiLang === 'en' ? `Selected LLM: ${pretty}` : `Выбрана модель: ${pretty}`);
+  showToast(t('llmPickedToast').replace('{name}', () => pretty));
 }
 
 async function saveAllSettings() {
@@ -1460,6 +1528,7 @@ async function saveAllSettings() {
       delete_media_after: String(document.getElementById('set-delete-media-after').checked),
       media_retention_days: document.getElementById('set-media-retention').value || '0',
       update_auto: String(document.getElementById('set-update-auto').checked),
+      update_beta: String(document.getElementById('set-update-beta').checked),
       quiet_mode: String(document.getElementById('set-quiet-mode').checked),
       vad_filter: String(document.getElementById('set-vad').checked),
       audio_enhance: String(document.getElementById('set-audio-enhance')?.checked !== false),
@@ -1480,26 +1549,35 @@ async function saveAllSettings() {
       record_hotkey: document.getElementById('set-record-hotkey')?.value.trim() || '',
       dictation_hotkey: document.getElementById('set-dictation-hotkey')?.value.trim() || '',
       dictation_language: document.getElementById('set-dictation-language')?.value || 'auto',
+      dictation_translate_hotkey: document.getElementById('set-translate-hotkey')?.value.trim() || '',
+      dictation_translate_to: document.getElementById('set-dictation-translate-to')?.value || 'en',
+      dictation_translate_cloud: document.getElementById('set-dictation-translate-cloud')?.checked ? 'true' : 'false',
       calendar_ics: document.getElementById('set-calendar-ics')?.value.trim() || '',
       onnx_gpu: document.getElementById('set-onnx-gpu')?.checked ? 'true' : 'false',
       ...callSettingsPayload(),
       ...dubSettingsPayload(),
     }
   };
-  // Close the modal immediately so the user is never blocked by background downloads
-  closeModal('settings');
-  showToast(state.uiLang === 'en' ? 'Settings saved' : 'Настройки сохранены');
-
+  // "Saved" only once the server has the settings: on an error the window stays open with them
+  let res;
   try {
-    await fetch('/api/settings', {
+    res = await fetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    await loadSystemInfo();
   } catch (e) {
-    console.error(e);
+    showToast(t('settingsSaveFailed').replace('{why}', () => String(e.message || e)));
+    return;
   }
+  if (!res.ok) {
+    const why = errorText(await readJson(res), res);
+    showToast(t('settingsSaveFailed').replace('{why}', () => why));
+    return;
+  }
+  closeModal('settings');
+  showToast(t('settingsSaved'));
+  loadSystemInfo().catch(console.error);
 }
 
 function pullCustomOllamaModel() {
@@ -1523,7 +1601,7 @@ function startOllamaPollingLoop(model) {
         await loadSystemInfo();
         if (data.pull_state && data.pull_state.progress === 100) {
           const pretty = formatModelName(model);
-          showToast(state.uiLang === 'en' ? `Model ${pretty} ready!` : `Модель ${pretty} установлена и активна!`);
+          showToast(t('llmReadyToast').replace('{name}', () => pretty));
         }
       }
     } catch (e) {}
@@ -1534,9 +1612,7 @@ async function pullOllamaModel(modelArg, makeActive = true) {
   const model = (modelArg || document.getElementById('set-ollama-model').value || 'qwen2.5:7b').trim();
   let allowInstall = false;
   if (state.system && state.system.ollama && !state.system.ollama.installed) {
-    allowInstall = await askConfirm(state.uiLang === 'en'
-      ? 'Ollama is not installed. Install it now via winget (package Ollama.Ollama, about 1 GB)?\n\nYou can also install it manually from https://ollama.com/download'
-      : 'Ollama не установлена. Установить её сейчас через winget (пакет Ollama.Ollama, около 1 ГБ)?\n\nМожно установить и вручную: https://ollama.com/download');
+    allowInstall = await askConfirmt('uiOllamaIsNotInstalled');
     if (!allowInstall) return;
   }
   if (makeActive) document.getElementById('set-ollama-model').value = model;  // not for the embedding model
@@ -1546,7 +1622,7 @@ async function pullOllamaModel(modelArg, makeActive = true) {
     active: true,
     model: model,
     progress: 1,
-    status: state.uiLang === 'en' ? `Starting download of ${pretty}` : `Запуск установки ${pretty}`,
+    status: t('llmInstallStarting').replace('{name}', () => pretty),
     logs: []
   };
   syncSidebarDownloadWidget();
@@ -1569,13 +1645,15 @@ async function pullOllamaModel(modelArg, makeActive = true) {
 // --- Dictionary ---
 async function loadDictionary() {
   const res = await fetch('/api/dictionary');
-  state.dictionary = await readJson(res);
+  const terms = await readJson(res);
+  if (!res.ok || !Array.isArray(terms)) return;
+  state.dictionary = terms;
   document.getElementById('dict-count-badge').textContent = state.dictionary.filter(d => d.active).length;
 
   const box = document.getElementById('dictionary-list');
   document.getElementById('dict-clear-btn').classList.toggle('hidden', state.dictionary.length === 0);
   if (state.dictionary.length === 0) {
-    box.innerHTML = `<div class="p-6 text-center text-xs text-apple-tertiary">—</div>`;
+    box.innerHTML = `<div class="p-6 text-center text-xs text-apple-tertiary">${escapeHtml(t('emptyDictionary'))}</div>`;
     return;
   }
 
@@ -1583,12 +1661,12 @@ async function loadDictionary() {
     <div class="flex items-center justify-between px-3.5 py-2 text-xs">
       <div class="flex items-center gap-2.5">
         <input type="checkbox" ${item.active ? 'checked' : ''}
-          onchange="toggleDictItem(${item.id}, this.checked)"
+          data-change="toggleDictItem" data-change-args='[${item.id}, {"$": "checked"}]'
           class="rounded bg-apple-bg border-white/20 text-apple-blue" />
         <span class="${item.active ? 'text-white' : 'text-apple-tertiary line-through'}">${escapeHtml(item.term)}</span>
         <span class="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-apple-secondary">${escapeHtml(item.category)}</span>
       </div>
-      <button onclick="deleteDictItem(${item.id})" title="${escapeHtml(t('tipDeleteDictTerm'))}" class="text-apple-tertiary hover:text-apple-red transition p-1">${SVG_ICONS.closeX}</button>
+      <button data-click="deleteDictItem" data-click-args='[${item.id}]' title="${escapeHtml(t('tipDeleteDictTerm'))}" class="text-apple-tertiary hover:text-apple-red transition p-1">${SVG_ICONS.closeX}</button>
     </div>
   `).join('');
 }
@@ -1608,7 +1686,7 @@ async function addDictionaryItems() {
 }
 
 async function clearDictionary() {
-  if (!await askConfirm(t('dictClearConfirm').replace('{n}', state.dictionary.length))) return;
+  if (!await askConfirm(t('dictClearConfirm').replace('{n}', () => state.dictionary.length), true)) return;
   await fetch('/api/dictionary', { method: 'DELETE' });
   await loadDictionary();
 }
@@ -1671,7 +1749,7 @@ function renderBench() {
   const box = document.getElementById('bench-models');
   box.innerHTML = models.length
     ? models.map(m => `<label class="flex items-center gap-1.5 cursor-pointer text-xs text-apple-label">
-        <input type="checkbox" ${picked.has(m.id) ? 'checked' : ''} ${d.running ? 'disabled' : ''} onchange="benchPick('${escapeHtml(m.id)}', this.checked)"
+        <input type="checkbox" ${picked.has(m.id) ? 'checked' : ''} ${d.running ? 'disabled' : ''} data-change="benchPick" data-change-args='[${jsArg(m.id)}, {"$": "checked"}]'
           class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
         <span>${escapeHtml(m.name || m.id)}</span>${m.engine === 'onnx' ? '<span class="text-[10px] text-apple-tertiary">CPU</span>' : ''}</label>`).join('')
     : `<span class="text-[11px] text-apple-tertiary">${escapeHtml(t(bench.kind === 'asr' ? 'benchNoAsr' : 'benchNoLlm'))}</span>`;
@@ -1688,7 +1766,7 @@ function renderBench() {
   const hist = (d.history || []).filter(h => h.kind === bench.kind);
   document.getElementById('bench-history').innerHTML = hist.length
     ? `<div class="flex items-center justify-between pt-2"><span class="text-[11px] uppercase tracking-wider text-apple-tertiary">${escapeHtml(t('benchHistory'))}</span>
-         <button onclick="clearBenchHistory()" class="text-[11px] text-apple-tertiary hover:text-white">${escapeHtml(t('benchClear'))}</button></div>`
+         <button data-click="clearBenchHistory" class="text-[11px] text-apple-tertiary hover:text-white">${escapeHtml(t('benchClear'))}</button></div>`
       + hist.map((h, i) => `<details class="rounded-lg border apple-border px-3 py-1.5" ${i === 0 && !live ? 'open' : ''}>
           <summary class="cursor-pointer text-[12px] text-apple-label">${escapeHtml(h.at)} · ${h.verified ? '✓ ' : ''}${escapeHtml(h.title)}${h.kind === 'asr' && !h.verified ? ` · <span class="text-apple-amber">${escapeHtml(t('benchNotVerified'))}</span>` : ''}${h.clip_sec ? ` · ${formatDurationShort(h.clip_sec)}` : ''}${h.ref_words ? ` · ${h.ref_words} ${escapeHtml(t('benchWords'))}` : ''}</summary>
           <div class="pt-2">${benchTable(h)}</div></details>`).join('')
@@ -1713,7 +1791,7 @@ function benchTable(run) {
   // The work, and under it the loading of the model (timed apart, each model from an empty memory)
   const timeCell = (r, isBest) => `<td class="px-2 py-1 text-right font-mono ${isBest ? 'text-apple-green' : ''}">${r.sec} s${r.load_sec != null
     ? `<div class="text-[10px] text-apple-tertiary font-sans">${escapeHtml(t('benchLoad'))} ${r.load_sec} s</div>` : ''}</td>`;
-  const useBtn = r => r.error ? '' : `<button onclick="benchUse('${run.kind}', '${escapeHtml(r.model)}')" class="text-[11px] text-apple-blue hover:underline">${escapeHtml(t('benchUse'))}</button>`;
+  const useBtn = r => r.error ? '' : `<button data-click="benchUse" data-click-args='[${jsArg(run.kind)}, ${jsArg(r.model)}]' class="text-[11px] text-apple-blue hover:underline">${escapeHtml(t('benchUse'))}</button>`;
   const mem = r => [r.vram_mb ? `${(r.vram_mb / 1024).toFixed(1)} GB VRAM` : '', r.ram_mb ? `${(r.ram_mb / 1024).toFixed(1)} GB RAM` : ''].filter(Boolean).join(' · ') || '—';
   const text = r => r.text ? `<details><summary class="cursor-pointer text-[11px] text-apple-tertiary">${escapeHtml(t('benchShowText'))}</summary>
       <div class="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap text-[11.5px] text-apple-secondary">${escapeHtml(r.text)}</div></details>` : '';

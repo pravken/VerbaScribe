@@ -9,18 +9,16 @@ function renderUpdateStatus() {
   const text = document.getElementById('update-status-text');
   const btn = document.getElementById('update-install-btn');
   if (!text || !info) return;
-  const en = state.uiLang === 'en';
   const dl = info.download || {};
-  let msg = (en ? 'Installed version ' : 'Установлена версия ') + info.current + '.';
-  if (dl.active) msg += en ? ` Downloading ${info.latest.version}… ${dl.progress}%` : ` Скачивание ${info.latest.version}… ${dl.progress}%`;
+  const ver = () => (info.latest || {}).version || '';
+  let msg = t('updInstalled').replace('{v}', () => info.current);
+  if (dl.active) msg += ' ' + t('updDownloading').replace('{v}', () => ver()).replace('{pct}', () => dl.progress);
   else if (dl.error) msg += ' ' + dl.error;
-  else if (info.available && dl.done) {
-    msg += en ? ` Version ${info.latest.version} is downloaded` : ` Версия ${info.latest.version} скачана`;
-    msg += info.auto ? (en ? ' and will be installed when you close the app.' : ' и установится при закрытии программы.') : '.';
-  } else if (info.available) {
-    msg += en ? ` Version ${info.latest.version} is available.` : ` Доступна версия ${info.latest.version}.`;
-  } else if (info.error) msg += (en ? ' Check failed: ' : ' Не удалось проверить: ') + info.error;
-  else if (info.checked_at) msg += en ? ' This is the latest version.' : ' Это последняя версия.';
+  else if (info.available && info.git_checkout) msg += ' ' + t('updGitClone').replace('{v}', () => ver());
+  else if (info.available && dl.done) msg += ' ' + t(info.auto ? 'updDownloadedOnExit' : 'updDownloaded').replace('{v}', () => ver());
+  else if (info.available) msg += ' ' + t('updAvailable').replace('{v}', () => ver());
+  else if (info.error) msg += ' ' + t('updCheckFailed').replace('{why}', () => info.error);
+  else if (info.checked_at) msg += ' ' + t('updLatest');
   text.textContent = msg;
   btn.classList.toggle('hidden', !info.can_install || !!dl.active);
   btn.textContent = dl.done ? t('updateRestartBtn') : t('updateInstallBtn');
@@ -33,15 +31,14 @@ async function checkForUpdates(force) {
   } catch (e) { return; }
   renderUpdateStatus();
   const info = updateState.info;
-  const en = state.uiLang === 'en';
   if (info.available && info.auto && (info.download || {}).active) {
     followUpdateDownload();  // started by the server (automatic updates): tell when it is ready
   } else if (!force && info.available && !updateState.notified) {
     updateState.notified = true;
-    showToast(en ? `VerbaScribe ${info.latest.version} is available` : `Доступна версия VerbaScribe ${info.latest.version}`,
-      { label: en ? 'Details' : 'Подробнее', onClick: () => openModal('settings', 'general') });
+    showToast(t('updToastAvailable').replace('{v}', () => info.latest.version),
+      { label: t('updDetails'), onClick: () => openModal('settings', 'general') });
   } else if (force && !info.available && !info.error) {
-    showToast(en ? 'You have the latest version' : 'У вас последняя версия');
+    showToast(t('updToastLatest'));
   }
 }
 
@@ -60,17 +57,14 @@ async function followUpdateDownload() {
   const info = updateState.info;
   if (info.download.done && !updateState.notified) {
     updateState.notified = true;
-    const en = state.uiLang === 'en';
-    showToast(en ? `VerbaScribe ${info.latest.version} is downloaded and will be installed when you close the app`
-      : `VerbaScribe ${info.latest.version} скачана и установится при закрытии программы`,
-      { label: en ? 'Restart now' : 'Перезапустить', onClick: () => installUpdate() });
+    showToast(t('updToastReady').replace('{v}', () => info.latest.version),
+      { label: t('updRestartNow'), onClick: () => installUpdate() });
   }
 }
 
 async function installUpdate() {
   const info = updateState.info;
   if (!info || !info.can_install) return;
-  const en = state.uiLang === 'en';
   if (!(info.download || {}).done) {
     if (updateState.polling) return;
     const r = await fetch('/api/update/download', { method: 'POST' });
@@ -87,13 +81,11 @@ async function installUpdate() {
     updateState.polling = false;
     if (!updateState.info.download.done) return;
   }
-  const ok = await askConfirm(en
-    ? `Install VerbaScribe ${info.latest.version}? The app will close, update itself and start again.`
-    : `Установить VerbaScribe ${info.latest.version}? Программа закроется, обновится и запустится снова.`);
+  const ok = await askConfirm(t('updInstallConfirm').replace('{v}', () => info.latest.version));
   if (!ok) return;
   const r = await fetch('/api/update/install', { method: 'POST' });
-  if (!r.ok) { showToast((await r.json()).detail || 'Error'); return; }
-  showToast(en ? 'Installing the update…' : 'Установка обновления…');
+  if (!r.ok) { showToast(errorText(await readJson(r), r)); return; }
+  showToast(t('updInstalling'));
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -194,11 +186,16 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   loadSystemInfo();
+  loadSeries();  // the series name in the context menu of a recording
   loadLlmStatus();
   setTimeout(() => checkForUpdates(false), 4000);  // after the page has settled; only if enabled in settings
   loadDictionary();
   loadVram();
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) scheduleVramRefresh(100); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    scheduleVramRefresh(100);
+    loadMeetingsList().then(loadQueue).catch(console.error);  // what changed while the window was in the tray
+  });
   startLiveUpdates();
   loadQueue().catch(console.error);
   pollMeetingsLoop();
@@ -228,7 +225,7 @@ async function loadSummaryTemplates() {
 function renderTemplateTabs() {
   const box = document.getElementById('sumtab-user-templates');
   if (!box) return;
-  box.innerHTML = (state.summaryTemplates || []).map(tpl => `<button onclick="selectSummaryTab(this.dataset.tab)" id="sumtab-tpl-${escapeHtml(tpl.id)}"
+  box.innerHTML = (state.summaryTemplates || []).map(tpl => `<button data-click="selectSummaryTab" data-click-args='[{"$": "data", "k": "tab"}]' id="sumtab-tpl-${escapeHtml(tpl.id)}"
       data-tab="tpl:${escapeHtml(tpl.id)}" title="${escapeHtml(tpl.prompt)}"
       class="apple-segment-btn text-apple-secondary hover:text-white">${escapeHtml(tpl.name)}</button>`).join('');
   selectSummaryTab(state.activeSummaryTab);
@@ -274,7 +271,7 @@ function renderChaptersBar() {
   const bar = document.getElementById('chapters-bar');
   bar.classList.toggle('hidden', _chapters.length < 2);
   document.getElementById('chapters-list').innerHTML = _chapters.map((c, i) =>
-    `<button onclick="seekPlayer(${c.start})" id="chapter-${i}" title="${escapeHtml(c.desc || c.title)}"
+    `<button data-click="seekPlayer" data-click-args='[${Number(c.start) || 0}]' id="chapter-${i}" title="${escapeHtml(c.desc || c.title)}"
       class="chapter-chip"><span class="font-mono text-apple-tertiary">${formatTime(c.start)}</span> ${escapeHtml(c.title)}</button>`
   ).join('');
 }
@@ -301,7 +298,7 @@ async function clearSummaryTab() {
   if (!m) return;
   const tab = state.activeSummaryTab;
   const label = document.getElementById(`sumtab-${tab.startsWith('tpl:') ? 'tpl-' + tab.slice(4) : tab}`)?.textContent.trim() || t('tabSummary');
-  if (!(await confirmDialog(t('clearTabTitle').replace('{tab}', label), t('clearTabText'), t('clearBtn')))) return;
+  if (!(await confirmDialog(t('clearTabTitle').replace('{tab}', () => label), t('clearTabText'), t('clearBtn')))) return;
   let res;
   if (tab === 'mynotes') {
     res = await fetch(`/api/meetings/${m.id}/notes`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notes: '' }) });
@@ -419,10 +416,10 @@ function openTemplatesEditor() {
 // --- Commitments (app/commitments.py): who promised what to whom, by when ---
 function commitmentRowHtml(c, withMeeting) {
   const who = escapeHtml(c.who || '—') + (c.to_whom ? ` <span class="text-apple-tertiary">→ ${escapeHtml(c.to_whom)}</span>` : '');
-  const ts = c.at != null ? ` <button data-mid="${c.meeting_id}" data-at="${c.at}" onclick="openCommitmentPlace(this)" class="font-mono text-[11px] text-apple-blue hover:underline">[${formatTime(c.at)}]</button>` : '';
+  const ts = c.at != null ? ` <button data-mid="${c.meeting_id}" data-at="${c.at}" data-click="openCommitmentPlace" data-click-args='[{"$": "el"}]' class="font-mono text-[11px] text-apple-blue hover:underline">[${formatTime(c.at)}]</button>` : '';
   const where = withMeeting ? `<div class="text-[10.5px] text-apple-tertiary mt-0.5">${escapeHtml(c.meeting_title || '')} · ${escapeHtml(c.meeting_date || '')}</div>` : '';
   return `<label class="flex items-start gap-2.5 py-2 border-b border-white/5 cursor-pointer ${c.status === 'done' ? 'opacity-50' : ''}">
-      <input type="checkbox" ${c.status === 'done' ? 'checked' : ''} data-cid="${c.id}" onchange="toggleCommitment(this)" class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+      <input type="checkbox" ${c.status === 'done' ? 'checked' : ''} data-cid="${c.id}" data-change="toggleCommitment" data-change-args='[{"$": "el"}]' class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
       <span class="min-w-0 text-[13px] text-apple-label leading-snug"><span class="font-medium text-white">${who}</span>: ${escapeHtml(c.what)}${c.due ? ` <span class="text-apple-amber text-[11.5px]">(${escapeHtml(c.due)})</span>` : ''}${ts}${where}</span>
     </label>`;
 }
@@ -459,7 +456,7 @@ async function extractCommitments() {
 
 // Promises as tasks for another app: Markdown (Obsidian, Notion), Todoist's CSV, a table
 function commitmentExportBar(meetingId) {
-  const b = (fmt, label) => `<button onclick="exportCommitments('${fmt}', ${meetingId == null ? 'null' : meetingId})" class="ui-btn ui-btn-subtle h-7 text-[11px]">${escapeHtml(label)}</button>`;
+  const b = (fmt, label) => `<button data-click="exportCommitments" data-click-args='[${jsArg(fmt)}, ${jsArg(meetingId)}]' class="ui-btn ui-btn-subtle h-7 text-[11px]">${escapeHtml(label)}</button>`;
   return `<div class="flex flex-wrap items-center gap-1.5 pt-3">
       <span class="text-[11px] text-apple-tertiary mr-1">${escapeHtml(t('commitmentsExport'))}</span>
       ${b('md', 'Markdown')}${b('todoist', 'Todoist')}${b('csv', t('commitmentsTable'))}
@@ -527,8 +524,8 @@ function renderNoModelCard(box) {
       <div class="text-sm font-semibold text-white">${escapeHtml(t('noAiTitle'))}</div>
       <p class="text-[12px] text-apple-secondary leading-relaxed">${escapeHtml(t('noAiText'))}</p>
       <div class="flex justify-center gap-2 pt-1">
-        <button onclick="pullOllamaModel(firstRunPicks(state.system || {}, state.uiLang).llm, true)" class="ui-btn ui-btn-primary">${escapeHtml(t('noAiLocal'))}</button>
-        <button onclick="openModal('settings', 'analysis')" class="ui-btn ui-btn-subtle">${escapeHtml(t('noAiCloud'))}</button>
+        <button data-click="pullFirstRunLlm" class="ui-btn ui-btn-primary">${escapeHtml(t('noAiLocal'))}</button>
+        <button data-click="openModal" data-click-args='["settings", "analysis"]' class="ui-btn ui-btn-subtle">${escapeHtml(t('noAiCloud'))}</button>
       </div>
     </div>`;
 }
@@ -704,7 +701,7 @@ async function generateSummaryForActiveTab() {
   const box = document.getElementById('summary-content');
   const { chosenModel, prettyModel } = summaryModelChoice();
   btn.disabled = true;
-  box.innerHTML = `<div class="py-12 flex items-center justify-center gap-2 text-xs text-apple-secondary animate-pulse"><span>${state.uiLang === 'en' ? 'Generating analysis' : 'Формирование анализа'}</span><span class="px-2 py-0.5 rounded-md bg-white/10 text-white font-medium">${escapeHtml(prettyModel)}</span></div>`;
+  box.innerHTML = `<div class="py-12 flex items-center justify-center gap-2 text-xs text-apple-secondary animate-pulse"><span>${t('uiGeneratingAnalysis')}</span><span class="px-2 py-0.5 rounded-md bg-white/10 text-white font-medium">${escapeHtml(prettyModel)}</span></div>`;
 
   const forId = state.activeMeeting.id;  // the answer may come minutes later, for another recording
   try {
@@ -734,7 +731,7 @@ async function runCustomQuestion() {
 
   const { chosenModel, prettyModel } = summaryModelChoice();
   const box = document.getElementById('summary-content');
-  box.innerHTML = `<div class="py-12 flex items-center justify-center gap-2 text-xs text-apple-secondary animate-pulse"><span>${state.uiLang === 'en' ? 'Searching for answer' : 'Поиск ответа'}</span><span class="px-2 py-0.5 rounded-md bg-white/10 text-white font-medium">${escapeHtml(prettyModel)}</span></div>`;
+  box.innerHTML = `<div class="py-12 flex items-center justify-center gap-2 text-xs text-apple-secondary animate-pulse"><span>${t('uiSearchingForAnswer')}</span><span class="px-2 py-0.5 rounded-md bg-white/10 text-white font-medium">${escapeHtml(prettyModel)}</span></div>`;
 
   const forId = state.activeMeeting.id;
   try {
@@ -760,7 +757,7 @@ function copySummaryText() {
   const text = ((state.activeMeeting.summaries || {})[state.activeSummaryTab] || '').replaceAll('[?]', `(${t('unverifiedBadge')})`);
   if (!text) return;
   navigator.clipboard.writeText(text);
-  showToast(state.uiLang === 'en' ? 'Copied' : 'Скопировано');
+  showToastt('uiCopied');
 }
 
 // --- Export ---
@@ -876,7 +873,7 @@ async function refreshRecordingsDirLabel() {
     el.title = data.folder || '';
     document.getElementById('recdir-reset-btn').classList.toggle('hidden', !data.folder || data.folder === data.default);
     const uploads = state.system && state.system.paths && state.system.paths.uploads;
-    document.getElementById('set-imports-dir').textContent = uploads ? t('recDirImports').replace('{dir}', uploads) : '';
+    document.getElementById('set-imports-dir').textContent = uploads ? t('recDirImports').replace('{dir}', () => uploads) : '';
   } catch (e) {}
 }
 
@@ -986,8 +983,8 @@ function updateObsidianPreview() {
   const m = state.activeMeeting;
   const d = new Date();
   const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  const name = tpl.replace('{date}', date).replace('{time}', `${String(d.getHours()).padStart(2, '0')}-${String(d.getMinutes()).padStart(2, '0')}`)
-    .replace('{title}', (m && m.title) || t('obsExampleTitle')).replace('{lang}', ((m && m.language) || 'ru').toUpperCase());
+  const name = tpl.replace('{date}', () => date).replace('{time}', () => `${String(d.getHours()).padStart(2, '0')}-${String(d.getMinutes()).padStart(2, '0')}`)
+    .replace('{title}', () => (m && m.title) || t('obsExampleTitle')).replace('{lang}', () => ((m && m.language) || 'ru').toUpperCase());
   const sep = vault.includes('/') && !vault.includes('\\') ? '/' : '\\';
   document.getElementById('obs-preview').textContent = vault
     ? `${t('obsPreview')}: ${[vault, sub, name + '.md'].filter(Boolean).join(sep)}`
@@ -1042,13 +1039,9 @@ function openExportDir() {
   if (el && el.textContent) revealPath(el.textContent);
 }
 
-async function exportCurrentMeeting(fmt, opts) {
-  document.getElementById('export-menu')?.classList.add('hidden');
-  if (!state.activeMeeting) {
-    showToast(state.uiLang === 'en' ? 'Select a recording first' : 'Сначала выберите запись');
-    return;
-  }
-  await exportMeetingById(state.activeMeeting.id, fmt, opts);
+// The language model the first-run wizard picks, downloaded from its card
+function pullFirstRunLlm() {
+  pullOllamaModel(firstRunPicks(state.system || {}, state.uiLang).llm, true);
 }
 
 function escapeHtml(str) {
@@ -1058,6 +1051,12 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+// A value as JSON for the arguments of an event (core.js PAGE_EVENTS): data-click="f" data-click-args='[${jsArg(name)}]'.
+// Any text is safe there (quotes included); a value never goes in without it, or Number() for numbers.
+function jsArg(value) {
+  return escapeHtml(JSON.stringify(value ?? null));
 }
 
 // --- "Details" tab: where the file is, what it is, and what was done with it ---
@@ -1109,8 +1108,8 @@ function renderMeetingInfo(info) {
       <div class="divide-y divide-white/5">${rows}</div>
     </div>` : '';
   const pathActions = (p) => p ? `
-    <button onclick="revealPath(this.dataset.p)" data-p="${escapeHtml(p)}" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]">${escapeHtml(t('showInFolder'))}</button>
-    <button onclick="copyText(this.dataset.p)" data-p="${escapeHtml(p)}" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]">${escapeHtml(t('copyPath'))}</button>` : '';
+    <button data-click="revealPath" data-click-args='[{"$": "data", "k": "p"}]' data-p="${escapeHtml(p)}" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]">${escapeHtml(t('showInFolder'))}</button>
+    <button data-click="copyText" data-click-args='[{"$": "data", "k": "p"}]' data-p="${escapeHtml(p)}" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]">${escapeHtml(t('copyPath'))}</button>` : '';
 
   const media = info.media || {};
   const probe = info.probe || {};
@@ -1142,11 +1141,13 @@ function renderMeetingInfo(info) {
     + row(t('infoBitrate'), probe.bitrate_kbps ? `${probe.bitrate_kbps} kbps` : ''));
 
   html += card(t('infoProcessing'),
-    row(t('infoStatus'), t(`status_${info.status}`) || info.status)
+    row(t('infoStatus'), tMaybe(`status_${info.status}`) || info.status)
     + row(t('infoModel'), formatModelName(info.model_name))
-    + row(t('infoLanguage'), info.language ? `${langName(info.language)} (${String(info.language).toUpperCase()})` : '')
-    + row(t('infoCounts'), t('infoCountsValue').replace('{spk}', info.speakers).replace('{seg}', info.segments).replace('{words}', info.words))
-    + row(t('infoAnalyses'), (info.summaries || []).map(k => t(`summaryName_${k}`) || k).join(', '))
+    + row(t('infoLanguage'), !info.language ? '' : info.language === 'auto' ? t('studioSpeechAuto')
+      : `${langName(info.language)} (${String(info.language).toUpperCase()})`)
+    + row(t('infoCounts'), t('infoCountsValue').replace('{spk}', () => info.speakers).replace('{seg}', () => info.segments).replace('{words}', () => info.words))
+    + row(t('infoAnalyses'), (info.summaries || []).filter(k => k !== 'error')
+      .map(k => tMaybe(`summaryName_${k}`) || ((state.summaryTemplates || []).find(x => x.id === k) || {}).name || k).join(', '))
     + row(t('infoTranslations'), (info.translations || []).map(c => langName(c)).join(', '))
     + row(t('infoWorkAudio'), info.audio && info.audio.exists ? `${info.audio.path} · ${formatBytes(info.audio.size)}` : '', { mono: true }));
 
@@ -1159,8 +1160,8 @@ function renderMeetingInfo(info) {
   }
   if ((info.pending_exports || []).length) {
     html += `<div class="rounded-xl border border-apple-amber/40 bg-apple-amber/10 px-4 py-3 text-xs text-apple-amber flex items-center justify-between gap-3">
-      <span>${escapeHtml(t('infoPendingExports').replace('{n}', info.pending_exports.length))}</span>
-      <button onclick="cancelPendingExports(${info.id})" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]">${escapeHtml(t('cancel'))}</button>
+      <span>${escapeHtml(t('infoPendingExports').replace('{n}', () => info.pending_exports.length))}</span>
+      <button data-click="cancelPendingExports" data-click-args='[${info.id}]' class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]">${escapeHtml(t('cancel'))}</button>
     </div>`;
   }
   box.innerHTML = html;
@@ -1226,7 +1227,7 @@ function textMenuItems(e) {
     const wordEl = el.closest && el.closest('.word-token');
     const word = wordEl ? wordEl.textContent.replace(/^[\s.,!?;:«»"'()]+|[\s.,!?;:«»"'()]+$/g, '') : '';
     if (word) {
-      items.push({ label: t('ctxAddWordToDictionary').replace('{word}', word), run: () => addToDictionary(word) });
+      items.push({ label: t('ctxAddWordToDictionary').replace('{word}', () => word), run: () => addToDictionary(word) });
       items.push({ label: t('ctxPlayFromHere'), key: formatTime(Number(wordEl.dataset.start)), run: () => seekPlayer(Number(wordEl.dataset.start)) });
       items.push({ sep: true });
     }
@@ -1318,7 +1319,7 @@ function findEverywhere(text) {
 function askAbout(text) {
   const inLibrary = !document.getElementById('library-view')?.classList.contains('hidden');
   const scope = inLibrary && state.activeMeeting ? { type: 'meeting', id: state.activeMeeting.id } : null;
-  openLibraryAsk(t('ctxAskTemplate').replace('{text}', text.length > 300 ? text.slice(0, 300) + '…' : text), scope);
+  openLibraryAsk(t('ctxAskTemplate').replace('{text}', () => text.length > 300 ? text.slice(0, 300) + '…' : text), scope);
 }
 
 async function addToDictionary(text) {
@@ -1330,7 +1331,7 @@ async function addToDictionary(text) {
     body: JSON.stringify({ term, category: 'Термин' }),
   });
   if (res.ok) {
-    showToast(t('ctxAddedToDictionary').replace('{term}', term));
+    showToast(t('ctxAddedToDictionary').replace('{term}', () => term));
     loadDictionary();
   }
 }
@@ -1341,6 +1342,12 @@ document.addEventListener('contextmenu', (e) => {
   const items = textMenuItems(e);
   if (!items || !items.some(i => !i.sep)) return;
   e.preventDefault();
+  openTextMenuAt(items, e.clientX, e.clientY);
+});
+
+// A small menu of items ({label, key, run, disabled} or {sep}) at a point of the window
+function openTextMenuAt(items, x, y) {
+  closeTextMenu();
   closeQuickLangMenu();
   const menu = document.createElement('div');
   menu.id = 'text-menu';
@@ -1349,7 +1356,7 @@ document.addEventListener('contextmenu', (e) => {
   menu.innerHTML = clean.map((it, i) => it.sep
     ? '<div class="my-1 h-px bg-white/10"></div>'
     : `<button class="macos-menu-item gap-6" data-i="${i}" ${it.disabled ? 'disabled style="opacity:.4"' : ''}><span>${escapeHtml(it.label)}</span>`
-      + `<span class="text-[10.5px] opacity-50 font-mono">${escapeHtml(it.key || '')}</span></button>`).join('');
+      + `<span class="text-[10.5px] opacity-80 font-mono">${escapeHtml(it.key || '')}</span></button>`).join('');
   // Keeps the selection: a click in the menu must not clear it before the action reads it
   menu.addEventListener('mousedown', ev => ev.preventDefault());
   menu.addEventListener('click', (ev) => {
@@ -1361,9 +1368,9 @@ document.addEventListener('contextmenu', (e) => {
   });
   document.body.appendChild(menu);
   const r = menu.getBoundingClientRect();
-  menu.style.left = `${Math.max(4, Math.min(e.clientX, window.innerWidth - r.width - 4))}px`;
-  menu.style.top = `${Math.max(4, Math.min(e.clientY, window.innerHeight - r.height - 4))}px`;
-});
+  menu.style.left = `${Math.max(4, Math.min(x, window.innerWidth - r.width - 4))}px`;
+  menu.style.top = `${Math.max(4, Math.min(y, window.innerHeight - r.height - 4))}px`;
+}
 document.addEventListener('click', closeTextMenu);
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeTextMenu(); });
 window.addEventListener('blur', closeTextMenu);

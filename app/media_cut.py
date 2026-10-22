@@ -12,6 +12,7 @@ The original file is never changed; video is re-encoded (cuts must land on any f
 
 import re
 import subprocess
+import threading
 import tempfile
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -153,15 +154,27 @@ def run_cut(ffmpeg: str, media: Path, intervals: List[Interval], has_video: bool
     total = max(0.1, kept_seconds(intervals))
     with tempfile.TemporaryDirectory() as tmp:
         cmd = cut_command(ffmpeg, media, intervals, has_video, out, Path(tmp) / "cut.txt", afilter)
-        with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                              encoding="utf-8", errors="replace", creationflags=_NO_WINDOW) as proc:
+        from app.shutdown import track
+
+        with track(subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                    encoding="utf-8", errors="replace", creationflags=_NO_WINDOW)) as proc:
             _follow(proc, total, out, on_progress, check_cancel)
     return out
 
 
 def _follow(proc: subprocess.Popen, total: float, out: Path, on_progress: Callable[[float], None],
             check_cancel: Callable[[], None]) -> None:
-    """Reports FFmpeg's progress (-progress pipe:1) and stops it on a cancel."""
+    """Reports FFmpeg's progress (-progress pipe:1) and stops it on a cancel. Its messages are read
+    all the time: a full stderr pipe (a source with many decoding errors) would stop FFmpeg."""
+    err_tail: List[str] = []
+
+    def _drain() -> None:
+        for err in proc.stderr:
+            err_tail.append(err.rstrip())
+            del err_tail[:-20]
+
+    drain = threading.Thread(target=_drain, daemon=True, name="cut_stderr")
+    drain.start()
     try:
         for line in proc.stdout:
             check_cancel()
@@ -177,4 +190,5 @@ def _follow(proc: subprocess.Popen, total: float, out: Path, on_progress: Callab
         raise
     if proc.returncode != 0:
         out.unlink(missing_ok=True)
-        raise RuntimeError("FFmpeg: " + (proc.stderr.read() or "")[-300:])
+        drain.join(timeout=2)
+        raise RuntimeError("FFmpeg: " + "\n".join(err_tail)[-300:])

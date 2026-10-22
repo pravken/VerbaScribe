@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from fastapi import HTTPException
 from pydantic import BaseModel
-from app.database import get_meeting, is_local_only, save_meeting_results, update_meeting_fields
+from app.database import edit_meeting, get_meeting, is_local_only, update_meeting_fields
 from app.ollama_client import generate_meeting_summary
 from app.text_utils import realign_words
 
@@ -146,40 +146,64 @@ def api_update_segment(
     meeting_id: int, segment_id: int, payload: SegmentUpdatePayload
 ) -> Dict[str, Any]:
     _ensure_not_transcribing(meeting_id)
-    m = get_meeting(meeting_id)
-    if not m:
+    if payload.text is not None and not payload.text.strip():
+        raise HTTPException(status_code=400, detail="Текст реплики не может быть пустым")
+
+    def change(m: Dict[str, Any]) -> tuple:
+        if payload.speaker is not None and payload.speaker not in (m.get("speakers") or {}):
+            raise HTTPException(status_code=400, detail="Неизвестный участник")
+        seg = next((s for s in m.get("segments") or [] if int(s.get("id", -1)) == segment_id), None)
+        if seg is None:
+            raise HTTPException(status_code=404, detail="Реплика не найдена")
+        if payload.text is not None:
+            new_text = payload.text.strip()
+            if new_text != (seg.get("text") or "").strip():
+                # The player renders words, so they must follow the edited text
+                seg["words"] = realign_words(
+                    seg.get("words") or [],
+                    new_text,
+                    float(seg.get("start", 0.0)),
+                    float(seg.get("end", 0.0)),
+                )
+                seg["text"] = new_text
+        if payload.speaker is not None:
+            seg["speaker"] = payload.speaker
+        return ("segments",)
+
+    m = edit_meeting(meeting_id, change)
+    if m is None:
         raise HTTPException(status_code=404, detail="Встреча не найдена")
+    return m
 
-    if payload.speaker is not None and payload.speaker not in (m.get("speakers") or {}):
-        raise HTTPException(status_code=400, detail="Неизвестный участник")
+class AlternativePayload(BaseModel):
+    word: int
+    text: str
 
-    segments = m.get("segments") or []
-    found = False
-    for seg in segments:
-        if int(seg.get("id", -1)) == segment_id:
-            if payload.text is not None:
-                new_text = payload.text.strip()
-                if not new_text:
-                    raise HTTPException(status_code=400, detail="Текст реплики не может быть пустым")
-                if new_text != (seg.get("text") or "").strip():
-                    # The player renders words, so they must follow the edited text
-                    seg["words"] = realign_words(
-                        seg.get("words") or [],
-                        new_text,
-                        float(seg.get("start", 0.0)),
-                        float(seg.get("end", 0.0)),
-                    )
-                    seg["text"] = new_text
-            if payload.speaker is not None:
-                seg["speaker"] = payload.speaker
-            found = True
-            break
 
-    if not found:
-        raise HTTPException(status_code=404, detail="Реплика не найдена")
+@router.post("/api/meetings/{meeting_id}/segments/{segment_id}/alternative")
+def api_choose_alternative(meeting_id: int, segment_id: int, payload: AlternativePayload) -> Dict[str, Any]:
+    """A disputed word of a merged transcript: another model's variant (app/transcript_merge.py)."""
+    from app.transcript_merge import choose_alternative
 
-    save_meeting_results(meeting_id, segments=segments)
-    return get_meeting(meeting_id)
+    _ensure_not_transcribing(meeting_id)
+
+    def change(m: Dict[str, Any]) -> tuple:
+        seg = next((s for s in m.get("segments") or [] if int(s.get("id", -1)) == segment_id), None)
+        if seg is None:
+            raise HTTPException(status_code=404, detail="Реплика не найдена")
+        try:
+            choose_alternative(seg, payload.word, payload.text)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        if not seg["text"]:
+            raise HTTPException(status_code=400, detail="Текст реплики не может быть пустым")
+        return ("segments",)
+
+    m = edit_meeting(meeting_id, change)
+    if m is None:
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    return m
+
 
 @router.post("/api/meetings/{meeting_id}/segments/{segment_id}/merge")
 def api_merge_segment(meeting_id: int, segment_id: int) -> Dict[str, Any]:

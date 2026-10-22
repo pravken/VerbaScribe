@@ -6,7 +6,7 @@ The job queue and live caption sessions live in this process. Recording happens 
 """
 
 import time
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 _ui: Dict[str, Any] = {"recording": False, "since": 0.0}
 
@@ -21,6 +21,40 @@ KIND_LABELS = {
 
 def set_recording(active: bool) -> None:
     _ui.update(recording=bool(active), since=time.time() if active else 0.0)
+
+
+def background() -> List[str]:
+    """Work outside the queue that closing the app would cut off: downloads, installs, a backup."""
+    out: List[str] = []
+
+    def check(label: str, active) -> None:
+        try:
+            if active():
+                out.append(label)
+        except Exception:
+            pass
+
+    from app import asr_onnx, backup, dictation, dub_setup, ffmpeg_manager, model_manager, onnx_gpu
+
+    check("Скачивание модели", lambda: model_manager._setup_state.get("active")
+          or any(d.get("active") for d in asr_onnx._downloads.values()))
+    check("Скачивание FFmpeg", lambda: ffmpeg_manager._state.get("active"))
+    check("Установка ускорения видеокарты", lambda: onnx_gpu._state.get("installing"))
+    check("Установка дубляжа", lambda: dub_setup._state.get("active"))
+    check("Резервная копия", lambda: backup.busy > 0)
+    check("Диктовка", lambda: dictation._state.get("active"))
+    check("Скачивание по ссылке", _downloading)
+    return out
+
+
+def _downloading() -> bool:
+    from app.database import _db_lock, get_connection
+
+    with _db_lock:
+        conn = get_connection()
+        row = conn.execute("SELECT 1 FROM meetings WHERE status = 'downloading' LIMIT 1").fetchone()
+        conn.close()
+    return row is not None
 
 
 def snapshot() -> Dict[str, Any]:
@@ -47,8 +81,9 @@ def snapshot() -> Dict[str, Any]:
         text = f"{label}: {title} · {int(running.get('progress') or 0)}%"
         state = "busy"
     else:
-        text = "Готово к работе"
-        state = "idle"
+        others = background()
+        text = " · ".join(others) if others else "Готово к работе"
+        state = "busy" if others else "idle"
     if waiting:
         text += f" · в очереди: {waiting}"
     return {"state": state, "text": text, "queue": queue, "recording": _ui["recording"]}

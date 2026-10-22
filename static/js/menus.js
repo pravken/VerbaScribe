@@ -35,12 +35,12 @@ function renderExportMenu() {
   const header = (label, extra = '') =>
     `<div class="px-2.5 pt-2 pb-1 flex items-center justify-between gap-2"><span class="text-[10px] font-semibold uppercase tracking-wider text-apple-secondary">${escapeHtml(label)}</span>${extra}</div>`;
   const item = (payload, label, tag, hint) =>
-    `<button onclick='runExport(${JSON.stringify(payload)})' class="macos-menu-item gap-3" ${hint ? `title="${escapeHtml(hint)}"` : ''}>`
-    + `<span class="truncate">${escapeHtml(label)}</span><span class="text-[10.5px] opacity-60 shrink-0">${escapeHtml(tag)}</span></button>`;
+    `<button data-click="runExport" data-click-args='[${jsArg(payload)}]' class="macos-menu-item gap-3" ${hint ? `title="${escapeHtml(hint)}"` : ''}>`
+    + `<span class="truncate">${escapeHtml(label)}</span><span class="text-[10.5px] opacity-80 shrink-0">${escapeHtml(tag)}</span></button>`;
   const note = (text, cls = 'text-apple-tertiary') => `<div class="px-2.5 pb-1 text-[10.5px] leading-snug ${cls}">${escapeHtml(text)}</div>`;
   const sep = '<div class="my-1 border-t border-white/10"></div>';
-  const langSelect = (id, onchange, options) =>
-    `<select id="${id}" onchange="${onchange}" onclick="event.stopPropagation()" class="h-6 max-w-[150px] bg-apple-sidebar border apple-border rounded-md px-1.5 text-[11px] text-white focus:outline-none">${options}</select>`;
+  const langSelect = (id, fn, options) =>
+    `<select id="${id}" ${pageCall('change', fn, [{ $: 'value' }])} ${pageCall('click', 'stopEvent', [{ $: 'event' }])} class="h-6 max-w-[150px] bg-apple-sidebar border apple-border rounded-md px-1.5 text-[11px] text-white focus:outline-none">${options}</select>`;
 
   let html = '';
   if (busy) html += note(t('exportWhileProcessing'), 'text-apple-amber');
@@ -57,8 +57,8 @@ function renderExportMenu() {
 
   const trOptions = (have.length ? `<optgroup label="${escapeHtml(t('exportLangReady'))}">${have.map(c => `<option value="${c}" ${c === trLang ? 'selected' : ''}>✓ ${escapeHtml(langName(c))}</option>`).join('')}</optgroup>` : '')
     + `<optgroup label="${escapeHtml(t('exportLangNew'))}">${others.map(o => `<option value="${o.c}" ${o.c === trLang ? 'selected' : ''}>${escapeHtml(o.n)}</option>`).join('')}</optgroup>`;
-  html += sep + header(t('exportGroupTr'), langSelect('export-tr-lang', 'setExportLang(this.value)', trOptions));
-  if (!trReady) html += note(t('exportTrWillRun').replace('{lang}', langName(trLang)));
+  html += sep + header(t('exportGroupTr'), langSelect('export-tr-lang', 'setExportLang', trOptions));
+  if (!trReady) html += note(t('exportTrWillRun').replace('{lang}', () => langName(trLang)));
   const tr = (fmt, variant, label, tag) => item({ kind: 'doc', fmt, lang: trLang, variant }, label, tag);
   html += tr('docx', 'translated', 'Word', 'DOCX') + tr('md', 'translated', 'Markdown', 'MD') + tr('txt', 'translated', t('exportPlainText'), 'TXT')
     + tr('srt', 'translated', t('exportSrtFile'), 'SRT') + tr('vtt', 'translated', t('exportVttFile'), 'VTT')
@@ -70,7 +70,7 @@ function renderExportMenu() {
   }
 
   const dubOptions = dubLangs.map(c => `<option value="${c}" ${c === dubLang ? 'selected' : ''}>${dubs.includes(c) ? '✓ ' : ''}${escapeHtml(dubLangName(c))}</option>`).join('');
-  html += sep + header(t('exportGroupDub'), langSelect('export-dub-lang', 'setExportDubLang(this.value)', dubOptions));
+  html += sep + header(t('exportGroupDub'), langSelect('export-dub-lang', 'setExportDubLang', dubOptions));
   if (!dubReady) html += note(t('exportDubWillRun'));
   const dubExt = dubReady ? String((availableDubs(m).find(d => d.lang === dubLang) || {}).path || '').split('.').pop().toUpperCase() : (isVideo ? 'MP4' : 'M4A');
   html += item({ kind: 'dub_media', lang: dubLang }, isVideo ? t('exportDubVideo') : t('exportDubAudio'), dubExt)
@@ -86,9 +86,9 @@ function renderExportMenu() {
   const settings = (state.system && state.system.settings) || {};
   html += sep + header('Obsidian');
   html += item({ kind: 'obsidian' }, t('exportObsidian'), 'MD', settings.obsidian_vault ? settings.obsidian_vault : t('exportObsidianNoVault'));
-  if (m.obsidian_path) html += note(t('exportObsidianSaved').replace('{name}', String(m.obsidian_path).split(/[\\/]/).pop()));
+  if (m.obsidian_path) html += note(t('exportObsidianSaved').replace('{name}', () => String(m.obsidian_path).split(/[\\/]/).pop()));
 
-  html += sep + `<button onclick="hideExportMenu(); openExportDir()" class="macos-menu-item"><span>${escapeHtml(t('exportOpenFolder'))}</span></button>`;
+  html += sep + `<button data-click="runAll" data-click-args='[["hideExportMenu"], ["openExportDir"]]' class="macos-menu-item"><span>${escapeHtml(t('exportOpenFolder'))}</span></button>`;
   menu.innerHTML = html;
 }
 
@@ -106,7 +106,7 @@ async function ctxClearResults() {
   hideContextMenu();
   const id = state.contextMeetingId;
   const m = state.meetings.find(x => x.id === id);
-  if (!m || !(await confirmDialog(t('clearResultsTitle'), t('clearResultsText').replace('{title}', m.title), t('ctxClearResults')))) return;
+  if (!m || !(await confirmDialog(t('clearResultsTitle'), t('clearResultsText').replace('{title}', () => m.title), t('ctxClearResults')))) return;
   const res = await fetch(`/api/meetings/${id}/clear-results`, { method: 'POST' });
   if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
   await loadMeetingsList();
@@ -117,7 +117,7 @@ async function ctxRemoveMedia() {
   hideContextMenu();
   const id = state.contextMeetingId;
   const m = state.meetings.find(x => x.id === id);
-  if (!m || !(await confirmDialog(t('removeMediaTitle'), t('removeMediaText').replace('{title}', m.title), t('ctxRemoveMedia')))) return;
+  if (!m || !(await confirmDialog(t('removeMediaTitle'), t('removeMediaText').replace('{title}', () => m.title), t('ctxRemoveMedia')))) return;
   const res = await fetch(`/api/meetings/${id}/remove-media`, { method: 'POST' });
   if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
   await loadMeetingsList();
@@ -144,7 +144,7 @@ async function requestCut(kind) {
   if (!res.ok) { showToast(data.detail || 'Error'); return; }
   if (data.cancelled) return;
   const saved = Math.max(0, Math.round((data.duration || 0) - (data.kept_seconds || 0)));
-  showToast(t('cutQueued').replace('{name}', data.filename).replace('{kept}', formatTime(data.kept_seconds || 0))
+  showToast(t('cutQueued').replace('{name}', () => data.filename).replace('{kept}', () => formatTime(data.kept_seconds || 0))
     + (kind === 'clean' && saved ? ` · −${formatTime(saved)}` : ''));
   await loadMeetingsList();
 }
@@ -176,7 +176,7 @@ async function runExport(item) {
   }
   if (data.status === 'queued') {
     const what = t(`exportWaiting_${data.waiting_for}`) || '';
-    showToast(t('exportQueued').replace('{what}', what).replace('{dir}', data.folder || ''), { label: t('showInFolder'), onClick: () => revealPath(data.folder) });
+    showToast(t('exportQueued').replace('{what}', () => what).replace('{dir}', () => data.folder || ''), { label: t('showInFolder'), onClick: () => revealPath(data.folder) });
     await loadMeetingsList();
     return;
   }
@@ -214,12 +214,17 @@ function onExportedEvent(ev) {
     showToast(`${t('exportSavedTo')} ${name}${files.length > 1 ? ` (+${files.length - 1})` : ''}`,
       { label: t('showInFolder'), onClick: () => revealPath(files[0]) });
   } else if ((ev.queued || []).length) {
-    showToast(t('subsBurnQueued').replace('{name}', ''));
+    showToast(t('subsBurnQueued').replace('{name}', () => ''));
   }
   if ((ev.errors || []).length) setTimeout(() => showToast(ev.errors.join('; ')), files.length ? 3000 : 0);
 }
 
 // --- Right-Click Context Menu on Sidebar Recording Items ---
+// The ••• button of the recording header: the menu of the recording that is open
+function openActiveRecordingMenu(e) {
+  if (state.activeMeeting) openRecordingContextMenu(e, state.activeMeeting.id);
+}
+
 function openRecordingContextMenu(e, meetingId) {
   e.preventDefault();
   e.stopPropagation();
@@ -258,7 +263,7 @@ function openBulkMenu(e) {
   menu.id = 'bulk-menu';
   menu.className = 'fixed w-56 macos-menu z-50';
   const item = (fn, label, cls = '') => `<button class="macos-menu-item ${cls}" data-fn="${fn}"><span>${escapeHtml(label)}</span></button>`;
-  menu.innerHTML = `<div class="px-2.5 py-1 text-[11px] font-semibold text-apple-secondary border-b border-white/10 mb-1">${escapeHtml(t('libSelected').replace('{n}', state.multi.size))}</div>`
+  menu.innerHTML = `<div class="px-2.5 py-1 text-[11px] font-semibold text-apple-secondary border-b border-white/10 mb-1">${escapeHtml(t('libSelected').replace('{n}', () => state.multi.size))}</div>`
     + item('bulkRename', t('bulkRename') + '…') + item('bulkAutoTitles', t('bulkAutoTitle'))
     + '<div class="my-1 h-px bg-white/10"></div>' + item('bulkDelete', t('ctxDelete'), 'text-apple-red');
   menu.addEventListener('click', ev => {
@@ -326,13 +331,24 @@ async function openSeriesMenu(e) {
   menu.innerHTML = `<div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(t('ctxSeries'))}</div>`
     + state.series.map(s => `<button class="macos-menu-item" data-sid="${s.id}"><span class="truncate">${escapeHtml(s.name)}</span><span class="text-[10.5px] opacity-70">${m.series_id === s.id ? '✓' : s.count}</span></button>`).join('')
     + `<button class="macos-menu-item" data-sid="new"><span>${escapeHtml(t('seriesNew'))}</span></button>`
-    + (m.series_id ? `<button class="macos-menu-item" data-sid="none"><span>${escapeHtml(t('seriesRemove'))}</span></button>` : '');
+    + (m.series_id ? `<button class="macos-menu-item" data-sid="rename"><span>${escapeHtml(t('seriesRename'))}</span></button>`
+      + `<button class="macos-menu-item" data-sid="none"><span>${escapeHtml(t('seriesRemove'))}</span></button>` : '');
   menu.addEventListener('click', async (ev) => {
     const b = ev.target.closest('button[data-sid]');
     ev.stopPropagation();
     if (!b) return;
     menu.remove();
     let body = { series_id: null };
+    if (b.dataset.sid === 'rename') {
+      const cur = state.series.find(s => s.id === m.series_id);
+      const name = (await askText(t('seriesNamePrompt'), cur ? cur.name : '') || '').trim();
+      if (!name) return;
+      const r = await fetch(`/api/series/${m.series_id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+      if (!r.ok) { showToast(errorText(await readJson(r), r)); return; }
+      await loadSeries();
+      if (state.activeMeeting && state.activeMeeting.series_id === m.series_id) renderSeriesUi();
+      return;
+    }
     if (b.dataset.sid === 'new') {
       const name = (await askText(t('seriesNamePrompt'), m.title) || '').trim();
       if (!name) return;
@@ -393,7 +409,7 @@ async function ctxRenameRecording() {
   hideContextMenu();
   const m = state.meetings.find(x => x.id === state.contextMeetingId);
   if (!m) return;
-  const newTitle = await askText(state.uiLang === 'en' ? 'New recording title:' : 'Новое название записи:', m.title);
+  const newTitle = await askText(t('uiNewRecordingTitle'), m.title);
   if (!newTitle || !newTitle.trim() || newTitle.trim() === m.title) return;
 
   const res = await fetch(`/api/meetings/${m.id}/title`, {
@@ -418,6 +434,7 @@ function ctxOpenReconfigureModal() {
   const modelSel = document.getElementById('reconfig-model');
   modelSel.value = m.model_name || 'large-v3-turbo';
   if (!modelSel.value && modelSel.options.length) modelSel.selectedIndex = 0;  // a removed model
+  renderModelHints();
   document.getElementById('reconfig-language').value = m.language || 'auto';
   document.getElementById('reconfig-speakers').value = String(m.num_speakers_hint || 0);
   openModal('reconfigure');
@@ -439,7 +456,7 @@ async function submitReconfigure() {
   });
   await loadMeetingsList();
   await selectMeeting(id, false);
-  showToast(state.uiLang === 'en' ? 'Re-processing started' : 'Запущена повторная обработка');
+  showToastt('uiReProcessingStarted');
 }
 
 async function ctxCancelProcessing() {
@@ -464,7 +481,7 @@ async function restoreSegments(id) {
     renderTranscript();
     renderSpeakersPanel();
   }
-  showToast(state.uiLang === 'en' ? 'Original text restored' : 'Исходный текст восстановлен');
+  showToastt('uiOriginalTextRestored');
 }
 
 async function ctxRevealInExplorer() {
@@ -492,10 +509,10 @@ function confirmDeleteDialog(list) {
         <span>${escapeHtml(label)}${detail ? `<span class="block text-[11px] text-apple-tertiary mt-0.5 break-all line-clamp-2">${escapeHtml(detail)}</span>` : ''}</span></label>`;
     const options = [
       sources.length ? opt('del-with-source', t('deleteWithSource'), sources.map(m => m.filename).join(', ')) : '',
-      exportsN ? opt('del-with-exports', t('deleteWithExports').replace('{n}', exportsN), list.flatMap(m => m.exports || []).slice(0, 3).join(', ')) : '',
-      notes.length ? opt('del-with-note', t('deleteWithNote').replace('{n}', notes.length), notes.map(m => m.obsidian_path).slice(0, 2).join(', ')) : '',
+      exportsN ? opt('del-with-exports', t('deleteWithExports').replace('{n}', () => exportsN), list.flatMap(m => m.exports || []).slice(0, 3).join(', ')) : '',
+      notes.length ? opt('del-with-note', t('deleteWithNote').replace('{n}', () => notes.length), notes.map(m => m.obsidian_path).slice(0, 2).join(', ')) : '',
     ].filter(Boolean);
-    const what = list.length === 1 ? t('confirmDeleteOne').replace('{title}', list[0].title) : t('confirmDeleteMany').replace('{n}', list.length);
+    const what = list.length === 1 ? t('confirmDeleteOne').replace('{title}', () => list[0].title) : t('confirmDeleteMany').replace('{n}', () => list.length);
     const wrap = document.createElement('div');
     wrap.className = 'fixed inset-0 modal-backdrop z-[70] flex items-center justify-center p-4';
     wrap.innerHTML = `<div class="w-full max-w-md bg-apple-card border apple-border rounded-2xl shadow-2xl p-5 space-y-4 modal-card">
@@ -553,5 +570,5 @@ async function ctxDeleteRecording() {
     document.getElementById('workspace-empty').classList.remove('hidden');
   }
   await loadMeetingsList();
-  showToast(state.uiLang === 'en' ? 'Recording deleted' : 'Запись удалена');
+  showToastt('uiRecordingDeleted');
 }

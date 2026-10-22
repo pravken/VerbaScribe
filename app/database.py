@@ -6,7 +6,7 @@ import threading
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from app import events
 from app.hardware import get_hardware_info
@@ -20,7 +20,8 @@ from app.paths import (  # noqa: F401  (re-exported for older imports)
     UPLOADS_DIR,
 )
 
-_db_lock = threading.Lock()
+# Reentrant: a change made under the lock (edit_meeting) may read the settings or a voice profile
+_db_lock = threading.RLock()
 
 
 def get_connection() -> sqlite3.Connection:
@@ -97,8 +98,15 @@ def init_db() -> None:
         if "local_only" not in folder_cols:
             cur.execute("ALTER TABLE folders ADD COLUMN local_only INTEGER DEFAULT 0")
         _ensure_system_folders(cur)
-        if "folder_id" not in existing_cols:
+        # Sorted once. The column is added in autocommit and the sorting committed at the end: a
+        # first start cut off in between left the column without the sorting, so the marker decides
+        # (a library with folders but no marker was sorted by an older version)
+        cur.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        sorted_once = cur.execute("SELECT 1 FROM settings WHERE key = 'folders_sorted_v1'").fetchone()
+        if not sorted_once and ("folder_id" not in existing_cols
+                                or not cur.execute("SELECT 1 FROM meetings WHERE folder_id IS NOT NULL LIMIT 1").fetchone()):
             _sort_existing_meetings(cur)
+        cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('folders_sorted_v1', '1')")
 
         cur.execute(
             """
@@ -149,12 +157,15 @@ def init_db() -> None:
             "record_hotkey": "Ctrl+Alt+R",
             "dictation_hotkey": "Ctrl+Alt+D",  # dictation into any program (app/dictation.py); empty: off
             "dictation_language": "auto",
+            "dictation_translate_hotkey": "Ctrl+Alt+T",  # dictation typed in another language; empty: off
+            "dictation_translate_to": "en",
+            "dictation_translate_cloud": "false",  # dictation is translated by the local model unless allowed
             "quiet_mode": "false",  # no tray notifications (run.py TrayController)
             "call_auto_record": "false",  # record calls by themselves (app/call_watch.py)
             "call_apps": "zoom,teams,telegram",
             "call_preset": "call",  # system-wide start/stop of a recording (app/tray.py); "" = off
             "semantic_search": "false",  # search by meaning with a local embedding model (app/semantic.py)
-            "semantic_model": "bge-m3",  # captions while recording (app/live.py caption_model)
+            "semantic_model": "bge-m3",  # the embedding model of search by meaning (Ollama)
             "auto_title": "true",  # name recordings by their content (LLM) when the title is generic
             "obsidian_auto": "false",  # save a note to the Obsidian vault after processing
             "obsidian_vault": "",
@@ -168,6 +179,7 @@ def init_db() -> None:
             "delete_media_after": "false",  # the sound deleted once a recording is transcribed (privacy)
             "media_retention_days": "0",  # the sound of older recordings deleted; 0: kept
             "update_auto": "true",  # download updates by themselves, install on exit (app/updater.py)
+            "update_beta": "false",  # offer beta versions (pre-releases) too: for testing before a release
             "calendar_ics": "",  # an .ics file or link: titles and participants of recordings (app/calendar_ics.py)
             "obsidian_summary": "true",
             "obsidian_tasks": "true",
@@ -205,6 +217,9 @@ def init_db() -> None:
         cur.execute(
             "CREATE TABLE IF NOT EXISTS semantic_meta (meeting_id INTEGER PRIMARY KEY, model TEXT NOT NULL, updated_at TEXT NOT NULL)"
         )
+        if "stale" not in {r["name"] for r in cur.execute("PRAGMA table_info(semantic_meta)").fetchall()}:
+            # 1: the transcript changed since it was indexed (its chunks still answer until it is redone)
+            cur.execute("ALTER TABLE semantic_meta ADD COLUMN stale INTEGER DEFAULT 0")
 
         # Full-text index of transcript segments for the global search (SQLite FTS5).
         # Only `text` is indexed; the other columns are stored to build results without JSON parsing.
@@ -220,14 +235,36 @@ def init_db() -> None:
             )
             """
         )
+        # The transcript: one row per line (see _write_segments), not one JSON in the recording's row
+        cur.execute(_SEGMENTS_DDL)
+        cur.execute(_VERSIONS_DDL)
+        cur.execute("DROP TRIGGER IF EXISTS meetings_flags_segments")  # has_transcript is set by _write_segments
+        for ddl in _FLAG_TRIGGERS:
+            cur.execute(ddl)
+        if not cur.execute("SELECT 1 FROM settings WHERE key = 'meeting_flags_v1'").fetchone():
+            # Recordings made before the triggers existed (read once)
+            cur.execute(f"UPDATE meetings SET has_transcript = ({_HAS_TRANSCRIPT.format(row='meetings')} "
+                        "OR EXISTS (SELECT 1 FROM segments WHERE segments.meeting_id = meetings.id)), "
+                        f"has_summary = {_HAS_SUMMARY.format(row='meetings')}")
+            cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('meeting_flags_v1', '1')")
+        moved = _move_segments_to_table(conn)
+        # Transcripts made before the versions: by the model the recording names
+        cur.execute("UPDATE meetings SET transcript_model = model_name, transcript_at = COALESCE(completed_at, '') "
+                    "WHERE COALESCE(transcript_model, '') = '' AND has_transcript = 1")
         if cur.execute("PRAGMA user_version").fetchone()[0] < _FTS_SCHEMA_VERSION:
             # First start with the index (or a newer index format): build it from stored transcripts
             cur.execute("DELETE FROM segments_fts")
-            for row in cur.execute("SELECT id, segments_json FROM meetings").fetchall():
-                _reindex_segments(conn, row["id"], _loads_list(row["segments_json"]))
+            for row in cur.execute("SELECT id FROM meetings").fetchall():
+                _reindex_segments(conn, row["id"], _read_segments(conn, row["id"]))
             cur.execute(f"PRAGMA user_version = {_FTS_SCHEMA_VERSION}")
 
         conn.commit()
+        if moved:
+            # The transcripts' old place is free space in the file: given back to the disk once
+            try:
+                conn.execute("VACUUM")
+            except sqlite3.Error as e:  # not enough room for the copy VACUUM makes: the space is reused later
+                print(f"[data] database not compacted: {e}", flush=True)
         conn.close()
 
 
@@ -251,7 +288,108 @@ _MEETING_EXTRA_COLUMNS = {
     "local_only": "INTEGER DEFAULT 0",  # 1: never sent to a cloud model (see is_local_only)
     "media_size": "INTEGER DEFAULT NULL",  # bytes of the media file; NULL: not measured yet
     "series_id": "INTEGER DEFAULT NULL",  # a series of recurring meetings (app/series.py)
+    # Whether there is a transcript / a summary, kept by triggers (_FLAG_TRIGGERS): the library list
+    # reads these instead of the transcripts themselves (megabytes per recording)
+    "has_transcript": "INTEGER DEFAULT 0",
+    "has_summary": "INTEGER DEFAULT 0",
+    # The model the transcript shown was made with, and when (the transcripts of other models are in
+    # transcript_versions)
+    "transcript_model": "TEXT DEFAULT ''",
+    "transcript_at": "TEXT DEFAULT ''",
 }
+
+_HAS_TRANSCRIPT = "(COALESCE({row}.segments_json, '') NOT IN ('', '[]'))"  # recordings stored before the segments table
+_HAS_SUMMARY = "(COALESCE({row}.summaries_json, '') NOT IN ('', '{{}}'))"
+_FLAG_TRIGGERS = [
+    f"""CREATE TRIGGER IF NOT EXISTS meetings_flags_insert AFTER INSERT ON meetings BEGIN
+        UPDATE meetings SET has_transcript = {_HAS_TRANSCRIPT.format(row="NEW")},
+            has_summary = {_HAS_SUMMARY.format(row="NEW")} WHERE id = NEW.id; END""",
+    f"""CREATE TRIGGER IF NOT EXISTS meetings_flags_summaries AFTER UPDATE OF summaries_json ON meetings BEGIN
+        UPDATE meetings SET has_summary = {_HAS_SUMMARY.format(row="NEW")} WHERE id = NEW.id; END""",
+]
+
+# A transcript is a list of lines (segments); each is stored as its own row, in order. The row of the
+# recording stays small, so the library list reads it fast, and an edit of one line writes one row.
+# `data` is the line as it is (JSON: start, end, speaker, text, words, ...), nothing is lost.
+_SEGMENTS_DDL = """CREATE TABLE IF NOT EXISTS segments (
+    meeting_id INTEGER NOT NULL,
+    pos INTEGER NOT NULL,
+    data TEXT NOT NULL,
+    PRIMARY KEY (meeting_id, pos)
+) WITHOUT ROWID"""
+
+
+# The transcripts of a recording made with other models, one per model, to compare them and switch to
+# one (switch_transcript_version). The one shown is in `segments` (meetings.transcript_model): search,
+# analysis and exports read it as before. `data` (JSON) is what belongs to that text: segments,
+# speakers, translations, the copy before the filler cleanup, language, verified flag, date.
+_VERSIONS_DDL = """CREATE TABLE IF NOT EXISTS transcript_versions (
+    meeting_id INTEGER NOT NULL,
+    model TEXT NOT NULL,
+    data TEXT NOT NULL,
+    PRIMARY KEY (meeting_id, model)
+) WITHOUT ROWID"""
+
+
+def _read_segments(conn: sqlite3.Connection, meeting_id: int) -> List[Dict[str, Any]]:
+    out = []
+    for (data,) in conn.execute("SELECT data FROM segments WHERE meeting_id = ? ORDER BY pos", (meeting_id,)):
+        try:
+            seg = json.loads(data)
+        except ValueError:
+            continue
+        if isinstance(seg, dict):
+            out.append(seg)
+    return out
+
+
+def _segment_rows(segments: List[Dict[str, Any]]) -> List[str]:
+    return [json.dumps(seg, ensure_ascii=False) for seg in segments]
+
+
+def _write_segments(conn: sqlite3.Connection, meeting_id: int, segments: List[Dict[str, Any]],
+                    before: Optional[List[str]] = None) -> None:
+    """Stores the transcript of a recording; call inside the caller's transaction. `before`: the
+    stored rows as they were read in this transaction (_segment_rows); with the same number of lines
+    only the lines that changed are written (an edit of one line writes one row)."""
+    rows = _segment_rows(segments)
+    if before is not None and len(before) == len(segments):
+        old = before
+        conn.executemany("UPDATE segments SET data = ? WHERE meeting_id = ? AND pos = ?",
+                         [(r, meeting_id, i) for i, (r, o) in enumerate(zip(rows, old)) if r != o])
+    else:
+        conn.execute("DELETE FROM segments WHERE meeting_id = ?", (meeting_id,))
+        conn.executemany("INSERT INTO segments (meeting_id, pos, data) VALUES (?, ?, ?)",
+                         [(meeting_id, i, r) for i, r in enumerate(rows)])
+    # The JSON of an older version (read as a fallback until moved) is replaced by these rows: left
+    # behind, it would overwrite them at the next start
+    conn.execute("UPDATE meetings SET has_transcript = ?, segments_json = '' WHERE id = ?", (1 if segments else 0, meeting_id))
+
+
+def _move_segments_to_table(conn: sqlite3.Connection) -> int:
+    """Transcripts still kept in meetings.segments_json go to the segments table, and the column is
+    emptied; returns how many recordings were moved. At every start: a recording an older version
+    transcribed (after going back to it) is moved too, its newer transcript replacing the rows of
+    the earlier one. The search index was built from this same text (or is built from the table
+    right after, see init_db), so it is left alone."""
+    pending = "COALESCE(segments_json, '') NOT IN ('', '[]')"
+    ids = [r["id"] for r in conn.execute(f"SELECT id FROM meetings WHERE {pending}").fetchall()]
+    if not ids:
+        return 0
+    conn.execute(f"DELETE FROM segments WHERE meeting_id IN (SELECT id FROM meetings WHERE {pending})")
+    try:
+        # In SQL: a library of a million lines moves in seconds, not minutes
+        conn.execute(f"""INSERT INTO segments (meeting_id, pos, data)
+            SELECT m.id, j.key, j.value FROM meetings AS m, json_each(m.segments_json) AS j
+            WHERE m.{pending} AND json_valid(m.segments_json) AND j.type = 'object'""")
+    except sqlite3.OperationalError:  # SQLite without JSON functions
+        for row in conn.execute(f"SELECT id, segments_json FROM meetings WHERE {pending}").fetchall():
+            _write_segments(conn, row["id"], [x for x in _loads_list(row["segments_json"]) if isinstance(x, dict)])
+    conn.execute(f"UPDATE meetings SET has_transcript = EXISTS (SELECT 1 FROM segments WHERE meeting_id = meetings.id), "
+                 f"segments_json = '' WHERE {pending}")
+    print(f"[data] transcripts of {len(ids)} recording(s) moved to the segments table", flush=True)
+    return len(ids)
+
 
 SYSTEM_FOLDERS = {"recordings": "Записи", "imports": "Импорт"}
 _VIDEO_EXTS = {".mp4", ".mkv", ".mov", ".avi", ".m4v", ".webm", ".wmv", ".flv", ".mpg", ".mpeg", ".ts", ".mts", ".3gp"}
@@ -307,22 +445,44 @@ def _loads_list(raw: Optional[str]) -> List[Dict[str, Any]]:
         return []
 
 
-def _reindex_segments(conn: sqlite3.Connection, meeting_id: int, segments: List[Dict[str, Any]]) -> None:
-    """Replaces the search index rows of one recording. Call inside the caller's transaction."""
-    conn.execute("DELETE FROM segments_fts WHERE meeting_id = ?", (meeting_id,))
-    # The meaning index of this recording is out of date: app/semantic.py indexes it again
-    conn.execute("DELETE FROM semantic_meta WHERE meeting_id = ?", (meeting_id,))
+def _reindex_segments(conn: sqlite3.Connection, meeting_id: int, segments: List[Dict[str, Any]],
+                      before: Optional[List[str]] = None) -> None:
+    """Replaces the search index rows of one recording. Call inside the caller's transaction.
+    `before` (the stored rows before an edit, see _write_segments): with the same lines, each with
+    its own id, only the lines that changed are indexed again."""
+    # The meaning index of this recording is out of date: app/semantic.py indexes it again a while
+    # after the last edit, embedding only the chunks whose text changed
+    conn.execute("UPDATE semantic_meta SET stale = 1, updated_at = datetime('now', 'localtime') WHERE meeting_id = ?",
+                 (meeting_id,))
+
+    def seg_id(seg: Dict[str, Any]) -> int:
+        return int(seg.get("id", 0) or 0)
+
+    lines = segments
+    if before is not None and len(before) == len(segments):
+        old = [json.loads(r) for r in before]
+        ids, old_ids = [seg_id(x) for x in segments], [seg_id(x) for x in old]
+        if len(set(ids)) == len(ids) and len(set(old_ids)) == len(old_ids):
+            rows = _segment_rows(segments)
+            changed = [i for i, (r, o) in enumerate(zip(rows, before)) if r != o]
+            conn.executemany("DELETE FROM segments_fts WHERE meeting_id = ? AND segment_id = ?",
+                             [(meeting_id, old_ids[i]) for i in changed])
+            lines = [segments[i] for i in changed]
+        else:
+            before = None
+    if before is None or len(before) != len(segments):
+        conn.execute("DELETE FROM segments_fts WHERE meeting_id = ?", (meeting_id,))
     conn.executemany(
         "INSERT INTO segments_fts (text, meeting_id, segment_id, start, speaker) VALUES (?, ?, ?, ?, ?)",
         [
             (
                 seg.get("text") or "",
                 meeting_id,
-                int(seg.get("id", 0) or 0),
+                seg_id(seg),
                 float(seg.get("start", 0.0) or 0.0),
                 seg.get("speaker") or "SPEAKER_00",
             )
-            for seg in segments
+            for seg in lines
             if (seg.get("text") or "").strip()
         ],
     )
@@ -461,9 +621,10 @@ def create_meeting(
         meeting_id = cur.lastrowid
         conn.commit()
         row = conn.execute("SELECT * FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+        m = _deserialize_meeting(dict(row), conn)
         conn.close()
     events.publish({"type": "list"})
-    return _deserialize_meeting(dict(row))
+    return m
 
 
 def update_meeting_progress(
@@ -529,16 +690,18 @@ def save_meeting_results(
     summaries: Optional[Dict[str, Any]] = None,
     language: Optional[str] = None,
     reindex: bool = True,
+    transcript_model: Optional[str] = None,
 ) -> None:
-    """reindex=False: a partial transcript shown while recognizing (search is indexed at the end)."""
+    """reindex=False: a partial transcript shown while recognizing (search is indexed at the end).
+    transcript_model: the model the new segments were made with (see stash_transcript_for)."""
     fields = []
     values = []
+    if transcript_model is not None:
+        fields.append("transcript_model = ?, transcript_at = ?")
+        values.extend([transcript_model, datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
     if speakers is not None:
         fields.append("speakers_json = ?")
         values.append(json.dumps(speakers, ensure_ascii=False))
-    if segments is not None:
-        fields.append("segments_json = ?")
-        values.append(json.dumps(segments, ensure_ascii=False))
     if summaries is not None:
         fields.append("summaries_json = ?")
         values.append(json.dumps(summaries, ensure_ascii=False))
@@ -546,17 +709,201 @@ def save_meeting_results(
         fields.append("language = ?")
         values.append(language)
 
-    if not fields:
+    if not fields and segments is None:
         return
 
     values.append(meeting_id)
     with _db_lock:
         conn = get_connection()
-        conn.execute(f"UPDATE meetings SET {', '.join(fields)} WHERE id = ?", tuple(values))
-        if segments is not None and reindex:
-            _reindex_segments(conn, meeting_id, segments)
+        if fields:
+            conn.execute(f"UPDATE meetings SET {', '.join(fields)} WHERE id = ?", tuple(values))
+        if segments is not None:
+            _write_segments(conn, meeting_id, segments)
+            if reindex:
+                _reindex_segments(conn, meeting_id, segments)
         conn.commit()
         conn.close()
+
+
+_VERSION_COLUMNS = "transcript_model, transcript_at, speakers_json, segments_backup_json, translations_json, language, transcript_verified"
+
+
+def _stash_active(conn: sqlite3.Connection, meeting_id: int) -> Optional[str]:
+    """Copies the transcript shown (with what belongs to it) into transcript_versions under its model;
+    returns the model, None when there is no transcript or no model to file it under."""
+    row = conn.execute(f"SELECT {_VERSION_COLUMNS} FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+    segments = _read_segments(conn, meeting_id)
+    if not row or not row["transcript_model"] or not segments:
+        return None
+    data = {"segments": segments, "speakers": _loads_dict(row["speakers_json"]),
+            "segments_backup": _loads_list(row["segments_backup_json"]), "translations": _loads_dict(row["translations_json"]),
+            "language": row["language"] or "", "verified": bool(row["transcript_verified"]), "at": row["transcript_at"] or ""}
+    conn.execute("INSERT OR REPLACE INTO transcript_versions (meeting_id, model, data) VALUES (?, ?, ?)",
+                 (meeting_id, row["transcript_model"], json.dumps(data, ensure_ascii=False)))
+    return row["transcript_model"]
+
+
+def stash_transcript_for(meeting_id: int, model: str) -> None:
+    """A job is about to save the transcript `model` made. The one shown, made with another model,
+    is kept among the versions; what belongs only to it (translations, the verified flag) does not
+    pass to the new text. An older version of this same model is replaced by the new one."""
+    with _db_lock:
+        conn = get_connection()
+        try:
+            row = conn.execute("SELECT transcript_model FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+            if row and row["transcript_model"] and row["transcript_model"] != model and _stash_active(conn, meeting_id):
+                conn.execute("UPDATE meetings SET translations_json = '{}', transcript_verified = 0 WHERE id = ?", (meeting_id,))
+            conn.execute("DELETE FROM transcript_versions WHERE meeting_id = ? AND model = ?", (meeting_id, model))
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def transcript_versions(conn: sqlite3.Connection, meeting_id: int) -> List[Dict[str, Any]]:
+    """The models a recording has a stored transcript of (besides the one shown), with its date."""
+    out = []
+    for r in conn.execute("SELECT model, data FROM transcript_versions WHERE meeting_id = ? ORDER BY model", (meeting_id,)):
+        try:
+            data = json.loads(r["data"])
+        except ValueError:
+            continue
+        out.append({"model": r["model"], "at": data.get("at") or "", "lines": len(data.get("segments") or [])})
+    return out
+
+
+def all_transcripts(meeting_id: int) -> Dict[str, Dict[str, Any]]:
+    """Every transcript of a recording by model: the one shown and the stored versions (for merging)."""
+    with _db_lock:
+        conn = get_connection()
+        try:
+            out = {}
+            for r in conn.execute("SELECT model, data FROM transcript_versions WHERE meeting_id = ?", (meeting_id,)):
+                try:
+                    out[r["model"]] = json.loads(r["data"])
+                except ValueError:
+                    pass
+            row = conn.execute(f"SELECT {_VERSION_COLUMNS} FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+            segments = _read_segments(conn, meeting_id)
+            if row and row["transcript_model"] and segments:
+                out[row["transcript_model"]] = {"segments": segments, "speakers": _loads_dict(row["speakers_json"]),
+                                                "language": row["language"] or ""}
+            return out
+        finally:
+            conn.close()
+
+
+def switch_transcript_version(meeting_id: int, model: str) -> bool:
+    """Shows the transcript `model` made: the one shown goes to the versions, this one takes its
+    place (search index included). False when there is no such version."""
+    with _db_lock:
+        conn = get_connection()
+        try:
+            row = conn.execute("SELECT transcript_model FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+            if not row:
+                return False
+            if row["transcript_model"] == model:
+                return True
+            got = conn.execute("SELECT data FROM transcript_versions WHERE meeting_id = ? AND model = ?",
+                               (meeting_id, model)).fetchone()
+            if not got:
+                return False
+            _stash_active(conn, meeting_id)
+            _show_version(conn, meeting_id, model, json.loads(got["data"]))
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+
+
+def _show_version(conn: sqlite3.Connection, meeting_id: int, model: str, data: Dict[str, Any]) -> None:
+    """A stored version takes the place of the transcript shown (which the caller has filed or dropped)."""
+    segments = [s for s in data.get("segments") or [] if isinstance(s, dict)]
+    backup = data.get("segments_backup") or []
+    # A model's name stays the one the next Transcribe uses; the merged text is not made by one
+    next_model = ", model_name = ?" if model != "merged" else ""
+    conn.execute(
+        "UPDATE meetings SET transcript_model = ?, transcript_at = ?, speakers_json = ?, segments_backup_json = ?, "
+        f"translations_json = ?, language = ?, transcript_verified = ?{next_model} WHERE id = ?",
+        (model, data.get("at") or "", json.dumps(data.get("speakers") or {}, ensure_ascii=False),
+         json.dumps(backup, ensure_ascii=False) if backup else "", json.dumps(data.get("translations") or {}, ensure_ascii=False),
+         data.get("language") or "", 1 if data.get("verified") else 0, *([model] if next_model else []), meeting_id))
+    _write_segments(conn, meeting_id, segments)
+    _reindex_segments(conn, meeting_id, segments)
+    conn.execute("DELETE FROM transcript_versions WHERE meeting_id = ? AND model = ?", (meeting_id, model))
+
+
+def delete_transcript_version(meeting_id: int, model: str) -> bool:
+    """Deletes the transcript one model made (the button next to the model dropdown). When it is the
+    one shown, the best of the others takes its place (the merged one, then by the models'
+    accuracy); with none left the recording has no transcript (its analysis stays). False when the
+    recording has no transcript of this model."""
+    from app.transcript_merge import MERGED, ranked
+
+    with _db_lock:
+        conn = get_connection()
+        try:
+            row = conn.execute("SELECT transcript_model, language FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+            if not row:
+                return False
+            if row["transcript_model"] != model:
+                gone = conn.execute("DELETE FROM transcript_versions WHERE meeting_id = ? AND model = ?", (meeting_id, model)).rowcount
+                conn.commit()
+                return bool(gone)
+            others = {r["model"]: r["data"] for r in conn.execute(
+                "SELECT model, data FROM transcript_versions WHERE meeting_id = ?", (meeting_id,))}
+            order = ([MERGED] if MERGED in others else []) + ranked([m for m in others if m != MERGED], row["language"] or "")
+            if order:
+                _show_version(conn, meeting_id, order[0], json.loads(others[order[0]]))
+            else:
+                conn.execute("UPDATE meetings SET transcript_model = '', transcript_at = '', speakers_json = '{}', "
+                             "segments_backup_json = '', translations_json = '{}', transcript_verified = 0, "
+                             "status = 'cleared', progress = 0, stage_text = '', error_message = '' WHERE id = ?", (meeting_id,))
+                _write_segments(conn, meeting_id, [])
+                _reindex_segments(conn, meeting_id, [])
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+
+
+def edit_meeting(meeting_id: int, mutate: Callable[[Dict[str, Any]], Iterable[str]]) -> Optional[Dict[str, Any]]:
+    """
+    Changes the transcript and/or the participants of a recording in one step under the lock, so two
+    edits at once (two segments, a rename while "apply voice profiles" runs) never undo each other.
+    mutate(meeting) changes meeting["segments"] / ["speakers"] in place (and may set
+    meeting["segments_backup"]) and returns what it changed: "segments", "speakers", "segments_backup".
+    An exception leaves the recording as it was.
+    Returns the recording after the change, or None when there is none.
+    """
+    with _db_lock:
+        conn = get_connection()
+        try:
+            row = conn.execute("SELECT * FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+            if not row:
+                return None
+            m = _deserialize_meeting(dict(row), conn)
+            # As text: mutate changes the lines (and their words) in place. Only rows that are stored
+            # can be updated one by one (a transcript read from older JSON is written whole)
+            stored = conn.execute("SELECT 1 FROM segments WHERE meeting_id = ? LIMIT 1", (meeting_id,)).fetchone()
+            before = _segment_rows(m["segments"]) if stored else None
+            changed = set(mutate(m) or ())
+            if "segments" in changed:
+                _write_segments(conn, meeting_id, m["segments"], before)
+                _reindex_segments(conn, meeting_id, m["segments"], before)
+            if "speakers" in changed:
+                conn.execute("UPDATE meetings SET speakers_json = ? WHERE id = ?",
+                             (json.dumps(m["speakers"], ensure_ascii=False), meeting_id))
+            if "segments_backup" in changed:
+                backup = m.get("segments_backup") or []
+                conn.execute("UPDATE meetings SET segments_backup_json = ? WHERE id = ?",
+                             (json.dumps(backup, ensure_ascii=False) if backup else "", meeting_id))
+            if not changed:
+                return m
+            conn.commit()
+            row = conn.execute("SELECT * FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+            return _deserialize_meeting(dict(row), conn)
+        finally:
+            conn.close()
 
 
 def summary_templates() -> List[Dict[str, Any]]:
@@ -618,7 +965,8 @@ def filler_stats(meeting_id: int) -> Dict[str, Any]:
     how long they took to say. {"cleaned": False} when there is no such copy."""
     with _db_lock:
         conn = get_connection()
-        row = conn.execute("SELECT segments_json, segments_backup_json FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+        row = conn.execute("SELECT segments_backup_json FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+        current = _read_segments(conn, meeting_id)
         conn.close()
     if not row or not row["segments_backup_json"]:
         return {"cleaned": False, "words": 0, "seconds": 0.0}
@@ -631,11 +979,11 @@ def filler_stats(meeting_id: int) -> Dict[str, Any]:
                 out[key] = max(0.0, float(w.get("end") or 0) - float(w.get("start") or 0))
         return out
 
-    before, after = words(_loads_list(row["segments_backup_json"])), words(_loads_list(row["segments_json"]))
+    before, after = words(_loads_list(row["segments_backup_json"])), words(current)
     gone = [d for k, d in before.items() if k not in after]
     if not before:  # no word timings: count words of the text
         n_before = sum(len((s.get("text") or "").split()) for s in _loads_list(row["segments_backup_json"]))
-        n_after = sum(len((s.get("text") or "").split()) for s in _loads_list(row["segments_json"]))
+        n_after = sum(len((s.get("text") or "").split()) for s in current)
         return {"cleaned": True, "words": max(0, n_before - n_after), "seconds": 0.0}
     return {"cleaned": True, "words": len(gone), "seconds": round(sum(gone), 1)}
 
@@ -649,11 +997,10 @@ def restore_segments_backup(meeting_id: int) -> bool:
         if not row or not row["segments_backup_json"]:
             conn.close()
             return False
-        conn.execute(
-            "UPDATE meetings SET segments_json = segments_backup_json, segments_backup_json = '' WHERE id = ?",
-            (meeting_id,),
-        )
-        _reindex_segments(conn, meeting_id, _loads_list(row["segments_backup_json"]))
+        restored = _loads_list(row["segments_backup_json"])
+        _write_segments(conn, meeting_id, restored)
+        conn.execute("UPDATE meetings SET segments_backup_json = '' WHERE id = ?", (meeting_id,))
+        _reindex_segments(conn, meeting_id, restored)
         conn.commit()
         conn.close()
     return True
@@ -661,7 +1008,7 @@ def restore_segments_backup(meeting_id: int) -> bool:
 
 def update_meeting_fields(meeting_id: int, **fields: Any) -> None:
     allowed = {"title", "model_name", "language", "num_speakers_hint", "folder_id", "title_is_default", "obsidian_path", "obsidian_hash", "user_notes",
-               "transcript_verified",
+               "transcript_verified", "audio_path",
                "local_only", "series_id"}
     items = [(k, v) for k, v in fields.items() if k in allowed]
     if not items:
@@ -748,10 +1095,7 @@ def delete_meeting_dub(meeting_id: int, lang: str) -> bool:
         for key in _DUB_PATH_KEYS:
             p = Path(old.get(key) or "")
             if p.name and p.exists() and DATA_DIR in p.resolve().parents:
-                try:
-                    p.unlink()
-                except OSError:
-                    pass
+                delete_file(str(p))
     events.publish({"type": "list"})
     return bool(gone)
 
@@ -794,23 +1138,57 @@ def _loads_dict(raw: Optional[str]) -> Dict[str, Any]:
         return {}
 
 
+def meeting_status(meeting_id: int) -> str:
+    """The status alone (no transcript is read); "" when there is no such recording."""
+    with _db_lock:
+        conn = get_connection()
+        row = conn.execute("SELECT status FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+        conn.close()
+    return str(row["status"] or "") if row else ""
+
+
+def speaker_seconds(meeting_ids: Iterable[int]) -> Dict[int, Dict[str, float]]:
+    """How long each speaker talks in each recording: {meeting_id: {speaker_id: seconds}}, read from
+    the lines without loading whole transcripts."""
+    ids = [int(i) for i in meeting_ids]
+    out: Dict[int, Dict[str, float]] = {i: {} for i in ids}
+    if not ids:
+        return out
+    with _db_lock:
+        conn = get_connection()
+        try:
+            for i in range(0, len(ids), 500):
+                part = ids[i:i + 500]
+                q = (f"SELECT meeting_id, json_extract(data, '$.speaker') AS spk, "
+                     f"SUM(MAX(0.0, COALESCE(json_extract(data, '$.end'), 0) - COALESCE(json_extract(data, '$.start'), 0))) AS sec "
+                     f"FROM segments WHERE meeting_id IN ({','.join('?' * len(part))}) GROUP BY meeting_id, spk")
+                for r in conn.execute(q, part):
+                    out[r["meeting_id"]][r["spk"]] = float(r["sec"] or 0.0)
+        except sqlite3.OperationalError:  # SQLite without JSON functions
+            for mid in ids:
+                for seg in _read_segments(conn, mid):
+                    spk = seg.get("speaker")
+                    out[mid][spk] = out[mid].get(spk, 0.0) + max(0.0, float(seg.get("end") or 0) - float(seg.get("start") or 0))
+        finally:
+            conn.close()
+    return out
+
+
 def get_meeting(meeting_id: int) -> Optional[Dict[str, Any]]:
     with _db_lock:
         conn = get_connection()
         row = conn.execute("SELECT * FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+        m = _deserialize_meeting(dict(row), conn) if row else None
         conn.close()
-        if not row:
-            return None
-        return _deserialize_meeting(dict(row))
+        return m
 
 
 _LIST_COLUMNS = """id, title, filename, media_path, duration, status, progress, stage_text,
     error_message, language, model_name, num_speakers_hint,
     speakers_json, created_at, completed_at, folder_id, source, recorded_at, has_video, local_only, media_size, series_id,
-    transcript_verified,
+    transcript_verified, transcript_model,
     obsidian_path, exports_json,
-    segments_json NOT IN ('', '[]') AS has_transcript,
-    summaries_json NOT IN ('', '{}') AS has_summary"""
+    has_transcript, has_summary"""
 
 # What a recording has been through, for the badges in the library: the languages of its
 # translations and dubs (read inside SQLite, so the large JSON is not loaded for every row)
@@ -878,6 +1256,47 @@ def list_meetings() -> List[Dict[str, Any]]:
     return result
 
 
+def delete_file(path: str) -> bool:
+    """Deletes a file of the app. Windows refuses while a file is open (the player streams it): such a
+    file is remembered and deleted at the next start (retry_pending_deletes), never left forever."""
+    p = Path(path)
+    try:
+        p.unlink(missing_ok=True)
+        return True
+    except OSError as e:
+        print(f"[delete] {path}: {e} (deleted at the next start)", flush=True)
+    with _db_lock:
+        conn = get_connection()
+        conn.execute("CREATE TABLE IF NOT EXISTS pending_deletes (path TEXT PRIMARY KEY, since TEXT NOT NULL)")
+        conn.execute("INSERT OR IGNORE INTO pending_deletes (path, since) VALUES (?, datetime('now'))", (str(p),))
+        conn.commit()
+        conn.close()
+    return False
+
+
+def retry_pending_deletes() -> int:
+    """Files that could not be deleted before (see delete_file); returns how many are gone now."""
+    with _db_lock:
+        conn = get_connection()
+        conn.execute("CREATE TABLE IF NOT EXISTS pending_deletes (path TEXT PRIMARY KEY, since TEXT NOT NULL)")
+        paths = [r["path"] for r in conn.execute("SELECT path FROM pending_deletes").fetchall()]
+        conn.close()
+    gone = []
+    for path in paths:
+        try:
+            Path(path).unlink(missing_ok=True)
+            gone.append(path)
+        except OSError:
+            pass
+    if gone:
+        with _db_lock:
+            conn = get_connection()
+            conn.executemany("DELETE FROM pending_deletes WHERE path = ?", [(g,) for g in gone])
+            conn.commit()
+            conn.close()
+    return len(gone)
+
+
 def remove_media(meeting_id: int) -> bool:
     """Deletes the sound of a recording and keeps its transcript and analysis (privacy settings, or
     by hand). Only files the app made or copied in; a file used in place is the user's and stays."""
@@ -889,10 +1308,7 @@ def remove_media(meeting_id: int) -> bool:
         paths.append(m.get("media_path"))
     for p_str in paths:
         if p_str:
-            try:
-                Path(p_str).unlink(missing_ok=True)
-            except OSError as e:
-                print(f"[privacy] {p_str}: {e}", flush=True)
+            delete_file(p_str)
     with _db_lock:
         conn = get_connection()
         if m.get("owns_media"):
@@ -934,6 +1350,86 @@ def add_export_path(meeting_id: int, path: str) -> None:
         conn.close()
 
 
+# Work folders of the data folder whose files belong to recordings (exports and recordings are the
+# user's files and are never scanned)
+ORPHAN_DIRS = ("uploads", "audio", "dubs", "thumbs")
+ORPHAN_MIN_AGE_SEC = 24 * 3600  # younger files may belong to work in progress (an upload, a dub)
+_ID_NAME = re.compile(r"^(?:meeting_|work_meeting_)?(\d+)(?=[._]|$)")
+
+
+def orphan_files() -> List[Path]:
+    """Files in the work folders that no recording refers to: left by a crash, a failed delete or an
+    older version. A file named after a recording that exists (thumbs/12.jpg, audio/meeting_12.wav)
+    or changed within a day is kept; system_*.wav belongs to the start-up recovery of recordings."""
+    import time
+
+    with _db_lock:
+        conn = get_connection()
+        rows = conn.execute("SELECT id, media_path, audio_path, dubs_json FROM meetings").fetchall()
+        conn.close()
+    ids = {int(r["id"]) for r in rows}
+    used = set()
+    for r in rows:
+        paths = [r["media_path"], r["audio_path"]]
+        try:
+            for d in json.loads(r["dubs_json"] or "[]"):
+                d = _dub_paths_from_storage(d)
+                paths += [d.get("path"), d.get("srt_path")]
+        except (ValueError, TypeError):
+            pass
+        for p in paths:
+            if p:
+                try:
+                    used.add(os.path.normcase(str(Path(p).resolve())))
+                except OSError:
+                    pass
+    now = time.time()
+    out: List[Path] = []
+    for folder in ORPHAN_DIRS:
+        base = DATA_DIR / folder
+        if not base.is_dir():
+            continue
+        for p in base.rglob("*"):
+            try:
+                if not p.is_file() or p.is_symlink() or now - p.stat().st_mtime < ORPHAN_MIN_AGE_SEC:
+                    continue
+            except OSError:
+                continue
+            if folder == "uploads" and p.name.startswith("system_"):
+                continue
+            if os.path.normcase(str(p.resolve())) in used:
+                continue
+            # A file (or a dub's work folder) named after a recording that still exists
+            m = _ID_NAME.match(p.relative_to(base).parts[0])
+            if m and int(m.group(1)) in ids:
+                continue
+            out.append(p)
+    return out
+
+
+def delete_orphan_files() -> Dict[str, int]:
+    """Deletes what orphan_files() finds; {"files": n, "bytes": freed}."""
+    files, freed = 0, 0
+    for p in orphan_files():
+        try:
+            size = p.stat().st_size
+        except OSError:
+            continue
+        if delete_file(str(p)):
+            files += 1
+            freed += size
+    for folder in ORPHAN_DIRS:  # the work folders of dubs emptied above, deepest first
+        base = DATA_DIR / folder
+        if not base.is_dir():
+            continue
+        for d in sorted((x for x in base.rglob("*") if x.is_dir()), key=lambda x: len(x.parts), reverse=True):
+            try:
+                d.rmdir()  # only an empty folder goes
+            except OSError:
+                pass
+    return {"files": files, "bytes": freed}
+
+
 def delete_meeting(meeting_id: int, with_source: bool = False, with_exports: bool = False,
                    with_note: bool = False) -> bool:
     """with_source: the media file used in place (added by its path) is deleted too; with_exports: the
@@ -963,16 +1459,16 @@ def delete_meeting(meeting_id: int, with_source: bool = False, with_exports: boo
             # Files in the data folder, and the app's own recordings wherever the recordings folder is;
             # a file used in place (added by its path) is never touched
             if p.exists() and (DATA_DIR in p.resolve().parents or p_str in owned):
-                try:
-                    p.unlink()
-                except Exception:
-                    pass
+                delete_file(p_str)
     thumb = DATA_DIR / "thumbs" / f"{meeting_id}.jpg"
     thumb.unlink(missing_ok=True)
+    (AUDIO_DIR / f"meeting_{meeting_id}.peaks.json").unlink(missing_ok=True)  # the player's waveform
 
     with _db_lock:
         conn = get_connection()
         conn.execute("DELETE FROM meetings WHERE id = ?", (meeting_id,))
+        conn.execute("DELETE FROM segments WHERE meeting_id = ?", (meeting_id,))
+        conn.execute("DELETE FROM transcript_versions WHERE meeting_id = ?", (meeting_id,))
         conn.execute("DELETE FROM segments_fts WHERE meeting_id = ?", (meeting_id,))
         conn.execute("DELETE FROM semantic_chunks WHERE meeting_id = ?", (meeting_id,))
         conn.execute("DELETE FROM semantic_meta WHERE meeting_id = ?", (meeting_id,))
@@ -989,15 +1485,25 @@ def delete_meeting(meeting_id: int, with_source: bool = False, with_exports: boo
 def clear_results(meeting_id: int) -> bool:
     """Everything the processing made (transcript, speakers, summaries, translations, promises,
     search index) is deleted; the sound, the title and the user's notes stay. Status "cleared": the
-    recording waits for Retry."""
-    if not get_meeting(meeting_id):
+    recording waits for Retry. Dubs (made from the old transcript) go with their files, and exports
+    waiting for the end of processing are dropped: they would run on the next Retry unasked."""
+    m = get_meeting(meeting_id)
+    if not m:
         return False
+    for d in m.get("dubs") or []:
+        for key in _DUB_PATH_KEYS:
+            p = Path(d.get(key) or "")
+            if p.name and p.exists() and DATA_DIR in p.resolve().parents:
+                delete_file(str(p))
     with _db_lock:
         conn = get_connection()
         conn.execute(
-            "UPDATE meetings SET segments_json = '[]', speakers_json = '{}', summaries_json = '{}', translations_json = '{}', "
-            "segments_backup_json = '', status = 'cleared', progress = 0, stage_text = '', error_message = '', transcript_verified = 0 WHERE id = ?",
+            "UPDATE meetings SET segments_json = '', has_transcript = 0, speakers_json = '{}', summaries_json = '{}', translations_json = '{}', "
+            "segments_backup_json = '', dubs_json = '[]', pending_exports_json = '[]', status = 'cleared', progress = 0, "
+            "stage_text = '', error_message = '', transcript_verified = 0, transcript_model = '', transcript_at = '' WHERE id = ?",
             (meeting_id,))
+        conn.execute("DELETE FROM segments WHERE meeting_id = ?", (meeting_id,))
+        conn.execute("DELETE FROM transcript_versions WHERE meeting_id = ?", (meeting_id,))
         conn.execute("DELETE FROM segments_fts WHERE meeting_id = ?", (meeting_id,))
         conn.execute("DELETE FROM semantic_chunks WHERE meeting_id = ?", (meeting_id,))
         conn.execute("DELETE FROM semantic_meta WHERE meeting_id = ?", (meeting_id,))
@@ -1011,20 +1517,21 @@ def clear_results(meeting_id: int) -> bool:
     return True
 
 
-def _deserialize_meeting(d: Dict[str, Any]) -> Dict[str, Any]:
+def _deserialize_meeting(d: Dict[str, Any], conn: sqlite3.Connection) -> Dict[str, Any]:
     d["has_segments_backup"] = bool(d.pop("segments_backup_json", ""))
     d["pending_exports"] = _loads_list(d.pop("pending_exports_json", None))
     d["exports"] = [p for p in _loads_list(d.pop("exports_json", None)) if isinstance(p, str)]
     d["is_video"] = is_video(d)
     d["local_only"] = bool(d.get("local_only"))
+    legacy = _loads_list(d.pop("segments_json", None))  # not moved yet (see _move_segments_to_table)
+    d["segments"] = _read_segments(conn, d["id"]) or legacy
     for key, target in (
         ("speakers_json", "speakers"),
-        ("segments_json", "segments"),
         ("summaries_json", "summaries"),
         ("dubs_json", "dubs"),
     ):
         raw = d.pop(key, None)
-        default_val = [] if target in ("segments", "dubs") else {}
+        default_val = [] if target == "dubs" else {}
         if raw:
             try:
                 d[target] = json.loads(raw)
@@ -1037,6 +1544,7 @@ def _deserialize_meeting(d: Dict[str, Any]) -> Dict[str, Any]:
     from app.translation import resolve_all
 
     d["translations"] = resolve_all(d["segments"], _loads_dict(d.pop("translations_json", None)))
+    d["transcript_versions"] = transcript_versions(conn, d["id"])
     return d
 
 
@@ -1138,38 +1646,25 @@ def merge_segment_with_previous(meeting_id: int, segment_id: int) -> Optional[Di
     Merges the specified segment with the immediately preceding segment,
     combining their text, word timestamps, and end time.
     """
-    m = get_meeting(meeting_id)
-    if not m:
-        return None
+    def merge(m: Dict[str, Any]) -> tuple:
+        segments = m.get("segments") or []
+        target_idx = next((i for i, seg in enumerate(segments) if int(seg.get("id", -1)) == int(segment_id)), -1)
+        if target_idx <= 0:
+            return ()
+        prev_seg = segments[target_idx - 1]
+        curr_seg = segments[target_idx]
+        prev_seg["end"] = round(float(curr_seg.get("end", prev_seg.get("end", 0.0))), 2)
+        prev_seg["text"] = (
+            (prev_seg.get("text") or "").rstrip() + " " + (curr_seg.get("text") or "").lstrip()
+        ).strip()
+        prev_seg["words"] = list(prev_seg.get("words") or []) + list(curr_seg.get("words") or [])
+        segments.pop(target_idx)
+        for idx, s in enumerate(segments):
+            s["id"] = idx + 1
+        m["segments"] = segments
+        return ("segments",)
 
-    segments = m.get("segments") or []
-    target_idx = -1
-    for i, seg in enumerate(segments):
-        if int(seg.get("id", -1)) == int(segment_id):
-            target_idx = i
-            break
-
-    if target_idx <= 0:
-        return m
-
-    prev_seg = segments[target_idx - 1]
-    curr_seg = segments[target_idx]
-
-    prev_seg["end"] = round(float(curr_seg.get("end", prev_seg.get("end", 0.0))), 2)
-    prev_seg["text"] = (
-        (prev_seg.get("text") or "").rstrip() + " " + (curr_seg.get("text") or "").lstrip()
-    ).strip()
-
-    prev_words = list(prev_seg.get("words") or [])
-    curr_words = list(curr_seg.get("words") or [])
-    prev_seg["words"] = prev_words + curr_words
-
-    segments.pop(target_idx)
-    for idx, s in enumerate(segments):
-        s["id"] = idx + 1
-
-    save_meeting_results(meeting_id, segments=segments)
-    return get_meeting(meeting_id)
+    return edit_meeting(meeting_id, merge)
 
 
 

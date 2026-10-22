@@ -1,5 +1,5 @@
 """
-Speech recognition with GigaAM v2 (Sber, MIT licence) and NVIDIA Parakeet TDT 0.6B v3 (CC-BY-4.0),
+Speech recognition with GigaAM v3 (Sber, MIT licence) and NVIDIA Parakeet TDT 0.6B v3 (CC-BY-4.0),
 both free for commercial use, run on ONNX Runtime through onnx-asr (MIT).
 
 GigaAM is the most accurate model for Russian; Parakeet is several times faster than Whisper and
@@ -27,8 +27,8 @@ ONNX_MODELS: Dict[str, Dict[str, Any]] = {
         "license": "MIT",
         "vram_gb": 1.5,  # on the GPU (app/onnx_gpu.py)
         "languages": ["ru"],
-        "desc_ru": "Новая модель Сбера для русского языка: сразу пишет со знаками препинания и заглавными буквами, числа цифрами. Только русский, работает на процессоре.",
-        "desc_en": "Sber's new model for Russian: writes with punctuation and capital letters, numbers as digits. Russian only, runs on the CPU.",
+        "desc_ru": "Новая модель Сбера для русского языка: сразу пишет со знаками препинания и заглавными буквами, числа цифрами. Только русский; на видеокарте NVIDIA, без неё — на процессоре.",
+        "desc_en": "Sber's new model for Russian: writes with punctuation and capital letters, numbers as digits. Russian only; on an NVIDIA video card, otherwise on the CPU.",
     },
     "parakeet-v3": {
         "onnx_name": "nemo-parakeet-tdt-0.6b-v3",
@@ -78,10 +78,9 @@ def supports_language(model_id: str, lang: Optional[str]) -> bool:
 
 def _dir_mb(d: Path) -> float:
     """Size of a folder, including the partial files Hugging Face writes while downloading."""
-    try:
-        return sum(f.stat().st_size for f in d.rglob("*") if f.is_file()) / (1024 * 1024)
-    except OSError:
-        return 0.0
+    from app.paths import dir_size
+
+    return dir_size(d) / 2**20
 
 
 def download_progress(model_id: str) -> int:
@@ -100,6 +99,38 @@ def catalog() -> List[Dict[str, Any]]:
 
 
 ONNX_ASR_PIN = "onnx-asr==0.12.0"
+# Packages the app installs by itself when they are missing: the exact files (PyPI wheels), so a
+# replaced package or index installs nothing (requirements.txt is checked the same way). Their
+# dependencies are in requirements.txt already, hence --no-deps.
+PINNED = {
+    "onnx-asr": ("0.12.0", "5e7ceca454609819ea7833f61e2302e0c8f6ece4f8a78b66c5daba53cb51de4a"),
+    "yt-dlp": ("2026.8.19", "1d57897e94c6665a0a6f9bc54b34e584284e32c034ffab3a7df25d8f7b24eedf"),
+}
+
+
+def pinned_args(package: str, folder: Path) -> List[str]:
+    """pip / uv arguments that install exactly PINNED[package] (a requirements file with its hash)."""
+    version, sha = PINNED[package]
+    req = folder / f"{package}.requirements.txt"
+    req.write_text(f"{package}=={version} --hash=sha256:{sha}\n", encoding="utf-8")
+    return ["-r", str(req), "--require-hashes", "--no-deps"]
+
+
+def install_pinned(package: str) -> None:
+    """Installs PINNED[package] into the program's Python (uv first, then pip); RuntimeError if it fails."""
+    import importlib
+    import tempfile
+
+    print(f"[setup] installing {package}=={PINNED[package][0]}", flush=True)
+    errors = []
+    with tempfile.TemporaryDirectory(prefix="vs_pkg_") as tmp:
+        for cmd in _install_commands(pinned_args(package, Path(tmp))):
+            proc = _run(cmd)
+            if proc.returncode == 0:
+                importlib.invalidate_caches()
+                return
+            errors.append((proc.stderr or proc.stdout or "").strip()[-300:])
+    raise RuntimeError(f"Не удалось установить {package}: " + (errors[-1] if errors else "нет uv и pip"))
 
 
 def ensure_package() -> None:
@@ -112,15 +143,7 @@ def ensure_package() -> None:
         return
     except ImportError:
         pass
-    print(f"[onnx] installing {ONNX_ASR_PIN}")
-    errors = []
-    for cmd in _install_commands():
-        proc = _run(cmd)
-        if proc.returncode == 0:
-            importlib.invalidate_caches()
-            return
-        errors.append((proc.stderr or proc.stdout or "").strip()[-300:])
-    raise RuntimeError("Не удалось установить onnx-asr: " + (errors[-1] if errors else "нет uv и pip"))
+    install_pinned("onnx-asr")
 
 
 def _run(cmd):
@@ -136,22 +159,14 @@ def _run(cmd):
 def _install_commands(args=None):
     """uv first (setup.bat makes the venv with uv, which has no pip in it), then pip, bootstrapping it
     with ensurepip when the venv has none. `args`: what to install (onnx-asr by default)."""
-    import os
-    import shutil
     import sys
 
-    uv = shutil.which("uv")
-    if not uv:
-        home = Path(os.environ.get("USERPROFILE") or Path.home())
-        for c in (home / ".local" / "bin" / "uv.exe", home / ".cargo" / "bin" / "uv.exe",
-                  Path(os.environ.get("LOCALAPPDATA") or home) / "Microsoft" / "WinGet" / "Links" / "uv.exe"):
-            if c.is_file():
-                uv = str(c)
-                break
+    from app.pyenv import ensure_pip, find_uv
+
+    uv = find_uv()
     if uv:
         yield [uv, "pip", "install", "--python", sys.executable, *(args or [ONNX_ASR_PIN])]
-    if _run([sys.executable, "-m", "pip", "--version"]).returncode != 0:
-        _run([sys.executable, "-m", "ensurepip", "--upgrade"])
+    ensure_pip(sys.executable)
     yield [sys.executable, "-m", "pip", "install", "--disable-pip-version-check", *(args or [ONNX_ASR_PIN])]
 
 
@@ -237,6 +252,44 @@ def preload(model_id: str) -> None:
         _load(model_id)
     except Exception:
         traceback.print_exc()
+
+
+_preloading: Dict[str, threading.Thread] = {}
+_preload_errors: Dict[str, Tuple[float, str]] = {}  # model -> (when, why) of the last failed load
+PRELOAD_RETRY_SEC = 60.0
+
+
+def is_loaded(model_id: str) -> bool:
+    """The CPU copy (live captions) is in memory: recognizing with it starts at once."""
+    return _key(model_id, False) in _loaded
+
+
+def preload_async(model_id: str) -> str:
+    """Loads the CPU copy in the background (installing onnx-asr or downloading missing files can take
+    minutes: never in a request). Returns why the last try failed, '' while none did; a failed load
+    is tried again after PRELOAD_RETRY_SEC."""
+    import time
+
+    with _lock:
+        running = _preloading.get(model_id)
+        if running and running.is_alive() or is_loaded(model_id):
+            return ""
+        failed = _preload_errors.get(model_id)
+        if failed and time.time() - failed[0] < PRELOAD_RETRY_SEC:
+            return failed[1]
+
+        def _run() -> None:
+            try:
+                _load(model_id)
+                _preload_errors.pop(model_id, None)
+            except Exception as e:
+                traceback.print_exc()
+                _preload_errors[model_id] = (time.time(), str(e)[:200])
+
+        t = threading.Thread(target=_run, daemon=True, name=f"onnx_preload_{model_id}")
+        _preloading[model_id] = t
+        t.start()
+    return failed[1] if failed else ""
 
 
 def loaded_models() -> List[str]:
@@ -347,6 +400,31 @@ def start_download(model_id: str) -> Dict[str, Any]:
 
     threading.Thread(target=work, daemon=True, name=f"onnx_dl_{model_id}").start()
     return _downloads[model_id]
+
+
+def ensure_downloaded(model_id: str, on_progress: Callable[[int], None]) -> None:
+    """A recording processed with a model that is not downloaded yet: its files first, with the
+    percentage (of the folder's size) every second; the settings show the same download."""
+    if is_installed(model_id):
+        return
+    ensure_package()
+    stop = threading.Event()
+
+    def watch() -> None:
+        while not stop.wait(1.0):
+            on_progress(download_progress(model_id))
+
+    _downloads[model_id] = {"active": True, "error": ""}
+    threading.Thread(target=watch, daemon=True, name=f"onnx_dl_watch_{model_id}").start()
+    try:
+        with _fetch_lock:
+            fetch(model_id)
+        _downloads[model_id] = {"active": False, "error": ""}
+    except Exception as e:
+        _downloads[model_id] = {"active": False, "error": str(e)[:300]}
+        raise
+    finally:
+        stop.set()
 
 
 def delete_model(model_id: str) -> bool:

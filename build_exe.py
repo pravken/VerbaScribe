@@ -274,14 +274,46 @@ class VerbaScribeLauncher
             return;
         }
         ShowSplashUntilWindow(app);
+        // Exit code 1: run.py has shown why it stopped. Any other failure at start (python.exe itself
+        // did not run: a missing DLL, a blocked file) would end silently: say so here.
+        if (app.HasExited && app.ExitCode != 0 && app.ExitCode != 1)
+        {
+            MessageBox.Show(
+                "VerbaScribe не запустился (код " + app.ExitCode + ").\n" +
+                "Запустите setup.bat ещё раз; журнал: %LOCALAPPDATA%\\VerbaScribe\\logs\n\n" +
+                "VerbaScribe did not start. Run setup.bat again.",
+                "VerbaScribe",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error
+            );
+        }
     }
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    static extern IntPtr FindWindow(string cls, string title);
+    static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string cls, string title);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    static extern int GetClassName(IntPtr hwnd, System.Text.StringBuilder name, int max);
     [DllImport("user32.dll")]
     static extern bool IsWindowVisible(IntPtr hwnd);
 
     const string WindowTitle = "VerbaScribe";  // run.py WINDOW_TITLE
+
+    // The app window. Explorer showing the program's folder (named VerbaScribe) has the same title:
+    // it must not close the splash (run.py find_app_window does the same)
+    static IntPtr FindAppWindow()
+    {
+        IntPtr hwnd = IntPtr.Zero;
+        System.Text.StringBuilder cls = new System.Text.StringBuilder(256);
+        while (true)
+        {
+            hwnd = FindWindowEx(IntPtr.Zero, hwnd, null, WindowTitle);
+            if (hwnd == IntPtr.Zero) return IntPtr.Zero;
+            cls.Length = 0;
+            GetClassName(hwnd, cls, cls.Capacity);
+            string name = cls.ToString();
+            if (name != "CabinetWClass" && name != "ExploreWClass") return hwnd;
+        }
+    }
 
     // A small "starting" window: the first start after an update can take a while (Python compiles
     // its files, the speech libraries load), and without it nothing seems to happen.
@@ -421,7 +453,7 @@ class VerbaScribeLauncher
                 status.Text = phrases[next];
                 lastPhrase = DateTime.Now;
             }
-            IntPtr hwnd = FindWindow(null, WindowTitle);
+            IntPtr hwnd = FindAppWindow();
             bool done = (hwnd != IntPtr.Zero && IsWindowVisible(hwnd)) || app.HasExited || t > 180;
             if (done)
             {

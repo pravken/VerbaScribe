@@ -10,14 +10,15 @@ cosine similarity. The keyword index (segments_fts) stays: app/library_qa.py and
 merge both, so exact names and numbers are still found by keywords.
 
 Indexing runs in the background while Ollama is running and nothing else is using the GPU: after a
-recording is transcribed or edited (its semantic_meta row is dropped then), and once for the
-library when the feature is switched on.
+recording is transcribed or edited (its semantic_meta row is marked stale then), and once for the
+library when the feature is switched on. An edited recording waits EDIT_QUIET_SEC after its last
+edit (a session of corrections is indexed once), and only chunks whose text changed are embedded.
 """
 
 import threading
 import time
 import traceback
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -101,6 +102,19 @@ def embed(texts: List[str], settings: Optional[Dict[str, str]] = None) -> np.nda
     return m / np.maximum(norms, 1e-9)
 
 
+EDIT_QUIET_SEC = 300
+
+
+def _known_vectors(meeting_id: int, model: str) -> Dict[str, bytes]:
+    """The vectors of this recording's chunks made by `model` before an edit, by chunk text."""
+    with _db_lock:
+        conn = get_connection()
+        same = conn.execute("SELECT 1 FROM semantic_meta WHERE meeting_id = ? AND model = ?", (meeting_id, model)).fetchone()
+        rows = conn.execute("SELECT text, vec FROM semantic_chunks WHERE meeting_id = ?", (meeting_id,)).fetchall() if same else []
+        conn.close()
+    return {r["text"]: r["vec"] for r in rows}
+
+
 def index_meeting(meeting_id: int, settings: Optional[Dict[str, str]] = None) -> int:
     """Embeds and stores the chunks of one recording; returns how many chunks it has."""
     settings = settings or get_all_settings()
@@ -108,7 +122,10 @@ def index_meeting(meeting_id: int, settings: Optional[Dict[str, str]] = None) ->
     if not m:
         return 0
     chunks = meeting_chunks(m)
-    vectors = embed([c[2] for c in chunks], settings) if chunks else np.zeros((0, 0), dtype=np.float32)
+    known = _known_vectors(meeting_id, model_name(settings))
+    todo = [c[2] for c in chunks if c[2] not in known]
+    fresh = dict(zip(todo, embed(todo, settings))) if todo else {}
+    vectors = [np.frombuffer(known[c[2]], dtype=np.float32) if c[2] in known else fresh[c[2]] for c in chunks]
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with _db_lock:
         conn = get_connection()
@@ -117,7 +134,7 @@ def index_meeting(meeting_id: int, settings: Optional[Dict[str, str]] = None) ->
             "INSERT INTO semantic_chunks (meeting_id, chunk, start, speaker, text, vec) VALUES (?, ?, ?, ?, ?, ?)",
             [(meeting_id, i, c[0], c[1], c[2], vectors[i].tobytes()) for i, c in enumerate(chunks)],
         )
-        conn.execute("INSERT OR REPLACE INTO semantic_meta (meeting_id, model, updated_at) VALUES (?, ?, ?)",
+        conn.execute("INSERT OR REPLACE INTO semantic_meta (meeting_id, model, updated_at, stale) VALUES (?, ?, ?, 0)",
                      (meeting_id, model_name(settings), now))
         conn.commit()
         conn.close()
@@ -133,11 +150,12 @@ def pending_ids(settings: Optional[Dict[str, str]] = None) -> List[int]:
         rows = conn.execute(
             """
             SELECT id FROM meetings
-            WHERE status = 'completed' AND segments_json NOT IN ('', '[]')
-              AND id NOT IN (SELECT meeting_id FROM semantic_meta WHERE model = ?)
+            WHERE status = 'completed' AND has_transcript = 1
+              AND id NOT IN (SELECT meeting_id FROM semantic_meta WHERE model = ? AND stale = 0)
+              AND id NOT IN (SELECT meeting_id FROM semantic_meta WHERE stale = 1 AND updated_at > ?)
             ORDER BY id DESC
             """,
-            (model,),
+            (model, (datetime.now() - timedelta(seconds=EDIT_QUIET_SEC)).strftime("%Y-%m-%d %H:%M:%S")),
         ).fetchall()
         conn.close()
     return [int(r["id"]) for r in rows]
@@ -148,9 +166,10 @@ def status() -> Dict[str, Any]:
     model = model_name(settings)
     with _db_lock:
         conn = get_connection()
-        total = conn.execute("SELECT COUNT(*) FROM meetings WHERE status = 'completed' AND segments_json NOT IN ('', '[]')").fetchone()[0]
+        total = conn.execute("SELECT COUNT(*) FROM meetings WHERE status = 'completed' AND has_transcript = 1").fetchone()[0]
         done = conn.execute(
-            "SELECT COUNT(*) FROM semantic_meta s JOIN meetings m ON m.id = s.meeting_id WHERE s.model = ? AND m.status = 'completed'",
+            "SELECT COUNT(*) FROM semantic_meta s JOIN meetings m ON m.id = s.meeting_id "
+            "WHERE s.model = ? AND s.stale = 0 AND m.status = 'completed'",
             (model,),
         ).fetchone()[0]
         conn.close()

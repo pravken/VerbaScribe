@@ -15,7 +15,7 @@ from ctypes import wintypes
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
-from app.hotkey import MOD_NOREPEAT, dictation_hotkey_state, hotkey_state, parse_hotkey
+from app.hotkey import MOD_NOREPEAT, altgr_clash, dictation_hotkey_state, hotkey_state, parse_hotkey, translate_hotkey_state
 
 user32 = ctypes.windll.user32 if sys.platform == "win32" else None
 shell32 = ctypes.windll.shell32 if sys.platform == "win32" else None
@@ -32,7 +32,9 @@ WM_APP_HOTKEY = WM_USER + 22
 WM_HOTKEY = 0x0312
 HOTKEY_ID = 1
 DICTATION_HOTKEY_ID = 2
-_HOTKEY_STATES = {HOTKEY_ID: hotkey_state, DICTATION_HOTKEY_ID: dictation_hotkey_state}
+TRANSLATE_HOTKEY_ID = 3
+_HOTKEY_STATES = {HOTKEY_ID: hotkey_state, DICTATION_HOTKEY_ID: dictation_hotkey_state,
+                  TRANSLATE_HOTKEY_ID: translate_hotkey_state}
 WM_LBUTTONUP = 0x0202
 WM_LBUTTONDBLCLK = 0x0203
 WM_RBUTTONUP = 0x0205
@@ -268,6 +270,10 @@ class Tray:
             parsed = parse_hotkey(spec)
             if not parsed:
                 state.update(ok=False, error="Неверное сочетание клавиш")
+                continue
+            typed = altgr_clash(spec)
+            if typed:
+                state.update(ok=False, error=f"На раскладке клавиатуры это сочетание (AltGr) печатает «{typed}» — выберите другое")
                 continue
             if user32.RegisterHotKey(self.hwnd, slot, parsed[0] | MOD_NOREPEAT, parsed[1]):
                 state.update(ok=True)

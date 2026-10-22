@@ -112,20 +112,6 @@ TTS_WORKER_VRAM_GB = 4.5  # one Chatterbox process peaks at ~3.7 GB; the rest is
 TTS_MAX_WORKERS = 3       # measured: 3 processes give ~1.6x, more mostly add CPU contention
 
 
-def choose_tts_workers(setting: str, free_vram_gb: float, cpu_count: int) -> int:
-    """
-    Number of parallel Chatterbox processes. Generation is a token-by-token loop that leaves the
-    GPU mostly idle, so a few processes side by side raise throughput while VRAM allows.
-    `setting` is "auto" or an explicit number from the settings.
-    """
-    value = (setting or "auto").strip().lower()
-    if value.isdigit():
-        return max(1, min(TTS_MAX_WORKERS, int(value)))
-    by_vram = int(max(0.0, free_vram_gb - 1.0) // TTS_WORKER_VRAM_GB)
-    by_cpu = max(1, (cpu_count or 1) // 4)
-    return max(1, min(TTS_MAX_WORKERS, by_vram, by_cpu))
-
-
 # ---------------------------------------------------------------- room tone
 def speech_free_gaps(
     units: List[Dict[str, Any]], total_dur: float, margin: float = 0.15, min_len: float = 0.25

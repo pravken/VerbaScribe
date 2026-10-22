@@ -91,10 +91,23 @@ def api_delete_whisper_model(model_id: str) -> Dict[str, Any]:
 
     if running_job_kind() == "transcribe":
         raise HTTPException(status_code=409, detail="Идёт распознавание — удалите модель после него")
+    from app import live
+
+    if live.has_sessions():
+        raise HTTPException(status_code=409, detail="Идут живые субтитры — удалите модель после записи")
+    worker = live._worker
+    if worker is not None and worker.proc is not None:  # an idle caption worker still holds its model files
+        with worker.lock:
+            worker._kill()
+    from app.transcriber import release_whisper_model
+
+    release_whisper_model()
     try:
         delete_whisper_model(model_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     return get_models_status()
 
 class SettingsUpdatePayload(BaseModel):
@@ -106,7 +119,13 @@ def api_update_settings(payload: SettingsUpdatePayload) -> Dict[str, Any]:
     if payload.settings.get("llm_provider") == "cloud" and get_all_settings().get("llm_cloud_consent") != "true" \
             and str(payload.settings.get("llm_cloud_consent")) != "true":
         raise HTTPException(status_code=400, detail="Подтвердите отправку текста в облачный сервис в «Настройки → Анализ»")
-    updated = update_settings({k: v for k, v in payload.settings.items() if not str(k).startswith("llm_key_")})
+    from app.settings_schema import clean_all
+
+    try:
+        values = clean_all({k: v for k, v in payload.settings.items() if not str(k).startswith("llm_key_")})
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    updated = update_settings(values)
     if "semantic_search" in payload.settings or "semantic_model" in payload.settings:
         from app import semantic
 

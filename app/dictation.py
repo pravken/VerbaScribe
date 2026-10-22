@@ -6,6 +6,12 @@ window that has the focus (through the clipboard and Ctrl+V; the clipboard is pu
 Recognition uses the models already downloaded: GigaAM v3 for Russian, Parakeet for other
 languages (both on the CPU, a second or two), otherwise the live-caption Whisper worker. Nothing is
 saved in the library.
+
+Dictation with translation has a hotkey of its own (Ctrl+Alt+T by default): the recognized text is
+translated into the chosen language before it is typed. The local Ollama model translates; a cloud
+model only when the user allowed it for dictation (what is dictated can be anything, a password
+included). When the translation fails, the original is typed and the notice says so: nothing that
+was said is lost.
 """
 
 import sys
@@ -19,7 +25,8 @@ import numpy as np
 SR = 16000
 MAX_SEC = 300  # a forgotten dictation stops by itself
 
-_state: Dict[str, Any] = {"active": False, "error": "", "last_text": "", "started_at": 0.0}
+_state: Dict[str, Any] = {"active": False, "error": "", "last_text": "", "started_at": 0.0, "translate_to": ""}
+TRANSLATE_TIMEOUT_SEC = 30.0  # the first translation may wait for Ollama to load its model
 _lock = threading.Lock()
 _chunks: List[np.ndarray] = []
 _thread: Optional[threading.Thread] = None
@@ -30,22 +37,29 @@ def status() -> Dict[str, Any]:
         return dict(_state)
 
 
-def toggle(notify=None) -> str:
-    """Starts or stops (and types) a dictation; returns "started" or "stopped"."""
+def toggle(notify=None, translate: bool = False) -> str:
+    """Starts or stops (and types) a dictation; returns "started" or "stopped". `translate`: the
+    dictation with translation (its own hotkey); either hotkey stops a running dictation."""
     with _lock:
         active = _state["active"]
     if active:
         threading.Thread(target=_finish, args=(notify,), daemon=True, name="dictation_finish").start()
         return "stopped"
-    _start()
+    _start(translate_target() if translate else "")
     return "started"
 
 
-def _start() -> None:
+def translate_target() -> str:
+    from app.database import get_all_settings
+
+    return (get_all_settings().get("dictation_translate_to") or "en").strip()
+
+
+def _start(translate_to: str = "") -> None:
     global _thread
     with _lock:
         _chunks.clear()
-        _state.update(active=True, error="", started_at=time.time())
+        _state.update(active=True, error="", started_at=time.time(), translate_to=translate_to)
     _thread = threading.Thread(target=_record, daemon=True, name="dictation_mic")
     _thread.start()
 
@@ -78,20 +92,74 @@ def _finish(notify=None) -> None:
     with _lock:
         audio = np.concatenate(_chunks) if _chunks else np.zeros(0, dtype=np.float32)
         _chunks.clear()
+        translate_to = _state.get("translate_to") or ""
     try:
         text = recognize(audio) if audio.size > SR // 2 else ""
+        note = ""
+        if text and translate_to:
+            text, note = translate(text, translate_to)
         with _lock:
             _state.update(last_text=text, error="" if text else "Речь не распознана")
         if text:
             type_text(text)
         if notify:
-            notify("Диктовка", text[:120] if text else "Речь не распознана")
+            if not text:
+                notify("Диктовка", "Речь не распознана")
+            elif note:
+                notify("Диктовка: вставлено без перевода", f"{note}. {text[:100]}", warning=True)
+            else:
+                notify("Диктовка с переводом" if translate_to else "Диктовка", text[:120])
     except Exception as e:
         traceback.print_exc()
         with _lock:
             _state["error"] = str(e)[:200]
         if notify:
             notify("Диктовка", f"Не получилось: {str(e)[:120]}")
+
+
+_DICTATION_PROMPT = (
+    "You translate dictated text into {tgt}. The user's message is what a person dictated: an e-mail, a "
+    "message, a note or a sentence of a document. Translate it faithfully and naturally as written {tgt}, "
+    "keeping names, numbers, links and the paragraph breaks. If it is already in {tgt}, return it unchanged. "
+    "Output only the translation: no quotes, notes or explanations."
+)
+
+
+def translate(text: str, target: str) -> "tuple[str, str]":
+    """(text to type, note). The note is empty when the text was translated or already in `target`;
+    otherwise it says why the original is typed."""
+    from app import llm
+    from app.database import get_all_settings
+    from app.live_translate import phrase_language
+    from app.translation import TEXT_LANGUAGES
+
+    if phrase_language(text) == target[:2]:
+        return text, ""
+    name = TEXT_LANGUAGES.get(target, target)
+    settings = get_all_settings()
+    allow_cloud = (settings.get("dictation_translate_cloud") or "false").lower() == "true"
+    try:
+        # Without the dictation's own permission the cloud model of the settings gives way to Ollama
+        tgt = llm.target(None, local_only=not allow_cloud)
+    except Exception as e:
+        return text, f"Перевод недоступен: {str(e)[:100]}"
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+
+    pool = ThreadPoolExecutor(1)
+    try:
+        answer = pool.submit(tgt.chat, _DICTATION_PROMPT.format(tgt=name), text).result(TRANSLATE_TIMEOUT_SEC)
+    except FutureTimeout:
+        return text, f"модель не ответила за {int(TRANSLATE_TIMEOUT_SEC)} с"
+    except Exception as e:
+        return text, f"Перевод не удался: {str(e)[:100]}"
+    finally:
+        pool.shutdown(wait=False)  # a late answer is dropped
+    from app.llm_text import strip_think
+
+    out = strip_think(answer or "").strip().strip('"«»`').strip()
+    if not out:
+        return text, "модель вернула пустой ответ"
+    return out, ""
 
 
 def _language() -> Optional[str]:

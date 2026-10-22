@@ -112,14 +112,17 @@ body {
   color: #0A84FF;
   border: 1px solid rgba(10, 132, 255, 0.35);
 }
+/* White text on a button: a deeper blue and red than the accent colours (4.7:1 and 5.4:1, WCAG AA) */
 .ui-btn-primary {
-  background: #0A84FF;
+  background: #0071E3;
   color: #FFFFFF;
   border: 1px solid transparent;
 }
 .ui-btn-primary:hover {
-  background: #0070E0;
+  background: #0062C4;
 }
+.bg-apple-blue.text-white { background-color: #0071E3; }
+.bg-apple-red.text-white { background-color: #D70015; }
 
 /* Volume Slider Styling */
 input[type="range"].volume-slider {
@@ -169,14 +172,14 @@ input[type="range"].volume-slider::-webkit-slider-thumb:hover {
   transition: background-color 0.1s ease;
 }
 .macos-menu-item:hover {
-  background-color: #0A84FF;
+  background-color: #0071E3;
   color: #FFFFFF;
 }
 .macos-menu-item-danger {
   color: #FF453A;
 }
 .macos-menu-item-danger:hover {
-  background-color: #FF453A;
+  background-color: #D70015;
   color: #FFFFFF;
 }
 
@@ -198,6 +201,20 @@ input[type="range"].volume-slider::-webkit-slider-thumb:hover {
 .word-token:hover {
   background-color: rgba(255, 255, 255, 0.1);
   border-radius: 4px;
+}
+/* Transcript tab: "Recognition" (the model of the text, a panel of its own) and "Text" (the tools
+   for the text shown), each with its label, so the two kinds of buttons do not read as one group */
+.tx-section-panel { padding: 5px 8px; border-radius: 10px; background: rgba(255, 255, 255, 0.035); border: 1px solid rgba(255, 255, 255, 0.07); }
+.tx-section-label { font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #8E8E93;
+  flex-shrink: 0; min-width: 104px; }
+.tx-section-label-text { padding-left: 9px; }  /* in line with the label of the panel above */
+.tx-model-status { font-size: 11px; flex: 1 1 14rem; min-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* A place of a merged transcript the models heard differently (app/transcript_merge.py) */
+.word-disputed {
+  text-decoration: underline dotted rgba(255, 159, 10, 0.85);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
 }
 
 /* Markdown Summary Styling */
@@ -456,7 +473,7 @@ label.settings-toggle { display: flex; }
 .about-card { transition: min-height .4s ease; min-height: 0; }
 .about-card.about-egg-on { min-height: 420px; }
 .about-rec-dot { width: 8px; height: 8px; border-radius: 50%; background: #FF453A; box-shadow: 0 0 8px #FF453A; animation: caret-blink 1s steps(1) infinite; }
-.about-egg .ts { color: #636366; margin-right: 8px; }
+.about-egg .ts { color: #8A8A90; margin-right: 8px; }
 .about-egg .who { font-weight: 600; margin-right: 6px; }
 .about-egg .sys { color: #FF9F0A; }
 .about-egg .glitch { color: #fff; font-size: 13px; animation: glitch 1.2s steps(2) 2; }
@@ -508,9 +525,9 @@ label.settings-toggle { display: flex; }
 .cap-row.cap-draft .cap-o { color: #AEAEB2; }
 .cap-row .cap-t { color: #0A84FF; font-size: calc(var(--cap-size, 26px) * 0.82); line-height: 1.35; margin-top: 2px; transition: color 0.5s ease; overflow-wrap: anywhere; }
 .cap-row.cap-draft .cap-t { color: rgba(10, 132, 255, 0.7); }
-.cap-tr:empty::before { content: '…'; color: #636366; animation: cap-wait 1.4s ease-in-out infinite; }
+.cap-tr:empty::before { content: '…'; color: #8A8A90; animation: cap-wait 1.4s ease-in-out infinite; }
 /* The phrase being spoken is only a quiet "…": its text is shown once it is final */
-.cap-draft .cap-orig:empty::before { content: '…'; color: #636366; animation: cap-wait 1.4s ease-in-out infinite; }
+.cap-draft .cap-orig:empty::before { content: '…'; color: #8A8A90; animation: cap-wait 1.4s ease-in-out infinite; }
 .cap-draft .cap-t { visibility: hidden; }
 .cap-draft.cap-draft-live .cap-t { visibility: visible; }
 .cap-view-tr .cap-draft .cap-t { visibility: visible; }
@@ -526,7 +543,7 @@ label.settings-toggle { display: flex; }
 .cap-view-side .cap-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 2rem; }
 .cap-view-side .cap-t { font-size: var(--cap-size, 26px); margin-top: 0; }
 .cap-view-side .cap-same .cap-tr { display: none; }
-.cap-view-side .cap-same .cap-t::after { content: '—'; color: #636366; }
+.cap-view-side .cap-same .cap-t::after { content: '—'; color: #8A8A90; }
 @media (prefers-reduced-motion: reduce) { .cap-tr:empty::before, .cap-draft .cap-orig:empty::before, .cap-in { animation: none; } }
 
 /* Library: drop targets while a recording or a folder is dragged */
@@ -535,10 +552,24 @@ label.settings-toggle { display: flex; }
 #meetings-list.lib-dragging .folder-row { outline: 1px dashed rgba(255, 255, 255, 0.12); outline-offset: -1px; }
 
 /* Transcript toolbar: when the column is narrow the text buttons keep only their icons (their
-   titles explain them), so the speaker pills keep enough room instead of stacking up */
+   titles explain them), so the speaker pills keep enough room instead of stacking up; tx-compact
+   does the same when the speakers would not fit beside the labels (fitTranscriptToolbar) */
 #wview-transcript > div:first-child { container-type: inline-size; }
+.tx-toolbar.tx-compact .tx-tool-label { display: none; }
 @container (max-width: 900px) {
-  .tx-toolbar .tx-tool-label { display: none; }
+  .tx-toolbar .tx-tool-label, .tx-section-panel .tx-tool-label { display: none; }
+}
+
+/* Recording header: in a narrow window the Translate and Export buttons keep only their icons
+   (their titles explain them) and the view tabs shrink, so the recording title stays readable */
+#workspace-content { container-type: inline-size; }
+@container (max-width: 640px) {
+  #workspace-header { padding-left: 12px; padding-right: 12px; gap: 10px; }
+  #workspace-header .hdr-label { display: none; }
+  #workspace-header #meeting-meta-badge { display: none; }
+  #workspace-header #meeting-title-input { min-width: 80px; }
+  #workspace-header .apple-segmented { flex-shrink: 1; min-width: 0; }
+  #workspace-header .apple-segment-btn { padding: 0 8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 
 /* Parts of the app: tabs along the top of the main area */

@@ -7,6 +7,27 @@ with the ASGI (uvicorn) worker threads and pywebview's GUI message pump.
 import argparse
 import sys
 from pathlib import Path
+from typing import List, Optional
+
+
+def run(args: List[str], timeout: float = 300) -> Optional[str]:
+    """Shows the dialog in a child process (called by the server); the chosen path or None.
+    The child runs in the program folder: started from a shortcut with another working folder,
+    "-m app.native_dialog" would not find the app package and return nothing."""
+    import subprocess
+
+    from app.paths import APP_DIR
+
+    try:
+        proc = subprocess.run([sys.executable, "-m", "app.native_dialog", *args], cwd=str(APP_DIR),
+                              capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout,
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except Exception as e:
+        print(f"[dialog] failed: {e}", flush=True)
+        return None
+    if proc.returncode != 0:
+        print(f"[dialog] ended with {proc.returncode}: {(proc.stderr or '').strip()[-500:]}", flush=True)
+    return (proc.stdout or "").strip() or None
 
 
 def pick_save(

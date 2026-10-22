@@ -25,9 +25,9 @@ jobs:
       TAG: ${{ inputs.tag || github.ref_name }}
       PUBLISH: ${{ startsWith(github.ref, 'refs/tags/') || inputs.tag != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
           python-version: "3.10"
 
@@ -68,26 +68,54 @@ jobs:
             Set-Content -Encoding utf8 SHA256SUMS.txt
           Get-Content SHA256SUMS.txt
 
+      # SHA256SUMS.txt signed with the author's release key (docs/release-signing.md). Once its public
+      # key is in app/updater.py, installed apps take only signed releases: then a missing secret stops
+      # the release instead of publishing one nobody could install.
+      - name: Sign checksums
+        shell: pwsh
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          $hasKey = Select-String -Path app/updater.py -Pattern '^RELEASE_PUBLIC_KEY = ".+"' -Quiet
+          if ($env:RELEASE_SIGNING_KEY) {
+            python tools/release_key.py sign SHA256SUMS.txt --tag $env:TAG
+            if ($LASTEXITCODE -ne 0) { throw "Signing failed" }
+            if ($hasKey) {
+              python tools/release_key.py verify SHA256SUMS.txt --tag $env:TAG
+              if ($LASTEXITCODE -ne 0) { throw "The signature does not check out with the key in app/updater.py" }
+            }
+          } elseif ($hasKey -and $env:PUBLISH -eq 'true') {
+            throw "app/updater.py has a release key but the RELEASE_SIGNING_KEY secret is missing: installed apps would refuse this release"
+          } else {
+            Write-Output "No release key yet: SHA256SUMS.txt is not signed"
+          }
+
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: verbascribe-release
           path: |
             VerbaScribe-*.zip
             VerbaScribe.exe
             SHA256SUMS.txt
+            SHA256SUMS.txt.minisig
 
+      # With the gh tool of the runner: no third-party action gets the token that writes releases.
+      # v1.2.0-beta.1 and the like are pre-releases: releases/latest (the in-app update check) skips
+      # them, so only people who download them by hand get them
       - name: Publish GitHub release
         if: env.PUBLISH == 'true'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ env.TAG }}
-          target_commitish: ${{ github.sha }}
-          files: |
-            VerbaScribe-*.zip
-            VerbaScribe.exe
-            SHA256SUMS.txt
-          generate_release_notes: true
-          # v1.2.0-beta.1 and the like are pre-releases: releases/latest (the in-app update check)
-          # skips them, so only people who download them by hand get them
-          prerelease: ${{ contains(env.TAG, '-') }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $files = @(Get-ChildItem VerbaScribe-*.zip | ForEach-Object Name) + @('VerbaScribe.exe', 'SHA256SUMS.txt')
+          if (Test-Path SHA256SUMS.txt.minisig) { $files += 'SHA256SUMS.txt.minisig' }
+          $pre = if ($env:TAG.Contains('-')) { @('--prerelease') } else { @() }
+          # The page's text: the version's section of CHANGELOG.md, or GitHub's list of commits
+          python tools/release_notes.py $env:TAG notes.md
+          $notes = if ((Get-Item notes.md).Length -gt 0) { @('--notes-file', 'notes.md') } else { @('--generate-notes') }
+          gh release view $env:TAG *> $null
+          if ($LASTEXITCODE -eq 0) { gh release upload $env:TAG @files --clobber }
+          else { gh release create $env:TAG @files --target $env:GITHUB_SHA --title $env:TAG @notes @pre }
+          if ($LASTEXITCODE -ne 0) { throw "Publishing the release failed" }

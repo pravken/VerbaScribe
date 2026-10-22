@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app import __version__
 from app.paths import APP_DIR as BASE_DIR, SESSION_TOKEN_FILE, UPLOADS_DIR, recordings_dir
+from app.settings_schema import as_int
 from app.database import (
     create_meeting,
     get_all_settings,
@@ -74,7 +75,8 @@ SUPPORTED_EXTENSIONS = {
 # requests to 127.0.0.1. Every launch therefore gets a random session token: the desktop
 # window opens /?token=..., receives it as an HttpOnly SameSite=Strict cookie, and every
 # other request without that cookie is rejected. Requests with a foreign Host header
-# (DNS rebinding) are rejected as well.
+# (DNS rebinding) are rejected as well, and so are requests other pages send (_foreign_page):
+# the cookie is sent along from any port of 127.0.0.1.
 SESSION_COOKIE = "vs_session"
 
 
@@ -90,17 +92,31 @@ _ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]"} | {
 }
 _PUBLIC_PREFIXES = ("/static/",)
 
-_LOCKED_PAGE = """<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>VerbaScribe</title></head>
+_LOCKED_PAGE = """<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>VerbaScribe</title>
+<style>#msg{animation:show 0s 1.5s forwards;visibility:hidden}@keyframes show{to{visibility:visible}}</style></head>
 <body style="font-family:Segoe UI,sans-serif;background:#141416;color:#f5f5f7;padding:48px">
-<h2>VerbaScribe</h2>
+<div id="msg"><h2>VerbaScribe</h2>
 <p>Откройте программу через VerbaScribe.exe или start.bat — эта страница доступна только из окна приложения.</p>
-<p style="color:#98989d">Open the app via VerbaScribe.exe or start.bat — this page is only available from the app window.</p>
+<p style="color:#98989d">Open the app via VerbaScribe.exe or start.bat — this page is only available from the app window.</p></div>
 <script>
-// Inside the app window this means the window opened with an outdated session token (the server
-// was still starting): ask the window for a fresh address and reload.
-window.addEventListener('pywebviewready', async () => {
-  try { const url = await window.pywebview.api.app_url(); if (url && url.indexOf('token=') > 0) location.replace(url); } catch (e) {}
-});
+// In the app window: the window hands over the session token, which is sent in a request body
+// (an address with the token would stay in the window's history). The message above shows only if
+// that does not work within a moment. One try per window session: a server that refuses the token
+// (another Windows user's) must not make the page reload forever.
+let tried = false;
+async function signIn() {
+  if (tried) return;
+  tried = true;
+  try {
+    if (sessionStorage.getItem('vs_relocked')) return;
+    const token = await window.pywebview.api.session_token();
+    if (!token) return;
+    const res = await fetch('/api/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) });
+    if (res.ok) { sessionStorage.setItem('vs_relocked', '1'); location.replace('/'); }
+  } catch (e) {}
+}
+window.addEventListener('pywebviewready', signIn);
+if (window.pywebview && window.pywebview.api) signIn();
 </script>
 </body></html>"""
 
@@ -112,6 +128,20 @@ def _host_allowed(host_header: str) -> bool:
     else:
         host = host.split(":")[0]
     return host in _ALLOWED_HOSTS
+
+
+def _foreign_page(request: Request) -> bool:
+    """A request sent by another page of the browser. The cookie alone does not tell: for the browser
+    every port of 127.0.0.1 is the same site, so a page of another local program (a dev server, a
+    notebook) gets the session cookie sent along. Browsers say who sent a request in Sec-Fetch-Site
+    (and Origin); requests without both (not from a browser page) still need the cookie."""
+    site = (request.headers.get("sec-fetch-site") or "").lower()
+    if site:
+        return site not in ("same-origin", "none")
+    origin = request.headers.get("origin")
+    if origin is None:
+        return False
+    return origin.rstrip("/").lower() != f"{request.url.scheme}://{request.headers.get('host', '')}".lower()
 
 
 def _token_valid(value: Optional[str]) -> bool:
@@ -150,6 +180,12 @@ def _quiet_windows_connection_resets() -> None:
 async def lifespan(_app: FastAPI):
     _quiet_windows_connection_resets()
     init_db()
+    from app.database import retry_pending_deletes
+
+    try:
+        retry_pending_deletes()  # files that were open when their recording was deleted
+    except Exception:
+        traceback.print_exc()
     from app import idle_unload
 
     try:
@@ -188,7 +224,7 @@ async def lifespan(_app: FastAPI):
         elif m.get("status") == "downloading":
             update_meeting_progress(int(m["id"]), status="failed", progress=0, stage_text="",
                                     error_message="Скачивание по ссылке прервано перезапуском — нажмите «Повторить»")
-        elif m.get("status") in ("translating", "rendering"):
+        elif m.get("status") in ("translating", "rendering", "merging"):
             # Partial translations are kept and can be completed with "Update translation"
             update_meeting_progress(int(m["id"]), status="completed", progress=100, stage_text="Задача прервана перезапуском")
     yield
@@ -210,6 +246,19 @@ async def local_session_guard(request: Request, call_next):
         return Response("Forbidden host", status_code=403)
 
     path = request.url.path
+    if not path.startswith(_PUBLIC_PREFIXES) and _foreign_page(request):
+        return Response('{"detail":"Forbidden origin"}', status_code=403, media_type="application/json")
+    if path == "/api/session" and request.method == "POST":
+        # The app window signs in without the token in an address (see _LOCKED_PAGE)
+        try:
+            token = (await request.json()).get("token")
+        except Exception:
+            token = None
+        if not isinstance(token, str) or not _token_valid(token):
+            return Response('{"detail":"Unauthorized"}', status_code=401, media_type="application/json")
+        resp = Response(status_code=204)
+        resp.set_cookie(_cookie_name(request), SESSION_TOKEN, httponly=True, samesite="strict", path="/")
+        return resp
     if path == "/":
         query_token = request.query_params.get("token")
         if _token_valid(query_token):
@@ -247,7 +296,7 @@ def index() -> HTMLResponse:
             "Cache-Control": "no-store, no-cache, must-revalidate",
             # Everything is served locally; the page may only talk to this server.
             "Content-Security-Policy": (
-                "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+                "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
                 "img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; "
                 "connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
             ),
@@ -340,7 +389,7 @@ def _queue_file(title: str, dest: Path, has_video: Optional[bool]) -> Dict[str, 
         title=title[:300], filename=dest.name, media_path=str(dest),
         language=settings.get("language", "auto"),
         model_name=settings.get("whisper_model", "large-v3-turbo"),
-        num_speakers_hint=int(settings.get("num_speakers", 0)),
+        num_speakers_hint=as_int(settings.get("num_speakers"), 0),
         source="recording", owns_media=True, title_is_default=True, has_video=has_video,
     )
     from app.naming import rename_recording_file
@@ -381,6 +430,12 @@ def _retention_loop() -> None:
             for mid in expired_media_ids(days):
                 if not is_job_active(mid):
                     remove_media(mid)
+        except Exception:
+            traceback.print_exc()
+        try:  # 16 kHz WAVs of recordings processed by older versions (see transcriber._drop_work_audio)
+            from app.transcriber import drop_old_work_audio
+
+            drop_old_work_audio()
         except Exception:
             traceback.print_exc()
         _time.sleep(6 * 3600)
@@ -504,35 +559,14 @@ def _pick_path_native(mode: str, directory: Path, filename: str = "", fmt: str =
     Spawns an isolated native file/folder dialog via app.native_dialog in a subprocess.
     This avoids thread-affinity problems and deadlocks with pywebview or uvicorn.
     """
-    import subprocess
+    from app import native_dialog
 
     desc, pat, ext = _EXPORT_FILE_TYPES.get(fmt.lower(), ("All files (*.*)", "*.*", ""))
     filter_arg = f"{desc}|{pat}|Все файлы (*.*)|*.*" if ext else "Все файлы (*.*)|*.*"
-
-    cmd = [
-        sys.executable,
-        "-m",
-        "app.native_dialog",
-        "--mode",
-        mode,
-        "--dir",
-        str(directory),
-        "--filename",
-        filename,
-        "--filter",
-        filter_arg,
-        "--ext",
-        ext,
-        "--title",
-        "Сохранить как" if mode == "save" else "Выбор папки для экспорта",
-    ]
-    try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=300)
-        out = (proc.stdout or "").strip()
-        return out if out else None
-    except Exception as e:
-        print(f"[export] Native dialog failed: {e}")
-        return None
+    return native_dialog.run([
+        "--mode", mode, "--dir", str(directory), "--filename", filename, "--filter", filter_arg, "--ext", ext,
+        "--title", "Сохранить как" if mode == "save" else "Выбор папки для экспорта",
+    ])
 
 
 # --- The endpoints, one router per part of the program, in the order they were written (the order of

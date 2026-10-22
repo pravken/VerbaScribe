@@ -6,16 +6,16 @@
 
     <!-- The parts of the app (switchAppView in static/js/library.js): the library, the recording studio, the assistant -->
     <nav id="app-bar" class="app-bar shrink-0" role="tablist">
-      <button onclick="switchAppView('library')" id="nav-library" class="app-tab app-tab-active" data-i18n-title="tipNavLibrary" title="Записи, расшифровки и анализ">
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776"/></svg>
+      <button data-click="switchAppView" data-click-args='["library"]' id="nav-library" role="tab" class="app-tab app-tab-active" data-i18n-title="tipNavLibrary" title="Расшифровка, анализ и правка выбранной записи (Ctrl+1)">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"/></svg>
         <span data-i18n="navLibrary">Редактор</span>
       </button>
-      <button onclick="switchAppView('studio')" id="nav-studio" class="app-tab" data-i18n-title="tipNavStudio" title="Запись звука и экрана с субтитрами и переводом в реальном времени">
+      <button data-click="switchAppView" data-click-args='["studio"]' id="nav-studio" role="tab" class="app-tab" data-i18n-title="tipNavStudio" title="Запись звука и экрана с субтитрами и переводом в реальном времени (Ctrl+2)">
         <span id="nav-studio-dot" class="hidden w-2 h-2 rounded-full bg-apple-red animate-pulse"></span>
         <svg id="nav-studio-icon" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"/></svg>
         <span id="nav-studio-label" data-i18n="navStudio">Студия</span>
       </button>
-      <button onclick="switchAppView('ask')" id="nav-ask" class="app-tab" data-i18n-title="tipNavAsk" title="Вопросы к одной записи, к папке или ко всей медиатеке">
+      <button data-click="switchAppView" data-click-args='["ask"]' id="nav-ask" role="tab" class="app-tab" data-i18n-title="tipNavAsk" title="Вопросы к одной записи, к папке или ко всей медиатеке (Ctrl+3)">
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
         <span data-i18n="navAsk">Ассистент</span>
       </button>
@@ -28,18 +28,18 @@
     <div id="studio-view" class="hidden flex-1 min-h-0 flex bg-apple-bg">
 <div id="side-studio" class="studio-settings w-[300px] shrink-0 border-r apple-border bg-apple-sidebar/60 overflow-y-auto px-4 py-4 space-y-3.5">
       <div>
-        <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="recPresetLabel">Пресет</label>
+        <label for="record-preset-select" class="block text-[11px] text-apple-secondary mb-1" data-i18n="recPresetLabel">Пресет</label>
         <div class="flex items-center gap-1">
-          <select id="record-preset-select" onchange="applyRecordPreset(this.value)"
+          <select id="record-preset-select" data-change="applyRecordPreset" data-change-args='[{"$": "value"}]'
             class="flex-1 min-w-0 h-8 bg-apple-card border apple-border rounded-lg px-2 text-xs text-white focus:outline-none"></select>
-          <button onclick="setDefaultRecordPreset()" id="rec-preset-default-btn" class="ui-btn ui-btn-subtle h-8 !px-2" data-i18n-title="tipPresetDefault" title="Сделать пресетом по умолчанию для кнопки «Запись»">★</button>
-          <button onclick="saveRecordPresetAs()" class="ui-btn ui-btn-subtle h-8 !px-2" data-i18n-title="tipPresetSaveAs" title="Сохранить текущие параметры как новый пресет">
+          <button data-click="setDefaultRecordPreset" id="rec-preset-default-btn" class="ui-btn ui-btn-subtle h-8 !px-2" data-i18n-title="tipPresetDefault" title="Сделать пресетом по умолчанию для кнопки «Запись»">★</button>
+          <button data-click="saveRecordPresetAs" class="ui-btn ui-btn-subtle h-8 !px-2" data-i18n-title="tipPresetSaveAs" title="Сохранить текущие параметры как новый пресет">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
           </button>
-          <button onclick="updateRecordPreset()" id="rec-preset-update-btn" class="ui-btn ui-btn-subtle h-8 !px-2" data-i18n-title="tipPresetUpdate" title="Записать текущие параметры в выбранный пресет">
+          <button data-click="updateRecordPreset" id="rec-preset-update-btn" class="ui-btn ui-btn-subtle h-8 !px-2" data-i18n-title="tipPresetUpdate" title="Записать текущие параметры в выбранный пресет">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
           </button>
-          <button onclick="deleteRecordPreset()" id="rec-preset-delete-btn" class="ui-btn ui-btn-subtle h-8 !px-2 text-apple-red" data-i18n-title="tipPresetDelete" title="Удалить пресет">
+          <button data-click="deleteRecordPreset" id="rec-preset-delete-btn" class="ui-btn ui-btn-subtle h-8 !px-2 text-apple-red" data-i18n-title="tipPresetDelete" title="Удалить пресет">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
           </button>
         </div>
@@ -47,7 +47,7 @@
 
       <div>
         <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="recSourceModeLabel">Источник записи</label>
-        <select id="record-source-select" onchange="syncRecordModalToSettings()"
+        <select id="record-source-select" data-change="syncRecordModalToSettings"
           data-i18n-title="tipRecordSourceSelect" title="Выберите источник записи: микрофон, системный звук (динамики) или оба канала"
           class="w-full h-8 bg-apple-card border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
           <option value="mic" data-i18n="sourceMic">Только микрофон</option>
@@ -58,14 +58,14 @@
 
       <div>
         <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="recMicDeviceLabel">Микрофон</label>
-        <select id="record-mic-select" onchange="syncRecordModalToSettings()"
+        <select id="record-mic-select" data-change="syncRecordModalToSettings"
           data-i18n-title="tipRecordMicSelect" title="Выберите микрофон для записи"
           class="w-full h-8 bg-apple-card border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none"></select>
       </div>
 
       <div>
         <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="recVideoLabel">Видео</label>
-        <select id="record-video-select" onchange="saveRecordVideoPref()" data-i18n-title="tipRecordVideo"
+        <select id="record-video-select" data-change="saveRecordVideoPref" data-i18n-title="tipRecordVideo"
           title="Записывать вместе со звуком экран, окно программы или вкладку браузера"
           class="w-full h-8 bg-apple-card border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
           <option value="" data-i18n="recVideoNone">Без видео — только звук</option>
@@ -102,25 +102,25 @@
       </div>
 
       <div class="space-y-2">
-        <button id="btn-start-rec" onclick="startLiveRecording()"
+        <button id="btn-start-rec" data-click="startLiveRecording"
           data-i18n-title="tipStartRecBtn" title="Начать запись звука с выбранного источника"
           class="ui-btn h-9 w-full rounded-lg bg-apple-red hover:bg-apple-red/90 text-white font-semibold shadow-lg">
           <span id="rec-dot-indicator" class="w-2.5 h-2.5 rounded-full bg-white shrink-0"></span>
           <span data-i18n="startRecBtn">Начать запись</span>
         </button>
-        <button id="btn-stop-rec" onclick="stopAndTranscribeRecording()"
+        <button id="btn-stop-rec" data-click="stopAndTranscribeRecording"
           data-i18n-title="tipStopRecBtn" title="Остановить запись и сразу отправить аудио на распознавание речи"
           class="hidden ui-btn h-9 w-full rounded-lg bg-apple-blue hover:bg-apple-blueHover text-white font-semibold shadow-lg">
           <svg class="w-3 h-3 shrink-0" viewBox="0 0 12 12" fill="currentColor"><rect x="2" y="2" width="8" height="8" rx="1.5" /></svg>
           <span data-i18n="stopRecBtn">Остановить и расшифровать</span>
         </button>
-        <button id="btn-cancel-rec" onclick="cancelLiveRecording()" data-i18n-title="tipStudioCancel" title="Остановить запись без сохранения"
+        <button id="btn-cancel-rec" data-click="cancelLiveRecording" data-i18n-title="tipStudioCancel" title="Остановить запись без сохранения"
           class="hidden ui-btn ui-btn-subtle h-8 w-full" data-i18n="studioCancel">Отменить</button>
       </div>
 
       <div class="text-[11px] text-apple-tertiary leading-snug space-y-1">
         <p id="record-save-hint" class="break-all"></p>
-        <button onclick="openModal('settings', 'record')" class="text-apple-blue hover:underline" data-i18n="recordChangeFolder">Изменить папку для записей…</button>
+        <button data-click="openModal" data-click-args='["settings", "record"]' class="text-apple-blue hover:underline" data-i18n="recordChangeFolder">Изменить папку для записей…</button>
       </div>
     </div>
 
@@ -139,16 +139,16 @@
           <span id="studio-db" class="text-[11px] font-mono text-apple-secondary w-14 text-right whitespace-nowrap">-60 dB</span>
         </div>
         <div class="flex items-center gap-2 shrink-0 ml-auto">
-          <button onclick="toggleStudioFocus()" id="studio-focus-btn" class="ui-btn ui-btn-subtle h-8" data-i18n-title="tipStudioFocus" title="Субтитры на всё окно (Esc — выход)">
+          <button data-click="toggleStudioFocus" id="studio-focus-btn" class="ui-btn ui-btn-subtle h-8" data-i18n-title="tipStudioFocus" title="Субтитры на всё окно (Esc — выход)">
             <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"/></svg>
             <span id="studio-focus-label" class="hidden xl:inline" data-i18n="studioFocus">На всё окно</span>
           </button>
-          <button onclick="cancelLiveRecording()" id="studio-cancel-btn" class="hidden ui-btn ui-btn-subtle h-8" data-i18n-title="tipStudioCancel" title="Остановить запись без сохранения" data-i18n="studioCancel">Отменить</button>
-          <button onclick="stopAndTranscribeRecording()" id="studio-stop-btn" class="hidden ui-btn h-8 px-4 bg-apple-red hover:bg-apple-red/85 text-white font-semibold">
+          <button data-click="cancelLiveRecording" id="studio-cancel-btn" class="hidden ui-btn ui-btn-subtle h-8" data-i18n-title="tipStudioCancel" title="Остановить запись без сохранения" data-i18n="studioCancel">Отменить</button>
+          <button data-click="stopAndTranscribeRecording" id="studio-stop-btn" class="hidden ui-btn h-8 px-4 bg-apple-red hover:bg-apple-red/85 text-white font-semibold">
             <svg class="w-3 h-3" viewBox="0 0 12 12" fill="currentColor"><rect x="2" y="2" width="8" height="8" rx="1.5"/></svg>
             <span data-i18n="stopRecBtn">Остановить и расшифровать</span>
           </button>
-          <button onclick="startLiveRecording()" id="studio-start-btn" class="ui-btn h-8 px-4 bg-apple-red hover:bg-apple-red/85 text-white font-semibold">
+          <button data-click="startLiveRecording" id="studio-start-btn" class="ui-btn h-8 px-4 bg-apple-red hover:bg-apple-red/85 text-white font-semibold">
             <svg class="w-3 h-3" viewBox="0 0 12 12" fill="currentColor"><circle cx="6" cy="6" r="4"/></svg>
             <span data-i18n="startRecBtn">Начать запись</span>
           </button>
@@ -158,22 +158,22 @@
       <div class="px-5 py-2.5 flex items-center gap-4 flex-wrap border-b apple-border shrink-0 bg-apple-bg/95">
         <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label" data-i18n-title="tipLiveCaptions"
           title="Показывать текст речи во время записи. После остановки запись, как обычно, расшифровывается полностью и точнее">
-          <input type="checkbox" id="live-captions-toggle" onchange="studioToggleCaptions(this.checked)" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <input type="checkbox" id="live-captions-toggle" data-change="studioToggleCaptions" data-change-args='[{"$": "checked"}]' class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
           <span data-i18n="liveCaptionsToggle">Субтитры в реальном времени</span>
         </label>
         <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-secondary" data-i18n-title="tipLiveDraft"
           title="Показывать фразу по мере произнесения, не дожидаясь паузы. Черновик может поправляться, пока фраза не закончится">
-          <input type="checkbox" id="live-draft-toggle" onchange="studioConfigure()" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <input type="checkbox" id="live-draft-toggle" data-change="studioConfigure" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
           <span data-i18n="liveDraftToggle">Текст по ходу речи</span>
         </label>
         <label class="flex items-center gap-1.5 text-xs text-apple-secondary">
           <span data-i18n="studioSpeechLang">Речь</span>
-          <select id="studio-speech" onchange="studioConfigure(true)" data-i18n-title="tipStudioSpeech" title="Язык речи; «Авто» определяет его по каждой фразе"
+          <select id="studio-speech" data-change="studioConfigure" data-change-args='[true]' data-i18n-title="tipStudioSpeech" title="Язык речи; «Авто» определяет его по каждой фразе"
             class="h-7 w-[150px] bg-apple-sidebar border apple-border rounded-lg px-2 text-[11.5px] text-white focus:outline-none"></select>
         </label>
         <label class="flex items-center gap-1.5 text-xs text-apple-secondary">
           <span data-i18n="studioTranslateTo">Перевод</span>
-          <select id="live-translate-select" onchange="studioConfigure()" data-i18n-title="tipLiveTranslate" title="Переводить субтитры на другой язык через локальную модель Ollama"
+          <select id="live-translate-select" data-change="studioConfigure" data-i18n-title="tipLiveTranslate" title="Переводить субтитры на другой язык через локальную модель Ollama"
             class="h-7 w-[150px] bg-apple-sidebar border apple-border rounded-lg px-2 text-[11.5px] text-white focus:outline-none"></select>
         </label>
         <!-- Quick choices: two languages (right-click to change them) and "auto" between them -->
@@ -181,34 +181,34 @@
         <!-- Only while translating: how the translation is shown and which model makes it -->
         <div id="studio-tr-options" class="flex items-center gap-3">
           <div class="apple-segmented" style="height: 26px;">
-            <button onclick="studioSetView('under')" id="studio-view-under" class="apple-segment-btn text-[11px]" data-i18n="studioViewUnder">Под фразой</button>
-            <button onclick="studioSetView('side')" id="studio-view-side" class="apple-segment-btn text-[11px]" data-i18n="studioViewSide">Рядом</button>
-            <button onclick="studioSetView('tr')" id="studio-view-tr" class="apple-segment-btn text-[11px]" data-i18n="studioViewTr">Только перевод</button>
+            <button data-click="studioSetView" data-click-args='["under"]' id="studio-view-under" class="apple-segment-btn text-[11px]" data-i18n="studioViewUnder">Под фразой</button>
+            <button data-click="studioSetView" data-click-args='["side"]' id="studio-view-side" class="apple-segment-btn text-[11px]" data-i18n="studioViewSide">Рядом</button>
+            <button data-click="studioSetView" data-click-args='["tr"]' id="studio-view-tr" class="apple-segment-btn text-[11px]" data-i18n="studioViewTr">Только перевод</button>
           </div>
           <div class="apple-segmented" style="height: 26px;" data-i18n-title="tipStudioSpeed" title="Небольшая модель: быстрее, но перевод проще">
-            <button onclick="studioSetSpeed('quality')" id="studio-speed-quality" class="apple-segment-btn text-[11px]" data-i18n="studioSpeedQuality">Качество</button>
-            <button onclick="studioSetSpeed('fast')" id="studio-speed-fast" class="apple-segment-btn text-[11px]" data-i18n="studioSpeedFast">Скорость</button>
+            <button data-click="studioSetSpeed" data-click-args='["quality"]' id="studio-speed-quality" class="apple-segment-btn text-[11px]" data-i18n="studioSpeedQuality">Качество</button>
+            <button data-click="studioSetSpeed" data-click-args='["fast"]' id="studio-speed-fast" class="apple-segment-btn text-[11px]" data-i18n="studioSpeedFast">Скорость</button>
           </div>
           <label class="flex items-center gap-1.5 cursor-pointer text-xs text-apple-label" data-i18n-title="tipLiveDraftTr"
             title="Переводить фразу, пока её произносят, не дожидаясь паузы. Дополнительно нагружает модель перевода">
-            <input type="checkbox" id="live-draft-tr-toggle" onchange="studioConfigure()" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <input type="checkbox" id="live-draft-tr-toggle" data-change="studioConfigure" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
             <span data-i18n="liveDraftTrToggle">Перевод по ходу речи</span>
           </label>
         </div>
         <div class="flex items-center gap-1">
-          <button onclick="studioFont(-2)" class="ui-btn ui-btn-subtle h-7 !px-2 text-[11px]" data-i18n-title="tipStudioFontSmaller" title="Мельче">A−</button>
-          <button onclick="studioFont(2)" class="ui-btn ui-btn-subtle h-7 !px-2 text-[13px]" data-i18n-title="tipStudioFontLarger" title="Крупнее">A+</button>
+          <button data-click="studioFont" data-click-args='[-2]' class="ui-btn ui-btn-subtle h-7 !px-2 text-[11px]" data-i18n-title="tipStudioFontSmaller" title="Мельче">A−</button>
+          <button data-click="studioFont" data-click-args='[2]' class="ui-btn ui-btn-subtle h-7 !px-2 text-[13px]" data-i18n-title="tipStudioFontLarger" title="Крупнее">A+</button>
         </div>
         <!-- The models writing the captions and the translation now; can be changed by hand -->
         <div id="studio-models" class="hidden flex items-center gap-2 ml-auto">
           <label class="flex items-center gap-1 text-[11px] text-apple-tertiary">
             <span data-i18n="studioModelCaptions">Субтитры</span>
-            <select id="studio-cap-model" onchange="studioSetModels({ caption_model: this.value })" data-i18n-title="tipStudioCapModel" title="Модель, которая пишет субтитры. «Авто» выбирает по языку речи"
+            <select id="studio-cap-model" data-change="studioSetCaptionModel" data-change-args='[{"$": "value"}]' data-i18n-title="tipStudioCapModel" title="Модель, которая пишет субтитры. «Авто» выбирает по языку речи"
               class="h-6 max-w-[170px] bg-apple-sidebar border apple-border rounded-md px-1.5 text-[11px] text-white focus:outline-none"></select>
           </label>
           <label id="studio-tr-model-wrap" class="flex items-center gap-1 text-[11px] text-apple-tertiary">
             <span data-i18n="studioModelTranslation">Перевод</span>
-            <select id="studio-tr-model" onchange="studioSetModels({ translate_model: this.value })" data-i18n-title="tipStudioTrModel" title="Модель перевода. «Авто» — по переключателю «Качество / Скорость»"
+            <select id="studio-tr-model" data-change="studioSetTranslateModel" data-change-args='[{"$": "value"}]' data-i18n-title="tipStudioTrModel" title="Модель перевода. «Авто» — по переключателю «Качество / Скорость»"
               class="h-6 max-w-[170px] bg-apple-sidebar border apple-border rounded-md px-1.5 text-[11px] text-white focus:outline-none"></select>
           </label>
         </div>
@@ -237,7 +237,7 @@
           <span class="text-[11px] font-semibold text-apple-secondary" data-i18n="notesTitle">Мои заметки</span>
           <span class="text-[10.5px] text-apple-tertiary" data-i18n="notesStudioHint">Enter — новая строка с отметкой времени. Заметки сохранятся с записью и войдут в пересказ</span>
         </div>
-        <textarea id="studio-notes-input" rows="3" onkeydown="studioNotesKey(event)" oninput="saveStudioNotesDraft()"
+        <textarea id="studio-notes-input" rows="3" data-keydown="studioNotesKey" data-keydown-args='[{"$": "event"}]' data-input="saveStudioNotesDraft"
           data-i18n-placeholder="notesPh" placeholder="Главное для вас: решения, вопросы, что не забыть…"
           class="w-full bg-apple-card border apple-border rounded-lg px-3 py-2 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue resize-y"></textarea>
       </div>
@@ -245,10 +245,10 @@
       <div id="studio-ask" class="hidden shrink-0 border-t apple-border bg-apple-sidebar/95 px-5 py-2.5 space-y-2">
         <div id="studio-ask-answer" class="hidden max-h-48 overflow-y-auto markdown-body text-[13px] text-apple-label"></div>
         <div class="flex items-center gap-2">
-          <input id="studio-ask-input" type="text" onkeydown="if(event.key==='Enter') studioAsk()"
+          <input id="studio-ask-input" type="text" data-keydown="onEnter" data-keydown-args='[{"$": "event"}, "studioAsk"]'
             data-i18n-placeholder="studioAskPh" placeholder="Спросить по разговору: о чём договорились? что он ответил про сроки?"
             class="flex-1 h-8 bg-apple-card border apple-border rounded-lg px-3 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
-          <button onclick="studioAsk()" id="studio-ask-btn" class="ui-btn ui-btn-primary h-8" data-i18n="askBtn">Спросить</button>
+          <button data-click="studioAsk" id="studio-ask-btn" class="ui-btn ui-btn-primary h-8" data-i18n="askBtn">Спросить</button>
         </div>
       </div>
     </div>
@@ -260,7 +260,7 @@
     <div id="ask-view" class="hidden flex-1 min-h-0 flex bg-apple-bg">
 <div id="side-ask" class="w-[270px] shrink-0 border-r apple-border bg-apple-sidebar/60 overflow-y-auto px-4 py-4 space-y-3">
       <div>
-        <button onclick="openOpenCommitments()" class="w-full mb-3 ui-btn ui-btn-subtle justify-start text-[11.5px]" data-i18n-title="tipOpenCommitments"
+        <button data-click="openOpenCommitments" class="w-full mb-3 ui-btn ui-btn-subtle justify-start text-[11.5px]" data-i18n-title="tipOpenCommitments"
           title="Все обещания из встреч, которые ещё не отмечены выполненными">
           <span>✓</span><span data-i18n="openCommitmentsBtn">Открытые обещания</span>
         </button>
@@ -286,11 +286,11 @@
             <span id="ask-scope-label" class="text-[11px] text-apple-secondary truncate"></span>
           </div>
           <div class="flex items-center gap-2">
-            <input id="library-question" type="text" onkeydown="if(event.key==='Enter') askLibrary()"
+            <input id="library-question" type="text" data-keydown="onEnter" data-keydown-args='[{"$": "event"}, "askLibrary"]'
               data-i18n-placeholder="libraryAskPlaceholder" placeholder="Например: что решили по срокам релиза?"
               class="flex-1 h-9 bg-apple-card border apple-border rounded-lg px-3.5 text-[13px] text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
-            <button onclick="askLibrary()" id="library-ask-btn" class="ui-btn ui-btn-primary h-9 px-4"><svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg><span data-i18n="askBtn">Спросить</span></button>
-            <button onclick="openDigestMenu(event)" id="library-digest-btn" data-i18n-title="tipDigest"
+            <button data-click="askLibrary" id="library-ask-btn" class="ui-btn ui-btn-primary h-9 px-4"><svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg><span data-i18n="askBtn">Спросить</span></button>
+            <button data-click="openDigestMenu" data-click-args='[{"$": "event"}]' id="library-digest-btn" data-i18n-title="tipDigest"
               title="Сводка по нескольким записям: главное, решения, задачи и открытые вопросы со ссылками на записи"
               class="ui-btn ui-btn-subtle h-9 px-3.5"><span data-i18n="digestBtn">Дайджест</span><span class="opacity-60 ml-1">▾</span></button>
           </div>
@@ -310,13 +310,13 @@
         <h2 class="text-[19px] font-semibold text-white" data-i18n="emptyTitle">Начните работу</h2>
         <p class="text-xs text-apple-secondary mt-1.5" data-i18n="emptySubtitle">Запишите встречу или добавьте аудио и видео. Обработка выполняется локально на этом компьютере.</p>
         <div class="empty-cards mt-7">
-        <button onclick="openRecordModal()" class="empty-card group">
+        <button data-click="openRecordModal" class="empty-card group">
           <span class="empty-card-icon empty-card-icon-red"><svg class="w-5 h-5" viewBox="0 0 12 12" fill="currentColor"><circle cx="6" cy="6" r="4"/></svg></span>
           <span class="block text-[13px] font-semibold text-white mt-3" data-i18n="emptyRecordTitle">Записать</span>
           <span class="block text-[11.5px] text-apple-secondary mt-1 leading-snug" data-i18n="emptyRecordDesc">Микрофон и системный звук</span>
           <kbd class="empty-card-kbd">R</kbd>
         </button>
-        <button onclick="openModal('import')" class="empty-card group">
+        <button data-click="openModal" data-click-args='["import"]' class="empty-card group">
           <span class="empty-card-icon "><svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg></span>
           <span class="block text-[13px] font-semibold text-white mt-3" data-i18n="emptyImportTitle">Открыть файлы</span>
           <span class="block text-[11.5px] text-apple-secondary mt-1 leading-snug" data-i18n="emptyImportDesc">Аудио и видео с диска или по пути к папке</span>
@@ -329,6 +329,7 @@
           
         </button>
         </div>
+        <p id="workspace-empty-pick" class="hidden text-xs text-apple-label mt-6" data-i18n="emptyPickRecording">Или выберите запись в медиатеке слева</p>
         <p class="text-[11px] text-apple-tertiary mt-6">
           <span data-i18n="emptyShortcutsHint">Горячие клавиши</span> — <kbd class="empty-card-kbd !static">?</kbd>
         </p>
@@ -339,37 +340,37 @@
     <div id="workspace-content" class="hidden flex-1 flex flex-col overflow-hidden">
 
       <!-- TOP HEADER BAR: Recording Title, Primary View Tabs, and Document Export -->
-      <header class="border-b apple-border bg-apple-sidebar/80 apple-blur px-5 flex items-center justify-between shrink-0 gap-4 z-20" style="height: 52px;">
+      <header id="workspace-header" class="border-b apple-border bg-apple-sidebar/80 apple-blur px-5 flex items-center justify-between shrink-0 gap-4 z-20" style="height: 52px;">
 
         <!-- Left: Editable Recording Title + Meta -->
         <div class="flex items-center gap-2.5 min-w-0 flex-1 overflow-hidden">
           <input id="meeting-title-input" type="text"
-            onblur="saveMeetingTitle()"
-            onkeydown="if(event.key==='Enter') this.blur()"
+            data-blur="saveMeetingTitle"
+            data-keydown="blurOnEnter" data-keydown-args='[{"$": "event"}, {"$": "el"}]'
             data-i18n-title="tipRenameInline"
             title="Нажмите, чтобы переименовать запись"
             class="bg-transparent hover:bg-white/5 focus:bg-apple-card focus:outline-none focus:ring-1 focus:ring-apple-blue px-2 h-7 -ml-2 rounded-md text-[14px] font-semibold text-white truncate min-w-[100px] max-w-[320px] transition" />
           <span id="meeting-meta-badge" class="text-[11px] text-apple-secondary font-mono truncate min-w-0"></span>
-          <button onclick="state.activeMeeting && openRecordingContextMenu(event, state.activeMeeting.id)" data-i18n-title="tipRecordingMore"
+          <button data-click="openActiveRecordingMenu" data-click-args='[{"$": "event"}]' data-i18n-title="tipRecordingMore"
             title="Действия с записью: переименовать, серия, нарезка, повторная обработка, удаление"
-            class="ui-btn ui-btn-subtle h-7 !px-2 shrink-0" aria-label="⋯">•••</button>
+            class="ui-btn ui-btn-subtle h-7 !px-2 shrink-0">•••</button>
         </div>
 
         <!-- Center: Primary View Tabs (Separated from transcript tools) -->
         <div class="apple-segmented shrink-0">
-          <button onclick="switchWorkspaceTab('transcript')" id="wtab-transcript"
+          <button data-click="switchWorkspaceTab" data-click-args='["transcript"]' id="wtab-transcript"
             data-i18n-title="tipTabTranscript"
             title="Показать полную расшифровку разговора по ролям"
             class="apple-segment-btn apple-segment-active" data-i18n="tabTranscript">Расшифровка</button>
-          <button onclick="switchWorkspaceTab('summary')" id="wtab-summary"
+          <button data-click="switchWorkspaceTab" data-click-args='["summary"]' id="wtab-summary"
             data-i18n-title="tipTabSummary"
             title="Структурированный обзор, задачи и ответы на вопросы по записи"
             class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="tabSummary">Анализ</button>
-          <button onclick="switchWorkspaceTab('speakers')" id="wtab-speakers"
+          <button data-click="switchWorkspaceTab" data-click-args='["speakers"]' id="wtab-speakers"
             data-i18n-title="tipTabSpeakers"
             title="Управление участниками, прослушивание образцов голоса и переименование"
             class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="tabSpeakers">Участники</button>
-          <button onclick="switchWorkspaceTab('info')" id="wtab-info"
+          <button data-click="switchWorkspaceTab" data-click-args='["info"]' id="wtab-info"
             data-i18n-title="tipTabInfo"
             title="Где лежит файл, его формат, даты и состояние обработки"
             class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="tabInfo">Сведения</button>
@@ -378,40 +379,40 @@
         <!-- Right: Translation menu (text translation / voice dub) + Document Export Menu -->
         <div class="flex items-center justify-end gap-2 flex-1 shrink-0">
           <div class="relative shrink-0">
-            <button onclick="toggleTranslateMenu(event)" id="translate-menu-btn"
+            <button data-click="toggleTranslateMenu" data-click-args='[{"$": "event"}]' id="translate-menu-btn"
               data-i18n-title="tipTranslateMenu" title="Перевод текста, субтитры и озвучка голосом"
               class="ui-btn ui-btn-subtle text-apple-label shrink-0">
               <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418"/>
             </svg>
-              <span data-i18n="translateMenuBtn">Перевод</span>
+              <span class="hdr-label" data-i18n="translateMenuBtn">Перевод</span>
               <svg class="w-3 h-3 opacity-60" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg>
             </button>
-            <div id="translate-menu" class="hidden absolute right-0 mt-1.5 w-64 macos-menu z-40" onclick="event.stopPropagation()">
-              <button onclick="hideTranslateMenu(); openTranslateModal()" id="translate-open-btn" data-i18n-title="tipTranslateOpen"
+            <div id="translate-menu" class="hidden absolute right-0 mt-1.5 w-64 macos-menu z-40" data-click="stopEvent" data-click-args='[{"$": "event"}]'>
+              <button data-click="runAll" data-click-args='[["hideTranslateMenu"], ["openTranslateModal"]]' id="translate-open-btn" data-i18n-title="tipTranslateOpen"
                 title="Перевести текст расшифровки через локальную Ollama, сделать субтитры" class="macos-menu-item">
                 <span data-i18n="translateMenuText">Перевод текста и субтитры…</span>
               </button>
-              <button onclick="hideTranslateMenu(); openDubModal()" id="dub-open-btn" data-i18n-title="tipDubOpen"
+              <button data-click="runAll" data-click-args='[["hideTranslateMenu"], ["openDubModal"]]' id="dub-open-btn" data-i18n-title="tipDubOpen"
                 title="Перевести запись и озвучить её голосами участников (бета)" class="macos-menu-item">
                 <span data-i18n="translateMenuDub">Озвучка голосом (дубляж)…</span>
-                <span class="text-[10px] opacity-60" data-i18n="dubProto">(бета)</span>
+                <span class="text-[10px] opacity-80" data-i18n="dubProto">(бета)</span>
               </button>
             </div>
           </div>
           <div class="relative shrink-0">
-            <button onclick="toggleExportMenu(event)"
+            <button data-click="toggleExportMenu" data-click-args='[{"$": "event"}]'
               data-i18n-title="tipExportBtn"
               title="Экспортировать протокол и расшифровку в файл (Word, Markdown, TXT, SRT, JSON)"
               class="ui-btn ui-btn-subtle text-apple-label">
               <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M9 8.25H7.5a2.25 2.25 0 00-2.25 2.25v9a2.25 2.25 0 002.25 2.25h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25H15m0-3l-3-3m0 0l-3 3m3-3v11.25"/>
               </svg>
-              <span data-i18n="export">Экспорт</span>
+              <span class="hdr-label" data-i18n="export">Экспорт</span>
             </button>
 
             <!-- Every export in one place (renderExportMenu in static/js/menus.js); what is not made yet is made first -->
-            <div id="export-menu" class="hidden absolute right-0 mt-1.5 w-80 macos-menu z-40 max-h-[75vh] overflow-y-auto" onclick="event.stopPropagation()"></div>
+            <div id="export-menu" class="hidden absolute right-0 mt-1.5 w-80 macos-menu z-40 max-h-[75vh] overflow-y-auto" data-click="stopEvent" data-click-args='[{"$": "event"}]'></div>
           </div>
         </div>
       </header>
@@ -427,9 +428,9 @@
             <span class="flex items-center gap-2.5 shrink-0">
               <span id="workspace-progress-time" class="font-mono text-[11px] text-apple-secondary"></span>
               <span id="workspace-progress-pct" class="font-mono text-apple-blue">0%</span>
-              <button id="workspace-retry-btn" onclick="retryActiveMeeting()" data-i18n="retryBtn"
+              <button id="workspace-retry-btn" data-click="retryActiveMeeting" data-i18n="retryBtn"
                 class="hidden ui-btn ui-btn-primary h-6 px-2 text-[11px]">Повторить</button>
-              <button id="workspace-cancel-btn" onclick="cancelActiveProcessing()" data-i18n-title="tipCancelProcessing" title="Остановить обработку этой записи"
+              <button id="workspace-cancel-btn" data-click="cancelActiveProcessing" data-i18n-title="tipCancelProcessing" title="Остановить обработку этой записи"
                 class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]" data-i18n="cancelProcessingBtn">Отменить</button>
             </span>
           </div>
@@ -444,27 +445,53 @@
 
         <!-- Contextual Transcript Sub-Toolbar: Speaker Pills on Left + Transcript Action Buttons & Search on Right -->
         <div class="border-b apple-border bg-apple-bg/95 px-6 py-2 shrink-0">
-          <div class="tx-toolbar max-w-4xl mx-auto flex items-center justify-between gap-3">
+          <!-- Two parts: "Recognition" (a panel of its own: the model the text was made with, each model's
+               transcript kept, picking one shows it; renderTxModelBar in static/js/workspace.js) and
+               "Text" (the row below: what is done with the text shown) -->
+          <div id="tx-model-bar" class="hidden tx-section-panel max-w-6xl mx-auto flex flex-wrap items-center gap-x-2 gap-y-1.5 mb-2 min-w-0">
+            <label for="tx-model-select" class="tx-section-label" data-i18n="txSectionRecognition">Распознавание</label>
+            <select id="tx-model-select" data-change="pickTxModel" data-change-args='[{"$": "el"}]'
+              data-i18n-title="tipTxModel" title="Модель распознавания. Текст каждой модели хранится отдельно: выберите модель, чтобы увидеть её расшифровку"
+              class="h-7 max-w-[15rem] bg-apple-sidebar border apple-border rounded-[7px] px-2 text-xs text-white focus:outline-none shrink-0"></select>
+            <button data-click="transcribeWithPickedModel" id="tx-transcribe-btn" class="ui-btn ui-btn-subtle shrink-0"
+              data-i18n-title="tipTxTranscribe" title="Расшифровать запись выбранной моделью. Тексты других моделей остаются">
+              <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>
+              <span id="tx-transcribe-label" class="tx-tool-label" data-i18n="txTranscribe">Расшифровать</span>
+            </button>
+            <button data-click="mergeTranscripts" id="tx-merge-btn" class="hidden ui-btn ui-btn-subtle shrink-0"
+              data-i18n-title="tipTxMerge" title="Собрать один текст из расшифровок всех моделей: где модели согласны — их слово, спорные места выбирает модель анализа (они подчёркнуты, щелчок — другие варианты)">
+              <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/></svg>
+              <span class="tx-tool-label" data-i18n="txMerge">Свести версии</span>
+            </button>
+            <button data-click="deletePickedTranscript" id="tx-delete-version-btn" class="hidden ui-btn ui-btn-subtle shrink-0"
+              data-i18n-title="tipTxDeleteVersion" title="Удалить расшифровку выбранной модели. Тексты других моделей останутся">
+              <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
+              <span class="tx-tool-label" data-i18n="txDeleteVersion">Очистить</span>
+            </button>
+            <span id="tx-model-status" class="tx-model-status"></span>
+          </div>
+          <div class="tx-toolbar max-w-6xl mx-auto flex items-center justify-between gap-3">
+            <span class="tx-section-label tx-section-label-text" data-i18n="txSectionText">Текст</span>
             <!-- Left: Speaker Filter Pills (they wrap within their part; the tools stay on one line) -->
             <div class="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap min-h-[28px]" id="speaker-pills-container">
               <!-- Populated dynamically -->
             </div>
 
             <!-- Right: Transcript Editing, Auto-Scroll & Search Tools -->
-            <div class="flex items-center gap-1.5 shrink-0 ml-auto">
+            <div id="tx-tools" class="flex items-center gap-1.5 shrink-0 ml-auto">
               <!-- Quick translation languages (the studio's): show the translation, or make it -->
               <div id="tx-quick-langs" class="flex items-center gap-1"></div>
               <!-- Language of the text: original, a translation, or both side by side (menu filled by renderTranslationControls) -->
               <div id="tx-view-controls" class="hidden relative shrink-0">
-                <button onclick="toggleTxViewMenu(event)" id="tx-view-btn" class="ui-btn ui-btn-subtle"
+                <button data-click="toggleTxViewMenu" data-click-args='[{"$": "event"}]' id="tx-view-btn" class="ui-btn ui-btn-subtle"
                   data-i18n-title="tipTxView" title="Язык текста: оригинал, перевод или оба рядом">
                   <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418"/></svg>
-                  <span id="tx-view-label">Оригинал</span>
+                  <span id="tx-view-label" data-i18n="txViewOrig">Оригинал</span>
                   <svg class="w-3 h-3 opacity-60" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg>
                 </button>
-                <div id="tx-view-menu" class="hidden absolute right-0 mt-1.5 w-64 macos-menu z-40" onclick="event.stopPropagation()"></div>
+                <div id="tx-view-menu" class="hidden absolute right-0 mt-1.5 w-64 macos-menu z-40" data-click="stopEvent" data-click-args='[{"$": "event"}]'></div>
               </div>
-              <button onclick="cleanActiveTranscriptFillers()" id="clean-fillers-btn"
+              <button data-click="cleanActiveTranscriptFillers" id="clean-fillers-btn"
                 data-i18n-title="tipCleanSpeech"
                 title="Удалить слова-паразиты («э-э», «ммм», «ну типа») и повторы слов"
                 class="ui-btn ui-btn-subtle">
@@ -474,7 +501,7 @@
                 <span class="tx-tool-label" data-i18n="cleanSpeechBtn">Очистить текст</span>
               </button>
 
-              <button onclick="toggleAutoScroll()" id="autoscroll-btn"
+              <button data-click="toggleAutoScroll" id="autoscroll-btn"
                 data-i18n-title="tipAutoScroll"
                 title="Автоматически прокручивать текст за звучащей речью"
                 class="ui-btn ui-btn-active">
@@ -488,7 +515,7 @@
                 <svg class="w-3.5 h-3.5 text-apple-tertiary absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/>
                 </svg>
-                <input id="transcript-search" type="text" oninput="renderTranscript()"
+                <input id="transcript-search" type="text" data-input="renderTranscript"
                   data-i18n-placeholder="searchPlaceholder"
                   data-i18n-title="tipTranscriptSearch"
                   title="Фильтровать реплики в текущей записи по слову или имени"
@@ -496,7 +523,7 @@
                   class="w-full h-7 bg-white/5 focus:bg-apple-card border border-transparent focus:border-apple-blue/60 rounded-[7px] pl-8 pr-2.5 text-xs text-white placeholder-apple-tertiary focus:outline-none transition" />
               </div>
 
-              <button onclick="toggleTranscriptVerified()" id="tx-verified-btn"
+              <button data-click="toggleTranscriptVerified" id="tx-verified-btn"
                 data-i18n-title="tipTxVerified"
                 title="Отметьте, когда проверили и исправили расшифровку: она станет эталоном для «Сравнения моделей»"
                 class="hidden ui-btn ui-btn-subtle text-apple-label">
@@ -504,16 +531,6 @@
                   <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
                 <span class="tx-tool-label" id="tx-verified-label" data-i18n="txVerify">Проверено</span>
-              </button>
-
-              <button onclick="clearActiveResults()" id="tx-clear-btn"
-                data-i18n-title="tipClearResults"
-                title="Удалить расшифровку, участников, саммари, переводы и обещания; звук и ваши заметки остаются, запись можно расшифровать заново"
-                class="hidden ui-btn ui-btn-subtle text-apple-label">
-                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/>
-                </svg>
-                <span class="tx-tool-label" data-i18n="txClearResults">Удалить результаты</span>
               </button>
             </div>
           </div>
@@ -540,46 +557,46 @@
         <div class="max-w-3xl mx-auto space-y-5">
           <div class="flex items-center justify-between border-b apple-border pb-3 gap-3 flex-wrap">
             <div class="apple-segmented">
-              <button onclick="selectSummaryTab('protocol')" id="sumtab-protocol"
+              <button data-click="selectSummaryTab" data-click-args='["protocol"]' id="sumtab-protocol"
                 data-i18n-title="tipSumProtocol"
                 title="Подробный протокол встречи с основными темами и решениями"
                 class="apple-segment-btn apple-segment-active" data-i18n="sumProtocol">Обзор</button>
-              <button onclick="selectSummaryTab('tasks')" id="sumtab-tasks"
+              <button data-click="selectSummaryTab" data-click-args='["tasks"]' id="sumtab-tasks"
                 data-i18n-title="tipSumTasks"
                 title="Список задач, поручений и дедлайнов по участникам"
                 class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumTasks">Задачи</button>
-              <button onclick="selectSummaryTab('tldr')" id="sumtab-tldr"
+              <button data-click="selectSummaryTab" data-click-args='["tldr"]' id="sumtab-tldr"
                 data-i18n-title="tipSumTldr"
                 title="Краткая выжимка встречи на 30 секунд чтения"
                 class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumTldr">Резюме</button>
-              <button onclick="selectSummaryTab('chapters')" id="sumtab-chapters"
+              <button data-click="selectSummaryTab" data-click-args='["chapters"]' id="sumtab-chapters"
                 data-i18n-title="tipSumChapters"
                 title="Смысловые главы записи с отметками времени; по ним над текстом появляется оглавление"
                 class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumChapters">Главы</button>
-              <button onclick="selectSummaryTab('mynotes')" id="sumtab-mynotes"
+              <button data-click="selectSummaryTab" data-click-args='["mynotes"]' id="sumtab-mynotes"
                 data-i18n-title="tipSumMyNotes" title="Ваши заметки к записи: они учитываются в каждом пересказе"
                 class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="notesTitle">Мои заметки</button>
-              <button onclick="selectSummaryTab('notes')" id="sumtab-notes"
+              <button data-click="selectSummaryTab" data-click-args='["notes"]' id="sumtab-notes"
                 data-i18n-title="tipSumNotes" title="Ваши заметки, развёрнутые по расшифровке: что именно сказано, кем и когда"
                 class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumNotes">По заметкам</button>
-              <button onclick="selectSummaryTab('since_last')" id="sumtab-since_last"
+              <button data-click="selectSummaryTab" data-click-args='["since_last"]' id="sumtab-since_last"
                 data-i18n-title="tipSumSinceLast"
                 title="Задачи и договорённости прошлой встречи серии: что выполнено, что в работе, что не обсуждали"
                 class="hidden apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumSinceLast">С прошлого раза</button>
-              <button onclick="selectSummaryTab('followup')" id="sumtab-followup"
+              <button data-click="selectSummaryTab" data-click-args='["followup"]' id="sumtab-followup"
                 data-i18n-title="tipSumFollowup" title="Черновик письма участникам: договорённости, задачи, следующий шаг"
                 class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumFollowup">Письмо</button>
-              <button onclick="selectSummaryTab('commitments')" id="sumtab-commitments"
+              <button data-click="selectSummaryTab" data-click-args='["commitments"]' id="sumtab-commitments"
                 data-i18n-title="tipSumCommitments" title="Кто что пообещал, кому и к какому сроку; отметьте выполненные"
                 class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumCommitments">Обещания</button>
               <!-- The user's own templates (Settings → Analysis) -->
               <span id="sumtab-user-templates" class="contents"></span>
-              <button onclick="openTemplatesEditor()" data-i18n-title="tipTemplatesAdd" title="Свои шаблоны пересказа: 1:1, интервью, планёрка…"
+              <button data-click="openTemplatesEditor" data-i18n-title="tipTemplatesAdd" title="Свои шаблоны пересказа: 1:1, интервью, планёрка…"
                 class="apple-segment-btn text-apple-secondary hover:text-white">+</button>
             </div>
 
             <div class="flex items-center gap-1.5">
-              <select id="summary-llm-select" onchange="selectActiveOllamaModel(this.value)"
+              <select id="summary-llm-select" data-change="selectActiveOllamaModel" data-change-args='[{"$": "value"}]'
                 data-i18n-title="tipSelectLlm"
                 title="Выбрать локальную модель ИИ (Ollama) для генерации протокола"
                 class="h-7 bg-apple-sidebar border apple-border rounded-[7px] px-2.5 text-xs text-apple-label focus:outline-none">
@@ -588,7 +605,7 @@
                 <option value="mistral:7b">Mistral 7B</option>
                 <option value="qwen2.5:1.5b">Qwen Lite</option>
               </select>
-              <button onclick="openModal('settings', 'analysis')"
+              <button data-click="openModal" data-click-args='["settings", "analysis"]'
                 data-i18n-title="tipManageLlm"
                 title="Скачать или настроить модели ИИ в настройках"
                 class="ui-btn ui-btn-subtle">
@@ -597,7 +614,7 @@
                 </svg>
                 <span>LLM</span>
               </button>
-              <button onclick="copySummaryText()"
+              <button data-click="copySummaryText"
                 data-i18n-title="tipCopySummary"
                 title="Скопировать текст протокола в буфер обмена"
                 class="ui-btn ui-btn-subtle text-apple-label">
@@ -606,7 +623,7 @@
                 </svg>
                 <span data-i18n="copy">Копировать</span>
               </button>
-              <button onclick="clearSummaryTab()" id="clear-summary-btn"
+              <button data-click="clearSummaryTab" id="clear-summary-btn"
                 data-i18n-title="tipClearSummary" title="Удалить содержимое этой вкладки"
                 class="hidden ui-btn ui-btn-subtle text-apple-label">
                 <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
@@ -614,7 +631,7 @@
                 </svg>
                 <span data-i18n="clearBtn">Очистить</span>
               </button>
-              <button onclick="generateSummaryForActiveTab()" id="generate-summary-btn"
+              <button data-click="generateSummaryForActiveTab" id="generate-summary-btn"
                 data-i18n-title="tipGenerateSummary"
                 title="Сформировать анализ для выбранной вкладки"
                 class="ui-btn ui-btn-primary shadow-sm">
@@ -631,13 +648,13 @@
           <!-- Ask AI Input -->
           <div class="flex gap-2">
             <input id="custom-summary-prompt" type="text"
-              onkeydown="if(event.key==='Enter') runCustomQuestion()"
+              data-keydown="onEnter" data-keydown-args='[{"$": "event"}, "runCustomQuestion"]'
               data-i18n-placeholder="askPlaceholder"
               data-i18n-title="tipAskInput"
               title="Введите любой вопрос по содержанию встречи"
               placeholder="Спросить ИИ по тексту встречи (например: О каких сроках договорились?)…"
               class="flex-1 h-8 bg-apple-sidebar border apple-border focus:border-apple-blue rounded-lg px-3.5 text-xs text-white placeholder-apple-tertiary focus:outline-none" />
-            <button onclick="runCustomQuestion()"
+            <button data-click="runCustomQuestion"
               data-i18n-title="tipAskBtn"
               title="Отправить вопрос локальной модели ИИ"
               class="ui-btn ui-btn-subtle h-8 px-4 text-white" data-i18n="askBtn">Спросить</button>
@@ -680,7 +697,7 @@
         <!-- Attached Video Frame (Directly connected to player controls below) -->
         <div id="video-drawer" class="hidden border-b apple-border bg-black/95 py-3 px-6">
           <div id="video-expanded-slot" class="max-w-xl mx-auto relative">
-            <video id="media-player" crossorigin="anonymous" onclick="onVideoClick()"
+            <video id="media-player" crossorigin="anonymous" data-click="onVideoClick"
               data-i18n-title="tipVideoCanvas"
               title="Нажмите на видео для воспроизведения / паузы"
               class="w-full max-h-56 rounded-xl bg-black mx-auto cursor-pointer shadow-2xl border border-white/10"></video>
@@ -696,21 +713,21 @@
             <!-- Left: how the video is shown (preview, expand, theatre, separate window) -->
             <div class="flex items-center gap-1.5 min-w-0">
               <!-- Mini video preview: the video is moved here when collapsed, so it never just disappears -->
-              <div id="video-mini-slot" onclick="setVideoMode('expanded')"
+              <div id="video-mini-slot" data-click="setVideoMode" data-click-args='["expanded"]'
                 data-i18n-title="tipVideoMini" title="Видео записи. Нажмите, чтобы развернуть"
                 class="hidden relative w-20 h-[45px] rounded-md overflow-hidden bg-black border border-white/15 cursor-pointer shrink-0 group mr-1">
                 <span class="absolute inset-0 flex items-center justify-center bg-black/45 text-white opacity-0 group-hover:opacity-100 transition pointer-events-none"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"/></svg></span>
               </div>
 
               <!-- Label and tooltip are set by applyVideoLayout() -->
-              <button onclick="toggleVideoDrawer()" id="video-drawer-btn" class="ui-btn ui-btn-subtle hidden"></button>
-              <button onclick="toggleTheatre()" id="theatre-btn" class="ui-btn ui-btn-subtle px-2 hidden"
+              <button data-click="toggleVideoDrawer" id="video-drawer-btn" class="ui-btn ui-btn-subtle hidden"></button>
+              <button data-click="toggleTheatre" id="theatre-btn" class="ui-btn ui-btn-subtle px-2 hidden"
                 data-i18n-title="tipTheatre" title="Режим кинотеатра: большое видео и текст рядом (Esc — выход)">
                 <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
                   <rect x="2.5" y="4.5" width="19" height="15" rx="2"/><path stroke-linecap="round" d="M14.5 4.5v15"/><path stroke-linecap="round" d="M16.5 9h3M16.5 12h3M16.5 15h2"/>
                 </svg>
               </button>
-              <button onclick="toggleVideoPip()" id="video-pip-btn" class="ui-btn ui-btn-subtle px-2 hidden"
+              <button data-click="toggleVideoPip" id="video-pip-btn" class="ui-btn ui-btn-subtle px-2 hidden"
                 title="Открыть видео в отдельном окне поверх других программ">
                 <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
                   <rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="11.5" width="7" height="5.5" rx="1" fill="currentColor" stroke="none"/>
@@ -721,7 +738,7 @@
 
             <!-- Center: Transport Controls (-15s, Play/Pause, +15s) Directly Above Timeline -->
             <div class="flex items-center justify-center gap-3 shrink-0">
-              <button onclick="skipPlayer(-15)"
+              <button data-click="skipPlayer" data-click-args='[-15]'
                 data-i18n-title="tipSkipBack"
                 title="Перемотать на 15 секунд назад (Alt + Стрелка влево: -5 сек)"
                 class="p-1.5 rounded-lg text-apple-secondary hover:text-white hover:bg-white/5 active:scale-95 transition">
@@ -730,7 +747,7 @@
                 </svg>
               </button>
 
-              <button onclick="togglePlayPause()" id="play-pause-btn"
+              <button data-click="togglePlayPause" id="play-pause-btn"
                 data-i18n-title="tipPlayPause"
                 title="Воспроизведение / Пауза (Alt + Пробел)"
                 class="w-9 h-9 rounded-full bg-white text-black hover:scale-105 active:scale-95 transition flex items-center justify-center shadow">
@@ -742,7 +759,7 @@
                 </svg>
               </button>
 
-              <button onclick="skipPlayer(15)"
+              <button data-click="skipPlayer" data-click-args='[15]'
                 data-i18n-title="tipSkipForward"
                 title="Перемотать на 15 секунд вперёд (Alt + Стрелка вправо: +5 сек)"
                 class="p-1.5 rounded-lg text-apple-secondary hover:text-white hover:bg-white/5 active:scale-95 transition">
@@ -757,7 +774,7 @@
               <!-- Audio track (original / AI dubs); filled by renderAudioTrackSwitch() -->
               <div id="audio-track-switch" class="hidden shrink-0"></div>
 
-              <button onclick="toggleStudioVoiceEnhancer()" id="studio-voice-btn"
+              <button data-click="toggleStudioVoiceEnhancer" id="studio-voice-btn"
                 data-i18n-title="tipStudioVoice"
                 title="Включить студийное улучшение голоса и выравнивание громкости в плеере"
                 class="ui-btn ui-btn-subtle">
@@ -767,14 +784,14 @@
                 <span class="player-btn-label" data-i18n="studioVoiceBtn">Шумоподавление</span>
               </button>
 
-              <button onclick="cyclePlaybackSpeed()" id="speed-cycle-btn"
+              <button data-click="cyclePlaybackSpeed" id="speed-cycle-btn"
                 data-i18n-title="tipSpeedBtn"
                 title="Изменить скорость воспроизведения (1.0x – 2.0x)"
                 class="ui-btn ui-btn-subtle font-mono text-apple-label px-2.5">
                 1.0x
               </button>
               <span class="w-px h-5 bg-white/10 mx-1 shrink-0"></span>
-              <button onclick="toggleMutePlayer()" id="mute-btn"
+              <button data-click="toggleMutePlayer" id="mute-btn"
                 data-i18n-title="tipMuteBtn"
                 title="Включить или выключить звук"
                 class="p-1.5 rounded-lg text-apple-secondary hover:text-white hover:bg-white/5 transition">
@@ -787,7 +804,7 @@
               </button>
 
               <input id="player-volume-slider" type="range" min="0" max="100" step="1" value="100"
-                oninput="changePlayerVolume(this.value)"
+                data-input="changePlayerVolume" data-input-args='[{"$": "value"}]'
                 data-i18n-title="tipVolumeSlider"
                 title="Регулировка громкости воспроизведения"
                 class="volume-slider w-24" />

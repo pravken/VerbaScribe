@@ -50,10 +50,13 @@ class ScreenCapture:
         self.proc: Optional[subprocess.Popen] = None
 
     def start(self, ffmpeg: str) -> None:
-        self.proc = subprocess.Popen(
+        from app.shutdown import track
+
+        # Tracked: on a crash of the app FFmpeg ends with it instead of recording until the disk is full
+        self.proc = track(subprocess.Popen(
             capture_command(ffmpeg, self.target, self.path),
             stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, creationflags=_NO_WINDOW,
-        )
+        ))
         self.started_at = time.time()
         # FFmpeg's messages are read all the time: a full pipe (repeated grab warnings over a long
         # recording) would stop it. The last lines are kept for the error message.

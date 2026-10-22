@@ -75,6 +75,11 @@ def unload_now() -> Dict[str, Any]:
     if ecapa_loaded_on():
         unload_diarizer()
         released.append("speakers")
+    from app import asr_onnx
+
+    if asr_onnx.loaded_models():
+        asr_onnx.release()  # GigaAM / Parakeet: up to 3 GB of RAM or VRAM
+        released.append("onnx")
     worker = live._worker
     if worker is not None and worker.proc is not None:
         with worker.lock:

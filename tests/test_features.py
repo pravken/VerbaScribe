@@ -1,5 +1,8 @@
 import tests  # noqa: F401 - keeps the real user data out of reach (see tests/__init__.py)
+import threading
 import unittest
+
+import numpy as np
 
 from app.translation import build_cues, cues_to_srt, cues_to_vtt
 
@@ -47,6 +50,36 @@ class HotkeyTest(unittest.TestCase):
         self.assertEqual(parse_hotkey("Alt+5"), (MOD_ALT, ord("5")))
         for bad in ("", "R", "Shift+R", "Ctrl+Alt", "Ctrl+Я", "Hyper+R", "Ctrl+F25"):
             self.assertIsNone(parse_hotkey(bad), bad)
+
+    def test_altgr_letters_are_not_taken(self):
+        from app.hotkey import altgr_clash
+
+        polish = {ord("A"): "ą", ord("E"): "ę"}  # AltGr = Ctrl+Alt on Windows
+        typed = lambda mods, vk: polish.get(vk, "")
+        self.assertEqual(altgr_clash("Ctrl+Alt+A", typed), "ą")
+        self.assertEqual(altgr_clash("Ctrl+Alt+R", typed), "")
+        self.assertEqual(altgr_clash("Ctrl+Shift+A", typed), "")  # no Alt: AltGr is not involved
+        self.assertEqual(altgr_clash("Ctrl+Alt+Win+A", typed), "")
+        self.assertEqual(altgr_clash("Ctrl+Alt+A", lambda m, v: 1 / 0), "")  # a failing check allows the key
+
+    def test_record_notice_follows_what_really_happened(self):
+        import time
+        from types import SimpleNamespace
+
+        import run
+
+        notes = []
+        tc = SimpleNamespace(_hotkey_spec="Ctrl+Alt+R", _notify=lambda title, text, warning=False: notes.append((title, warning)))
+        check = lambda st: run.TrayController._check_hotkey_result(tc, st)
+        tc._hotkey_wait = (False, time.time())
+        check({"recording": False})
+        self.assertEqual(notes, [])  # not started yet: nothing said
+        check({"recording": True})
+        self.assertEqual(notes, [("Запись начата", False)])
+        tc._hotkey_wait = (False, time.time() - 11)
+        check({"recording": False})
+        self.assertEqual(notes[-1], ("Запись не началась", True))
+        self.assertIsNone(tc._hotkey_wait)
 
 
 class CallWatchTest(unittest.TestCase):
@@ -183,9 +216,6 @@ class PeopleTest(unittest.TestCase):
         self.assertFalse(people["Мария Тестова"]["profile"])
         self.assertEqual(self.vp.apply_to_library()["meetings"], 0)  # nothing left to name
 
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class DeleteWithSourceTest(unittest.TestCase):
@@ -380,3 +410,231 @@ class LiveAskTest(unittest.TestCase):
             self.assertIn("[01:05] Переносим релиз на пятницу", sent[0])
             self.assertEqual(c.post("/api/live/nope/ask", json={"question": "x"}).status_code, 404)
         live.stop_session(s.id)
+
+
+class SideJobStatusTest(unittest.TestCase):
+    """A job on a finished recording gives back its status: a cancelled one must not become completed."""
+
+    def test_status_is_returned(self):
+        from app import transcriber
+        from app.database import create_meeting, init_db, meeting_status, update_meeting_progress
+
+        init_db()
+        for status in ("cancelled", "failed", "completed"):
+            m = create_meeting(title=f"Задание после {status}", filename="a.wav", media_path="/nonexistent/a.wav")
+            update_meeting_progress(m["id"], status=status)
+            # a cut of a missing file fails: whatever the outcome, the status is the one before
+            self.assertTrue(transcriber.enqueue_cut_job(m["id"], "denoise", [(0.0, 1.0)], False, "/nonexistent/out.wav"))
+            transcriber._executor.submit(lambda: None).result(timeout=30)
+            self.assertEqual(meeting_status(m["id"]), status)
+
+
+class LiveCaptionFailureTest(unittest.TestCase):
+    """Captions whose recognizer fails: the buffer stays small and the worker is not restarted every second."""
+
+    def test_buffer_stays_bounded(self):
+        from unittest import mock
+
+        from app import live
+        from app.database import init_db
+
+        init_db()
+
+        class Broken:
+            calls = 0
+
+            def transcribe(self, audio, lang):
+                Broken.calls += 1
+                raise RuntimeError("Субтитры остановлены: нет модели")
+
+        s = live.LiveSession("ru", None)
+        s.onnx_model = None
+        second = (np.zeros(live.SR, dtype="<i2")).tobytes()
+        with mock.patch.object(live, "_caption_worker", lambda: Broken()):
+            for _ in range(600):  # ten minutes, a second at a time, as the page sends it
+                s.add_pcm16(second)
+                s.step()
+        self.assertLessEqual(s.audio.size, 2 * live.LIVE_WINDOW_SEC * live.SR)
+        self.assertIn("нет модели", s.error)
+        self.assertAlmostEqual(s.offset + s.audio.size / live.SR, 600.0, places=3)  # times stay right
+
+    def test_worker_start_backs_off(self):
+        from unittest import mock
+
+        from app import live
+
+        w = live._CaptionWorker.__new__(live._CaptionWorker)  # without the reaper thread
+        w.proc, w.lock, w.last_used, w.stderr_tail, w.model_name = None, threading.Lock(), 0.0, [], ""
+        w.failures, w.retry_at, w.last_error = 0, 0.0, ""
+        starts = []
+
+        def popen(*a, **k):
+            starts.append(1)
+            raise OSError("нет такого файла")
+
+        with mock.patch.object(live.subprocess, "Popen", popen):
+            for _ in range(50):
+                with self.assertRaises(RuntimeError):
+                    w.transcribe(np.zeros(16000, dtype=np.float32), "ru")
+        self.assertEqual(len(starts), 1)  # the next try waits WORKER_RETRY_SEC
+        self.assertGreater(w.retry_at, 0)
+
+
+class CutStderrTest(unittest.TestCase):
+    def test_a_talkative_ffmpeg_does_not_hang_the_cut(self):
+        """FFmpeg writing a lot of errors (a damaged source) must not block on a full pipe."""
+        import subprocess
+        import sys
+        import tempfile
+        from pathlib import Path
+
+        from app import media_cut
+
+        script = ("import sys\nfor i in range(20000): sys.stderr.write('decode error %d\\n' % i)\n"
+                  "print('out_time_us=1000000', flush=True)\nsys.exit(1)\n")
+        proc = subprocess.Popen([sys.executable, "-c", script], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True, encoding="utf-8")
+        out = Path(tempfile.mkdtemp()) / "cut.mp4"
+        with self.assertRaises(RuntimeError) as err:
+            media_cut._follow(proc, 1.0, out, lambda _f: None, lambda: None)
+        self.assertIn("decode error 19999", str(err.exception))
+
+
+class UrlImportLimitsTest(unittest.TestCase):
+    def _run(self, info, hook_downloads=(), cancel_meanwhile=False):
+        import sys
+        import types
+        from unittest import mock
+
+        from app import url_import
+        from app.database import create_meeting, get_meeting, init_db
+
+        init_db()
+        m = create_meeting(title="Ссылка", filename="", media_path="", source="import")
+
+        class YDL:
+            def __init__(self, opts):
+                self.opts = opts
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def extract_info(self, url, download):
+                return dict(info)
+
+            def process_ie_result(self, i, download):
+                if cancel_meanwhile:  # the user presses Cancel while it downloads
+                    for ev in list(url_import._cancel.values()):
+                        ev.set()
+                for d in hook_downloads:
+                    for h in self.opts["progress_hooks"]:
+                        h(d)
+                raise AssertionError("should have stopped")
+
+        fake = types.SimpleNamespace(YoutubeDL=YDL)
+        with mock.patch.dict(sys.modules, {"yt_dlp": fake}), mock.patch.object(url_import, "ensure_package"), \
+             mock.patch("app.transcriber.enqueue_meeting_job"):
+            url_import._download(m["id"], "https://example.com/v")
+        return get_meeting(m["id"])
+
+    def test_live_streams_and_huge_files_are_refused(self):
+        m = self._run({"is_live": True, "title": "Эфир"})
+        self.assertEqual(m["status"], "failed")
+        self.assertIn("трансляция", m["error_message"])
+        m = self._run({"title": "Огромный", "filesize_approx": 20 * 2**30})
+        self.assertIn("ГБ", m["error_message"])
+        m = self._run({"title": "Растёт"}, hook_downloads=[{"status": "downloading", "downloaded_bytes": 9 * 2**30}])
+        self.assertEqual(m["status"], "failed")
+
+    def test_cancel_stops_the_download(self):
+        from app import url_import
+
+        m = self._run({"title": "Отмена"}, hook_downloads=[{"status": "downloading", "downloaded_bytes": 1}],
+                      cancel_meanwhile=True)
+        self.assertEqual(m["status"], "cancelled")
+        self.assertEqual(m["error_message"], "")
+        self.assertFalse(url_import.cancel(m["id"]))  # nothing runs any more
+
+
+class DubMemoryTest(unittest.TestCase):
+    def test_estimate(self):
+        from app.dubbing import dub_memory_gb
+
+        self.assertLess(dub_memory_gb(3600), 7)          # an hour fits 16 GB
+        self.assertGreater(dub_memory_gb(3 * 3600), 14)  # three hours do not
+
+
+class WorkAudioTest(unittest.TestCase):
+    def test_wav_goes_waveform_stays(self):
+        import tempfile
+        from pathlib import Path
+
+        import soundfile as sf
+        from fastapi.testclient import TestClient
+
+        from app import main, transcriber
+        from app.audio_utils import peaks_file
+        from app.database import create_meeting, get_meeting, init_db, update_meeting_progress
+        from app.paths import AUDIO_DIR
+
+        init_db()
+        media = Path(tempfile.mkdtemp()) / "rec.m4a"
+        media.write_bytes(b"sound")
+        m = create_meeting(title="Своя запись", filename="rec.m4a", media_path=str(media), owns_media=True)
+        wav = AUDIO_DIR / f"meeting_{m['id']}.wav"
+        t = np.linspace(0, 10, 160000, dtype=np.float32)
+        sf.write(str(wav), (np.sin(t * 2000) * (t > 5)).astype(np.float32), 16000)  # silence, then sound
+        update_meeting_progress(m["id"], audio_path=str(wav))
+        with TestClient(main.app, base_url="http://127.0.0.1:8790") as c:
+            c.get(f"/?token={main.SESSION_TOKEN}")
+            before = c.get(f"/api/meetings/{m['id']}/peaks", params={"bars": 40}).json()["peaks"]
+            transcriber._drop_work_audio(m["id"], wav)
+            after = c.get(f"/api/meetings/{m['id']}/peaks", params={"bars": 40}).json()["peaks"]
+        self.assertFalse(wav.exists())
+        self.assertTrue(peaks_file(m["id"]).exists())
+        self.assertEqual(get_meeting(m["id"])["audio_path"], "")
+        self.assertEqual(len(after), 40)
+        self.assertLess(max(after[:15]), 0.1)
+        self.assertGreater(min(after[25:]), 0.5)
+        self.assertEqual(len(before), 40)
+        # a file used in place keeps its WAV: its owner may move the file away
+        m2 = create_meeting(title="По месту", filename="rec.m4a", media_path=str(media), source="local")
+        wav2 = AUDIO_DIR / f"meeting_{m2['id']}.wav"
+        sf.write(str(wav2), np.zeros(16000, dtype=np.float32), 16000)
+        transcriber._drop_work_audio(m2["id"], wav2)
+        self.assertTrue(wav2.exists())
+
+
+class IdleUnloadTest(unittest.TestCase):
+    def test_unload_frees_our_models_and_leaves_the_users_ollama_models(self):
+        from unittest import mock
+
+        from app import asr_onnx, diarizer, idle_unload, transcriber, vram
+        from app.database import init_db
+
+        init_db()
+        posted = []
+        client = mock.MagicMock()
+        client.__enter__.return_value.post.side_effect = lambda url, json: posted.append(json["model"])
+        with mock.patch.object(transcriber, "whisper_cache_key", return_value="large-v3-turbo"), \
+                mock.patch.object(transcriber, "release_whisper_model") as rel_whisper, \
+                mock.patch.object(diarizer, "ecapa_loaded_on", return_value=None), \
+                mock.patch.object(asr_onnx, "loaded_models", return_value=["gigaam-v3"]), \
+                mock.patch.object(asr_onnx, "release") as rel_onnx, \
+                mock.patch.object(vram, "ollama_loaded", return_value=[{"name": "qwen3.5:4b"}, {"name": "users-own:7b"}]), \
+                mock.patch.object(idle_unload, "_ollama_used", {"qwen3.5:4b"}), \
+                mock.patch.object(idle_unload.httpx, "Client", return_value=client):
+            out = idle_unload.unload_now()
+        rel_whisper.assert_called_once()
+        rel_onnx.assert_called_once()
+        self.assertEqual(posted, ["qwen3.5:4b"])  # a model the user loaded in Ollama is not ours to unload
+        self.assertEqual(out["released"][:2], ["whisper", "onnx"])
+        self.assertIn("qwen3.5:4b", out["released"])
+        self.assertNotIn("speakers", out["released"])
+
+
+if __name__ == "__main__":
+    unittest.main()

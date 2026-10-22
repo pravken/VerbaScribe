@@ -7,13 +7,13 @@ import threading
 import time
 import webbrowser
 from pathlib import Path
+from typing import Optional, Tuple
 
 BASE_DIR = Path(__file__).resolve().parent
 ICO_PATH = BASE_DIR / "assets" / "icon.ico"
 WINDOW_TITLE = "VerbaScribe"  # the launcher (build_exe.py) closes its splash when a window with this title appears
-
-import uvicorn
-from app.hardware import register_cuda_dlls
+# uvicorn and the app are imported where they are used, inside the error handling of __main__: an
+# incomplete .venv (setup interrupted, a blocked .pyd) then shows a message instead of nothing at all
 
 
 def set_app_user_model_id() -> None:
@@ -61,7 +61,7 @@ def apply_native_window_icon_and_hide_console() -> None:
                 )
 
                 for _ in range(25):
-                    hwnd = user32.FindWindowW(None, WINDOW_TITLE)
+                    hwnd = find_app_window(os.getpid())
                     if hwnd:
                         if hicon_big:
                             user32.SendMessageW(hwnd, WM_SETICON, ICON_BIG, hicon_big)
@@ -73,10 +73,77 @@ def apply_native_window_icon_and_hide_console() -> None:
                 pass
 
 
+# Windows of other programs that can carry the title too: Explorer showing the program's folder
+# (named VerbaScribe) is the usual one
+_FOREIGN_WINDOW_CLASSES = {"CabinetWClass", "ExploreWClass"}
+
+
+def find_app_window(pid: Optional[int] = None) -> int:
+    """The window titled VerbaScribe (of process `pid` when given), never an Explorer window of a
+    folder with that name; 0 when there is none."""
+    if sys.platform != "win32":
+        return 0
+    from ctypes import wintypes
+
+    user32 = ctypes.WinDLL("user32")
+    user32.FindWindowExW.argtypes = [wintypes.HWND, wintypes.HWND, wintypes.LPCWSTR, wintypes.LPCWSTR]
+    user32.FindWindowExW.restype = wintypes.HWND
+    user32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+    hwnd = None
+    name = ctypes.create_unicode_buffer(256)
+    owner = wintypes.DWORD()
+    while True:
+        hwnd = user32.FindWindowExW(None, hwnd, None, WINDOW_TITLE)
+        if not hwnd:
+            return 0
+        user32.GetClassNameW(hwnd, name, 256)
+        if name.value in _FOREIGN_WINDOW_CLASSES:
+            continue
+        if pid is not None:
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+            if owner.value != pid:
+                continue
+        return int(hwnd)
+
+
 def is_port_in_use(host: str, port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.settimeout(0.3)
         return s.connect_ex((host, port)) == 0
+
+
+def probe_server(host: str, port: int) -> bool:
+    """True when the program on the port is this user's VerbaScribe: it accepts the session token
+    from our data folder. Another program on the port (a dev server, another app) or VerbaScribe
+    of another Windows user does not, and the window must not open their page."""
+    import http.client
+
+    token = read_session_token(timeout=0)
+    if not token:
+        return False
+    try:
+        conn = http.client.HTTPConnection(host, port, timeout=3)
+        try:
+            conn.request("GET", f"/?token={token}")
+            resp = conn.getresponse()
+            return resp.status == 303 and "vs_session" in (resp.getheader("set-cookie") or "")
+        finally:
+            conn.close()
+    except (OSError, http.client.HTTPException):
+        return False
+
+
+def choose_port(host: str, port: int, tries: int = 20) -> Tuple[int, bool]:
+    """The port to use and whether our server already runs there. A port taken by another program
+    is skipped for the next free one."""
+    for p in range(port, port + tries):
+        if not is_port_in_use(host, p):
+            return p, False
+        if probe_server(host, p):
+            return p, True
+        print(f"Port {p} is taken by another program")
+    return port, False
 
 
 def wait_for_server(host: str, port: int, timeout: float = 120.0) -> bool:
@@ -98,15 +165,22 @@ def read_session_token(timeout: float = 5.0) -> str:
         return os.environ["VERBASCRIBE_TOKEN"]
 
     deadline = time.time() + timeout
-    while time.time() < deadline:
+    while True:
         try:
             token = token_file.read_text(encoding="utf-8").strip()
             if token:
                 return token
         except OSError:
             pass
+        if time.time() >= deadline:
+            return ""
         time.sleep(0.1)
-    return ""
+
+
+def window_url(host: str, port: int) -> str:
+    """The window's address: no token in it (it would stay in WebView2's history); the page signs
+    in through WindowApi.session_token."""
+    return f"http://{host}:{port}/"
 
 
 def app_url(host: str, port: int) -> str:
@@ -119,13 +193,18 @@ SERVER_STATE = {"error": ""}
 
 
 def start_server_in_thread(host: str, port: int) -> threading.Thread:
+    import uvicorn
+
+    from app.hardware import register_cuda_dlls
+
     # The token is chosen here and handed to the server, so the window never opens with a stale
     # token file left by the previous run (the server may still be starting)
     import secrets
 
     os.environ["VERBASCRIBE_TOKEN"] = secrets.token_urlsafe(32)
     register_cuda_dlls()
-    config = uvicorn.Config("app.main:app", host=host, port=port, log_level="warning", timeout_graceful_shutdown=3)
+    config = uvicorn.Config("app.main:app", host=host, port=port, log_level="warning", access_log=False,
+                            timeout_graceful_shutdown=3)
     server = uvicorn.Server(config)
 
     def _run() -> None:
@@ -178,7 +257,7 @@ def open_app_when_ready(window, host: str, port: int, log_path: str) -> None:
 
     while not SERVER_STATE["error"]:
         if is_port_in_use(host, port):
-            window.load_url(app_url(host, port))
+            window.load_url(window_url(host, port))
             return
         time.sleep(0.3)
     err = SERVER_STATE["error"]
@@ -199,9 +278,9 @@ class WindowApi:
         self._fullscreen = False
         self._host, self._port = host, port
 
-    def app_url(self) -> str:
-        """A fresh address with the session token: the "locked" page reloads itself with it."""
-        return app_url(self._host, self._port)
+    def session_token(self) -> str:
+        """The session token for the "locked" page, which signs in with it (POST /api/session)."""
+        return read_session_token()
 
     def toggle_fullscreen(self) -> bool:
         """WebView2 inside pywebview ignores the Fullscreen API, so the native window is toggled."""
@@ -225,10 +304,12 @@ def acquire_single_instance() -> bool:
     if sys.platform != "win32":
         return True
     ERROR_ALREADY_EXISTS = 183
-    kernel32 = ctypes.windll.kernel32
+    # use_last_error: ctypes keeps the error of this very call (another call in between, even
+    # inside ctypes, may reset GetLastError)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel32.CreateMutexW.restype = ctypes.c_void_p
     _instance_mutex = kernel32.CreateMutexW(None, False, "Local\\VerbaScribe.Desktop.Window")
-    if _instance_mutex and kernel32.GetLastError() != ERROR_ALREADY_EXISTS:
+    if _instance_mutex and ctypes.get_last_error() != ERROR_ALREADY_EXISTS:
         return True
     # Our handle would keep the other instance's lock alive even after it ends
     if _instance_mutex:
@@ -244,10 +325,55 @@ def _pid_file() -> Path:
 
 
 def write_pid_file() -> None:
+    """The window's process and its program file: a stuck instance is only ended when the PID
+    still belongs to that program (Windows reuses PIDs of ended processes)."""
     try:
-        _pid_file().write_text(str(os.getpid()), encoding="utf-8")
+        # The image of this process itself: the python.exe of a venv only starts the base interpreter
+        image = _process_image(os.getpid()) or sys.executable
+        _pid_file().write_text(f"{os.getpid()}\n{image}", encoding="utf-8")
     except OSError:
         pass
+
+
+def remove_pid_file() -> None:
+    try:
+        lines = _pid_file().read_text(encoding="utf-8").split("\n")
+        if lines[0].strip() == str(os.getpid()):
+            _pid_file().unlink()
+    except (OSError, IndexError):
+        pass
+
+
+def _process_image(pid: int) -> str:
+    """The program file of a running process, '' if there is none or it cannot be read."""
+    if sys.platform != "win32":
+        return ""
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.restype = ctypes.c_void_p
+    h = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not h:
+        return ""
+    try:
+        buf = ctypes.create_unicode_buffer(1024)
+        size = ctypes.c_ulong(len(buf))
+        ok = kernel32.QueryFullProcessImageNameW(ctypes.c_void_p(h), 0, buf, ctypes.byref(size))
+        return buf.value if ok else ""
+    finally:
+        kernel32.CloseHandle(ctypes.c_void_p(h))
+
+
+def stuck_instance_pid() -> int:
+    """The PID from app.pid when that process is still the VerbaScribe that wrote it, else 0."""
+    try:
+        lines = _pid_file().read_text(encoding="utf-8").split("\n")
+        pid, exe = int(lines[0].strip()), (lines[1].strip() if len(lines) > 1 else "")
+    except (OSError, ValueError):
+        return 0
+    if not exe or pid == os.getpid():
+        return 0  # written by an older version without the program file: not safe to end
+    image = _process_image(pid)
+    return pid if image and os.path.normcase(os.path.abspath(image)) == os.path.normcase(os.path.abspath(exe)) else 0
 
 
 # MB_TOPMOST | MB_SETFOREGROUND: the launcher's splash stays on top, a question must not hide under it
@@ -276,17 +402,21 @@ def recover_stuck_instance() -> bool:
     The other instance holds the single-instance lock but shows no window (its window crashed and
     the process hangs). Offers to end it; True if it was ended and this launch may continue.
     """
-    try:
-        pid = int(_pid_file().read_text(encoding="utf-8").strip())
-    except (OSError, ValueError):
-        pid = 0
+    pid = stuck_instance_pid()
     MB_YESNO, MB_ICONWARNING, IDYES = 0x4, 0x30, 6
+    if not pid:  # which process it is is not known for sure: ending a guess could hit another program
+        ctypes.windll.user32.MessageBoxW(
+            None,
+            "VerbaScribe уже запущен, но его окно не отвечает.\n\n"
+            "Завершите процесс python.exe программы VerbaScribe в Диспетчере задач или перезагрузите компьютер.",
+            "VerbaScribe", MB_ICONWARNING | MB_ON_TOP)
+        return False
     answer = ctypes.windll.user32.MessageBoxW(
         None,
         "VerbaScribe уже запущен, но его окно не отвечает.\n\n"
         "Завершить зависший процесс и открыть программу заново? Незавершённая обработка будет прервана.",
         "VerbaScribe", MB_YESNO | MB_ICONWARNING | MB_ON_TOP)
-    if answer != IDYES or not pid or pid == os.getpid():
+    if answer != IDYES:
         return False
     import subprocess
 
@@ -308,7 +438,7 @@ def activate_existing_window(timeout: float = 30.0) -> bool:
     SW_RESTORE = 9
     deadline = time.time() + timeout
     while time.time() < deadline:
-        hwnd = user32.FindWindowW(None, WINDOW_TITLE)
+        hwnd = find_app_window()
         if hwnd:
             if user32.IsIconic(hwnd) or not user32.IsWindowVisible(hwnd):  # minimized or in the tray
                 user32.ShowWindow(hwnd, SW_RESTORE)
@@ -374,15 +504,52 @@ class TrayController:
 
             self._dictation_spec = dspec
             self.tray.set_hotkey(dspec, "hotkey_dictation", slot=DICTATION_HOTKEY_ID)
+        tspec = (settings.get("dictation_translate_hotkey") or "").strip()
+        if tspec != getattr(self, "_translate_spec", None):
+            from app.tray import TRANSLATE_HOTKEY_ID
+
+            self._translate_spec = tspec
+            self.tray.set_hotkey(tspec, "hotkey_dictation_translate", slot=TRANSLATE_HOTKEY_ID)
 
     def _hotkey_record(self) -> None:
-        recording = bool(self._status.get("recording"))
+        # The notice waits for the page to report the new state (_check_hotkey_result): starting can
+        # fail (no microphone, the page still loading)
+        self._hotkey_wait = (bool(self._status.get("recording")), time.time())
         self.window.evaluate_js("window.trayCommand && window.trayCommand('record', null)")
+
+    def _check_hotkey_result(self, st: dict) -> None:
+        wait = getattr(self, "_hotkey_wait", None)
+        if not wait:
+            return
+        was, since = wait
+        now = bool(st.get("recording"))
         key = self._hotkey_spec
-        if recording:
-            self._notify("Запись остановлена", "Запись сохранена и отправлена на расшифровку")
-        else:
-            self._notify("Запись начата", f"Чтобы остановить, нажмите {key}" if key else "")
+        if now != was:
+            self._hotkey_wait = None
+            if now:
+                self._notify("Запись начата", f"Чтобы остановить, нажмите {key}" if key else "")
+            else:
+                self._notify("Запись остановлена", "Запись сохранена и отправлена на расшифровку")
+        elif time.time() - since > 10:
+            self._hotkey_wait = None
+            self._notify("Запись не остановилась" if was else "Запись не началась",
+                         "Откройте окно VerbaScribe, чтобы увидеть причину", warning=True)
+
+    def _warn_hotkey_failures(self) -> None:
+        """A hotkey that could not be registered is said once, not only on the settings page."""
+        from app.hotkey import dictation_hotkey_state, hotkey_state, translate_hotkey_state
+
+        warned = getattr(self, "_hotkey_warned", set())
+        self._hotkey_warned = warned
+        for name, state in (("записи", hotkey_state), ("диктовки", dictation_hotkey_state),
+                            ("диктовки с переводом", translate_hotkey_state)):
+            if state.get("ok") is False:
+                key = (name, state.get("spec"), state.get("error"))
+                if key not in warned:
+                    warned.add(key)
+                    self._notify(f"Горячая клавиша {name} не работает",
+                                 f"{state.get('spec')}: {state.get('error')}. Её можно сменить в Настройках → Запись",
+                                 warning=True)
 
     # ---- status
     def _poll(self) -> None:
@@ -395,11 +562,13 @@ class TrayController:
             if tick % 5 == 0:
                 try:
                     self._apply_hotkey()  # changed in Settings → Recording
+                    self._warn_hotkey_failures()
                 except Exception as e:
                     print(f"[tray] hotkey error: {e}", file=sys.stderr)
             try:
                 st = snapshot()
                 self._status = st
+                self._check_hotkey_result(st)
                 self.tray.set_status(st["state"], st["text"])
                 running = {(q["id"], q["kind"]): q for q in st["queue"] if q.get("state") == "running"}
                 for key, q in self._running.items():
@@ -427,7 +596,7 @@ class TrayController:
 
     def _window_in_front(self) -> bool:
         user32 = ctypes.windll.user32
-        hwnd = user32.FindWindowW(None, WINDOW_TITLE)
+        hwnd = find_app_window(os.getpid())
         return bool(hwnd) and user32.GetForegroundWindow() == hwnd and bool(user32.IsWindowVisible(hwnd))
 
     # ---- menu
@@ -489,6 +658,16 @@ class TrayController:
             # The text is typed where the cursor is; the notice is shown only when it starts
             if dictation.toggle(notify=self._notify) == "started":
                 self._notify("Диктовка", f"Говорите. Чтобы вставить текст, нажмите {self._dictation_spec} ещё раз")
+            return
+        if cmd == "hotkey_dictation_translate":
+            from app import dictation
+            from app.translation import TEXT_LANGUAGES
+
+            if dictation.toggle(notify=self._notify, translate=True) == "started":
+                lang = dictation.translate_target()
+                self._notify("Диктовка с переводом",
+                             f"Говорите. Текст будет переведён ({TEXT_LANGUAGES.get(lang, lang)}). "
+                             f"Чтобы вставить его, нажмите {self._translate_spec} ещё раз")
             return
         if cmd.startswith("record:"):
             self.show_window()
@@ -586,6 +765,17 @@ def grant_media_to_app(window, host: str, port: int) -> None:
 _update_launched = False
 
 
+def _stop_work() -> None:
+    """Before the process ends: recordings finished, work processes ended (app/shutdown.py)."""
+    remove_pid_file()
+    try:
+        from app import shutdown
+
+        shutdown.stop_all()
+    except Exception as e:
+        print(f"[exit] {e}", file=sys.stderr)
+
+
 def _install_update_on_exit() -> None:
     """A downloaded update (automatic updates on) is installed when the app closes."""
     global _update_launched
@@ -602,7 +792,8 @@ def _install_update_on_exit() -> None:
 
 
 def show_error_box(text: str) -> None:
-    if sys.platform == "win32":
+    # --headless runs without a window, maybe with nobody at the screen: a message box would wait forever
+    if sys.platform == "win32" and "--headless" not in sys.argv:
         try:
             MB_ICONERROR = 0x10
             ctypes.windll.user32.MessageBoxW(None, text, "VerbaScribe", MB_ICONERROR | MB_ON_TOP)
@@ -613,6 +804,14 @@ def show_error_box(text: str) -> None:
 
 
 def main() -> None:
+    import atexit
+
+    import uvicorn
+
+    atexit.register(_stop_work)  # the browser and headless modes end through Python's own exit
+
+    from app.hardware import register_cuda_dlls
+
     set_app_user_model_id()
 
     parser = argparse.ArgumentParser(description="VerbaScribe Desktop Studio")
@@ -625,7 +824,7 @@ def main() -> None:
     if args.host not in ("127.0.0.1", "localhost", "::1"):
         # Allow the explicitly chosen host in the server's Host header check
         os.environ["VERBASCRIBE_ALLOWED_HOSTS"] = args.host
-    already_running = is_port_in_use(args.host, args.port)
+    args.port, already_running = choose_port(args.host, args.port)
 
     if args.headless:
         if not already_running:
@@ -635,7 +834,8 @@ def main() -> None:
                 and print(f"VerbaScribe: {app_url(args.host, args.port)}", flush=True),
                 daemon=True,
             ).start()
-            uvicorn.run("app.main:app", host=args.host, port=args.port, log_level="info", timeout_graceful_shutdown=3)
+            uvicorn.run("app.main:app", host=args.host, port=args.port, log_level="info", access_log=False,  # the address holds the session token
+                timeout_graceful_shutdown=3)
         return
 
     if not args.browser:
@@ -649,10 +849,10 @@ def main() -> None:
         write_pid_file()
         # A previous instance may still be releasing the port for a moment
         for _ in range(50):
-            if not is_port_in_use(args.host, args.port):
+            if not is_port_in_use(args.host, args.port) or not probe_server(args.host, args.port):
                 break
             time.sleep(0.2)
-        already_running = is_port_in_use(args.host, args.port)
+        args.port, already_running = choose_port(args.host, args.port)
         try:
             import webview
 
@@ -664,7 +864,7 @@ def main() -> None:
             # The app's page once the server answers; until then a loading screen (see open_app_when_ready)
             window = webview.create_window(
                 title=WINDOW_TITLE,
-                url=app_url(args.host, args.port) if already_running else None,
+                url=window_url(args.host, args.port) if already_running else None,
                 html=None if already_running else LOADING_HTML,
                 width=1460,
                 height=900,
@@ -680,6 +880,7 @@ def main() -> None:
                 from app import updater
 
                 updater.exit_hooks.append(tray.stop)
+                updater.exit_hooks.append(_stop_work)
             except Exception as e:  # the app works without the tray icon
                 print(f"[tray] not available: {e}", file=sys.stderr)
 
@@ -691,6 +892,7 @@ def main() -> None:
                     print("Window closed: ending the process")
                     if tray is not None:
                         tray.stop()
+                    _stop_work()
                     _install_update_on_exit()
                     os._exit(0)
 
@@ -715,6 +917,7 @@ def main() -> None:
                           private_mode=False, storage_path=str(DATA_DIR / "webview"))
             if tray is not None:
                 tray.stop()
+            _stop_work()
             _install_update_on_exit()
             os._exit(0)
         except Exception as e:
@@ -731,25 +934,43 @@ def main() -> None:
 
     threading.Thread(target=_open_browser, daemon=True).start()
     register_cuda_dlls()
-    uvicorn.run("app.main:app", host=args.host, port=args.port, log_level="info", timeout_graceful_shutdown=3)
+    uvicorn.run("app.main:app", host=args.host, port=args.port, log_level="info", access_log=False,  # the address holds the session token
+                timeout_graceful_shutdown=3)
+
+
+def _startup_failed(log_file) -> None:
+    """Shows why the app did not start; without the log (the data folder unusable) it goes to %TEMP%."""
+    import tempfile
+    import traceback
+
+    text = traceback.format_exc()
+    if log_file is None:
+        log_file = Path(tempfile.gettempdir()) / "verbascribe-start-error.log"
+        try:
+            log_file.write_text(text, encoding="utf-8")
+        except OSError:
+            pass
+    else:
+        print(text, file=sys.stderr)
+    hint = ("\n\nЕсли установка прерывалась, запустите setup.bat ещё раз." if isinstance(sys.exc_info()[1], ImportError)
+            else "")
+    show_error_box(
+        "Не удалось запустить VerbaScribe.\n\n"
+        f"Подробности записаны в журнал:\n{log_file}{hint}\n\n"
+        "VerbaScribe could not start. Details are in the log file above."
+    )
 
 
 if __name__ == "__main__":
-    from app.applog import LOG_FILE, start_file_log
-
-    if "--headless" not in sys.argv:
-        start_file_log()
+    LOG_FILE = None
     try:
+        from app.applog import LOG_FILE, start_file_log
+
+        if "--headless" not in sys.argv:
+            start_file_log()
         main()
     except SystemExit:
         raise
     except BaseException:
-        import traceback
-
-        traceback.print_exc()
-        show_error_box(
-            "Не удалось запустить VerbaScribe.\n\n"
-            f"Подробности записаны в журнал:\n{LOG_FILE}\n\n"
-            "VerbaScribe could not start. Details are in the log file above."
-        )
-        sys.exit(1)
+        _startup_failed(LOG_FILE)
+        sys.exit(1)  # the launcher (build_exe.py) shows nothing more for exit code 1

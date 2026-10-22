@@ -7,7 +7,9 @@ then check that the packages really import. Only a successful check marks the en
 ready, so an interrupted or failed install never enables the Dub button.
 """
 
+import hashlib
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -17,6 +19,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from app.paths import APP_DIR
+from app.pyenv import ensure_pip, find_uv as _find_uv
 
 DUB_VENV = APP_DIR / ".venv-dub"
 DUB_PYTHON = DUB_VENV / "Scripts" / "python.exe" if sys.platform == "win32" else DUB_VENV / "bin" / "python"
@@ -57,15 +60,27 @@ def _set(**kw: Any) -> None:
         _state.update(kw)
 
 
-def _find_uv() -> Optional[str]:
-    found = shutil.which("uv")
-    if found:
-        return found
-    candidates = [
-        Path.home() / ".local" / "bin" / "uv.exe",
-        Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "WinGet" / "Links" / "uv.exe",
-    ]
-    return next((str(p) for p in candidates if p.is_file()), None)
+def _requirements_hash() -> str:
+    try:
+        return hashlib.sha256(REQUIREMENTS.read_bytes()).hexdigest()
+    except OSError:
+        return ""
+
+
+def _marked_requirements() -> Optional[str]:
+    """The requirements hash the ready mark was made with; None without a mark or a hash in it."""
+    try:
+        m = re.search(r"^requirements=(\w+)", DUB_READY_MARKER.read_text(encoding="utf-8"), re.M)
+    except OSError:
+        return None
+    return m.group(1) if m else None
+
+
+def is_outdated() -> bool:
+    """The environment was made for an older requirements-dub.txt (an update changed it): it needs
+    its packages installed again before dubbing."""
+    marked = _marked_requirements()
+    return marked is not None and marked != _requirements_hash()
 
 
 def _verify() -> bool:
@@ -83,8 +98,10 @@ def _verify() -> bool:
         for line in tail:
             _log(f"check: {line}")
         return False
+    # A re-check of an outdated environment keeps it outdated: the imports work, the versions are old
+    req = _marked_requirements() if is_outdated() else _requirements_hash()
     DUB_READY_MARKER.write_text(
-        f"Verified {datetime.now():%Y-%m-%d %H:%M:%S}: {res.stdout.strip()}\n", encoding="utf-8"
+        f"Verified {datetime.now():%Y-%m-%d %H:%M:%S}: {res.stdout.strip()}\nrequirements={req}\n", encoding="utf-8"
     )
     return True
 
@@ -93,7 +110,7 @@ def is_installed() -> bool:
     """Ready = verified once. Environments made earlier by setup_dub.bat are checked lazily."""
     global _verified_once
     if DUB_READY_MARKER.is_file():
-        return True
+        return not is_outdated()
     with _lock:
         busy = _state["active"]
     if busy or _verified_once or not DUB_PYTHON.is_file():
@@ -116,6 +133,7 @@ def setup_status() -> Dict[str, Any]:
         "download_gb": DOWNLOAD_SIZE_GB,
         "venv": str(DUB_VENV),
         "uv": bool(_find_uv()),
+        "outdated": is_outdated(),
     }
 
 
@@ -125,10 +143,12 @@ def _run(cmd: List[str], start_pct: int, end_pct: int, env: Dict[str, str]) -> i
     if _cancel.is_set():
         raise RuntimeError("Установка отменена")
     _log("$ " + " ".join(Path(cmd[0]).name if i == 0 else c for i, c in enumerate(cmd)))
-    proc = subprocess.Popen(
+    from app.shutdown import track
+
+    proc = track(subprocess.Popen(
         cmd, cwd=str(APP_DIR), env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, encoding="utf-8", errors="replace", creationflags=_NO_WINDOW,
-    )
+    ))
     with _lock:
         _proc = proc
     pct = start_pct
@@ -174,6 +194,7 @@ def _install() -> None:
                 8, 85, env,
             )
         else:
+            ensure_pip(str(DUB_PYTHON))
             _run([str(DUB_PYTHON), "-m", "pip", "install", "--upgrade", "pip"], 8, 10, env)
             rc = _run(
                 [str(DUB_PYTHON), "-m", "pip", "install", "-r", str(REQUIREMENTS), "--extra-index-url", TORCH_INDEX],

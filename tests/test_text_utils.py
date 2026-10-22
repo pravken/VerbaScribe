@@ -94,5 +94,35 @@ class QualityFilterTest(unittest.TestCase):
         self.assertFalse(is_low_quality_segment(None, None, None))
 
 
+class SharedHelpersTest(unittest.TestCase):
+    def test_srt_time_rounds_to_the_millisecond(self):
+        from app.audio_utils import format_timestamp, srt_time
+
+        self.assertEqual(srt_time(1.9996), "00:00:02,000")
+        self.assertEqual(srt_time(3725.5), "01:02:05,500")
+        self.assertEqual(format_timestamp(1.9996, srt=True), "00:00:02,000")
+        self.assertEqual(format_timestamp(65), "01:05")
+
+    def test_folder_size_counts_linked_files_once(self):
+        import os
+        import tempfile
+        from pathlib import Path
+
+        from app.paths import dir_size
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "blobs").mkdir()
+            (root / "snapshots").mkdir()
+            (root / "blobs" / "abc").write_bytes(b"x" * 1000)
+            try:
+                os.symlink(root / "blobs" / "abc", root / "snapshots" / "model.bin")
+            except (OSError, NotImplementedError):
+                self.skipTest("symbolic links are not allowed here")
+            self.assertEqual(dir_size(root), 1000)  # the cache: the blob once
+            self.assertEqual(dir_size(root / "snapshots"), 1000)  # a snapshot: through its link
+            self.assertEqual(dir_size(root / "missing"), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -194,6 +194,11 @@ def api_update_install() -> Dict[str, Any]:
 
     if running_job_kind():
         raise HTTPException(status_code=409, detail="Дождитесь окончания текущей задачи")
+    from app import app_status
+
+    st = app_status.snapshot()
+    if st["recording"] or st["state"] != "idle":  # the app quits for the update: nothing may be cut off
+        raise HTTPException(status_code=409, detail=f"Дождитесь окончания: {st['text']}")
     try:
         updater.launch_installer()
     except RuntimeError as e:
@@ -221,6 +226,14 @@ def api_start_dub(meeting_id: int, payload: DubRequestPayload) -> Dict[str, Any]
         raise HTTPException(status_code=400, detail="Язык перевода совпадает с языком записи")
     if not dub_environment_status()["installed"]:
         raise HTTPException(status_code=409, detail="Окружение дубляжа не установлено. Установите его в окне «Дубляж».")
+    from app.dubbing import dub_memory_gb
+    from app.sysinfo import memory
+
+    need, ram = dub_memory_gb(float(m.get("duration") or 0)), (memory() or {}).get("total_gb")
+    if ram and need > ram * 0.8:  # it would run out of memory hours into the job
+        raise HTTPException(status_code=409, detail=(
+            f"Для дубляжа записи длиной {float(m.get('duration') or 0) / 3600:.1f} ч нужно около {need:.0f} ГБ памяти, "
+            f"а в компьютере {ram:.0f} ГБ. Сделайте дубляж частей записи (Нарезка) или более короткой записи."))
     if not enqueue_dub_job(meeting_id, payload.target_lang):
         raise HTTPException(status_code=409, detail="Запись уже обрабатывается")
     return get_meeting(meeting_id)
@@ -338,6 +351,8 @@ def api_meeting_cut(meeting_id: int, payload: CutPayload) -> Dict[str, Any]:
     if payload.kind not in ("clean", "highlights", "denoise"):
         raise HTTPException(status_code=400, detail="Неизвестный вид нарезки")
     _ensure_not_processing(meeting_id)
+    if payload.kind != "denoise" and (m.get("status") != "completed" or not m.get("segments")):
+        raise HTTPException(status_code=400, detail="Нарезка доступна после полной расшифровки записи")
     media = Path(m.get("media_path") or "")
     if not media.is_file():
         raise HTTPException(status_code=404, detail="Исходный файл не найден")
@@ -394,6 +409,8 @@ def api_video_subtitles(meeting_id: int, payload: SubtitlesRequestPayload) -> Di
     if payload.mode not in ("soft", "burn"):
         raise HTTPException(status_code=400, detail="Неизвестный режим субтитров")
     _ensure_not_processing(meeting_id)
+    if m.get("status") != "completed" or not m.get("segments"):
+        raise HTTPException(status_code=400, detail="Субтитры доступны после полной расшифровки записи")
     lang = (payload.lang or "").strip()
     variant = payload.variant if lang else "original"
     if lang and variant not in _EXPORT_VARIANTS:
@@ -446,27 +463,24 @@ def api_video_subtitles(meeting_id: int, payload: SubtitlesRequestPayload) -> Di
 
 @router.get("/api/meetings/{meeting_id}/peaks")
 def api_media_peaks(meeting_id: int, bars: int = 120) -> Dict[str, Any]:
-    """Real loudness envelope of the extracted 16 kHz WAV for the player waveform."""
-    import numpy as np
-    import soundfile as sf
+    """Real loudness envelope of the recording for the player waveform: from the 16 kHz WAV, or from
+    the envelope kept when the WAV was deleted after processing."""
+    import json
+
+    from app.audio_utils import loudness_peaks, peaks_file, resample_peaks
 
     m = get_meeting(meeting_id)
     if not m:
         raise HTTPException(status_code=404, detail="Встреча не найдена")
-    wav = Path(m.get("audio_path") or "")
-    if not wav.is_file():
-        return {"peaks": []}
     bars = max(20, min(400, int(bars)))
+    wav = Path(m.get("audio_path") or "")
+    if wav.is_file():
+        try:
+            return {"peaks": loudness_peaks(wav, bars)}
+        except Exception:
+            return {"peaks": []}
     try:
-        data, _sr = sf.read(str(wav), dtype="float32", always_2d=False)
-    except Exception:
+        kept = json.loads(peaks_file(meeting_id).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
         return {"peaks": []}
-    if data.ndim > 1:
-        data = data.mean(axis=1)
-    if len(data) < bars:
-        return {"peaks": []}
-    usable = len(data) - (len(data) % bars)
-    rms = np.sqrt(np.mean(np.square(data[:usable].reshape(bars, -1)), axis=1))
-    top = float(np.percentile(rms, 98)) or 1.0
-    peaks = np.clip(rms / top, 0.0, 1.0)
-    return {"peaks": [round(float(v), 3) for v in peaks]}
+    return {"peaks": resample_peaks([float(x) for x in kept], bars)}

@@ -3,7 +3,7 @@
        MODAL 4: SETTINGS, RECORDING SOURCE, FIRST-RUN WIZARD & MODELS
        (Outer container is overflow-hidden so scrollbar never clips rounded corners)
        ========================================================================= -->
-  <div id="modal-settings" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4" onclick="closeModalOnBackdrop(event, 'settings')">
+  <div id="modal-settings" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4" data-click="closeModalOnBackdrop" data-click-args='[{"$": "event"}, "settings"]'>
     <div class="w-full max-w-3xl bg-apple-card border apple-border rounded-2xl shadow-2xl overflow-hidden max-h-[88vh] flex flex-col modal-card" style="height: min(88vh, 820px);">
 
       <!-- Sticky Modal Header -->
@@ -13,20 +13,20 @@
           <p id="settings-hw-name" class="text-[11px] text-apple-secondary mt-0.5"></p>
           <p id="settings-data-dir" class="text-[11px] text-apple-tertiary mt-0.5 truncate max-w-[28rem] select-text"></p>
         </div>
-        <button onclick="closeModal('settings')" data-i18n-title="tipCloseModal" title="Закрыть окно настроек" class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
+        <button data-click="closeModal" data-click-args='["settings"]' data-i18n-title="tipCloseModal" title="Закрыть окно настроек" class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
       </div>
 
       <!-- Settings sections as tabs (selectSettingsTab in static/js/core.js) -->
       <div class="px-6 pt-3 pb-3 border-b apple-border shrink-0 bg-apple-card">
         <div class="apple-segmented w-full settings-tabs">
-          <button onclick="selectSettingsTab('general')" id="stab-general" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabGeneral">Общие</button>
-          <button onclick="selectSettingsTab('record')" id="stab-record" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabRecord">Запись</button>
-          <button onclick="selectSettingsTab('recognition')" id="stab-recognition" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabRecognition">Распознавание</button>
-          <button onclick="selectSettingsTab('analysis')" id="stab-analysis" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabAnalysis">Анализ</button>
-          <button onclick="selectSettingsTab('export')" id="stab-export" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabExport">Экспорт</button>
-          <button onclick="selectSettingsTab('integrations')" id="stab-integrations" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabIntegrations">Интеграции</button>
-          <button onclick="selectSettingsTab('dub')" id="stab-dub" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabDub">Дубляж</button>
-          <button onclick="selectSettingsTab('bench')" id="stab-bench" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabBench">Сравнение</button>
+          <button data-click="selectSettingsTab" data-click-args='["general"]' id="stab-general" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabGeneral">Общие</button>
+          <button data-click="selectSettingsTab" data-click-args='["record"]' id="stab-record" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabRecord">Запись</button>
+          <button data-click="selectSettingsTab" data-click-args='["recognition"]' id="stab-recognition" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabRecognition">Распознавание</button>
+          <button data-click="selectSettingsTab" data-click-args='["analysis"]' id="stab-analysis" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabAnalysis">Анализ</button>
+          <button data-click="selectSettingsTab" data-click-args='["export"]' id="stab-export" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabExport">Экспорт</button>
+          <button data-click="selectSettingsTab" data-click-args='["integrations"]' id="stab-integrations" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabIntegrations">Интеграции</button>
+          <button data-click="selectSettingsTab" data-click-args='["dub"]' id="stab-dub" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabDub">Дубляж</button>
+          <button data-click="selectSettingsTab" data-click-args='["bench"]' id="stab-bench" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabBench">Сравнение</button>
         </div>
       </div>
 
@@ -54,8 +54,8 @@
               <p class="text-[11px] text-apple-secondary leading-snug mt-0.5" data-i18n="supportDesc">VerbaScribe бесплатна. Если она экономит вам время, можно угостить разработчика кофе.</p>
             </div>
             <div class="flex items-center gap-2 shrink-0">
-            <button onclick="openAbout()" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px]" data-i18n="aboutBtn">О программе</button>
-            <button onclick="openExternal(SUPPORT_URL)" class="ui-btn ui-btn-primary h-8 px-3 text-[11px] shrink-0 gap-1.5">
+            <button data-click="openAbout" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px]" data-i18n="aboutBtn">О программе</button>
+            <button data-click="openSupport" class="ui-btn ui-btn-primary h-8 px-3 text-[11px] shrink-0 gap-1.5">
               <svg class="w-3 h-3 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 2.9 4.5 6.6 4.5c2.1 0 3.6 1.2 4.4 2.5.8-1.3 2.3-2.5 4.4-2.5 3.7 0 5.7 3.9 4.2 7.3C19.5 16.4 12 21 12 21z"/></svg><span data-i18n="supportBtn">Поддержать на Ko-fi</span>
             </button>
             </div>
@@ -69,8 +69,8 @@
             <p class="text-[11px] text-apple-secondary leading-snug mt-0.5" data-i18n="uiLangDesc">Меняется сразу, без сохранения.</p>
           </div>
           <div class="apple-segmented shrink-0">
-            <button onclick="setUILanguage('ru')" id="lang-btn-ru" class="apple-segment-btn apple-segment-active">Русский</button>
-            <button onclick="setUILanguage('en')" id="lang-btn-en" class="apple-segment-btn text-apple-secondary hover:text-white">English</button>
+            <button data-click="setUILanguage" data-click-args='["ru"]' id="lang-btn-ru" class="apple-segment-btn apple-segment-active">Русский</button>
+            <button data-click="setUILanguage" data-click-args='["en"]' id="lang-btn-en" class="apple-segment-btn text-apple-secondary hover:text-white">English</button>
           </div>
         </div>
 
@@ -82,8 +82,8 @@
               <p id="update-status-text" class="text-[11px] text-apple-secondary leading-snug"></p>
             </div>
             <div class="flex items-center gap-2 shrink-0">
-              <button id="update-install-btn" onclick="installUpdate()" class="hidden ui-btn ui-btn-primary h-8 px-3 text-[11px]" data-i18n="updateInstallBtn">Установить</button>
-              <button id="update-check-btn" onclick="checkForUpdates(true)" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px]" data-i18n="updateCheckBtn">Проверить сейчас</button>
+              <button id="update-install-btn" data-click="installUpdate" class="hidden ui-btn ui-btn-primary h-8 px-3 text-[11px]" data-i18n="updateInstallBtn">Установить</button>
+              <button id="update-check-btn" data-click="checkForUpdates" data-click-args='[true]' class="ui-btn ui-btn-subtle h-8 px-3 text-[11px]" data-i18n="updateCheckBtn">Проверить сейчас</button>
             </div>
           </div>
           <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label">
@@ -94,6 +94,11 @@
             title="Новая версия скачивается в фоне и устанавливается, когда вы закрываете программу. Данные, модели и настройки не затрагиваются">
             <input type="checkbox" id="set-update-auto" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
             <span data-i18n="updateAutoInstall">Скачивать и устанавливать обновления автоматически</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label" data-i18n-title="tipUpdateBeta"
+            title="Предлагать и бета-версии: в них новое приходит раньше, но оно ещё проверяется. Когда выходит обычная версия, она тоже предлагается">
+            <input type="checkbox" id="set-update-beta" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <span data-i18n="updateBetaToggle">Получать бета-версии</span>
           </label>
           <p class="text-[11px] text-apple-tertiary leading-snug" data-i18n="updateHint">Спрашивается только номер последней версии на GitHub. Ваши записи, модели и настройки при обновлении не затрагиваются.</p>
         </div>
@@ -112,8 +117,8 @@
               <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="deleteMediaAfterHint">Остаются расшифровка, анализ и заметки. Файлы, добавленные по пути на диске, не трогаются.</span></span>
           </label>
           <div class="flex items-center gap-2 text-xs text-apple-label">
-            <span data-i18n="retentionLabel">Хранить звук записей</span>
-            <select id="set-media-retention" class="h-7 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none">
+            <span id="lbl-media-retention" data-i18n="retentionLabel">Хранить звук записей</span>
+            <select id="set-media-retention" aria-labelledby="lbl-media-retention" class="h-7 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none">
               <option value="0" data-i18n="retentionForever">всегда</option>
               <option value="7" data-i18n="retention7">7 дней</option>
               <option value="30" data-i18n="retention30">30 дней</option>
@@ -121,7 +126,7 @@
               <option value="365" data-i18n="retention365">1 год</option>
             </select>
           </div>
-          <button onclick="openCloudLog()" class="ui-btn ui-btn-subtle h-7 text-[11px]" data-i18n="cloudLogBtn">Журнал облачных запросов</button>
+          <button data-click="openCloudLog" class="ui-btn ui-btn-subtle h-7 text-[11px]" data-i18n="cloudLogBtn">Журнал облачных запросов</button>
         </div>
 
         <!-- Backup of the library (app/backup.py) -->
@@ -135,9 +140,14 @@
             <span><span data-i18n="backupWithMedia">Вместе со звуком и видео</span> <span id="backup-media-size" class="text-apple-tertiary"></span></span>
           </label>
           <div class="flex items-center gap-2 flex-wrap">
-            <button onclick="makeBackup()" id="backup-make-btn" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px]" data-i18n="backupMake">Сохранить копию…</button>
-            <button onclick="restoreBackup()" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px]" data-i18n="backupRestore">Восстановить из копии…</button>
+            <button data-click="makeBackup" id="backup-make-btn" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px]" data-i18n="backupMake">Сохранить копию…</button>
+            <button data-click="restoreBackup" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px]" data-i18n="backupRestore">Восстановить из копии…</button>
             <span id="backup-status" class="text-[11px] text-apple-tertiary"></span>
+          </div>
+          <!-- Left by a crash, a failed delete or an older version (app/database.orphan_files) -->
+          <div id="orphans-row" class="hidden flex items-center gap-2 flex-wrap text-[11px] text-apple-secondary">
+            <span id="orphans-text"></span>
+            <button data-click="deleteOrphans" id="orphans-btn" class="ui-btn ui-btn-subtle h-7 px-3 text-[11px]" data-i18n="orphansDelete">Освободить место</button>
           </div>
         </div>
 
@@ -150,7 +160,7 @@
             </div>
           </div>
           <div class="flex items-center gap-2">
-            <select id="set-idle-unload" class="h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
+            <select id="set-idle-unload" data-i18n-title="a11yIdleUnload" title="Выгружать модели из памяти через" class="h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
               <option value="0" data-i18n="idleUnloadNever">Не выгружать</option>
               <option value="1">1 min</option>
               <option value="5">5 min</option>
@@ -159,7 +169,7 @@
               <option value="30">30 min</option>
               <option value="60">60 min</option>
             </select>
-            <button onclick="unloadAllModelsNow()" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px]" data-i18n="idleUnloadNow">Выгрузить сейчас</button>
+            <button data-click="unloadAllModelsNow" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px]" data-i18n="idleUnloadNow">Выгрузить сейчас</button>
             <span id="idle-unload-status" class="text-[11px] text-apple-tertiary"></span>
           </div>
           <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label" data-i18n-title="tipQuietMode" title="Без всплывающих уведомлений Windows: о начале и конце записи, о готовых расшифровках. Переключается и в меню значка в трее">
@@ -174,7 +184,7 @@
             <div class="text-[13px] font-semibold text-white" data-i18n="ffmpegTitle">FFmpeg (извлечение звука)</div>
             <div id="ffmpeg-status-text" class="text-[11px] text-apple-secondary truncate"></div>
           </div>
-          <button id="ffmpeg-download-btn" onclick="installFfmpeg()" class="hidden ui-btn ui-btn-primary shrink-0" data-i18n="ffmpegDownloadBtn">Скачать FFmpeg</button>
+          <button id="ffmpeg-download-btn" data-click="installFfmpeg" class="hidden ui-btn ui-btn-primary shrink-0" data-i18n="ffmpegDownloadBtn">Скачать FFmpeg</button>
         </div>
         </div>
 
@@ -189,7 +199,7 @@
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="recSourceModeLabel">Источник записи</label>
-              <select id="set-record-source" onchange="onSettingsRecordSourceChange()"
+              <select id="set-record-source" data-change="onSettingsRecordSourceChange"
                 data-i18n-title="tipRecordSourceSelect"
                 title="Выберите, откуда записывать звук: только микрофон, системный звук (динамики) или оба канала одновременно"
                 class="w-full h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
@@ -201,11 +211,11 @@
 
             <div>
               <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="recMicDeviceLabel">Микрофон</label>
-              <select id="set-record-mic" onchange="onSettingsRecordMicChange()"
+              <select id="set-record-mic" data-change="onSettingsRecordMicChange"
                 data-i18n-title="tipRecordMicSelect"
                 title="Выберите конкретное устройство микрофона"
                 class="w-full h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
-                <option value="">По умолчанию</option>
+                <option value="" data-i18n="optDefault">По умолчанию</option>
               </select>
             </div>
           </div>
@@ -219,7 +229,7 @@
               </div>
               <div class="flex items-center gap-2">
                 <span id="settings-db-readout" class="text-[11px] font-mono text-apple-tertiary">-60 dB</span>
-                <button onclick="toggleSettingsAudioTest()" id="btn-test-settings-audio"
+                <button data-click="toggleSettingsAudioTest" id="btn-test-settings-audio"
                   data-i18n-title="tipTestAudioBtn"
                   title="Запустить проверку уровня звука и визуализацию звуковой волны"
                   class="ui-btn ui-btn-subtle h-6 px-2.5 text-[11px]">
@@ -244,10 +254,10 @@
           <div>
             <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="hotkeyLabel">Записать встречу</label>
             <div class="flex items-center gap-2">
-              <input id="set-record-hotkey" type="text" readonly onkeydown="captureHotkey(event)" onfocus="this.select()"
+              <input id="set-record-hotkey" type="text" readonly data-keydown="captureHotkey" data-keydown-args='[{"$": "event"}]' data-focus="selectOnFocus" data-focus-args='[{"$": "el"}]'
                 data-i18n-title="tipHotkey" title="Нажмите сочетание клавиш: запись начнётся и остановится из любой программы, окно не разворачивается"
                 class="w-44 h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono focus:outline-none focus:border-apple-blue cursor-pointer" />
-              <button onclick="clearHotkey()" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" data-i18n="hotkeyClear">Отключить</button>
+              <button data-click="clearHotkey" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" data-i18n="hotkeyClear">Отключить</button>
               <span id="hotkey-status" class="text-[11px] text-apple-tertiary"></span>
             </div>
             <p class="text-[10.5px] text-apple-tertiary mt-1" data-i18n="hotkeyHint">Начинает и останавливает запись из любой программы, источник — как в студии. Запись попадает в медиатеку и расшифровывается.</p>
@@ -256,17 +266,37 @@
           <div>
             <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="dictationLabel">Надиктовать текст</label>
             <div class="flex items-center gap-2 flex-wrap">
-              <input id="set-dictation-hotkey" type="text" readonly onkeydown="captureHotkey(event)" onfocus="this.select()"
+              <input id="set-dictation-hotkey" type="text" readonly data-keydown="captureHotkey" data-keydown-args='[{"$": "event"}]' data-focus="selectOnFocus" data-focus-args='[{"$": "el"}]'
                 data-i18n-title="tipDictation" title="Нажмите сочетание: начнётся запись микрофона; нажмите ещё раз — текст появится там, где стоит курсор (в любой программе)"
                 class="w-44 h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono focus:outline-none focus:border-apple-blue cursor-pointer" />
-              <button onclick="document.getElementById('set-dictation-hotkey').value = ''" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" data-i18n="hotkeyClear">Отключить</button>
-              <select id="set-dictation-language" class="h-7 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none">
+              <button data-click="clearField" data-click-args='["set-dictation-hotkey"]' class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" data-i18n="hotkeyClear">Отключить</button>
+              <select id="set-dictation-language" data-i18n-title="a11yDictationLang" title="Язык диктовки" class="h-7 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none">
                 <option value="auto" data-i18n="studioSpeechAuto">Авто</option>
                 <option value="ru">Русский</option>
                 <option value="en">English</option>
               </select>
             </div>
             <p class="text-[10.5px] text-apple-tertiary mt-1" data-i18n="dictationHint">Нажмите и говорите, нажмите ещё раз — текст напечатается там, где стоит курсор, в любой программе. Только микрофон, в медиатеку ничего не сохраняется.</p>
+          </div>
+
+          <div>
+            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="dictTrLabel">Надиктовать с переводом</label>
+            <div class="flex items-center gap-2 flex-wrap">
+              <input id="set-translate-hotkey" type="text" readonly data-keydown="captureHotkey" data-keydown-args='[{"$": "event"}]' data-focus="selectOnFocus" data-focus-args='[{"$": "el"}]'
+                data-i18n-title="tipDictTr" title="Нажмите сочетание: говорите на своём языке, а в программу вставится перевод"
+                class="w-44 h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono focus:outline-none focus:border-apple-blue cursor-pointer" />
+              <button data-click="clearField" data-click-args='["set-translate-hotkey"]' class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" data-i18n="hotkeyClear">Отключить</button>
+              <label for="set-dictation-translate-to" class="text-[11px] text-apple-secondary" data-i18n="dictTrTo">на</label>
+              <select id="set-dictation-translate-to" class="h-7 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none">
+                <option value="en">English</option>
+              </select>
+              <span id="translate-hotkey-status" class="text-[11px] text-apple-tertiary"></span>
+            </div>
+            <label class="flex items-center gap-2 cursor-pointer text-[11px] text-apple-label mt-1.5">
+              <input type="checkbox" id="set-dictation-translate-cloud" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+              <span data-i18n="dictTrCloud">Разрешить облачную модель для перевода диктовки</span>
+            </label>
+            <p class="text-[10.5px] text-apple-tertiary mt-1" data-i18n="dictTrHint">Говорите на любом языке — вставится перевод. Переводит локальная модель Ollama; облачная — только если отмечено выше и облако включено в «Анализе». Если перевод не удался, вставляется исходный текст.</p>
           </div>
 
         </div>
@@ -278,7 +308,7 @@
           </div>
           <div id="call-record-block" class="space-y-2">
             <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
-              <input type="checkbox" id="set-call-record" onchange="renderCallSettings()" class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+              <input type="checkbox" id="set-call-record" data-change="renderCallSettings" class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
               <span><span data-i18n="callRecordToggle">Записывать звонки автоматически</span>
                 <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="callRecordHint">Запись начинается, когда выбранная программа держит микрофон дольше 5 секунд, и останавливается через 15 секунд после того, как она его отпустит. Запись, начатую вручную, автоматика не трогает.</span></span>
             </label>
@@ -286,8 +316,8 @@
               <div id="call-apps" class="flex flex-wrap gap-x-4 gap-y-1.5"></div>
               <div id="call-mic-now" class="text-[11px] text-apple-tertiary"></div>
               <div class="flex items-center gap-2">
-                <span class="text-[11px] text-apple-secondary" data-i18n="callPresetLabel">Пресет записи</span>
-                <select id="set-call-preset" class="h-7 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none"></select>
+                <span id="lbl-call-preset" class="text-[11px] text-apple-secondary" data-i18n="callPresetLabel">Пресет записи</span>
+                <select id="set-call-preset" aria-labelledby="lbl-call-preset" class="h-7 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none"></select>
               </div>
             </div>
           </div>
@@ -319,9 +349,9 @@
           </div>
           <div class="flex items-center gap-2">
             <div id="set-recordings-dir" class="flex-1 min-w-0 h-8 leading-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono truncate"></div>
-            <button onclick="pickRecordingsDir()" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px] shrink-0" data-i18n="exportDirPickBtn">Выбрать…</button>
-            <button onclick="openRecordingsDir()" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px] shrink-0" data-i18n="exportDirOpenBtn">Открыть</button>
-            <button onclick="resetRecordingsDir()" id="recdir-reset-btn" class="hidden ui-btn ui-btn-subtle h-8 px-2.5 text-[11px] shrink-0" data-i18n-title="tipRecDirReset" title="Вернуть папку по умолчанию" data-i18n="recDirReset">Сбросить</button>
+            <button data-click="pickRecordingsDir" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px] shrink-0" data-i18n="exportDirPickBtn">Выбрать…</button>
+            <button data-click="openRecordingsDir" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px] shrink-0" data-i18n="exportDirOpenBtn">Открыть</button>
+            <button data-click="resetRecordingsDir" id="recdir-reset-btn" class="hidden ui-btn ui-btn-subtle h-8 px-2.5 text-[11px] shrink-0" data-i18n-title="tipRecDirReset" title="Вернуть папку по умолчанию" data-i18n="recDirReset">Сбросить</button>
           </div>
           <p id="set-imports-dir" class="text-[11px] text-apple-tertiary break-all"></p>
         </div>
@@ -348,10 +378,10 @@
           <!-- Live Whisper & Diarizer Download Progress Window -->
           <div id="whisper-download-panel" class="hidden rounded-xl bg-apple-bg border border-apple-blue/40 p-3.5 space-y-2.5">
             <div class="flex items-center justify-between gap-2 text-xs">
-              <span id="whisper-pull-status" class="font-medium text-white truncate">Подготовка к загрузке…</span>
+              <span id="whisper-pull-status" class="font-medium text-white truncate" data-i18n="dlPreparing">Подготовка к загрузке…</span>
               <div class="flex items-center gap-2 shrink-0">
                 <span id="whisper-pull-pct" class="font-mono text-apple-blue font-semibold">0%</span>
-                <button onclick="closeModal('settings')"
+                <button data-click="closeModal" data-click-args='["settings"]'
                   data-i18n-title="tipMinimizeBg"
                   title="Закрыть настройки и продолжить работу — загрузка продолжится в боковой панели"
                   class="px-2 py-0.5 rounded bg-apple-blue/15 hover:bg-apple-blue/25 text-apple-blue text-[11px] font-medium transition"
@@ -398,8 +428,8 @@
           <p class="text-[11px] text-apple-tertiary leading-snug ml-6" data-i18n="onnxGpuHint">Расшифровка записей в несколько раз быстрее. Нужна сборка ONNX Runtime для видеокарты (около 300 МБ, скачивается один раз). Если видеопамяти не хватает, запись распознаётся на процессоре. Субтитры и диктовка всегда идут на процессоре, чтобы видеокарта оставалась свободной для расшифровки.</p>
           <div class="flex items-center gap-2 ml-6">
             <span id="onnx-gpu-status" class="text-[11px] text-apple-secondary"></span>
-            <button onclick="installOnnxGpu()" id="onnx-gpu-install" class="hidden ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" data-i18n="onnxGpuInstall">Установить</button>
-            <button onclick="removeOnnxGpu()" id="onnx-gpu-remove" class="hidden ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" data-i18n="onnxGpuRemove">Удалить</button>
+            <button data-click="installOnnxGpu" id="onnx-gpu-install" class="hidden ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" data-i18n="onnxGpuInstall">Установить</button>
+            <button data-click="removeOnnxGpu" id="onnx-gpu-remove" class="hidden ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" data-i18n="onnxGpuRemove">Удалить</button>
           </div>
           </div>
         </div>
@@ -412,7 +442,7 @@
 
           <div class="settings-toggle">
             <label class="flex items-center gap-2.5 cursor-pointer text-xs text-apple-label" data-i18n-title="tipDiarizationToggle" title="Автоматически разделять участников разговора по тембру голоса">
-              <input type="checkbox" id="set-diarization" checked onchange="syncVoiceProfilesToggle()" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+              <input type="checkbox" id="set-diarization" checked data-change="syncVoiceProfilesToggle" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
               <span data-i18n="diarizationToggle">Разделение участников по голосам</span>
             </label>
             <div id="voice-profiles-box" class="mt-2 ml-6 rounded-lg border apple-border bg-white/[0.02] px-3 py-2.5 space-y-2">
@@ -423,7 +453,7 @@
               </label>
               <p class="text-[11px] text-apple-tertiary leading-snug" data-i18n="voiceProfilesHint">Голос запоминается, когда вы указываете имя участника. В новых записях похожий голос получает это имя автоматически. Отпечатки голосов хранятся только в базе на этом компьютере.</p>
               <div id="voice-profiles-list" class="space-y-1"></div>
-              <button onclick="applyVoiceProfilesToLibrary()" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]"
+              <button data-click="applyVoiceProfilesToLibrary" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]"
                 data-i18n-title="tipVoiceApplyAll" title="Подписать знакомые голоса в записях, сделанных до того, как голос был запомнен. Имена, которые вы дали сами, не меняются"
                 data-i18n="voiceApplyAll">Найти эти голоса в старых записях</button>
             </div>
@@ -451,15 +481,15 @@
             <p class="text-[11px] text-apple-secondary leading-snug" data-i18n="llmModeDesc">Обзоры, задачи, главы, ответы на вопросы, названия записей и заметки Obsidian. Перевод текста, живые субтитры и дубляж всегда работают через Ollama.</p>
           </div>
           <div class="apple-segmented w-full settings-tabs">
-            <button onclick="setLlmMode('ollama')" id="llm-mode-ollama" class="apple-segment-btn" data-i18n="llmModeLocal">На компьютере (Ollama)</button>
-            <button onclick="setLlmMode('cloud')" id="llm-mode-cloud" class="apple-segment-btn" data-i18n="llmModeCloud">Облачная модель по API</button>
+            <button data-click="setLlmMode" data-click-args='["ollama"]' id="llm-mode-ollama" class="apple-segment-btn" data-i18n="llmModeLocal">На компьютере (Ollama)</button>
+            <button data-click="setLlmMode" data-click-args='["cloud"]' id="llm-mode-cloud" class="apple-segment-btn" data-i18n="llmModeCloud">Облачная модель по API</button>
           </div>
           <div id="llm-cloud-panel" class="hidden space-y-3">
             <div class="rounded-lg border border-apple-amber/40 bg-apple-amber/10 px-3 py-2.5 text-[11.5px] text-apple-amber leading-relaxed" data-i18n="llmCloudWarning">Текст расшифровки анализируемой записи (а для вопросов по медиатеке — найденные фрагменты) отправляется в выбранный сервис через интернет и обрабатывается по его правилам. Аудио и видео не отправляются. Запросы оплачиваются по тарифам сервиса.</div>
             <div class="grid grid-cols-2 gap-3">
               <div>
-                <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="llmProviderLabel">Сервис</label>
-                <select id="set-llm-provider" onchange="renderLlmProvider()" class="w-full h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
+                <label for="set-llm-provider" class="block text-[11px] text-apple-secondary mb-1" data-i18n="llmProviderLabel">Сервис</label>
+                <select id="set-llm-provider" data-change="renderLlmProvider" class="w-full h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
                   <option value="openai">OpenAI (ChatGPT)</option>
                   <option value="anthropic">Anthropic (Claude)</option>
                   <option value="gemini">Google (Gemini)</option>
@@ -467,10 +497,10 @@
                 </select>
               </div>
               <div>
-                <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="llmModelLabel">Модель</label>
+                <label for="set-llm-model-select" class="block text-[11px] text-apple-secondary mb-1" data-i18n="llmModelLabel">Модель</label>
                 <div class="flex items-center gap-1.5">
-                  <select id="set-llm-model-select" onchange="onLlmModelSelect(this.value)" class="flex-1 min-w-0 h-8 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white font-mono focus:outline-none"></select>
-                  <button onclick="loadLlmModels(true)" id="llm-models-btn" class="ui-btn ui-btn-subtle h-8 !px-2 shrink-0" data-i18n-title="tipLlmModels" title="Загрузить список моделей, доступных по ключу">
+                  <select id="set-llm-model-select" data-change="onLlmModelSelect" data-change-args='[{"$": "value"}]' class="flex-1 min-w-0 h-8 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white font-mono focus:outline-none"></select>
+                  <button data-click="loadLlmModels" data-click-args='[true]' id="llm-models-btn" class="ui-btn ui-btn-subtle h-8 !px-2 shrink-0" data-i18n-title="tipLlmModels" title="Загрузить список моделей, доступных по ключу">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>
                   </button>
                 </div>
@@ -492,17 +522,17 @@
               <div class="flex items-center gap-2">
                 <input id="set-llm-key" type="password" autocomplete="off" spellcheck="false"
                   class="flex-1 min-w-0 h-8 bg-apple-sidebar border apple-border rounded-lg px-3 text-xs text-white font-mono placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
-                <button onclick="saveLlmKey()" class="ui-btn ui-btn-primary h-8 px-3 text-[11px] shrink-0" data-i18n="llmKeySave">Сохранить ключ</button>
-                <button onclick="deleteLlmKey()" id="llm-key-delete" class="hidden ui-btn ui-btn-subtle h-8 px-2.5 text-[11px] shrink-0 text-apple-red" data-i18n="llmKeyDelete">Удалить</button>
+                <button data-click="saveLlmKey" class="ui-btn ui-btn-primary h-8 px-3 text-[11px] shrink-0" data-i18n="llmKeySave">Сохранить ключ</button>
+                <button data-click="deleteLlmKey" id="llm-key-delete" class="hidden ui-btn ui-btn-subtle h-8 px-2.5 text-[11px] shrink-0 text-apple-red" data-i18n="llmKeyDelete">Удалить</button>
               </div>
               <p id="llm-key-hint" class="mt-1 text-[11px] text-apple-tertiary leading-snug break-words select-text"></p>
               <div id="llm-key-links" class="hidden mt-1 flex items-center gap-1.5">
-                <button onclick="openExternal(this.dataset.url)" id="llm-key-open" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]" data-i18n="llmKeyOpenSite">Открыть сайт</button>
-                <button onclick="copyText(this.dataset.url)" id="llm-key-copy" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]" data-i18n="llmKeyCopyLink">Копировать ссылку</button>
+                <button data-click="openExternal" data-click-args='[{"$": "data", "k": "url"}]' id="llm-key-open" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]" data-i18n="llmKeyOpenSite">Открыть сайт</button>
+                <button data-click="copyText" data-click-args='[{"$": "data", "k": "url"}]' id="llm-key-copy" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]" data-i18n="llmKeyCopyLink">Копировать ссылку</button>
               </div>
             </div>
             <div class="space-y-1.5">
-              <button onclick="testLlmConnection()" id="llm-test-btn" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px] shrink-0" data-i18n="llmTest">Проверить подключение</button>
+              <button data-click="testLlmConnection" id="llm-test-btn" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px] shrink-0" data-i18n="llmTest">Проверить подключение</button>
               <div id="llm-test-result" class="hidden text-[11px] leading-snug break-words select-text rounded-lg px-3 py-2"></div>
             </div>
           </div>
@@ -532,7 +562,7 @@
               title="Введите название любой модели из каталога Ollama"
               placeholder="Или введите имя любой модели из библиотеки Ollama (напр. mistral:7b)…"
               class="flex-1 h-8 bg-apple-sidebar border apple-border rounded-lg px-3 text-xs text-white placeholder-apple-tertiary focus:outline-none" />
-            <button onclick="pullCustomOllamaModel()"
+            <button data-click="pullCustomOllamaModel"
               data-i18n-title="tipPullCustomOllama"
               title="Скачать указанную модель через Ollama"
               class="ui-btn ui-btn-subtle h-8 px-3 text-white">
@@ -543,10 +573,10 @@
           <!-- Live Download & Installation Status Window -->
           <div id="ollama-download-panel" class="hidden rounded-xl bg-apple-bg border border-apple-blue/40 p-3.5 space-y-2.5">
             <div class="flex items-center justify-between gap-2 text-xs">
-              <span id="ollama-pull-status" class="font-medium text-white truncate">Подготовка к загрузке…</span>
+              <span id="ollama-pull-status" class="font-medium text-white truncate" data-i18n="dlPreparing">Подготовка к загрузке…</span>
               <div class="flex items-center gap-2 shrink-0">
                 <span id="ollama-pull-pct" class="font-mono text-apple-blue font-semibold">0%</span>
-                <button onclick="closeModal('settings')"
+                <button data-click="closeModal" data-click-args='["settings"]'
                   data-i18n-title="tipMinimizeBg"
                   title="Закрыть настройки и продолжить работу — загрузка продолжится в боковой панели"
                   class="px-2 py-0.5 rounded bg-apple-blue/15 hover:bg-apple-blue/25 text-apple-blue text-[11px] font-medium transition"
@@ -609,12 +639,12 @@
             <h4 class="text-[13px] font-semibold text-white" data-i18n="fileNameTitle">Имена файлов</h4>
             <p class="text-[11px] text-apple-secondary leading-snug" data-i18n="fileNameDesc">Шаблон имени для записей из студии и всех экспортов: {date} — дата записи, {time} — время, {title} — название, {lang} — язык. Запись получает имя по названию, как только оно появится.</p>
           </div>
-          <input id="set-file-name-template" type="text" spellcheck="false" placeholder="{date} {title}" oninput="updateFileNamePreview()"
+          <input id="set-file-name-template" type="text" spellcheck="false" placeholder="{date} {title}" data-input="updateFileNamePreview"
             class="w-full h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono focus:outline-none focus:border-apple-blue" />
           <div class="flex flex-wrap gap-1" id="file-name-tokens"></div>
           <div class="flex items-center gap-2 pt-1">
             <span class="text-[11px] text-apple-secondary" data-i18n="dateFoldersLabel">Папки по дате</span>
-            <select id="set-date-folders" onchange="updateFileNamePreview()" data-i18n-title="tipDateFolders"
+            <select id="set-date-folders" data-change="updateFileNamePreview" data-i18n-title="tipDateFolders"
               title="Записи из студии и экспорты раскладываются по папкам с датой записи. Имена вида 2026-10-21 сортируются в Проводнике по порядку"
               class="h-7 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none">
               <option value="off" data-i18n="dateFoldersOff">Не создавать</option>
@@ -633,9 +663,9 @@
           </div>
           <div class="flex items-center gap-2">
             <div id="set-export-dir" class="flex-1 min-w-0 h-8 leading-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono truncate"></div>
-            <button onclick="pickExportDir()" data-i18n-title="tipExportDirPick" title="Выбрать папку, которая предлагается по умолчанию при сохранении файлов"
+            <button data-click="pickExportDir" data-i18n-title="tipExportDirPick" title="Выбрать папку, которая предлагается по умолчанию при сохранении файлов"
               class="ui-btn ui-btn-subtle h-8 px-3 text-[11px] shrink-0" data-i18n="exportDirPickBtn">Выбрать…</button>
-            <button onclick="openExportDir()" data-i18n-title="tipExportDirOpen" title="Открыть папку экспорта в проводнике"
+            <button data-click="openExportDir" data-i18n-title="tipExportDirOpen" title="Открыть папку экспорта в проводнике"
               class="ui-btn ui-btn-subtle h-8 px-3 text-[11px] shrink-0" data-i18n="exportDirOpenBtn">Открыть</button>
           </div>
         </div>
@@ -654,9 +684,9 @@
           <div class="flex items-center gap-2">
             <input id="set-calendar-ics" type="text" spellcheck="false" placeholder="outlook · C:\Users\…\calendar.ics · https://…/basic.ics"
               class="flex-1 min-w-0 h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono focus:outline-none focus:border-apple-blue" />
-            <button onclick="useOutlookCalendar()" id="calendar-outlook-btn" class="hidden ui-btn ui-btn-subtle h-8 shrink-0" data-i18n-title="tipCalendarOutlook"
+            <button data-click="useOutlookCalendar" id="calendar-outlook-btn" class="hidden ui-btn ui-btn-subtle h-8 shrink-0" data-i18n-title="tipCalendarOutlook"
               title="Читать календарь из Outlook на этом компьютере (Microsoft 365, Exchange, Outlook.com — там же встречи Teams). Без ссылок и входа" data-i18n="calendarOutlook">Из Outlook</button>
-            <button onclick="checkCalendar()" class="ui-btn ui-btn-subtle h-8" data-i18n="calendarCheck">Проверить</button>
+            <button data-click="checkCalendar" class="ui-btn ui-btn-subtle h-8" data-i18n="calendarCheck">Проверить</button>
           </div>
           <div id="calendar-status" class="text-[11px] text-apple-tertiary"></div>
         </div>
@@ -671,8 +701,8 @@
           </div>
           <div class="flex items-center gap-2">
             <div id="watch-folder-path" class="flex-1 min-w-0 h-8 leading-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono truncate"></div>
-            <button onclick="pickWatchFolder()" class="ui-btn ui-btn-subtle h-8" data-i18n="exportDirPickBtn">Выбрать…</button>
-            <button onclick="watchFolderOff()" class="ui-btn ui-btn-subtle h-8" data-i18n="hotkeyClear">Отключить</button>
+            <button data-click="pickWatchFolder" class="ui-btn ui-btn-subtle h-8" data-i18n="exportDirPickBtn">Выбрать…</button>
+            <button data-click="watchFolderOff" class="ui-btn ui-btn-subtle h-8" data-i18n="hotkeyClear">Отключить</button>
           </div>
           <div id="watch-folder-status" class="text-[11px] text-apple-tertiary"></div>
         </div>
@@ -690,19 +720,19 @@
             <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="obsVaultLabel">Папка хранилища (vault)</label>
             <div class="flex items-center gap-2">
               <div id="set-obsidian-vault" class="flex-1 min-w-0 h-8 leading-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono truncate"></div>
-              <button onclick="pickObsidianVault()" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px] shrink-0" data-i18n="exportDirPickBtn">Выбрать…</button>
-              <button onclick="openObsidianFolder()" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px] shrink-0" data-i18n="exportDirOpenBtn">Открыть</button>
+              <button data-click="pickObsidianVault" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px] shrink-0" data-i18n="exportDirPickBtn">Выбрать…</button>
+              <button data-click="openObsidianFolder" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px] shrink-0" data-i18n="exportDirOpenBtn">Открыть</button>
             </div>
           </div>
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="obsSubfolderLabel">Папка внутри хранилища</label>
-              <input id="set-obsidian-subfolder" type="text" placeholder="VerbaScribe" oninput="updateObsidianPreview()"
+              <input id="set-obsidian-subfolder" type="text" placeholder="VerbaScribe" data-input="updateObsidianPreview"
                 class="w-full h-8 bg-apple-sidebar border apple-border rounded-lg px-3 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
             </div>
             <div>
               <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="obsFilenameLabel">Имя файла</label>
-              <input id="set-obsidian-filename" type="text" placeholder="{date} {title}" oninput="updateObsidianPreview()"
+              <input id="set-obsidian-filename" type="text" placeholder="{date} {title}" data-input="updateObsidianPreview"
                 class="w-full h-8 bg-apple-sidebar border apple-border rounded-lg px-3 text-xs text-white font-mono placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
             </div>
           </div>
@@ -749,7 +779,7 @@
                 <div id="sdub-env-detail" class="text-[11px] text-apple-secondary mt-0.5 leading-snug break-all select-text"></div>
               </div>
               <div class="flex items-center gap-1.5 shrink-0">
-                <button id="sdub-verify-btn" onclick="verifyDubEnv()" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px] hidden" data-i18n="sdubVerifyBtn" data-i18n-title="tipSdubVerify" title="Проверить, что пакеты окружения загружаются">Проверить</button>
+                <button id="sdub-verify-btn" data-click="verifyDubEnv" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px] hidden" data-i18n="sdubVerifyBtn" data-i18n-title="tipSdubVerify" title="Проверить, что пакеты окружения загружаются">Проверить</button>
               </div>
             </div>
             <div id="sdub-setup-meta" class="text-[11px] text-apple-tertiary"></div>
@@ -765,9 +795,9 @@
             </div>
             <div id="sdub-setup-error" class="hidden text-[11px] text-apple-red"></div>
             <div class="flex items-center justify-end gap-2">
-              <button id="sdub-setup-logs-btn" onclick="toggleDubSetupLogs('sdub')" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px] hidden" data-i18n="logsBtn">Журнал</button>
-              <button id="sdub-setup-cancel-btn" onclick="cancelDubSetup()" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px] hidden" data-i18n="cancel">Отмена</button>
-              <button id="sdub-setup-btn" onclick="startDubSetup()" class="ui-btn ui-btn-primary h-7 px-3 text-[11px]">Установить</button>
+              <button id="sdub-setup-logs-btn" data-click="toggleDubSetupLogs" data-click-args='["sdub"]' class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px] hidden" data-i18n="logsBtn">Журнал</button>
+              <button id="sdub-setup-cancel-btn" data-click="cancelDubSetup" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px] hidden" data-i18n="cancel">Отмена</button>
+              <button id="sdub-setup-btn" data-click="startDubSetup" class="ui-btn ui-btn-primary h-7 px-3 text-[11px]">Установить</button>
             </div>
           </div>
 
@@ -778,7 +808,7 @@
               <span id="sdub-weights-step" class="text-apple-label truncate"></span>
               <div class="flex items-center gap-2 shrink-0">
                 <span id="sdub-weights-pct" class="font-mono text-apple-blue">0%</span>
-                <button onclick="cancelDubWeights()" class="ui-btn ui-btn-subtle h-6 px-2 text-[10.5px]" data-i18n="cancel">Отмена</button>
+                <button data-click="cancelDubWeights" class="ui-btn ui-btn-subtle h-6 px-2 text-[10.5px]" data-i18n="cancel">Отмена</button>
               </div>
             </div>
             <div class="w-full h-1 bg-white/10 rounded-full overflow-hidden">
@@ -791,7 +821,7 @@
           <!-- Dub settings -->
           <div class="grid grid-cols-2 gap-x-3.5 gap-y-3 pt-1">
             <div>
-              <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="sdubWorkersLabel">Процессы синтеза</label>
+              <label for="set-dub-workers" class="block text-[11px] text-apple-secondary mb-1" data-i18n="sdubWorkersLabel">Процессы синтеза</label>
               <select id="set-dub-workers" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none">
                 <option value="auto" data-i18n="sdubWorkersAuto">Авто (по свободной VRAM)</option>
                 <option value="1">1</option>
@@ -801,7 +831,7 @@
               <p class="text-[10.5px] text-apple-tertiary mt-1 leading-snug" data-i18n="sdubWorkersHint">Каждый процесс — около 4 ГБ видеопамяти. Несколько процессов озвучивают фразы параллельно: быстрее, но памяти нужно больше.</p>
             </div>
             <div>
-              <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="sdubStretchLabel">Подгонка длительности</label>
+              <label for="set-dub-stretch" class="block text-[11px] text-apple-secondary mb-1" data-i18n="sdubStretchLabel">Подгонка длительности</label>
               <select id="set-dub-stretch" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none">
                 <option value="atempo">atempo (FFmpeg)</option>
                 <option value="rubberband">Rubber Band</option>
@@ -813,7 +843,7 @@
                 <span data-i18n="sdubCfgLabel">Следование образцу (CFG)</span>
                 <span id="set-dub-cfg-val" class="font-mono text-apple-label">0.30</span>
               </label>
-              <input id="set-dub-cfg" type="range" min="0" max="1" step="0.05" value="0.3" oninput="document.getElementById('set-dub-cfg-val').textContent = Number(this.value).toFixed(2)" class="volume-slider w-full" />
+              <input id="set-dub-cfg" type="range" min="0" max="1" step="0.05" value="0.3" data-input="showFixed2" data-input-args='[{"$": "el"}, "set-dub-cfg-val"]' class="volume-slider w-full" />
               <p class="text-[10.5px] text-apple-tertiary mt-1 leading-snug" data-i18n="sdubCfgHint">Ниже — меньше акцента исходного языка и ровнее темп; выше — точнее манера речи образца. По умолчанию 0,30.</p>
             </div>
             <div>
@@ -821,7 +851,7 @@
                 <span data-i18n="sdubExagLabel">Выразительность</span>
                 <span id="set-dub-exag-val" class="font-mono text-apple-label">0.50</span>
               </label>
-              <input id="set-dub-exag" type="range" min="0.25" max="1" step="0.05" value="0.5" oninput="document.getElementById('set-dub-exag-val').textContent = Number(this.value).toFixed(2)" class="volume-slider w-full" />
+              <input id="set-dub-exag" type="range" min="0.25" max="1" step="0.05" value="0.5" data-input="showFixed2" data-input-args='[{"$": "el"}, "set-dub-exag-val"]' class="volume-slider w-full" />
               <p class="text-[10.5px] text-apple-tertiary mt-1 leading-snug" data-i18n="sdubExagHint">0,5 — нейтрально. Выше — эмоциональнее и быстрее, но чаще сбои и лишние звуки.</p>
             </div>
           </div>
@@ -829,7 +859,7 @@
           <!-- Noise: kept or removed, for the original track and the dub -->
           <div class="space-y-2 pt-1">
             <label class="flex items-start gap-2 cursor-pointer text-xs text-apple-label">
-              <input type="checkbox" id="set-dub-denoise" onchange="syncDubNoiseControls('set')" class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+              <input type="checkbox" id="set-dub-denoise" data-change="syncDubNoiseControls" data-change-args='["set"]' class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
               <span><span data-i18n="dubDenoiseLabel">Шумоподавление</span>
                 <span class="block text-[10.5px] text-apple-tertiary leading-snug mt-0.5" data-i18n="dubDenoiseHint">Шумоподавление FFmpeg для фона дубляжа и для исходной дорожки в файле дубляжа. Убирает ровный шум (гул, шипение, вентилятор), но не стук и голоса вдали; музыка и атмосфера становятся немного глуше. Голос при этом чистый на обеих дорожках.</span></span>
             </label>
@@ -851,11 +881,11 @@
           </div>
           <div class="flex items-center gap-2 flex-wrap">
             <div class="apple-segmented" style="height: 30px;">
-              <button onclick="benchSetKind('asr')" id="bench-kind-asr" class="apple-segment-btn text-[11px]" data-i18n="benchKindAsr">Распознавание</button>
-              <button onclick="benchSetKind('llm')" id="bench-kind-llm" class="apple-segment-btn text-[11px]" data-i18n="benchKindLlm">Анализ</button>
+              <button data-click="benchSetKind" data-click-args='["asr"]' id="bench-kind-asr" class="apple-segment-btn text-[11px]" data-i18n="benchKindAsr">Распознавание</button>
+              <button data-click="benchSetKind" data-click-args='["llm"]' id="bench-kind-llm" class="apple-segment-btn text-[11px]" data-i18n="benchKindLlm">Анализ</button>
             </div>
-            <select id="bench-meeting" class="flex-1 min-w-0 h-8 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none"></select>
-            <select id="bench-clip" class="h-8 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none">
+            <select id="bench-meeting" data-i18n-title="a11yBenchMeeting" title="Запись для сравнения" class="flex-1 min-w-0 h-8 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none"></select>
+            <select id="bench-clip" data-i18n-title="a11yBenchClip" title="Длина фрагмента" class="h-8 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none">
               <option value="60" data-i18n="benchClip1">1 минута</option>
               <option value="180" selected data-i18n="benchClip3">3 минуты</option>
               <option value="600" data-i18n="benchClip10">10 минут</option>
@@ -864,8 +894,8 @@
           </div>
           <div id="bench-models" class="flex flex-wrap gap-x-4 gap-y-1.5"></div>
           <div class="flex items-center gap-2">
-            <button onclick="startBench()" id="bench-start" class="ui-btn ui-btn-primary h-8" data-i18n="benchStart">Сравнить</button>
-            <button onclick="cancelBench()" id="bench-cancel" class="hidden ui-btn ui-btn-subtle h-8" data-i18n="benchCancel">Остановить</button>
+            <button data-click="startBench" id="bench-start" class="ui-btn ui-btn-primary h-8" data-i18n="benchStart">Сравнить</button>
+            <button data-click="cancelBench" id="bench-cancel" class="hidden ui-btn ui-btn-subtle h-8" data-i18n="benchCancel">Остановить</button>
             <span id="bench-status" class="text-[11px] text-apple-tertiary"></span>
           </div>
           <div id="bench-results"></div>
@@ -879,11 +909,11 @@
       <div class="px-6 py-3.5 border-t apple-border flex items-center justify-between shrink-0 bg-apple-card">
         <span class="text-[11px] text-apple-secondary" data-i18n="bgDownloadNote">Скачивание моделей продолжается в фоне при закрытии окна</span>
         <div class="flex items-center gap-2">
-          <button onclick="closeModal('settings')"
+          <button data-click="closeModal" data-click-args='["settings"]'
             data-i18n-title="tipCloseModal"
             title="Закрыть окно настроек"
             class="ui-btn ui-btn-subtle h-8 px-4" data-i18n="close">Закрыть</button>
-          <button onclick="saveAllSettings()"
+          <button data-click="saveAllSettings"
             data-i18n-title="tipSaveSettingsBtn"
             title="Сохранить все настройки приложения и закрыть окно"
             class="ui-btn ui-btn-primary h-8 px-5" data-i18n="save">Сохранить</button>

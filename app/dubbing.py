@@ -50,6 +50,14 @@ from app.paths import APP_DIR, DATA_DIR, MODELS_DIR
 # The optional environment sits next to the program; outputs go to the per-user data folder
 DUB_PYTHON = APP_DIR / ".venv-dub" / "Scripts" / "python.exe"
 DUB_WORKER = Path(__file__).resolve().parent / "dub_worker.py"
+# The sound is mixed in memory at 44.1 kHz float32: the background (stereo), the voices, the mix
+# (stereo) and the spoken phrases, about 1.25 MB per second of the recording, plus the program
+DUB_BYTES_PER_SEC = 1.25e6
+DUB_BASE_GB = 2.0
+
+
+def dub_memory_gb(duration_sec: float) -> float:
+    return DUB_BASE_GB + max(0.0, float(duration_sec or 0)) * DUB_BYTES_PER_SEC / 2**30
 DUBS_DIR = DATA_DIR / "dubs"
 
 # Languages supported by Chatterbox Multilingual (code -> English name used in LLM prompts)
@@ -232,7 +240,9 @@ class DubWorker:
         self._check_cancel = check_cancel
         self._cancelled = False
         self._stderr: deque = deque(maxlen=60)
-        self.proc = subprocess.Popen(
+        from app.shutdown import track
+
+        self.proc = track(subprocess.Popen(
             [str(DUB_PYTHON), "-I", str(DUB_WORKER)],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -242,7 +252,7 @@ class DubWorker:
             errors="replace",
             env=env,
             creationflags=_NO_WINDOW,
-        )
+        ))
         with _live_lock:
             _live_workers[self.proc.pid] = purpose
         threading.Thread(target=self._drain_stderr, daemon=True).start()

@@ -1,7 +1,7 @@
 # Translate & Dub — plan, estimates and prototype notes
 
-Status: **prototype** (branch `feat/translate-dub`). Works end to end on a completed recording; not yet
-tuned for long recordings or many speakers.
+Status: part of the app (optional: installed on request into `.venv-dub`). Works end to end on a
+completed recording; long recordings need much memory (the app checks it before a dub starts).
 
 ## Goal
 
@@ -17,7 +17,7 @@ permissively licensed.
 | Voice-cloning TTS | **Chatterbox Multilingual** (Resemble AI), `chatterbox-tts==0.1.7`, checkpoint `t3_mtl23ls_v2` | MIT (code and weights) | 23 languages incl. **ru** and **en**; zero-shot cloning from ~10 s; every output carries an imperceptible **Perth watermark** |
 | Fallback TTS (rejected) | OpenVoice V2 | MIT | V2 natively supports only EN/ES/FR/ZH/JA/KO — **no Russian**, so not usable as a drop-in fallback |
 | Voice / background separation | **Demucs** `htdemucs` (`demucs==4.1.0`) | MIT | background = mix − vocals stem; weights come from the `adefossez/HTDemucs` Hugging Face repo, which has no license tag of its own — they are the Demucs project's released models (MIT repository) |
-| Translation | existing Ollama client (Qwen 2.5 / Mistral) | Apache 2.0 | 7B+ recommended; 1.5B works but is literal and sometimes drops nuance |
+| Translation | local Ollama, the model chosen in Settings (Qwen3.5 4B / Qwen3 8B by default) | Apache 2.0 | 7B+ recommended; small models are literal and sometimes drop nuance |
 | Time stretch | FFmpeg `atempo` | LGPL (part of FFmpeg) | `rubberband` filter is optional (`dub_stretch=rubberband`); librubberband is GPL, so it is never bundled, only used if the user's FFmpeg build has it |
 
 Explicitly avoided (non-commercial licenses): XTTS-v2 (CPML), F5-TTS weights (CC-BY-NC), Fish Speech

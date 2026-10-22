@@ -232,7 +232,7 @@ function toggleStudioVoiceEnhancer() {
   }
   showToast(
     state.studioVoiceActive
-      ? (state.uiLang === 'en' ? 'Studio Voice Enabled' : 'Студийный голос включён (шумодав + компрессор)')
-      : (state.uiLang === 'en' ? 'Original Audio' : 'Исходный звук')
+      ? t('uiStudioVoiceEnabled')
+      : t('uiOriginalAudio')
   );
 }

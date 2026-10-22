@@ -3,6 +3,86 @@
 
 // VerbaScribe UI logic. Depends on vendor/marked.min.js, vendor/purify.min.js and i18n.js.
 const DONE_STATUSES = ['completed', 'failed', 'cancelled', 'cleared'];
+// The page opened, so the locked page (app/main.py) may again try one fresh address next time
+try { sessionStorage.removeItem('vs_relocked'); } catch (e) { /* storage off */ }
+
+// --- Events without inline handlers ---
+// The page's Content-Security-Policy runs no inline script, so markup does not say onclick="…".
+// An element names a page function in data-<event> and its arguments, as a JSON list, in
+// data-<event>-args: <button data-click="openModal" data-click-args='["settings"]'>. In templates the
+// values go in with jsArg() (or Number()), as before. Placeholders in the list: {"$":"event"},
+// {"$":"el"} (the element), {"$":"value"}, {"$":"checked"}, {"$":"files"} and {"$":"data","k":"x"}
+// (el.dataset.x). A text from a recording can never become a placeholder: jsArg makes it a string.
+const PAGE_EVENTS = ['click', 'change', 'input', 'keydown', 'contextmenu', 'dragstart', 'dragover', 'dragleave', 'drop'];
+const PAGE_OWN_EVENTS = { focusin: 'focus', focusout: 'blur', error: 'error' };  // of the element itself
+
+function pageArg(a, el, ev) {
+  if (!a || typeof a !== 'object' || Array.isArray(a) || typeof a.$ !== 'string') return a;
+  switch (a.$) {
+    case 'event': return ev;
+    case 'el': return el;
+    case 'value': return el.value;
+    case 'checked': return el.checked;
+    case 'files': return el.files;
+    case 'data': return el.dataset[a.k];
+    default: return a;
+  }
+}
+
+function runPageHandler(el, type, ev) {
+  const name = el.getAttribute('data-' + type);
+  const fn = /^[A-Za-z_$][\w$]*$/.test(name || '') ? window[name] : null;
+  if (typeof fn !== 'function') { console.error(`data-${type}: no page function "${name}"`); return; }
+  let args = [];
+  const raw = el.getAttribute(`data-${type}-args`);
+  if (raw) {
+    try { args = JSON.parse(raw); } catch (e) { console.error(`data-${type}-args: not JSON`, raw); return; }
+  }
+  fn.apply(el, args.map(a => pageArg(a, el, ev)));
+}
+
+for (const type of PAGE_EVENTS) {
+  // Registered before every other listener of the page: the handlers run first, as inline ones did
+  document.addEventListener(type, ev => {
+    // From the element up, like bubbling; stopPropagation() in a handler ends it, and also keeps
+    // the page's own document listeners (closing menus) from seeing the event, as before
+    for (const el of ev.composedPath()) {
+      if (el === document || !(el instanceof Element)) break;
+      if (el.hasAttribute('data-' + type)) {
+        runPageHandler(el, type, ev);
+        if (ev.cancelBubble) { ev.stopImmediatePropagation(); break; }
+      }
+    }
+  });
+}
+for (const [native, type] of Object.entries(PAGE_OWN_EVENTS)) {
+  document.addEventListener(native, ev => {
+    const el = ev.target;
+    if (el instanceof Element && el.hasAttribute('data-' + type)) runPageHandler(el, type, ev);
+  }, true);  // focus and a failed image do not bubble: seen on the way down
+}
+
+// Both attributes for a template: pageCall('click', 'quickTranslate', [lang]) gives
+// data-click="quickTranslate" data-click-args='["en"]'. Any value is safe in the list.
+function pageCall(type, fn, args = []) {
+  return `data-${type}="${fn}"` + (args.length ? ` data-${type}-args='${escapeHtml(JSON.stringify(args))}'` : '');
+}
+
+// Small steps the markup used to write inline. `name`: a page function, called with the rest
+function stopEvent(ev) { ev.stopPropagation(); }
+function preventEvent(ev) { ev.preventDefault(); }
+function stopThen(ev, name, ...args) { ev.stopPropagation(); window[name](...args); }
+function preventThen(ev, name, ...args) { ev.preventDefault(); window[name](...args); }
+function onEnter(ev, name, ...args) { if (ev.key === 'Enter') window[name](...args); }
+function blurOnEnter(ev, el) { if (ev.key === 'Enter') el.blur(); }
+function selectOnFocus(el) { el.select(); }
+function clearField(id) { document.getElementById(id).value = ''; }
+function clickElement(id) { document.getElementById(id).click(); }
+function showFixed2(el, id) { document.getElementById(id).textContent = Number(el.value).toFixed(2); }
+function removeElement(el) { el.remove(); }
+function openSupport() { openExternal(SUPPORT_URL); }
+// Several calls in turn: runAll(["hideTranslateMenu"], ["openTranslateModal"])
+function runAll(...calls) { for (const [name, ...args] of calls) window[name](...args); }
 
 let state = {
   uiLang: localStorage.getItem('whisper_ui_lang') || 'ru',
@@ -45,6 +125,11 @@ const SVG_ICONS = {
 
 function t(key) {
   return (I18N[state.uiLang] && I18N[state.uiLang][key]) || I18N.ru[key] || key;
+}
+
+// A text that may not exist (a status or summary kind made up from data): undefined, not the key
+function tMaybe(key) {
+  return (I18N[state.uiLang] && I18N[state.uiLang][key]) || I18N.ru[key] || undefined;
 }
 
 function setUILanguage(lang) {
@@ -90,6 +175,13 @@ function setUILanguage(lang) {
     renderTranscript();
     renderSummaryPanel();
   }
+  // Texts the scripts wrote (not data-i18n): drawn again in the new language
+  loadSystemInfo().catch(() => {});
+  if (typeof scheduleVramRefresh === 'function') scheduleVramRefresh(50);  // the memory badges
+  if (typeof renderUpdateStatus === 'function') renderUpdateStatus();
+  renderQueuePanel();
+  if (state.activeMeeting) { renderTranslationControls(); updateProcessingBanner(state.activeMeeting); }
+  if (typeof renderRecordSaveHint === 'function') renderRecordSaveHint();
   applyVideoLayout();
   if (typeof relabelStudioLanguages === 'function') relabelStudioLanguages();
   if (state.appView === 'studio') { renderStudioState(); syncStudioCaptions(); }
@@ -125,9 +217,10 @@ function confirmDialog(title, text, okLabel, danger = true) {
   });
 }
 
-// Short forms for the old browser dialogs (window.confirm / prompt / alert), in the app's style
-function askConfirm(text) {
-  return confirmDialog(t('confirmTitle'), text, t('ok'), /удал|delete|remove|сброс|clear|отмен/i.test(text));
+// Short forms for the old browser dialogs (window.confirm / prompt / alert), in the app's style.
+// danger: the button is red (deleting, discarding); said by the caller, not guessed from the words
+function askConfirm(text, danger = false) {
+  return confirmDialog(t('confirmTitle'), text, t('ok'), danger);
 }
 
 function askText(label, value = '') {
@@ -160,11 +253,56 @@ function showAlert(text) {
   return confirmDialog(t('attentionTitle'), String(text), t('ok'), false).then(() => {});
 }
 
+// A message of the server (always Russian) in the interface language (static/server_text.js)
+function serverText(text) {
+  if (state.uiLang !== 'en' || typeof text !== 'string' || !text || typeof SERVER_TEXT_EN === 'undefined') return text;
+  if (SERVER_TEXT_EN[text]) return SERVER_TEXT_EN[text];
+  for (const [ru, en] of SERVER_PATTERNS_EN) {
+    const parts = ru.split('{}');
+    const re = new RegExp('^' + parts.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('([\\s\\S]*?)') + '$');
+    const m = text.match(re);
+    if (m) return en.replace(/\{(\d)\}/g, (_, i) => serverText(m[Number(i) + 1]));
+  }
+  return text;
+}
+
+// What a failed answer says, for a toast: FastAPI's "detail" is a text, or a list of invalid fields
+function errorText(data, res) {
+  const d = data && data.detail;
+  if (Array.isArray(d)) return d.map(x => (x && (x.msg || x.message)) || String(x)).join('; ');
+  return (typeof d === 'string' && serverText(d)) || `${t('serverError')} (HTTP ${res ? res.status : '?'})`;
+}
+
+// A lost session (the server started again with a new token, the cookie is gone): every request then
+// answers 401. Instead of a page that silently stops working, the window reloads itself with a fresh
+// address (in a browser the user is told to open the app again).
+const _nativeFetch = window.fetch.bind(window);
+let _sessionLost = false;
+window.fetch = async (...args) => {
+  const res = await _nativeFetch(...args);
+  if (res.status === 401 && !_sessionLost && /^\/api\//.test(String(args[0]))) {
+    _sessionLost = true;
+    onSessionLost();
+  }
+  return res;
+};
+
+async function onSessionLost() {
+  showToast(t('sessionLost'));
+  // In the app window the page reloads and signs in again (app/main.py _LOCKED_PAGE)
+  if (window.pywebview && window.pywebview.api) setTimeout(() => location.replace('/'), 1500);
+  /* in a browser: the toast says what to do */
+}
+
 // The JSON of a response; a non-JSON answer (a server error page) becomes {detail: "..."} instead of
 // "Unexpected token ... is not valid JSON" shown to the user
 async function readJson(res) {
   const text = await res.text().catch(() => '');
-  try { return text ? JSON.parse(text) : {}; } catch (e) {
+  try {
+    const data = text ? JSON.parse(text) : {};
+    if (data && typeof data.detail === 'string') data.detail = serverText(data.detail);
+    return data;
+  } catch (e) {
     return { detail: `${t('serverError')} (HTTP ${res.status})` };
   }
 }
@@ -215,8 +353,42 @@ function selectSettingsTab(name) {
   if (name === 'bench' && typeof loadBench === 'function') loadBench();
 }
 
+// Keyboard: an opened window takes the focus, Tab stays inside the top one, and the focus goes back
+// to where it was when the window closes
+const _modalReturnFocus = {};
+
+function focusablesIn(root) {
+  return [...root.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+    .filter(el => !el.disabled && el.getClientRects().length);  // shown (offsetParent is null for fixed ones)
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Tab') return;
+  const open = [...document.querySelectorAll('[aria-modal="true"]')].filter(el => !el.classList.contains('hidden') && el.getClientRects().length).pop();
+  if (!open) return;
+  const items = focusablesIn(open);
+  if (!items.length) return;
+  const first = items[0], last = items[items.length - 1];
+  if (!open.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+  else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+});
+
+// Rows and items made of <div role="button" tabindex="0">: Enter and Space click them, as a button
+document.addEventListener('keydown', e => {
+  if ((e.key !== 'Enter' && e.key !== ' ') || e.target.tagName === 'BUTTON' || !e.target.matches?.('[role="button"][tabindex="0"]')) return;
+  e.preventDefault();
+  e.target.click();
+});
+
 function openModal(name, tab) {
-  document.getElementById(`modal-${name}`).classList.remove('hidden');
+  const modal = document.getElementById(`modal-${name}`);
+  _modalReturnFocus[name] = document.activeElement;
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.classList.remove('hidden');
+  setTimeout(() => { if (!modal.contains(document.activeElement)) (focusablesIn(modal)[0] || modal).focus(); }, 60);
+  if (name === 'import') renderModelHints();
   if (name === 'settings') {
     let last = null;
     try { last = localStorage.getItem('verbascribe_settings_tab'); } catch (e) {}
@@ -264,8 +436,8 @@ function renderVoiceProfiles(data) {
   box.innerHTML = list.map(p => `
     <div class="flex items-center justify-between gap-2 text-xs">
       <span class="text-apple-label truncate">${escapeHtml(p.name)}
-        <span class="text-apple-tertiary">· ${escapeHtml(t('voiceProfileSamples').replace('{n}', p.samples))}</span></span>
-      <button onclick="deleteVoiceProfile(${Number(p.id)}, this.dataset.name)" data-name="${escapeHtml(p.name)}"
+        <span class="text-apple-tertiary">· ${escapeHtml(t('voiceProfileSamples').replace('{n}', () => p.samples))}</span></span>
+      <button data-click="deleteVoiceProfile" data-click-args='[${Number(p.id)}, {"$": "data", "k": "name"}]' data-name="${escapeHtml(p.name)}"
         class="ui-btn ui-btn-subtle h-6 px-2 text-[11px] text-apple-red" title="${escapeHtml(t('tipVoiceProfileDelete'))}">${escapeHtml(t('voiceProfileDelete'))}</button>
     </div>`).join('');
 }
@@ -274,7 +446,7 @@ async function applyVoiceProfilesToLibrary() {
   const res = await fetch('/api/voice-profiles/apply-all', { method: 'POST' });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) { showToast(data.detail || 'Error'); return; }
-  showToast(data.speakers ? t('voiceApplyAllDone').replace('{n}', data.speakers).replace('{m}', data.meetings) : t('voiceApplyAllNone'));
+  showToast(data.speakers ? t('voiceApplyAllDone').replace('{n}', () => data.speakers).replace('{m}', () => data.meetings) : t('voiceApplyAllNone'));
   if (data.speakers) {
     await loadMeetingsList();
     if (state.activeMeeting) selectMeeting(state.activeMeeting.id, false);
@@ -282,7 +454,7 @@ async function applyVoiceProfilesToLibrary() {
 }
 
 async function deleteVoiceProfile(id, name) {
-  if (!await askConfirm(t('voiceProfileDeleteConfirm').replace('{name}', name || ''))) return;
+  if (!await askConfirm(t('voiceProfileDeleteConfirm').replace('{name}', () => name || ''), true)) return;
   const res = await fetch(`/api/voice-profiles/${id}`, { method: 'DELETE' });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -297,6 +469,8 @@ function closeModal(name) {
     stopSettingsAudioTest();
   }
   document.getElementById(`modal-${name}`).classList.add('hidden');
+  const back = _modalReturnFocus[name];
+  if (back && document.contains(back)) back.focus();
 }
 function closeModalOnBackdrop(e, name) {
   if (e.target === e.currentTarget) closeModal(name);

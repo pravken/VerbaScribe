@@ -18,13 +18,16 @@ from app.audio_utils import extract_audio_16k_mono, format_timestamp, get_media_
 from app.database import (
     AUDIO_DIR,
     MODELS_DIR,
+    edit_meeting,
     get_all_settings,
     get_dictionary_hotwords,
     get_meeting,
+    meeting_status,
     save_meeting_dub,
     save_meeting_results,
     merge_summaries,
     save_segments_backup,
+    stash_transcript_for,
     update_meeting_progress,
 )
 from app.ollama_client import generate_meeting_summary
@@ -141,6 +144,49 @@ def queue_snapshot() -> List[Dict[str, Any]]:
     return out
 
 
+def _drop_work_audio(meeting_id: int, wav_path: Path) -> None:
+    """The 16 kHz WAV is for recognition only (345 MB for three hours). The player's waveform is kept
+    as a small envelope and the WAV deleted when the app holds its own copy of the sound; a file used
+    in place (added by its path) may be moved by its owner, so its WAV stays as the sound to play."""
+    import json
+
+    from app.audio_utils import loudness_peaks, peaks_file
+    from app.database import delete_file, update_meeting_fields
+
+    m = get_meeting(meeting_id) or {}
+    if not m.get("owns_media") or not Path(m.get("media_path") or "").is_file() or not wav_path.is_file():
+        return
+    try:
+        peaks_file(meeting_id).write_text(json.dumps(loudness_peaks(wav_path)), encoding="utf-8")
+    except Exception:
+        traceback.print_exc()
+        return
+    update_meeting_fields(meeting_id, audio_path="")
+    delete_file(str(wav_path))
+
+
+def drop_old_work_audio() -> int:
+    """_drop_work_audio for finished recordings that still have their WAV; returns how many."""
+    from app.database import _db_lock, get_connection
+
+    with _db_lock:
+        conn = get_connection()
+        rows = conn.execute("SELECT id, audio_path FROM meetings WHERE status = 'completed' AND owns_media = 1 "
+                            "AND COALESCE(audio_path, '') != ''").fetchall()
+        conn.close()
+    n = 0
+    for r in rows:
+        if not is_job_active(int(r["id"])) and Path(r["audio_path"]).is_file():
+            _drop_work_audio(int(r["id"]), Path(r["audio_path"]))
+            n += 1
+    return n
+
+
+def _cancel_wanted(meeting_id: int) -> bool:
+    with _jobs_lock:
+        return meeting_id in _cancel_requested
+
+
 def _check_cancel(meeting_id: int) -> None:
     with _jobs_lock:
         if meeting_id in _cancel_requested:
@@ -148,16 +194,23 @@ def _check_cancel(meeting_id: int) -> None:
 
 
 def clean_meeting_transcript(meeting_id: int) -> Dict[str, Any]:
-    m = get_meeting(meeting_id)
-    if not m:
+    import copy
+
+    removed_box = [0]
+
+    def clean(m: Dict[str, Any]) -> tuple:
+        segments = m.get("segments") or []
+        before = copy.deepcopy(segments)
+        cleaned, removed_box[0] = clean_filler_words_in_segments(segments)
+        if not removed_box[0]:
+            return ()
+        m["segments"], m["segments_backup"] = cleaned, before
+        return ("segments", "segments_backup")
+
+    updated = edit_meeting(meeting_id, clean)
+    if updated is None:
         raise ValueError("Встреча не найдена")
-    segments = m.get("segments") or []
-    cleaned, removed = clean_filler_words_in_segments(segments)
-    if removed:
-        save_segments_backup(meeting_id, segments)
-        save_meeting_results(meeting_id, segments=cleaned)
-    updated = get_meeting(meeting_id)
-    return {"meeting": updated, "removed_count": removed}
+    return {"meeting": updated, "removed_count": removed_box[0]}
 
 
 def enqueue_meeting_job(meeting_id: int) -> bool:
@@ -184,10 +237,13 @@ def _run_job(meeting_id: int) -> None:
             _cancel_requested.discard(meeting_id)
             queue_empty = not _active_jobs
         if queue_empty:
-            release_whisper_model()
-            from app import asr_onnx
+            try:  # a driver failing here (after sleep) must not skip the exports below
+                release_whisper_model()
+                from app import asr_onnx
 
-            asr_onnx.release_gpu()  # the video memory goes back to the summary model
+                asr_onnx.release_gpu()  # the video memory goes back to the summary model
+            except Exception:
+                traceback.print_exc()
         _run_pending_exports(meeting_id)
 
 
@@ -201,6 +257,17 @@ def _run_pending_exports(meeting_id: int) -> None:
         traceback.print_exc()
 
 
+# A job on a finished recording (dub, translation, cut, subtitles) gives it back the status it had:
+# a cancelled or failed recording with half a transcript must not become "completed" (the retention
+# setting deletes the sound of completed recordings)
+FINISHED_STATUSES = ("completed", "failed", "cancelled", "cleared")
+
+
+def _status_to_return(meeting_id: int) -> str:
+    status = meeting_status(meeting_id)
+    return status if status in FINISHED_STATUSES else "completed"
+
+
 def enqueue_dub_job(meeting_id: int, target_lang: str) -> bool:
     """Queues a translate-and-dub job in the same single worker, so it never shares VRAM with a transcription."""
     with _jobs_lock:
@@ -209,22 +276,23 @@ def enqueue_dub_job(meeting_id: int, target_lang: str) -> bool:
         _active_jobs.add(meeting_id)
         _cancel_requested.discard(meeting_id)
         _queue_add(meeting_id, "dub", target_lang)
+    back = _status_to_return(meeting_id)
     update_meeting_progress(
         meeting_id, status="dubbing", progress=0, stage_text="Дубляж в очереди...", error_message=""
     )
-    _executor.submit(_run_dub_job, meeting_id, target_lang)
+    _executor.submit(_run_dub_job, meeting_id, target_lang, back)
     _publish_queue_changed()
     return True
 
 
-def _run_dub_job(meeting_id: int, target_lang: str) -> None:
+def _run_dub_job(meeting_id: int, target_lang: str, back: str = "completed") -> None:
     from app.dubbing import run_dub_job
 
     def _progress(pct: int, text: str) -> None:
         update_meeting_progress(meeting_id, progress=pct, stage_text=text)
 
-    # The transcript stays valid whatever happens to the dub, so the recording always goes back to
-    # "completed"; the dub result (or error) is reported in stage_text / error_message.
+    # The transcript stays valid whatever happens to the dub, so the recording goes back to the status
+    # it had (`back`); the dub result (or error) is reported in stage_text / error_message.
     _queue_start(meeting_id)
     try:
         meeting = get_meeting(meeting_id)
@@ -236,19 +304,19 @@ def _run_dub_job(meeting_id: int, target_lang: str) -> None:
         save_meeting_dub(meeting_id, entry)
         update_meeting_progress(
             meeting_id,
-            status="completed",
+            status=back,
             progress=100,
             stage_text=f"Дубляж ({target_lang.upper()}) готов: {Path(entry['path']).name}"
             + (f"; не удалось озвучить фраз: {failed}" if (failed := (entry.get("stats") or {}).get("failed_phrases")) else ""),
             error_message="",
         )
     except JobCancelled:
-        update_meeting_progress(meeting_id, status="completed", progress=100, stage_text="Дубляж отменён", error_message="")
+        update_meeting_progress(meeting_id, status=back, progress=100, stage_text="Дубляж отменён", error_message="")
     except Exception as e:
         tb = traceback.format_exc()
         update_meeting_progress(
             meeting_id,
-            status="completed",
+            status=back,
             progress=100,
             stage_text=f"Ошибка дубляжа: {str(e)[:140]}",
             error_message=f"{e}\n\n{tb[-800:]}",
@@ -270,26 +338,27 @@ def _enqueue_side_job(meeting_id: int, kind: str, lang: str, status: str, queued
         _active_jobs.add(meeting_id)
         _cancel_requested.discard(meeting_id)
         _queue_add(meeting_id, kind, lang)
+    back = _status_to_return(meeting_id)
     update_meeting_progress(meeting_id, status=status, progress=0, stage_text=queued_text, error_message="")
-    _executor.submit(_run_side_job, meeting_id, runner, *args)
+    _executor.submit(_run_side_job, meeting_id, back, runner, *args)
     _publish_queue_changed()
     return True
 
 
-def _run_side_job(meeting_id: int, runner, *args) -> None:
-    # Like a dub, these jobs never invalidate the transcript: the recording always goes back to
-    # "completed" and the outcome (done, cancelled, error) is reported in stage_text / error_message.
+def _run_side_job(meeting_id: int, back: str, runner, *args) -> None:
+    # Like a dub, these jobs never invalidate the transcript: the recording goes back to the status it
+    # had (`back`) and the outcome (done, cancelled, error) is reported in stage_text / error_message.
     _queue_start(meeting_id)
     try:
         done_text = runner(meeting_id, *args)
-        update_meeting_progress(meeting_id, status="completed", progress=100, stage_text=done_text, error_message="")
+        update_meeting_progress(meeting_id, status=back, progress=100, stage_text=done_text, error_message="")
     except JobCancelled:
-        update_meeting_progress(meeting_id, status="completed", progress=100, stage_text=_SIDE_JOB_NAMES[runner][1], error_message="")
+        update_meeting_progress(meeting_id, status=back, progress=100, stage_text=_SIDE_JOB_NAMES[runner][1], error_message="")
     except Exception as e:
         tb = traceback.format_exc()
         update_meeting_progress(
             meeting_id,
-            status="completed",
+            status=back,
             progress=100,
             stage_text=f"Ошибка ({_SIDE_JOB_NAMES[runner][0]}): {str(e)[:140]}",
             error_message=f"{e}\n\n{tb[-800:]}",
@@ -366,11 +435,48 @@ def enqueue_cut_job(meeting_id: int, kind: str, intervals: List[Tuple[float, flo
     )
 
 
+def _merge_runner(meeting_id: int) -> str:
+    """One transcript from the transcripts of several models (app/transcript_merge.py), shown as the
+    version "merged"; the others stay."""
+    from app import llm
+    from app.database import all_transcripts, is_local_only
+    from app.model_manager import format_whisper_model_name
+    from app.transcript_merge import MERGED, merge
+
+    meeting = get_meeting(meeting_id)
+    if not meeting:
+        raise RuntimeError("Запись не найдена")
+    versions = all_transcripts(meeting_id)
+    update_meeting_progress(meeting_id, progress=5, stage_text="Сведение версий: сопоставление слов...")
+    chat, note = None, ""
+    try:
+        chat = llm.target(None, local_only=is_local_only(meeting)).chat
+    except Exception as e:  # no analysis model: the disputed places go to the more accurate model
+        print(f"[merge] no analysis model: {e}", flush=True)
+        note = " Модель анализа недоступна: спорные места решены по точности моделей."
+    res = merge(versions, meeting.get("language") or "", chat,
+                progress=lambda pct, text: update_meeting_progress(meeting_id, progress=pct, stage_text=text),
+                check_cancel=lambda: _check_cancel(meeting_id))
+    _check_cancel(meeting_id)
+    stash_transcript_for(meeting_id, MERGED)
+    save_segments_backup(meeting_id, [])
+    save_meeting_results(meeting_id, speakers=res["speakers"], segments=res["segments"],
+                         language=versions[res["base"]].get("language") or meeting.get("language"), transcript_model=MERGED)
+    names = ", ".join(format_whisper_model_name(m) for m in res["models"])
+    return (f"Сведено из {len(res['models'])} версий ({names}): спорных мест {res['disputed']}, "
+            f"из них выбрала модель анализа {res['by_llm']}.{note}")
+
+
+def enqueue_merge_job(meeting_id: int) -> bool:
+    return _enqueue_side_job(meeting_id, "merge", "", "merging", "Сведение версий в очереди...", _merge_runner)
+
+
 # runner -> (name for error messages, text after a cancel)
 _SIDE_JOB_NAMES = {
     _cut_runner: ("нарезка записи", "Нарезка отменена"),
     _translate_runner: ("перевод", "Перевод отменён"),
     _burn_runner: ("встраивание субтитров", "Встраивание субтитров отменено"),
+    _merge_runner: ("сведение версий", "Сведение версий отменено"),
 }
 
 
@@ -828,6 +934,15 @@ def _process_meeting_job(meeting_id: int) -> None:
                                    "Выберите Whisper или другую модель для этой записи.")
             from app import onnx_gpu
 
+            onnx_name = asr_onnx.ONNX_MODELS[model_name]["name"]
+            if not asr_onnx.is_installed(model_name):  # picked before it was downloaded: its files first
+                update_meeting_progress(meeting_id, progress=12, stage_text=f"Скачивание модели {onnx_name}...")
+                try:
+                    asr_onnx.ensure_downloaded(model_name, lambda pct: update_meeting_progress(
+                        meeting_id, stage_text=f"Скачивание модели {onnx_name}: {pct}%"))
+                except Exception as e:
+                    raise RuntimeError(f"Не удалось скачать модель {onnx_name}: {e}")
+                _check_cancel(meeting_id)
             use_gpu = onnx_gpu.gpu_for_job(model_name)
             update_meeting_progress(meeting_id, status="transcribing", progress=15,
                                     stage_text=f"Распознавание речи — {asr_onnx.ONNX_MODELS[model_name]['name']}"
@@ -867,6 +982,24 @@ def _process_meeting_job(meeting_id: int) -> None:
             whisper_model = None
             reused = False
         else:
+            from app.model_manager import ensure_whisper_model, is_whisper_model_installed
+
+            if not is_whisper_model_installed(model_name):  # picked before it was downloaded: the model first
+                update_meeting_progress(meeting_id, progress=12, stage_text=f"Скачивание модели {pretty_whisper}...")
+                shown = {"mb": -100.0}
+
+                def _download_progress(mb: float, total: float) -> None:
+                    _check_cancel(meeting_id)  # a cancel stops the download too
+                    if mb - shown["mb"] >= 20 or mb >= total:
+                        shown["mb"] = mb
+                        update_meeting_progress(meeting_id, stage_text=f"Скачивание модели {pretty_whisper}: {mb:.0f} из {total:.0f} МБ")
+
+                try:
+                    ensure_whisper_model(model_name, _download_progress, lambda: _check_cancel(meeting_id))
+                except JobCancelled:
+                    raise
+                except Exception as e:
+                    raise RuntimeError(f"Не удалось скачать модель {pretty_whisper}: {e}")
             if device == "cuda" and _whisper_cache["key"] != (model_name, device, compute_type):
                 _wait_for_vram_after_live(meeting_id, model_name)
             whisper_model, reused = _get_whisper_model(model_name, device, compute_type)
@@ -951,6 +1084,8 @@ def _process_meeting_job(meeting_id: int) -> None:
             traceback.print_exc()
 
         _check_cancel(meeting_id)
+        # The transcript of another model stays among the versions (the dropdown above the text)
+        stash_transcript_for(meeting_id, model_name)
         save_segments_backup(meeting_id, [])  # a backup of the previous run does not belong to this one
         if settings.get("clean_fillers", "true").lower() == "true":
             cleaned_segments, removed = clean_filler_words_in_segments(merged_segments)
@@ -971,12 +1106,17 @@ def _process_meeting_job(meeting_id: int) -> None:
             speakers=speakers_meta,
             segments=merged_segments,
             language=detected_lang,
+            transcript_model=model_name,
         )
 
         clear_vram()
 
+        # Cancelled once the transcript is saved: it is complete and stays; the steps after it (the
+        # overview, the title, the note) are skipped instead of running for minutes
+        skipped = _cancel_wanted(meeting_id)
+
         # 4. Automatic AI Summary via local Ollama (if enabled and Ollama has a model)
-        auto_summary = settings.get("auto_summary", "true").lower() == "true"
+        auto_summary = settings.get("auto_summary", "true").lower() == "true" and not skipped
         summaries = meeting.get("summaries") or {}
 
         if auto_summary and merged_segments:
@@ -1024,7 +1164,9 @@ def _process_meeting_job(meeting_id: int) -> None:
         clear_vram()
 
         # 5. A title from the content instead of a file name, and the note in Obsidian
-        notes = _after_transcription(meeting_id, merged_segments, speakers_meta, detected_lang, settings)
+        skipped = skipped or _cancel_wanted(meeting_id)
+        notes = ["обзор и название пропущены (отмена)"] if skipped else \
+            _after_transcription(meeting_id, merged_segments, speakers_meta, detected_lang, settings)
         from app import semantic
 
         semantic.kick()  # indexed for search by meaning once the queue is free
@@ -1040,6 +1182,8 @@ def _process_meeting_job(meeting_id: int) -> None:
             from app.database import remove_media
 
             remove_media(meeting_id)
+        else:
+            _drop_work_audio(meeting_id, wav_path)
 
     except JobCancelled:
         whisper_model = None

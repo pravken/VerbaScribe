@@ -3,7 +3,9 @@ import asyncio
 import shutil
 import sqlite3
 import tempfile
+import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from app import database, events
@@ -174,3 +176,425 @@ class EventBusTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PendingDeleteTest(unittest.TestCase):
+    """A file Windows keeps open (the player streams it) is deleted at the next start, not left forever."""
+
+    def test_locked_file_is_deleted_later(self):
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+
+        from app import database
+
+        database.init_db()
+        f = Path(tempfile.mkdtemp()) / "open.wav"
+        f.write_bytes(b"x")
+        real_unlink = Path.unlink
+
+        def locked(self, missing_ok=False):
+            if self == f:
+                raise PermissionError("used by another process")
+            return real_unlink(self, missing_ok=missing_ok)
+
+        with mock.patch.object(Path, "unlink", locked):
+            self.assertFalse(database.delete_file(str(f)))
+            self.assertEqual(database.retry_pending_deletes(), 0)  # still open
+        self.assertTrue(f.exists())
+        self.assertEqual(database.retry_pending_deletes(), 1)
+        self.assertFalse(f.exists())
+        self.assertEqual(database.retry_pending_deletes(), 0)
+
+
+class UploadDiskSpaceTest(unittest.TestCase):
+    def test_upload_refused_without_room(self):
+        from unittest import mock
+
+        from fastapi.testclient import TestClient
+
+        from app import main
+        from app.api import library
+
+        with TestClient(main.app, base_url="http://127.0.0.1:8790") as c:
+            c.get(f"/?token={main.SESSION_TOKEN}")
+            before = set(main.UPLOADS_DIR.iterdir())
+            with mock.patch.object(library, "_free_bytes", return_value=100 * 1024 * 1024):
+                r = c.post("/api/meetings/upload", files={"files": ("big.wav", b"x" * 1024, "audio/wav")})
+            self.assertEqual(r.status_code, 507, r.text)
+            self.assertEqual(set(main.UPLOADS_DIR.iterdir()), before)
+
+
+class ShutdownTest(unittest.TestCase):
+    def test_work_processes_end_with_the_app(self):
+        import subprocess
+        import sys
+
+        from app import shutdown
+
+        proc = shutdown.track(subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"]))
+        shutdown.stop_all()
+        self.assertIsNotNone(proc.wait(timeout=10))
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows jobs")
+    def test_work_processes_end_even_when_the_app_is_killed(self):
+        """A crash or Task Manager skips stop_all(): the job of the tracked processes ends them."""
+        import ctypes
+        import subprocess
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        app_like = (
+            "import os, subprocess, sys\n"
+            "from app import shutdown\n"
+            "child = shutdown.track(subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)']))\n"
+            "print(child.pid, flush=True)\n"
+            "os._exit(1)  # no stop_all(), as after a crash\n"
+        )
+        out = subprocess.run([sys.executable, "-c", app_like], capture_output=True, text=True, cwd=str(root), timeout=60)
+        pid = int(out.stdout.split()[0])
+        SYNCHRONIZE, WAIT_OBJECT_0 = 0x00100000, 0
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.restype = ctypes.c_void_p
+        h = kernel32.OpenProcess(SYNCHRONIZE, False, pid)
+        if not h:
+            return  # already gone
+        try:
+            self.assertEqual(kernel32.WaitForSingleObject(ctypes.c_void_p(h), 10000), WAIT_OBJECT_0, out.stderr)
+        finally:
+            kernel32.CloseHandle(ctypes.c_void_p(h))
+
+    def test_background_work_keeps_the_app_open(self):
+        from unittest import mock
+
+        from app import app_status, backup, dub_setup
+
+        with mock.patch("app.transcriber.queue_snapshot", return_value=[]):
+            self.assertEqual(app_status.snapshot()["state"], "idle")
+            with mock.patch.dict(dub_setup._state, {"active": True}):
+                st = app_status.snapshot()
+                self.assertEqual(st["state"], "busy")
+                self.assertIn("Установка дубляжа", st["text"])
+            with mock.patch.object(backup, "busy", 1):
+                self.assertIn("Резервная копия", app_status.snapshot()["text"])
+
+
+class SegmentsTableTest(unittest.TestCase):
+    """The transcript is one row per line; older libraries kept it as JSON in the recording's row."""
+
+    def _raw(self, sql, *args):
+        with database._db_lock:
+            conn = database.get_connection()
+            rows = conn.execute(sql, args).fetchall()
+            conn.commit()
+            conn.close()
+        return rows
+
+    def test_transcripts_of_an_older_library_are_moved_once_and_found(self):
+        import json
+
+        database.init_db()
+        m = database.create_meeting(title="Старая библиотека", filename="a.wav", media_path="a.wav")
+        segs = [{"id": i, "start": i, "end": i + 1, "speaker": "SPEAKER_00", "text": f"строка {i}",
+                 "words": [{"word": " строка", "start": i, "end": i + 0.5}]} for i in range(5)]
+        # as an older version stored it (or a version this one replaced, after going back to it)
+        self._raw("UPDATE meetings SET segments_json = ?, has_transcript = 1 WHERE id = ?", json.dumps(segs), m["id"])
+        self._raw("DELETE FROM segments WHERE meeting_id = ?", m["id"])
+        with database._db_lock:  # that version kept the search index of the text too
+            conn = database.get_connection()
+            database._reindex_segments(conn, m["id"], segs)
+            conn.commit()
+            conn.close()
+        database.init_db()
+        self.assertEqual(database.get_meeting(m["id"])["segments"], segs)
+        self.assertEqual(self._raw("SELECT segments_json FROM meetings WHERE id = ?", m["id"])[0][0], "")
+        self.assertEqual(len(self._raw("SELECT pos FROM segments WHERE meeting_id = ?", m["id"])), 5)
+        self.assertIn(m["id"], [h["meeting_id"] for h in database.search_all_meetings("строка")])
+
+        # written as JSON while the app runs (read as a fallback): an edit replaces it for good
+        self._raw("UPDATE meetings SET segments_json = ? WHERE id = ?", json.dumps(segs[:3]), m["id"])
+        self._raw("DELETE FROM segments WHERE meeting_id = ?", m["id"])
+        self.assertEqual(len(database.get_meeting(m["id"])["segments"]), 3)
+
+        def edit(meeting):
+            meeting["segments"][0]["text"] = "правка"
+            return ("segments",)
+
+        database.edit_meeting(m["id"], edit)
+        database.init_db()
+        self.assertEqual(database.get_meeting(m["id"])["segments"][0]["text"], "правка")
+
+        # an older version transcribed it again: its newer JSON replaces the rows at the next start
+        self._raw("UPDATE meetings SET segments_json = ? WHERE id = ?", json.dumps(segs[:2]), m["id"])
+        database.init_db()
+        self.assertEqual(database.get_meeting(m["id"])["segments"], segs[:2])
+
+    def test_editing_one_line_writes_one_row(self):
+        database.init_db()
+        m = database.create_meeting(title="Правка строки", filename="a.wav", media_path="a.wav")
+        database.save_meeting_results(m["id"], segments=[{"id": i, "start": i, "end": i + 1, "text": f"t{i}"} for i in range(50)])
+        writes = []
+        real = database.get_connection
+
+        def counting():
+            conn = real()
+            conn.set_trace_callback(lambda sql: writes.append(sql) if sql.lstrip().upper().startswith(("UPDATE SEGMENTS", "INSERT INTO SEGMENTS", "DELETE FROM SEGMENTS")) else None)  # the lines and their search index
+            return conn
+
+        def change(meeting):
+            meeting["segments"][7]["text"] = "правка"
+            return ("segments",)
+
+        with mock.patch.object(database, "get_connection", side_effect=counting):
+            database.edit_meeting(m["id"], change)
+        self.assertEqual(len(writes), 3, writes)  # the line, and its search entry deleted and added
+        got = database.get_meeting(m["id"])["segments"]
+        hits = [h for h in database.search_all_meetings("правка") if h["meeting_id"] == m["id"]]
+        self.assertTrue(hits)
+        self.assertFalse([h for h in database.search_all_meetings("t7") if h["meeting_id"] == m["id"]])
+        self.assertEqual([s["text"] for s in got][6:9], ["t6", "правка", "t8"])
+
+    def test_rows_go_with_clear_and_delete_and_talk_time_is_read_from_them(self):
+        database.init_db()
+        m = database.create_meeting(title="Удаление", filename="a.wav", media_path="a.wav")
+        database.save_meeting_results(m["id"], segments=[
+            {"id": 1, "start": 0, "end": 4, "speaker": "SPEAKER_00", "text": "а"},
+            {"id": 2, "start": 4, "end": 5.5, "speaker": "SPEAKER_01", "text": "б"},
+            {"id": 3, "start": 6, "end": 8, "speaker": "SPEAKER_00", "text": "в"}])
+        self.assertEqual(database.speaker_seconds([m["id"]])[m["id"]], {"SPEAKER_00": 6.0, "SPEAKER_01": 1.5})
+        database.clear_results(m["id"])
+        self.assertEqual(self._raw("SELECT COUNT(*) FROM segments WHERE meeting_id = ?", m["id"])[0][0], 0)
+        self.assertEqual(database.get_meeting(m["id"])["segments"], [])
+        database.save_meeting_results(m["id"], segments=[{"id": 1, "start": 0, "end": 1, "text": "снова"}])
+        database.delete_meeting(m["id"])
+        self.assertEqual(self._raw("SELECT COUNT(*) FROM segments WHERE meeting_id = ?", m["id"])[0][0], 0)
+
+
+class TranscriptVersionsTest(unittest.TestCase):
+    """Each model's transcript of a recording is kept; the dropdown above the text switches to one."""
+
+    def setUp(self):
+        database.init_db()
+        m = database.create_meeting(title="Версии", filename="v.wav", media_path="v.wav")
+        self.mid = m["id"]
+        self.addCleanup(database.delete_meeting, self.mid)
+
+    def _transcribe(self, model, text):
+        # what the job does at its end (app/transcriber.py)
+        database.stash_transcript_for(self.mid, model)
+        database.save_meeting_results(self.mid, speakers={"SPEAKER_00": {"name": model, "color": "#0A84FF"}},
+                                      segments=[{"id": 0, "start": 0, "end": 1, "speaker": "SPEAKER_00", "text": text}],
+                                      language="ru", transcript_model=model)
+
+    def _texts(self):
+        return [s["text"] for s in database.get_meeting(self.mid)["segments"]]
+
+    def test_another_model_keeps_the_first_transcript_with_its_edits(self):
+        self._transcribe("large-v3", "текст whisper")
+        database.edit_meeting(self.mid, lambda m: (m["segments"][0].update(text="правка whisper"), ["segments"])[1])
+        database.save_meeting_results(self.mid, summaries={})
+        with database._db_lock:
+            conn = database.get_connection()
+            conn.execute("UPDATE meetings SET translations_json = '{\"en\": {}}', transcript_verified = 1 WHERE id = ?", (self.mid,))
+            conn.commit()
+            conn.close()
+        self._transcribe("gigaam-v3", "текст gigaam")
+        m = database.get_meeting(self.mid)
+        self.assertEqual(m["transcript_model"], "gigaam-v3")
+        self.assertEqual(self._texts(), ["текст gigaam"])
+        self.assertFalse(m["transcript_verified"])  # the check was of the other text
+        self.assertEqual([v["model"] for v in m["transcript_versions"]], ["large-v3"])
+
+        self.assertTrue(database.switch_transcript_version(self.mid, "large-v3"))
+        m = database.get_meeting(self.mid)
+        self.assertEqual(self._texts(), ["правка whisper"])
+        self.assertEqual(m["speakers"]["SPEAKER_00"]["name"], "large-v3")
+        self.assertTrue(m["transcript_verified"])
+        self.assertEqual(m["model_name"], "large-v3")  # the next Transcribe uses it too
+        self.assertEqual([v["model"] for v in m["transcript_versions"]], ["gigaam-v3"])
+        # the search finds the text shown, not the one put aside
+        hits = database.search_all_meetings("правка")
+        self.assertTrue(any(h["meeting_id"] == self.mid for h in hits))
+        self.assertFalse(any(h["meeting_id"] == self.mid for h in database.search_all_meetings("gigaam")))
+
+    def test_the_same_model_again_replaces_its_transcript(self):
+        self._transcribe("large-v3", "первый")
+        self._transcribe("large-v3", "второй")
+        m = database.get_meeting(self.mid)
+        self.assertEqual(self._texts(), ["второй"])
+        self.assertEqual(m["transcript_versions"], [])
+
+    def test_a_model_done_again_replaces_its_stored_version(self):
+        self._transcribe("large-v3", "whisper 1")
+        self._transcribe("gigaam-v3", "gigaam")
+        database.switch_transcript_version(self.mid, "large-v3")
+        self._transcribe("gigaam-v3", "gigaam 2")
+        m = database.get_meeting(self.mid)
+        self.assertEqual(self._texts(), ["gigaam 2"])
+        self.assertEqual([v["model"] for v in m["transcript_versions"]], ["large-v3"])
+
+    def test_unknown_version_and_clearing(self):
+        self._transcribe("large-v3", "whisper")
+        self._transcribe("gigaam-v3", "gigaam")
+        self.assertFalse(database.switch_transcript_version(self.mid, "parakeet-v3"))
+        database.clear_results(self.mid)
+        m = database.get_meeting(self.mid)
+        self.assertEqual((m["segments"], m["transcript_versions"], m["transcript_model"]), ([], [], ""))
+
+    def test_deleting_the_shown_transcript_shows_the_best_other(self):
+        self._transcribe("large-v3-turbo", "turbo")
+        self._transcribe("large-v3", "pro")
+        self._transcribe("gigaam-v3", "gigaam")
+        self.assertTrue(database.delete_transcript_version(self.mid, "gigaam-v3"))
+        m = database.get_meeting(self.mid)
+        self.assertEqual((m["transcript_model"], self._texts()), ("large-v3", ["pro"]))  # more accurate than Turbo
+        self.assertEqual([v["model"] for v in m["transcript_versions"]], ["large-v3-turbo"])
+        self.assertFalse(any(h["meeting_id"] == self.mid for h in database.search_all_meetings("gigaam")))
+        # a stored one is just deleted
+        self.assertTrue(database.delete_transcript_version(self.mid, "large-v3-turbo"))
+        self.assertFalse(database.delete_transcript_version(self.mid, "large-v3-turbo"))
+        self.assertEqual(self._texts(), ["pro"])
+
+    def test_deleting_the_last_transcript_keeps_the_analysis(self):
+        self._transcribe("large-v3", "pro")
+        database.save_meeting_results(self.mid, summaries={"protocol": "итоги"})
+        self.assertTrue(database.delete_transcript_version(self.mid, "large-v3"))
+        m = database.get_meeting(self.mid)
+        self.assertEqual((m["segments"], m["transcript_model"], m["status"]), ([], "", "cleared"))
+        self.assertEqual(m["summaries"], {"protocol": "итоги"})
+        self.assertFalse(m["has_transcript"])
+
+    def test_the_merged_text_does_not_become_the_model_to_transcribe_with(self):
+        self._transcribe("large-v3", "pro")
+        database.stash_transcript_for(self.mid, "merged")
+        database.save_meeting_results(self.mid, segments=[{"id": 0, "start": 0, "end": 1, "text": "сведённый"}], transcript_model="merged")
+        database.switch_transcript_version(self.mid, "large-v3")
+        database.switch_transcript_version(self.mid, "merged")
+        self.assertEqual(database.get_meeting(self.mid)["model_name"], "large-v3")
+
+    def test_a_transcript_made_before_the_versions_is_filed_under_its_model(self):
+        database.save_meeting_results(self.mid, segments=[{"id": 0, "start": 0, "end": 1, "text": "старая"}])
+        with database._db_lock:
+            conn = database.get_connection()
+            conn.execute("UPDATE meetings SET transcript_model = '', model_name = 'large-v3' WHERE id = ?", (self.mid,))
+            conn.commit()
+            conn.close()
+        database.init_db()
+        self.assertEqual(database.get_meeting(self.mid)["transcript_model"], "large-v3")
+
+
+class OrphanFilesTest(unittest.TestCase):
+    def test_only_old_files_of_no_recording_are_found(self):
+        import os
+        import time
+
+        from app.paths import DATA_DIR
+
+        database.init_db()
+        m = database.create_meeting(title="Живая", filename="a.wav", media_path=str(DATA_DIR / "uploads" / "kept.wav"))
+        old = time.time() - 3 * 86400
+
+        def put(rel, age=old):
+            p = DATA_DIR / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(b"x" * 100)
+            os.utime(p, (age, age))
+            return p
+
+        kept = [put("uploads/kept.wav"), put(f"thumbs/{m['id']}.jpg"), put(f"audio/meeting_{m['id']}.peaks.json"),
+                put("uploads/system_123.wav"), put("uploads/fresh.wav", age=time.time())]
+        orphans = [put("uploads/lost.mp4"), put("thumbs/999999.jpg"), put("audio/meeting_999999.wav"),
+                   put("dubs/work_meeting_999999_en/clip_1.wav")]
+        self.addCleanup(lambda: [p.unlink(missing_ok=True) for p in kept])
+        found = set(database.orphan_files())
+        for p in orphans:
+            self.assertIn(p, found)
+        for p in kept:
+            self.assertNotIn(p, found)
+
+        res = database.delete_orphan_files()
+        self.assertGreaterEqual(res["files"], len(orphans))
+        self.assertGreaterEqual(res["bytes"], 400)
+        self.assertTrue(all(p.exists() for p in kept))
+        self.assertFalse(any(p.exists() for p in orphans))
+        self.assertFalse((DATA_DIR / "dubs" / "work_meeting_999999_en").exists())  # its folder too
+
+
+class ClearResultsTest(unittest.TestCase):
+    def test_dubs_and_waiting_exports_go_with_the_results(self):
+        from app.paths import DATA_DIR
+
+        database.init_db()
+        m = database.create_meeting(title="Очистка", filename="a.wav", media_path="a.wav")
+        dub = DATA_DIR / "dubs" / f"{m['id']}_en.m4a"
+        dub.parent.mkdir(parents=True, exist_ok=True)
+        dub.write_bytes(b"x")
+        database.save_meeting_dub(m["id"], {"lang": "en", "path": str(dub)})
+        database.set_pending_exports(m["id"], [{"kind": "transcript", "fmt": "txt"}])
+        database.clear_results(m["id"])
+        after = database.get_meeting(m["id"])
+        self.assertEqual(after["dubs"], [])
+        self.assertEqual(after["pending_exports"], [])
+        self.assertFalse(dub.exists())
+
+
+class FolderSortMigrationTest(unittest.TestCase):
+    def test_sorting_cut_off_is_done_at_the_next_start(self):
+        """The column came (autocommit) but the sorting did not: the next start sorts."""
+        database.init_db()
+        m = database.create_meeting(title="Старая", filename="a.wav", media_path="a.wav")
+        with database._db_lock:
+            conn = database.get_connection()
+            conn.execute("UPDATE meetings SET folder_id = NULL")
+            conn.execute("DELETE FROM settings WHERE key = 'folders_sorted_v1'")
+            conn.commit()
+            conn.close()
+        database.init_db()
+        self.assertIsNotNone(database.get_meeting(m["id"])["folder_id"])
+        # sorted once: a recording the user moves to the top level stays there
+        database.set_meeting_folder(m["id"], None)
+        database.init_db()
+        self.assertIsNone(database.get_meeting(m["id"])["folder_id"])
+
+
+class WhisperModelFilesTest(unittest.TestCase):
+    def test_cut_off_download_is_not_installed_and_delete_is_whole(self):
+        from app import model_manager as mm
+
+        mid = next(iter(mm._WHISPER_REPOS))
+        d = mm._whisper_model_dir(mid)
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "model.bin").write_bytes(b"w")
+        (d / "config.json").write_text("{}")
+        self.assertFalse(mm.is_whisper_model_installed(mid))  # the tokenizer never came
+        (d / "tokenizer.json").write_text("{}")
+        self.assertTrue(mm.is_whisper_model_installed(mid))  # an older complete download
+        (d / "tokenizer.json").unlink()
+        (d / mm.COMPLETE_MARK).write_text("repo")
+        self.assertTrue(mm.is_whisper_model_installed(mid))
+        self.assertTrue(mm.delete_whisper_model(mid))
+        self.assertFalse(d.exists())
+        self.assertEqual(list(d.parent.glob(d.name + ".deleting-*")), [])
+
+
+class ListFlagsTest(unittest.TestCase):
+    def test_flags_follow_the_transcript_and_summary(self):
+        database.init_db()
+        m = database.create_meeting(title="Флаги", filename="a.wav", media_path="a.wav")
+        flags = lambda: next((x["has_transcript"], x["has_summary"]) for x in database.list_meetings() if x["id"] == m["id"])
+        self.assertEqual(flags(), (False, False))
+        database.save_meeting_results(m["id"], segments=[{"id": 1, "start": 0, "end": 1, "text": "да"}])
+        database.merge_summaries(m["id"], {"protocol": "# Итог"})
+        self.assertEqual(flags(), (True, True))
+        database.clear_results(m["id"])
+        self.assertEqual(flags(), (False, False))
+        # a library from before the flags: filled in once at the start
+        database.save_meeting_results(m["id"], segments=[{"id": 1, "start": 0, "end": 1, "text": "да"}])
+        with database._db_lock:
+            conn = database.get_connection()
+            conn.execute("UPDATE meetings SET has_transcript = 0")
+            conn.execute("DELETE FROM settings WHERE key = 'meeting_flags_v1'")
+            conn.commit()
+            conn.close()
+        database.init_db()
+        self.assertEqual(flags(), (True, False))

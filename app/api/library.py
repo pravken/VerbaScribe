@@ -2,7 +2,6 @@
 
 import re
 import shutil
-import sys
 import traceback
 import uuid
 from pathlib import Path
@@ -12,13 +11,14 @@ from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from app import __version__
 from app.paths import UPLOADS_DIR
-from app.database import create_meeting, delete_meeting, get_all_settings, get_meeting, is_local_only, list_meetings, save_meeting_results, update_meeting_fields, update_meeting_progress, update_settings
+from app.settings_schema import as_int
+from app.database import create_meeting, delete_meeting, edit_meeting, get_all_settings, get_meeting, is_local_only, list_meetings, update_meeting_fields, update_meeting_progress, update_settings
 from app.transcriber import enqueue_meeting_job, is_job_active, request_cancel
 
 from fastapi import APIRouter
 
 from app.main import (  # noqa: E402 - shared helpers live in app/main.py
-    SUPPORTED_EXTENSIONS, _COLOR_RE, _SPEAKER_ID_RE, _ensure_not_processing, _ensure_not_transcribing, _file_time, _local_time, _recordings_dir, api_get_meeting, disk_state,
+    DISK_STOP_BYTES, SUPPORTED_EXTENSIONS, _COLOR_RE, _SPEAKER_ID_RE, _ensure_not_processing, _ensure_not_transcribing, _file_time, _free_bytes, _local_time, _recordings_dir, api_get_meeting, disk_state,
 )
 
 router = APIRouter()
@@ -112,17 +112,36 @@ def api_calls_status() -> Dict[str, Any]:
 
 # --- Backup of the library (app/backup.py) ---
 def _backup_dialog(mode: str, filename: str = "") -> Optional[str]:
-    import subprocess
+    from app import native_dialog
 
-    cmd = [sys.executable, "-m", "app.native_dialog", "--mode", mode, "--dir", str(Path.home() / "Documents"),
-           "--filename", filename, "--filter", "Резервная копия VerbaScribe (*.zip)|*.zip", "--ext", ".zip",
-           "--title", "Сохранить резервную копию" if mode == "save" else "Восстановить из резервной копии"]
-    try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=600)
-        return (proc.stdout or "").strip() or None
-    except Exception as e:
-        print(f"[backup] dialog failed: {e}", flush=True)
-        return None
+    return native_dialog.run(
+        ["--mode", mode, "--dir", str(Path.home() / "Documents"), "--filename", filename,
+         "--filter", "Резервная копия VerbaScribe (*.zip)|*.zip", "--ext", ".zip",
+         "--title", "Сохранить резервную копию" if mode == "save" else "Восстановить из резервной копии"],
+        timeout=600)
+
+# --- Files of the data folder that no recording refers to (app/database.orphan_files) ---
+@router.get("/api/storage/orphans")
+def api_storage_orphans() -> Dict[str, Any]:
+    from app.database import orphan_files
+
+    files = orphan_files()
+    total = 0
+    for p in files:
+        try:
+            total += p.stat().st_size
+        except OSError:
+            pass
+    return {"files": len(files), "bytes": total}
+
+@router.post("/api/storage/orphans/delete")
+def api_storage_orphans_delete() -> Dict[str, Any]:
+    from app import app_status
+    from app.database import delete_orphan_files
+
+    if app_status.snapshot()["state"] != "idle":  # a job or a recording may be writing a file just now
+        raise HTTPException(status_code=409, detail="Дождитесь окончания текущей задачи")
+    return delete_orphan_files()
 
 @router.get("/api/backup")
 def api_backup_estimate() -> Dict[str, Any]:
@@ -174,9 +193,9 @@ def api_about() -> Dict[str, Any]:
 @router.get("/api/hotkey")
 def api_hotkey() -> Dict[str, Any]:
     """Whether the recording hotkey is registered (it lives in the desktop window's tray thread)."""
-    from app.hotkey import dictation_hotkey_state, hotkey_state
+    from app.hotkey import dictation_hotkey_state, hotkey_state, translate_hotkey_state
 
-    return {**hotkey_state, "dictation": dict(dictation_hotkey_state)}
+    return {**hotkey_state, "dictation": dict(dictation_hotkey_state), "translate": dict(translate_hotkey_state)}
 
 @router.get("/api/calendar/upcoming")
 def api_calendar_upcoming(refresh: bool = False) -> Dict[str, Any]:
@@ -286,7 +305,7 @@ async def api_upload_meetings(
     settings = get_all_settings()
     chosen_model = model_name.strip() or settings.get("whisper_model", "large-v3-turbo")
     chosen_lang = language.strip() or settings.get("language", "auto")
-    chosen_speakers = num_speakers if num_speakers > 0 else int(settings.get("num_speakers", 0))
+    chosen_speakers = num_speakers if num_speakers > 0 else as_int(settings.get("num_speakers"), 0)
     is_recording = source == "recording"
     target_dir = _recordings_dir() if is_recording else UPLOADS_DIR
 
@@ -301,8 +320,17 @@ async def api_upload_meetings(
             with dst.open("wb") as out_f:
                 shutil.copyfileobj(src, out_f, 1 << 20)
 
+        # Room for the file, and the reserve that keeps recordings and the database working
+        free = _free_bytes(target_dir)
+        if uf.size and free >= 0 and free - uf.size < DISK_STOP_BYTES:
+            raise HTTPException(status_code=507, detail=f"Недостаточно места на диске для «{orig_name}»: "
+                                                        f"нужно {uf.size / 2**30:.1f} ГБ и запас")
         # A multi-GB file must not stop the server (events, other requests) while it is copied
-        await run_in_threadpool(_save)
+        try:
+            await run_in_threadpool(_save)
+        except OSError as e:
+            dest_path.unlink(missing_ok=True)  # no half file left behind
+            raise HTTPException(status_code=507, detail=f"Не удалось сохранить «{orig_name}»: {e}")
 
         recorded_at = ""
         if not is_recording and i < len(last_modified):
@@ -368,9 +396,7 @@ def api_add_local_path(payload: LocalPathPayload) -> Dict[str, Any]:
     settings = get_all_settings()
     chosen_model = payload.model_name.strip() or settings.get("whisper_model", "large-v3-turbo")
     chosen_lang = payload.language.strip() or settings.get("language", "auto")
-    chosen_speakers = (
-        payload.num_speakers if payload.num_speakers > 0 else int(settings.get("num_speakers", 0))
-    )
+    chosen_speakers = payload.num_speakers if payload.num_speakers > 0 else as_int(settings.get("num_speakers"), 0)
 
     media_files: List[Path] = []
     if target.is_file():
@@ -501,12 +527,61 @@ def api_reconfigure_meeting(meeting_id: int, payload: MeetingReconfigurePayload)
     enqueue_meeting_job(meeting_id)
     return get_meeting(meeting_id)
 
+class TranscriptVersionPayload(BaseModel):
+    model: str
+
+
+@router.post("/api/meetings/{meeting_id}/transcript-version")
+def api_switch_transcript_version(meeting_id: int, payload: TranscriptVersionPayload) -> Dict[str, Any]:
+    """Shows the transcript another model made (the dropdown above the text); the one shown is kept."""
+    from app.database import switch_transcript_version
+
+    if not get_meeting(meeting_id):
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    _ensure_not_processing(meeting_id)
+    if not switch_transcript_version(meeting_id, payload.model.strip()):
+        raise HTTPException(status_code=404, detail="Этой моделью запись ещё не расшифрована")
+    return get_meeting(meeting_id)
+
+
+@router.delete("/api/meetings/{meeting_id}/transcript-versions/{model}")
+def api_delete_transcript_version(meeting_id: int, model: str) -> Dict[str, Any]:
+    """Deletes one model's transcript; the texts of the other models stay."""
+    from app.database import delete_transcript_version
+
+    if not get_meeting(meeting_id):
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    _ensure_not_processing(meeting_id)
+    if not delete_transcript_version(meeting_id, model):
+        raise HTTPException(status_code=404, detail="Этой моделью запись ещё не расшифрована")
+    return get_meeting(meeting_id)
+
+
+@router.post("/api/meetings/{meeting_id}/merge-transcripts")
+def api_merge_transcripts(meeting_id: int) -> Dict[str, Any]:
+    """One transcript from the transcripts of every model (app/transcript_merge.py), in the background."""
+    from app.database import all_transcripts
+    from app.transcript_merge import MERGED
+    from app.transcriber import enqueue_merge_job
+
+    if not get_meeting(meeting_id):
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    _ensure_not_processing(meeting_id)
+    if len([m for m in all_transcripts(meeting_id) if m != MERGED]) < 2:
+        raise HTTPException(status_code=400, detail="Для сведения нужны расшифровки хотя бы двух моделей")
+    if not enqueue_merge_job(meeting_id):
+        raise HTTPException(status_code=409, detail="Запись уже обрабатывается. Дождитесь окончания или отмените обработку.")
+    return get_meeting(meeting_id)
+
+
 @router.post("/api/meetings/{meeting_id}/cancel")
 def api_cancel_meeting(meeting_id: int) -> Dict[str, Any]:
     m = get_meeting(meeting_id)
     if not m:
         raise HTTPException(status_code=404, detail="Встреча не найдена")
-    if not request_cancel(meeting_id):
+    from app import url_import
+
+    if not request_cancel(meeting_id) and not url_import.cancel(meeting_id):
         raise HTTPException(status_code=409, detail="Запись сейчас не обрабатывается")
     update_meeting_progress(meeting_id, stage_text="Отмена обработки...")
     return get_meeting(meeting_id)
@@ -537,6 +612,9 @@ def api_delete_meeting(meeting_id: int, with_source: bool = False, with_exports:
     if is_job_active(meeting_id):
         request_cancel(meeting_id)
         raise HTTPException(status_code=409, detail="Запись обрабатывается: обработка отменяется, удалите её через несколько секунд.")
+    from app import url_import
+
+    url_import.cancel(meeting_id)  # a download of it stops and its file is removed
     ok = delete_meeting(meeting_id, with_source=with_source, with_exports=with_exports, with_note=with_note)
     if not ok:
         raise HTTPException(status_code=404, detail="Встреча не найдена")
@@ -552,41 +630,46 @@ class SpeakerUpdatePayload(BaseModel):
 @router.patch("/api/meetings/{meeting_id}/speakers")
 def api_update_speaker(meeting_id: int, payload: SpeakerUpdatePayload) -> Dict[str, Any]:
     _ensure_not_transcribing(meeting_id)
-    m = get_meeting(meeting_id)
-    if not m:
-        raise HTTPException(status_code=404, detail="Встреча не найдена")
-
     if not _SPEAKER_ID_RE.match(payload.speaker_id):
         raise HTTPException(status_code=400, detail="Некорректный идентификатор участника")
     if payload.color and not _COLOR_RE.match(payload.color):
         raise HTTPException(status_code=400, detail="Цвет должен быть в формате #RRGGBB")
     name = payload.name.strip()[:120]
+    learned: List[Any] = []  # the voice to teach its profile, after the change (it uses the database)
 
-    speakers = m.get("speakers") or {}
-    if payload.speaker_id not in speakers:
-        speakers[payload.speaker_id] = {
-            "id": payload.speaker_id,
-            "name": name or payload.speaker_id,
-            "color": payload.color or "#6366f1",
-            "sample_start": 0.0,
-            "sample_end": 5.0,
-        }
-    else:
-        old_name = speakers[payload.speaker_id].get("name") or ""
-        speakers[payload.speaker_id]["name"] = name or payload.speaker_id
-        if payload.color:
-            speakers[payload.speaker_id]["color"] = payload.color
-        if name and name != old_name:
-            # Naming a voice teaches its profile: later recordings get the name automatically
-            from app.voice_profiles import learn
+    def change(m: Dict[str, Any]) -> tuple:
+        speakers = m.get("speakers") or {}
+        if payload.speaker_id not in speakers:
+            speakers[payload.speaker_id] = {
+                "id": payload.speaker_id,
+                "name": name or payload.speaker_id,
+                "color": payload.color or "#6366f1",
+                "sample_start": 0.0,
+                "sample_end": 5.0,
+            }
+        else:
+            spk = speakers[payload.speaker_id]
+            old_name = spk.get("name") or ""
+            spk["name"] = name or payload.speaker_id
+            if payload.color:
+                spk["color"] = payload.color
+            if name and name != old_name:
+                learned.append(spk.get("embedding"))
+                spk.pop("voice_profile", None)
+            if payload.dismiss_suggestion or (name and name != old_name):
+                spk.pop("voice_suggest", None)
+        m["speakers"] = speakers
+        return ("speakers",)
 
-            try:
-                learn(name, speakers[payload.speaker_id].get("embedding"))
-            except Exception:
-                traceback.print_exc()
-            speakers[payload.speaker_id].pop("voice_profile", None)
-        if payload.dismiss_suggestion or (name and name != old_name):
-            speakers[payload.speaker_id].pop("voice_suggest", None)
+    m = edit_meeting(meeting_id, change)
+    if m is None:
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    if learned:
+        # Naming a voice teaches its profile: later recordings get the name automatically
+        from app.voice_profiles import learn
 
-    save_meeting_results(meeting_id, speakers=speakers)
-    return get_meeting(meeting_id)
+        try:
+            learn(name, learned[0])
+        except Exception:
+            traceback.print_exc()
+    return m

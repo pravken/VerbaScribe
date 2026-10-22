@@ -25,6 +25,8 @@ _cache: Dict[str, Any] = {"source": "", "at": 0.0, "events": [], "error": ""}
 _lock = threading.Lock()
 _fetch_lock = threading.Lock()
 _DAYS = {"MO": 0, "TU": 1, "WE": 2, "TH": 3, "FR": 4, "SA": 5, "SU": 6}
+MAX_BYTES = 5 * 2**20  # a calendar link that answers more than this is not read further
+MAX_INTERVAL = 1000    # INTERVAL of a recurrence rule; larger (or not a number) means "repeats once"
 
 
 def _unfold(text: str) -> List[str]:
@@ -60,7 +62,9 @@ def _parse_dt(value: str, params: str) -> Optional[datetime]:
             except Exception:
                 return dt  # a Windows zone name or no tz database: taken as local time
         return dt
-    except ValueError:
+    # A date the calendar cannot have (year 99999, beyond 9999 in UTC); on Windows also a local time
+    # outside the C library's range (from year 3001), which raises OSError instead
+    except (ValueError, OverflowError, OSError):
         return None
 
 
@@ -75,9 +79,13 @@ def parse(text: str) -> List[Dict[str, Any]]:
             continue
         if line == "END:VEVENT":
             if cur and cur["start"] and cur["status"].upper() != "CANCELLED":
-                if not cur["end"]:
-                    cur["end"] = cur["start"] + (timedelta(days=1) if cur["all_day"] else timedelta(hours=1))
-                events.append(cur)
+                if not cur["end"] or cur["end"] < cur["start"]:
+                    try:
+                        cur["end"] = cur["start"] + (timedelta(days=1) if cur["all_day"] else timedelta(hours=1))
+                    except OverflowError:
+                        cur = None
+                if cur:
+                    events.append(cur)
             cur = None
             continue
         if cur is None or ":" not in line:
@@ -111,27 +119,56 @@ def parse(text: str) -> List[Dict[str, Any]]:
     return events
 
 
+def _number(value: str, default: int) -> int:
+    return int(value) if value.strip().isdigit() else default
+
+
 def occurrences(ev: Dict[str, Any], start: datetime, end: datetime) -> List[Dict[str, Any]]:
-    """The times the event happens between start and end (recurrence expanded)."""
+    """The times the event happens between start and end (recurrence expanded). A rule that makes no
+    sense (a date past the year 9999, an INTERVAL that is not a number) ends the series there."""
+    out: List[Dict[str, Any]] = []
+    try:
+        _expand(ev, start, end, out)
+    except (ValueError, OverflowError):
+        pass
+    return out
+
+
+def _expand(ev: Dict[str, Any], start: datetime, end: datetime, out: List[Dict[str, Any]]) -> None:
     dur = ev["end"] - ev["start"]
-    out = []
 
     def add(s: datetime) -> None:
         if s + dur > start and s < end and not any(abs((s - x).total_seconds()) < 60 for x in ev["exdates"]):
             out.append({**ev, "start": s, "end": s + dur})
 
-    rule = dict(p.split("=", 1) for p in ev["rrule"].split(";") if "=" in p) if ev["rrule"] else {}
+    rule = {k.upper(): v for k, v in (p.split("=", 1) for p in ev["rrule"].split(";") if "=" in p)} if ev["rrule"] else {}
     if not rule:
         add(ev["start"])
-        return out
-    freq = rule.get("FREQ", "")
-    step = max(1, int(rule.get("INTERVAL", "1") or 1))
+        return
+    freq = rule.get("FREQ", "").upper()
+    step = _number(rule.get("INTERVAL", "1"), 1)
+    if not 1 <= step <= MAX_INTERVAL:
+        add(ev["start"])
+        return
     count = int(rule["COUNT"]) if rule.get("COUNT", "").isdigit() else None
     until = _parse_dt(rule["UNTIL"], "") if rule.get("UNTIL") else None
-    days = [_DAYS[d[-2:]] for d in rule.get("BYDAY", "").split(",") if d[-2:] in _DAYS]
+    days = [_DAYS[d[-2:]] for d in rule.get("BYDAY", "").upper().split(",") if d[-2:] in _DAYS]
     n = 0
     cursor = ev["start"]
     limit = min(end, until + timedelta(seconds=1)) if until else end
+    # A long series (a daily stand-up since years) starts its walk next to the window, not at its
+    # first meeting: whole periods before the window are skipped by arithmetic
+    period = {"DAILY": timedelta(days=step), "WEEKLY": timedelta(weeks=step)}.get(freq)
+    if period is not None and count is None and cursor + dur < start:
+        skip = (start - dur - cursor) // period
+        if freq == "WEEKLY" and days:
+            week_start = cursor - timedelta(days=cursor.weekday())
+            cursor = (week_start + skip * period).replace(hour=ev["start"].hour, minute=ev["start"].minute,
+                                                          second=ev["start"].second)
+            if cursor < ev["start"]:
+                cursor = ev["start"]
+        else:
+            cursor += skip * period
     for _ in range(5000):
         if cursor >= limit or (count is not None and n >= count):
             break
@@ -164,7 +201,6 @@ def occurrences(ev: Dict[str, Any], start: datetime, end: datetime) -> List[Dict
             cursor = cursor.replace(year=cursor.year + step)
         else:
             break
-    return out
 
 
 def _source() -> str:
@@ -178,11 +214,22 @@ def _load_text(source: str) -> str:
         import httpx
 
         url = re.sub(r"^webcal://", "https://", source, flags=re.I)
+        deadline = time.time() + 60
+        data = bytearray()
         with httpx.Client(timeout=15.0, follow_redirects=True) as c:
-            r = c.get(url)
-            r.raise_for_status()
-            return r.text
-    return Path(source).read_text(encoding="utf-8", errors="replace")
+            with c.stream("GET", url) as r:
+                r.raise_for_status()
+                for chunk in r.iter_bytes():
+                    data += chunk
+                    if len(data) > MAX_BYTES:
+                        raise ValueError("Календарь по ссылке больше 5 МБ")
+                    if time.time() > deadline:
+                        raise TimeoutError("Календарь по ссылке не загрузился за минуту")
+        return bytes(data).decode("utf-8", errors="replace")
+    p = Path(source)
+    if p.stat().st_size > MAX_BYTES:
+        raise ValueError("Файл календаря больше 5 МБ")
+    return p.read_text(encoding="utf-8", errors="replace")
 
 
 def events(force: bool = False) -> List[Dict[str, Any]]:
@@ -194,16 +241,16 @@ def events(force: bool = False) -> List[Dict[str, Any]]:
         if fresh and not force:
             return list(_cache["events"])
     try:
-        if source.lower() == "outlook":  # the classic Outlook of this computer (app/calendar_outlook.py)
-            from app import calendar_outlook
+        with _fetch_lock:  # Outlook (PowerShell) and links take seconds: one read at a time
+            with _lock:
+                if _cache["source"] == source and time.time() - _cache["at"] < CACHE_SEC and not force:
+                    return list(_cache["events"])
+            if source.lower() == "outlook":  # the classic Outlook of this computer (app/calendar_outlook.py)
+                from app import calendar_outlook
 
-            with _fetch_lock:  # PowerShell and Outlook take seconds: one read at a time
-                with _lock:
-                    if _cache["source"] == source and time.time() - _cache["at"] < CACHE_SEC and not force:
-                        return list(_cache["events"])
                 parsed = calendar_outlook.fetch()
-        else:
-            parsed = parse(_load_text(source))
+            else:
+                parsed = parse(_load_text(source))
         with _lock:
             _cache.update(source=source, at=time.time(), events=parsed, error="")
         return parsed

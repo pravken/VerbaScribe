@@ -4,7 +4,11 @@
 // --- Meetings List, Global Search & Sidebar ---
 async function loadMeetingsList() {
   const [res] = await Promise.all([fetch('/api/meetings'), loadFolders()]);
-  state.meetings = await readJson(res);
+  const list = await readJson(res);
+  if (!res.ok || !Array.isArray(list)) return;  // the list shown stays (a lost session reloads the page)
+  state.meetings = list;
+  // The empty editor points to the list on the left when there is something in it
+  document.getElementById('workspace-empty-pick')?.classList.toggle('hidden', !list.length);
   if (!state.globalSearchQuery) {
     renderMeetingsSidebar();
   } else if (typeof rerunGlobalSearch === 'function') {
@@ -120,14 +124,14 @@ function formatTiming(timing) {
   let text = formatDurationShort(timing.elapsed);
   if (timing.remaining != null) {
     const mins = Math.round(timing.remaining / 60);
-    text += ' · ' + (mins < 1 ? t('etaUnderMinute') : t('etaMinutes').replace('{n}', mins));
+    text += ' · ' + (mins < 1 ? t('etaUnderMinute') : t('etaMinutes').replace('{n}', () => mins));
   }
   return text;
 }
 
 // Re-render the elapsed time every second while something is running
 setInterval(() => {
-  if (!(state.queue || []).some(q => q.state === 'running')) return;
+  if (document.hidden || !(state.queue || []).some(q => q.state === 'running')) return;
   renderQueuePanel();
   if (state.activeMeeting) updateProcessingBanner(state.activeMeeting);
 }, 1000);
@@ -167,18 +171,18 @@ function renderQueuePanel() {
     const pct = running ? (m.progress ?? q.progress ?? 0) : 0;
     const detail = q.cancelling
       ? t('queueCancelling')
-      : running ? (m.stage_text || q.stage_text || '') : t('queueWaiting').replace('{n}', q.position);
+      : running ? serverText(m.stage_text || q.stage_text || '') : t('queueWaiting').replace('{n}', () => q.position);
     const timing = running && !q.cancelling ? formatTiming(jobTiming(q, pct)) : '';
     return `
-      <div onclick="openMeeting(${q.id}, true)" title="${escapeHtml(detail)}"
+      <div data-click="openMeeting" data-click-args='[${q.id}, true]' tabindex="0" role="button" title="${escapeHtml(detail)}"
         class="group px-2 py-1.5 rounded-md cursor-pointer hover:bg-white/5 ${running ? 'bg-apple-blue/10' : ''}">
         <div class="flex items-center justify-between gap-2">
           <span class="flex items-center gap-1.5 min-w-0">
             ${running && !q.cancelling ? '<span class="live-dot"></span>' : ''}
             <span class="text-[12px] font-medium text-white truncate">${escapeHtml(q.title)}</span>
           </span>
-          <button onclick="event.stopPropagation(); cancelProcessing(${q.id})" title="${escapeHtml(t('tipQueueCancel'))}"
-            class="shrink-0 text-apple-tertiary hover:text-apple-red opacity-60 group-hover:opacity-100 transition ${q.cancelling ? 'hidden' : ''}">${SVG_ICONS.closeX}</button>
+          <button data-click="stopThen" data-click-args='[{"$": "event"}, "cancelProcessing", ${Number(q.id) || 0}]' title="${escapeHtml(t('tipQueueCancel'))}"
+            class="shrink-0 text-apple-tertiary hover:text-apple-red opacity-80 group-hover:opacity-100 transition ${q.cancelling ? 'hidden' : ''}">${SVG_ICONS.closeX}</button>
         </div>
         <div class="flex items-center justify-between gap-2 text-[10.5px] mt-0.5">
           <span class="${q.kind === 'transcribe' ? 'text-apple-secondary' : 'text-apple-amber'} shrink-0">${escapeHtml(queueKindLabel(q))}</span>
@@ -235,7 +239,9 @@ async function pollMeetingsLoop() {
     console.error(e);
   }
   const busy = state.meetings.some(m => !DONE_STATUSES.includes(m.status));
-  setTimeout(pollMeetingsLoop, live.connected ? 30000 : (busy ? 2000 : 8000));
+  // Live updates come by events; the poll is the fallback. A hidden window (tray) asks rarely and
+  // catches up when it is shown again (app.js visibilitychange)
+  setTimeout(pollMeetingsLoop, live.connected || document.hidden ? 30000 : (busy ? 2000 : 8000));
 }
 
 async function handleGlobalSidebarSearch(rawVal) {
@@ -346,7 +352,7 @@ function askScopeValid(scope) {
 function askScopeLabel(scope) {
   if (scope.type === 'folder') {
     const f = folderById(scope.id);
-    return `${t('askScopeFolder')}: ${folderName(f)} · ${t('askRecordingsCount').replace('{n}', meetingsInFolderTree(scope.id).length)}`;
+    return `${t('askScopeFolder')}: ${folderName(f)} · ${t('askRecordingsCount').replace('{n}', () => meetingsInFolderTree(scope.id).length)}`;
   }
   if (scope.type === 'meeting') {
     const m = state.meetings.find(x => x.id === scope.id);
@@ -354,13 +360,13 @@ function askScopeLabel(scope) {
   }
   if (scope.type === 'series') {
     const s = (state.series || []).find(x => x.id === scope.id);
-    return `${t('askScopeSeries')}: ${s ? s.name : ''} · ${t('askRecordingsCount').replace('{n}', s ? s.count : 0)}`;
+    return `${t('askScopeSeries')}: ${s ? s.name : ''} · ${t('askRecordingsCount').replace('{n}', () => s ? s.count : 0)}`;
   }
   if (scope.type === 'person') {
     const p = personByName(scope.name);
-    return `${t('askScopePerson').replace('{name}', scope.name)} · ${t('askRecordingsCount').replace('{n}', p ? p.recordings.length : 0)}`;
+    return `${t('askScopePerson').replace('{name}', () => scope.name)} · ${t('askRecordingsCount').replace('{n}', () => p ? p.recordings.length : 0)}`;
   }
-  return `${t('askScopeAll')} · ${t('askRecordingsCount').replace('{n}', state.meetings.length)}`;
+  return `${t('askScopeAll')} · ${t('askRecordingsCount').replace('{n}', () => state.meetings.length)}`;
 }
 
 function renderAskScope() {
@@ -369,7 +375,7 @@ function renderAskScope() {
   const sc = state.askScope;
   const item = (scope, label, count, depth, icon) => {
     const on = scope.type === sc.type && scope.id === sc.id;
-    return `<button onclick='setAskScope(${JSON.stringify(scope)})'
+    return `<button data-click="setAskScope" data-click-args='[${jsArg(scope)}]'
       class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[12px] transition ${on ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'}"
       style="padding-left:${8 + depth * 14}px">
       <span class="shrink-0 ${on ? 'text-white' : 'text-apple-tertiary'}">${icon}</span>
@@ -419,7 +425,7 @@ function renderSeriesScope() {
   const sc = state.askScope;
   document.getElementById('ask-series-list').innerHTML = list.map(s => {
     const on = sc.type === 'series' && sc.id === s.id;
-    return `<button onclick='setAskScope(${JSON.stringify({ type: 'series', id: s.id })})'
+    return `<button data-click="setAskScope" data-click-args='[${jsArg({ type: 'series', id: s.id })}]'
       class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[12px] transition ${on ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'}">
       <span class="shrink-0 ${on ? 'text-white' : 'text-apple-tertiary'}">↻</span><span class="truncate flex-1">${escapeHtml(s.name)}</span>
       <span class="text-[10.5px] font-mono ${on ? 'text-white/80' : 'text-apple-tertiary'}">${s.count}</span></button>`;
@@ -435,9 +441,9 @@ function renderPeople() {
   const sc = state.askScope;
   document.getElementById('ask-people-list').innerHTML = people.slice(0, 50).map(p => {
     const on = sc.type === 'person' && sc.name.toLowerCase() === p.name.toLowerCase();
-    const tip = t('tipPerson').replace('{n}', p.recordings.length).replace('{time}', formatSpeakingTime(p.total_seconds))
+    const tip = t('tipPerson').replace('{n}', () => p.recordings.length).replace('{time}', () => formatSpeakingTime(p.total_seconds))
       + '\n' + p.recordings.slice(0, 12).map(r => `${r.date} · ${r.title} · ${formatSpeakingTime(r.seconds)}`).join('\n');
-    return `<button onclick='setAskScope(${JSON.stringify({ type: 'person', name: p.name })})' title="${escapeHtml(tip)}"
+    return `<button data-click="setAskScope" data-click-args='[${jsArg({ type: 'person', name: p.name })}]' title="${escapeHtml(tip)}"
       class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[12px] transition ${on ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'}">
       <span class="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold ${on ? 'bg-white/25' : 'bg-white/10 text-apple-secondary'}">${escapeHtml(p.name.slice(0, 1).toUpperCase())}</span>
       <span class="truncate flex-1">${escapeHtml(p.name)}${p.profile ? ` <span class="${on ? 'text-white/70' : 'text-apple-tertiary'}" title="${escapeHtml(t('tipPersonVoice'))}">◉</span>` : ''}</span>
@@ -592,6 +598,35 @@ function renderAskThread() {
   }
 }
 
+// "[2]" in an answer becomes a button to its source. Text nodes are rewritten, never the sanitized
+// HTML string: a [2] inside a link title or an image's alt text stays text there
+function linkifyCitations(root, byN, itemId) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) {
+    const n = walker.currentNode;
+    if (/\[\d{1,3}\]/.test(n.nodeValue) && !n.parentElement.closest('button, a, code')) nodes.push(n);
+  }
+  for (const node of nodes) {
+    const frag = document.createDocumentFragment();
+    let last = 0;
+    for (const m of node.nodeValue.matchAll(/\[(\d{1,3})\]/g)) {
+      const src = byN[m[1]];
+      if (!src) continue;
+      const b = document.createElement('button');
+      b.className = 'lib-cite';
+      b.textContent = m[1];
+      b.title = `${src.title} · ${formatTime(src.start)}`;
+      b.addEventListener('click', () => openLibrarySource(itemId, Number(m[1])));
+      frag.append(node.nodeValue.slice(last, m.index), b);
+      last = m.index + m[0].length;
+    }
+    if (!last) continue;
+    frag.append(node.nodeValue.slice(last));
+    node.replaceWith(frag);
+  }
+}
+
 function renderLibraryAnswer(body, item) {
   const data = item.data || {};
   if (!data.found) {
@@ -599,15 +634,12 @@ function renderLibraryAnswer(body, item) {
     return;
   }
   const byN = Object.fromEntries((data.sources || []).map(s => [s.n, s]));
-  let html = sanitizedMarkdown(data.answer || '');
-  html = html.replace(/\[(\d{1,3})\]/g, (m, n) => byN[n]
-    ? `<button class="lib-cite" onclick="openLibrarySource(${item.id}, ${Number(n)})" title="${escapeHtml(byN[n].title)} · ${formatTime(byN[n].start)}">${n}</button>`
-    : m);
+  const html = sanitizedMarkdown(data.answer || '');
   // Only the fragments the answer refers to; all of them if it cites none
   const cited = new Set([...(data.answer || '').matchAll(/\[(\d{1,3})\]/g)].map(x => Number(x[1])));
   const shown = (data.sources || []).filter(s => !cited.size || cited.has(s.n)).slice(0, 20);
   const sources = shown.map(s => `
-    <button onclick="openLibrarySource(${item.id}, ${s.n})" class="w-full text-left px-2.5 py-1.5 rounded-md hover:bg-white/5 transition">
+    <button data-click="openLibrarySource" data-click-args='[${item.id}, ${s.n}]' class="w-full text-left px-2.5 py-1.5 rounded-md hover:bg-white/5 transition">
       <div class="flex items-center gap-2 text-[11px] min-w-0">
         <span class="lib-cite">${s.n}</span>
         <span class="text-white truncate">${escapeHtml(s.title)}</span>
@@ -621,7 +653,8 @@ function renderLibraryAnswer(body, item) {
       <div class="text-[10.5px] uppercase tracking-wider text-apple-tertiary mb-1">${escapeHtml(t('libraryAskSources'))}</div>
       ${sources}
     </div>` : ''}
-    ${data.model ? `<div class="mt-2 text-[10.5px] text-apple-tertiary">${data.cloud ? '☁ ' : ''}${escapeHtml(data.cloud ? data.model : formatModelName(data.model))}${data.mode === 'full' ? ' · ' + escapeHtml(t('askModeFull')) : ''}${data.mode === 'digest' ? ' · ' + escapeHtml(t('digestCount').replace('{n}', data.count)) : ''}${data.excluded_local ? ' · ' + escapeHtml(t('askExcludedLocal').replace('{n}', data.excluded_local)) : ''}</div>` : ''}`;
+    ${data.model ? `<div class="mt-2 text-[10.5px] text-apple-tertiary">${data.cloud ? '☁ ' : ''}${escapeHtml(data.cloud ? data.model : formatModelName(data.model))}${data.mode === 'full' ? ' · ' + escapeHtml(t('askModeFull')) : ''}${data.mode === 'digest' ? ' · ' + escapeHtml(t('digestCount').replace('{n}', () => data.count)) : ''}${data.excluded_local ? ' · ' + escapeHtml(t('askExcludedLocal').replace('{n}', () => data.excluded_local)) : ''}</div>` : ''}`;
+  linkifyCitations(body.querySelector('.markdown-body'), byN, item.id);
 }
 
 function openLibrarySource(itemId, n) {
@@ -788,7 +821,7 @@ async function fctxDelete() {
   hideFolderMenu();
   const f = folderById(state.contextFolderId);
   if (!f || f.system_key) return;
-  if (!await askConfirm(t('folderDeleteConfirm').replace('{name}', folderName(f)))) return;
+  if (!await askConfirm(t('folderDeleteConfirm').replace('{name}', () => folderName(f)), true)) return;
   const res = await fetch(`/api/folders/${f.id}`, { method: 'DELETE' });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) { showToast(data.detail || 'Error'); return; }
@@ -858,7 +891,7 @@ const REC_BADGE_ICONS = {
 };
 const REC_STEP_OF_STATUS = {
   queued: 'transcript', extracting_audio: 'transcript', transcribing: 'transcript', diarizing: 'transcript',
-  summarizing: 'summary', translating: 'translation', dubbing: 'dub', rendering: 'dub',
+  summarizing: 'summary', translating: 'translation', dubbing: 'dub', rendering: 'dub', merging: 'transcript',
 };
 
 function recordingBadgesHtml(m) {
@@ -868,7 +901,7 @@ function recordingBadgesHtml(m) {
     const busy = running === kind;
     const fail = failedStep === kind;
     if (!done && !busy && !fail) return '';
-    const tip = busy ? `${label} · ${t('recBadgeRunning')}` : fail ? `${t('statusFailed')}${m.error_message ? ': ' + m.error_message : ''}` : label;
+    const tip = busy ? `${label} · ${t('recBadgeRunning')}` : fail ? `${t('statusFailed')}${m.error_message ? ': ' + serverText(m.error_message) : ''}` : label;
     return `<span class="rec-badge ${busy ? 'rec-badge-busy' : ''} ${fail ? 'rec-badge-fail' : ''}" title="${escapeHtml(tip)}">`
       + `<svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">${REC_BADGE_ICONS[kind]}</svg>`
       + (text ? `<span>${escapeHtml(text)}</span>` : '') + '</span>';
@@ -887,15 +920,15 @@ function meetingRowHtml(m, depth) {
   const isBusy = !DONE_STATUSES.includes(m.status);
   const spkCount = Object.keys(m.speakers || {}).length;
   const thumb = m.is_video
-    ? `<img src="/api/meetings/${m.id}/thumb" loading="lazy" alt="" draggable="false" onerror="this.remove()"
+    ? `<img src="/api/meetings/${m.id}/thumb" loading="lazy" alt="" draggable="false" data-error="removeElement" data-error-args='[{"$": "el"}]'
         class="w-12 h-[27px] rounded object-cover bg-black/60 shrink-0 border border-white/10" />`
     : '';
   const status = m.status === 'failed' ? t('statusFailed') : m.status === 'cancelled' ? t('statusCancelled') : m.status === 'cleared' ? t('statusClearedShort')
     : `${spkCount || 1} ${t('spkShort')} · ${(m.language || 'ru').toUpperCase()}`;
   return `
-    <div onclick="libRowClick(event, ${m.id})" data-mid="${m.id}"
-         oncontextmenu="openRecordingContextMenu(event, ${m.id})"
-         draggable="true" ondragstart="libraryDragStart(event, 'm', ${m.id})"
+    <div data-click="libRowClick" data-click-args='[{"$": "event"}, ${m.id}]' data-mid="${m.id}" tabindex="0" role="button"
+         data-contextmenu="openRecordingContextMenu" data-contextmenu-args='[{"$": "event"}, ${m.id}]'
+         draggable="true" data-dragstart="libraryDragStart" data-dragstart-args='[{"$": "event"}, "m", ${m.id}]'
          class="group cursor-pointer pr-2 py-1.5 rounded-lg transition relative flex items-center gap-2 ${
            isSelected ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'
          }" style="padding-left:${10 + depth * 14}px">
@@ -903,8 +936,8 @@ function meetingRowHtml(m, depth) {
       <div class="min-w-0 flex-1">
         <div class="flex items-center justify-between gap-2">
           <span title="${escapeHtml(libTitle(m))}" class="text-[12.5px] font-medium leading-snug line-clamp-2 break-words min-w-0">${escapeHtml(libTitle(m))}</span>
-          <button onclick="openRecordingContextMenu(event, ${m.id})" title="${escapeHtml(t('tipItemMenu'))}"
-            class="opacity-0 group-hover:opacity-100 px-1 rounded hover:bg-black/20 text-xs shrink-0 transition">•••</button>
+          <button data-click="openRecordingContextMenu" data-click-args='[{"$": "event"}, ${m.id}]' title="${escapeHtml(t('tipItemMenu'))}"
+            class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 px-1 rounded hover:bg-black/20 text-xs shrink-0 transition">•••</button>
         </div>
         <div class="flex items-center justify-between gap-2 text-[11px] mt-0.5 ${isSelected ? 'text-white/80' : 'text-apple-secondary'}">
           <span class="flex items-center gap-1.5 min-w-0">
@@ -988,7 +1021,7 @@ function toggleDateCollapsed(key) {
 
 function dateRowHtml(id, label, count, depth, open) {
   return `
-    <div onclick="toggleDateCollapsed(this.dataset.id)" data-id="${escapeHtml(id)}"
+    <div data-click="toggleDateCollapsed" data-click-args='[{"$": "data", "k": "id"}]' data-id="${escapeHtml(id)}" tabindex="0" role="button"
          class="flex items-center gap-1.5 pr-2 py-1 rounded-lg cursor-pointer text-apple-secondary hover:bg-white/5 transition"
          style="padding-left:${6 + depth * 14}px" title="${escapeHtml(label)}">
       <span class="shrink-0 text-apple-tertiary transition-transform ${open ? 'rotate-90' : ''}">${ICON_CHEVRON}</span>
@@ -1072,9 +1105,7 @@ function closeLibViewMenu() {
 document.addEventListener('click', closeLibViewMenu);
 
 function formatSize(bytes) {
-  if (!bytes) return '';
-  const mb = bytes / 1048576;
-  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} ${t('unitGb')}` : `${mb >= 10 ? Math.round(mb) : mb.toFixed(1)} ${t('unitMb')}`;
+  return bytes ? formatBytes(bytes) : '';
 }
 
 // What the row shows on its right: the sorted-by value when it is not the date
@@ -1138,11 +1169,11 @@ function renderLibSelectionBar() {
     const list = document.getElementById('meetings-list');
     list.parentNode.insertBefore(bar, list);
   }
-  bar.innerHTML = `<span class="flex-1 min-w-0 truncate">${escapeHtml(t('libSelected').replace('{n}', n))}</span>
-    <button onclick="bulkRename()" class="ui-btn ui-btn-subtle h-6 !px-2 text-[11px]" title="${escapeHtml(t('tipBulkRename'))}">${escapeHtml(t('bulkRename'))}</button>
-    <button onclick="bulkAutoTitles()" class="ui-btn ui-btn-subtle h-6 !px-2 text-[11px]" title="${escapeHtml(t('tipBulkAutoTitle'))}">${escapeHtml(t('bulkAutoTitle'))}</button>
-    <button onclick="bulkDelete()" class="ui-btn h-6 !px-2 text-[11px] bg-apple-red/80 text-white hover:bg-apple-red">${escapeHtml(t('ctxDelete'))}</button>
-    <button onclick="clearLibSelection()" class="ui-btn ui-btn-subtle h-6 !px-1.5 text-[11px]" title="${escapeHtml(t('cancel'))} (Esc)">✕</button>`;
+  bar.innerHTML = `<span class="flex-1 min-w-0 truncate">${escapeHtml(t('libSelected').replace('{n}', () => n))}</span>
+    <button data-click="bulkRename" class="ui-btn ui-btn-subtle h-6 !px-2 text-[11px]" title="${escapeHtml(t('tipBulkRename'))}">${escapeHtml(t('bulkRename'))}</button>
+    <button data-click="bulkAutoTitles" class="ui-btn ui-btn-subtle h-6 !px-2 text-[11px]" title="${escapeHtml(t('tipBulkAutoTitle'))}">${escapeHtml(t('bulkAutoTitle'))}</button>
+    <button data-click="bulkDelete" class="ui-btn h-6 !px-2 text-[11px] bg-apple-red/80 text-white hover:bg-apple-red">${escapeHtml(t('ctxDelete'))}</button>
+    <button data-click="clearLibSelection" class="ui-btn ui-btn-subtle h-6 !px-1.5 text-[11px]" title="${escapeHtml(t('cancel'))} (Esc)">✕</button>`;
 }
 
 function libSelectedInOrder() {
@@ -1169,7 +1200,7 @@ async function bulkDelete() {
   state.multi.clear();
   renderLibSelectionBar();
   await loadMeetingsList();
-  showToast(failed ? t('bulkSomeFailed').replace('{n}', failed) : t('bulkDeleted').replace('{n}', list.length));
+  showToast(failed ? t('bulkSomeFailed').replace('{n}', () => failed) : t('bulkDeleted').replace('{n}', () => list.length));
 }
 
 // One name for all, numbered: "Interview {n}" -> "Interview 1", "Interview 2"…; {title} and {date} too
@@ -1191,7 +1222,7 @@ async function bulkRename() {
   }
   await loadMeetingsList();
   if (state.activeMeeting && state.multi.has(state.activeMeeting.id)) openMeeting(state.activeMeeting.id);
-  if (failed) showToast(t('bulkSomeFailed').replace('{n}', failed));
+  if (failed) showToast(t('bulkSomeFailed').replace('{n}', () => failed));
 }
 
 // Titles made by the analysis model from each transcript
@@ -1200,18 +1231,20 @@ async function bulkAutoTitles() {
   if (!list.length) { showToast(t('bulkNoTranscripts')); return; }
   let failed = 0;
   for (const [i, m] of list.entries()) {
-    showToast(t('bulkAutoTitleWorking').replace('{i}', i + 1).replace('{n}', list.length));
+    showToast(t('bulkAutoTitleWorking').replace('{i}', () => i + 1).replace('{n}', () => list.length));
     const res = await fetch(`/api/meetings/${m.id}/title/generate`, { method: 'POST' });
     if (!res.ok) failed++;
     await loadMeetingsList();
   }
   if (state.activeMeeting && state.multi.has(state.activeMeeting.id)) openMeeting(state.activeMeeting.id);
-  showToast(failed ? t('bulkSomeFailed').replace('{n}', failed) : t('bulkAutoTitleDone'));
+  showToast(failed ? t('bulkSomeFailed').replace('{n}', () => failed) : t('bulkAutoTitleDone'));
 }
 
 // Ctrl+A selects recordings only after a click in the library (elsewhere it selects text as usual)
 let _libHadClick = false;
 document.addEventListener('mousedown', e => { _libHadClick = !!e.target.closest?.('#meetings-list'); }, true);
+// ... or after moving into it with the keyboard (Tab onto a recording)
+document.addEventListener('focusin', e => { if (e.target.closest?.('#meetings-list')) _libHadClick = true; });
 
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && state.multi.size && !document.querySelector('.modal-backdrop:not(.hidden)')) clearLibSelection();
@@ -1243,16 +1276,16 @@ document.addEventListener('keydown', e => {
 
 // "•••" on a row: the same menu as a right click (shown on hover and on keyboard focus)
 function rowMoreButton(m) {
-  return `<button onclick="event.stopPropagation(); openRecordingContextMenu(event, ${m.id})" tabindex="-1" aria-label="${escapeHtml(t('tipRecordingMore'))}"
-    title="${escapeHtml(t('tipRecordingMore'))}" class="row-more opacity-0 group-hover:opacity-100 focus:opacity-100 px-1 rounded hover:bg-black/20 text-[11px] shrink-0 transition">•••</button>`;
+  return `<button data-click="stopThen" data-click-args='[{"$": "event"}, "openRecordingContextMenu", {"$": "event"}, ${Number(m.id) || 0}]' tabindex="-1" aria-label="${escapeHtml(t('tipRecordingMore'))}"
+    title="${escapeHtml(t('tipRecordingMore'))}" class="row-more opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 px-1 rounded hover:bg-black/20 text-[11px] shrink-0 transition">•••</button>`;
 }
 
 function meetingCompactRowHtml(m, depth) {
   const isSelected = libIsSelected(m);
   const isBusy = !DONE_STATUSES.includes(m.status);
   return `
-    <div onclick="libRowClick(event, ${m.id})" data-mid="${m.id}" oncontextmenu="openRecordingContextMenu(event, ${m.id})"
-         draggable="true" ondragstart="libraryDragStart(event, 'm', ${m.id})" title="${escapeHtml(m.title)}"
+    <div data-click="libRowClick" data-click-args='[{"$": "event"}, ${m.id}]' data-mid="${m.id}" tabindex="0" role="button" data-contextmenu="openRecordingContextMenu" data-contextmenu-args='[{"$": "event"}, ${m.id}]'
+         draggable="true" data-dragstart="libraryDragStart" data-dragstart-args='[{"$": "event"}, "m", ${m.id}]' title="${escapeHtml(m.title)}"
          class="group cursor-pointer pr-2 py-1 rounded-md transition flex items-center gap-2 text-[12px] ${
            isSelected ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'
          }" style="padding-left:${10 + depth * 14}px">
@@ -1268,11 +1301,11 @@ function meetingTileHtml(m) {
   const isSelected = libIsSelected(m);
   const isBusy = !DONE_STATUSES.includes(m.status);
   const cover = m.is_video
-    ? `<img src="/api/meetings/${m.id}/thumb" loading="lazy" alt="" draggable="false" onerror="this.replaceWith(Object.assign(document.createElement('span'), {className: 'lib-tile-icon', innerHTML: ICON_FILE_VIDEO}))" class="w-full h-full object-cover" />`
+    ? `<img src="/api/meetings/${m.id}/thumb" loading="lazy" alt="" draggable="false" data-error="tileIconFallback" data-error-args='[{"$": "el"}]' class="w-full h-full object-cover" />`
     : `<span class="lib-tile-icon">${ICON_FILE_AUDIO}</span>`;
   return `
-    <div onclick="libRowClick(event, ${m.id})" data-mid="${m.id}" oncontextmenu="openRecordingContextMenu(event, ${m.id})"
-         draggable="true" ondragstart="libraryDragStart(event, 'm', ${m.id})" title="${escapeHtml(m.title)}"
+    <div data-click="libRowClick" data-click-args='[{"$": "event"}, ${m.id}]' data-mid="${m.id}" tabindex="0" role="button" data-contextmenu="openRecordingContextMenu" data-contextmenu-args='[{"$": "event"}, ${m.id}]'
+         draggable="true" data-dragstart="libraryDragStart" data-dragstart-args='[{"$": "event"}, "m", ${m.id}]' title="${escapeHtml(m.title)}"
          class="lib-tile group ${isSelected ? 'lib-tile-on' : ''}">
       <div class="lib-tile-cover">
         ${cover}
@@ -1296,17 +1329,17 @@ function folderRowHtml(f, depth, collapsed) {
   const count = meetingsInFolderTree(f.id).length;
   const open = !collapsed.has(f.id);
   return `
-    <div onclick="toggleFolderCollapsed(${f.id})" oncontextmenu="openFolderMenu(event, ${f.id})"
-         ${f.system_key ? '' : `draggable="true" ondragstart="libraryDragStart(event, 'f', ${f.id})"`}
-         ondragover="libraryDragOver(event, ${f.id})" ondragleave="libraryDragLeave(event)" ondrop="libraryDrop(event, ${f.id})"
+    <div data-click="toggleFolderCollapsed" data-click-args='[${f.id}]' tabindex="0" role="button" data-contextmenu="openFolderMenu" data-contextmenu-args='[{"$": "event"}, ${f.id}]'
+         ${f.system_key ? '' : `draggable="true" data-dragstart="libraryDragStart" data-dragstart-args='[{"$": "event"}, "f", ${f.id}]'`}
+         data-dragover="libraryDragOver" data-dragover-args='[{"$": "event"}, ${f.id}]' data-dragleave="libraryDragLeave" data-dragleave-args='[{"$": "event"}]' data-drop="libraryDrop" data-drop-args='[{"$": "event"}, ${f.id}]'
          class="folder-row group flex items-center gap-1.5 pr-2 py-1.5 rounded-lg cursor-pointer text-apple-label hover:bg-white/5 transition"
          style="padding-left:${6 + depth * 14}px" title="${escapeHtml(folderName(f))}">
       <span class="shrink-0 text-apple-tertiary transition-transform ${open ? 'rotate-90' : ''}">${ICON_CHEVRON}</span>
       <span class="shrink-0 ${f.system_key ? 'text-apple-blue' : 'text-apple-secondary'}">${folderIcon(f)}</span>
       <span class="text-[12px] font-semibold truncate flex-1">${escapeHtml(folderName(f))}</span>
       <span class="text-[10.5px] font-mono text-apple-tertiary">${count}</span>
-      <button onclick="openFolderMenu(event, ${f.id})" title="${escapeHtml(t('tipFolderMenu'))}"
-        class="opacity-0 group-hover:opacity-100 px-1 rounded hover:bg-black/20 text-xs shrink-0 transition">•••</button>
+      <button data-click="openFolderMenu" data-click-args='[{"$": "event"}, ${f.id}]' title="${escapeHtml(t('tipFolderMenu'))}"
+        class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 px-1 rounded hover:bg-black/20 text-xs shrink-0 transition">•••</button>
     </div>`;
 }
 
@@ -1315,7 +1348,7 @@ function renderMeetingsSidebar() {
 
   if (state.globalSearchQuery && state.globalSearchResults) {
     const askHtml = `
-      <button onclick="openLibraryAsk(state.globalSearchQuery, {type: 'all'})" title="${escapeHtml(t('tipLibraryAsk'))}"
+      <button data-click="askLibraryAboutSearch" title="${escapeHtml(t('tipLibraryAsk'))}"
         class="w-full mb-1.5 px-2.5 py-2 rounded-lg border border-apple-blue/30 bg-apple-blue/10 hover:bg-apple-blue/20 text-left text-[11.5px] text-white transition flex items-center gap-2">
         ${SVG_SPARK}<span class="truncate">${escapeHtml(t('libraryAskFromSearch'))}</span>
       </button>`;
@@ -1327,13 +1360,13 @@ function renderMeetingsSidebar() {
     listEl._keyed = false;
     listEl.innerHTML = askHtml + state.globalSearchResults.map(item => `
       <div class="rounded-lg bg-white/[0.03] border apple-border p-2.5 space-y-1.5 mb-1.5">
-        <div onclick="openMeeting(${item.meeting_id}, true)"
+        <div data-click="openMeeting" data-click-args='[${item.meeting_id}, true]' tabindex="0" role="button"
              title="${escapeHtml(item.title)}"
              class="text-xs font-semibold text-white hover:text-apple-blue cursor-pointer truncate">
           ${escapeHtml(item.title)}
         </div>
         ${(item.hits || []).map(h => `
-          <div onclick="switchAppView('library'); selectMeetingAndSeek(${item.meeting_id}, ${h.start})"
+          <div data-click="openLibraryHit" data-click-args='[${Number(item.meeting_id) || 0}, ${Number(h.start) || 0}]' tabindex="0" role="button"
                title="${escapeHtml(t('tipSeekTimestamp'))}"
                class="px-2 py-1 rounded bg-black/30 hover:bg-apple-blue/20 cursor-pointer text-[11px] transition">
             <div class="flex items-center justify-between text-[10px] text-apple-blue font-mono">
@@ -1505,7 +1538,7 @@ function dropMediaFiles(e) {
   const media = files.filter(isMediaFile);
   if (media.length < files.length) {
     const skipped = files.filter(f => !isMediaFile(f)).map(f => f.name).slice(0, 3).join(', ');
-    showToast(t('dropSkipped').replace('{names}', skipped));
+    showToast(t('dropSkipped').replace('{names}', () => skipped));
   }
   if (media.length) handleFileSelect(media);
 }
@@ -1573,7 +1606,7 @@ async function handleFileSelect(fileList) {
   if (!fileList || fileList.length === 0) return;
   const statusEl = document.getElementById('upload-status-text');
   statusEl.classList.remove('hidden');
-  statusEl.textContent = t('uploadingFiles').replace('{n}', fileList.length);
+  statusEl.textContent = t('uploadingFiles').replace('{n}', () => fileList.length);
   switchAppView('library');
 
   try {
@@ -1663,3 +1696,19 @@ function setSidebarWidth(w, save) {
     handle.addEventListener('pointerup', up);
   });
 })();
+
+// A thumbnail that could not be read gives way to the video icon
+function tileIconFallback(el) {
+  el.replaceWith(Object.assign(document.createElement('span'), { className: 'lib-tile-icon', innerHTML: ICON_FILE_VIDEO }));
+}
+
+// "Ask the assistant" from the search results: about everything found
+function askLibraryAboutSearch() {
+  openLibraryAsk(state.globalSearchQuery, { type: 'all' });
+}
+
+// A search hit: the library, the recording, the moment
+function openLibraryHit(meetingId, sec) {
+  switchAppView('library');
+  selectMeetingAndSeek(meetingId, sec);
+}

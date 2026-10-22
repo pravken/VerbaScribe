@@ -34,7 +34,7 @@ async function populateAudioInputDevices() {
 
     const mics = devices.filter(d => d.kind === 'audioinput');
     const optionsHtml = mics.map((m, i) => {
-      const label = m.label || (state.uiLang === 'en' ? `Microphone ${i + 1}` : `Микрофон ${i + 1}`);
+      const label = m.label || t('micNumbered').replace('{n}', () => i + 1);
       const sel = m.deviceId === savedMic ? 'selected' : '';
       return `<option value="${escapeHtml(m.deviceId)}" ${sel}>${escapeHtml(label)}</option>`;
     }).join('');
@@ -42,7 +42,7 @@ async function populateAudioInputDevices() {
     if (settingsSelect) settingsSelect.innerHTML = optionsHtml || `<option value="">Default Microphone</option>`;
     if (modalSelect) modalSelect.innerHTML = optionsHtml || `<option value="">Default Microphone</option>`;
   } catch (e) {
-    const fallback = `<option value="">${state.uiLang === 'en' ? 'Default System Microphone' : 'Системный микрофон по умолчанию'}</option>`;
+    const fallback = `<option value="">${t('uiDefaultSystemMicrophone')}</option>`;
     if (settingsSelect) settingsSelect.innerHTML = fallback;
     if (modalSelect) modalSelect.innerHTML = fallback;
   }
@@ -124,9 +124,7 @@ async function buildCaptureStream(sourceMode, micDeviceId, systemByApp = false) 
     sysStream.getVideoTracks().forEach(vt => vt.stop());
     if (sysStream.getAudioTracks().length === 0) {
       throw new Error(
-        state.uiLang === 'en'
-          ? 'Please enable "Share system audio" in the screen share prompt.'
-          : 'При выборе окна/экрана обязательно включите галочку «Поделиться системным звуком» (Share audio).'
+        t('uiPleaseEnableShareSystem')
       );
     }
     const sysNode = ctx.createMediaStreamSource(new MediaStream(sysStream.getAudioTracks()));
@@ -264,8 +262,8 @@ async function toggleSettingsAudioTest() {
         ? 'w-2 h-2 rounded-full bg-apple-green animate-pulse'
         : 'w-2 h-2 rounded-full bg-apple-amber';
       document.getElementById('settings-audio-status').textContent = hasSound
-        ? (state.uiLang === 'en' ? 'Signal detected — audio is active' : 'Звук есть — сигнал поступает')
-        : (state.uiLang === 'en' ? 'Listening — speak to test level' : 'Ожидание сигнала — скажите что-нибудь');
+        ? t('uiSignalDetectedAudioIs')
+        : t('uiListeningSpeakToTest');
 
       _settingsTestAnim = requestAnimationFrame(step);
     }
@@ -377,7 +375,7 @@ async function saveRecordPresetAs() {
   await saveRecordPresetSettings(own);
   state.recPresetId = preset.id;
   renderRecordPresetSelect(preset.id);
-  showToast(t('presetSaved').replace('{name}', preset.name));
+  showToast(t('presetSaved').replace('{name}', () => preset.name));
 }
 
 async function updateRecordPreset() {
@@ -385,13 +383,13 @@ async function updateRecordPreset() {
   const own = recordPresets().filter(p => !p.builtin).map(p => (p.id === id ? presetFromForm(p) : p));
   await saveRecordPresetSettings(own);
   renderRecordPresetSelect(id);
-  showToast(t('presetSaved').replace('{name}', presetLabel(own.find(p => p.id === id) || {})));
+  showToast(t('presetSaved').replace('{name}', () => presetLabel(own.find(p => p.id === id) || {})));
 }
 
 async function deleteRecordPreset() {
   const id = document.getElementById('record-preset-select').value;
   const p = recordPresets().find(x => x.id === id);
-  if (!p || p.builtin || !await askConfirm(t('presetDeleteConfirm').replace('{name}', p.name))) return;
+  if (!p || p.builtin || !await askConfirm(t('presetDeleteConfirm').replace('{name}', () => p.name), true)) return;
   const own = recordPresets().filter(x => !x.builtin && x.id !== id);
   await saveRecordPresetSettings(own, defaultRecordPresetId() === id ? 'call' : null);
   applyRecordPreset(defaultRecordPresetId());
@@ -401,24 +399,24 @@ async function setDefaultRecordPreset() {
   const id = document.getElementById('record-preset-select').value;
   await saveRecordPresetSettings(recordPresets().filter(p => !p.builtin), id);
   renderRecordPresetSelect(id);
-  showToast(t('presetDefaultSet').replace('{name}', presetLabel(recordPresets().find(p => p.id === id) || {})));
+  showToast(t('presetDefaultSet').replace('{name}', () => presetLabel(recordPresets().find(p => p.id === id) || {})));
 }
 
 function toggleRecordPresetMenu(e) {
   e.stopPropagation();
   const menu = document.getElementById('record-preset-menu');
   const def = defaultRecordPresetId();
-  const item = (onclick, mark, label, hint) =>
-    `<button onclick="${onclick}" class="macos-menu-item gap-2" style="justify-content:flex-start">`
+  const item = (calls, mark, label, hint) =>
+    `<button ${pageCall('click', 'runAll', calls)} class="macos-menu-item gap-2" style="justify-content:flex-start">`
     + `<span class="w-3 shrink-0 text-center text-apple-amber">${mark}</span>`
     + `<span class="min-w-0"><span class="block truncate">${escapeHtml(label)}</span>`
     + (hint ? `<span class="block text-[10.5px] text-apple-tertiary truncate">${escapeHtml(hint)}</span>` : '') + `</span></button>`;
   const sourceName = { mic: t('sourceMic'), system: t('sourceSystem'), both: t('sourceBoth') };
   menu.innerHTML = recordPresets().map(p => item(
-    `hideRecordPresetMenu(); quickRecord('${p.id}')`, p.id === def ? '★' : '', presetLabel(p),
+    [['hideRecordPresetMenu'], ['quickRecord', p.id]], p.id === def ? '★' : '', presetLabel(p),
     sourceName[p.source] + (p.live ? ` · ${t('presetWithCaptions')}` : ''))).join('')
     + '<div class="h-px bg-white/10 my-1"></div>'
-    + item('hideRecordPresetMenu(); openRecordModal()', '', t('presetOpenSettings'), '');
+    + item([['hideRecordPresetMenu'], ['openRecordModal']], '', t('presetOpenSettings'), '');
   menu.classList.toggle('hidden');
 }
 
@@ -473,7 +471,7 @@ async function handleCallEvent(ev) {
     if (isRecording()) return;  // already recording by hand: that recording is left alone
     const s = (state.system && state.system.settings) || {};
     state.callRecording = ev.app;
-    showToast(t('callRecordStarted').replace('{app}', ev.name || ev.app));
+    showToast(t('callRecordStarted').replace('{app}', () => ev.name || ev.app));
     try {
       await quickRecord(s.call_preset || defaultRecordPresetId());
     } catch (e) {
@@ -485,7 +483,7 @@ async function handleCallEvent(ev) {
   } else if (ev.state === 'ended' && state.callRecording) {
     state.callRecording = null;
     if (!isRecording()) return;
-    showToast(t('callRecordEnded').replace('{app}', ev.name || ev.app));
+    showToast(t('callRecordEnded').replace('{app}', () => ev.name || ev.app));
     stopAndTranscribeRecording();
   }
 }
@@ -590,7 +588,8 @@ async function prepareStudio(presetId) {
 
   const titleInput = document.getElementById('record-title-input');
   if (!titleInput.value.trim()) {
-    const nowStr = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }).replace(':', '-');
+    const now = new Date();  // 24-hour HH-MM in any language: the title becomes a file name
+    const nowStr = `${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}`;
     titleInput.value = `${t('recordDefaultTitle')} ${nowStr}`;
   }
   document.getElementById('record-timer-display').textContent = '00:00';
@@ -627,12 +626,12 @@ function renderUpcomingMeetings() {
     const live = start <= now && now < end;
     const people = e.attendees.length ? `<div class="text-[11px] text-apple-tertiary truncate">${escapeHtml(e.attendees.slice(0, 6).join(', '))}${e.attendees.length > 6 ? ` +${e.attendees.length - 6}` : ''}</div>` : '';
     const brief = e.series_id || e.person
-      ? `<button onclick="upcomingBrief(${i})" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" title="${escapeHtml(t('tipUpcomingBrief'))}">${escapeHtml(t('briefBtn'))}</button>` : '';
+      ? `<button data-click="upcomingBrief" data-click-args='[${i}]' class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" title="${escapeHtml(t('tipUpcomingBrief'))}">${escapeHtml(t('briefBtn'))}</button>` : '';
     return `<div class="flex items-center gap-3 px-3 py-2 rounded-lg ${live ? 'bg-apple-red/10' : 'hover:bg-white/5'}">
       <div class="w-32 shrink-0 text-[11px] font-mono whitespace-nowrap ${live ? 'text-apple-red' : 'text-apple-secondary'}">${escapeHtml(day + time)}</div>
       <div class="flex-1 min-w-0"><div class="text-[13px] text-white truncate">${escapeHtml(e.title || '—')}</div>${people}</div>
       ${brief}
-      <button onclick="upcomingUseTitle(${i})" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" title="${escapeHtml(t('tipUpcomingTitle'))}">${escapeHtml(t('upcomingUseTitle'))}</button>
+      <button data-click="upcomingUseTitle" data-click-args='[${i}]' class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" title="${escapeHtml(t('tipUpcomingTitle'))}">${escapeHtml(t('upcomingUseTitle'))}</button>
     </div>`;
   }).join('');
   box.innerHTML = `<div class="text-[11px] uppercase tracking-wider text-apple-tertiary mb-1.5 px-3">${escapeHtml(t('upcomingTitle'))}</div>${rows}`;
@@ -662,7 +661,7 @@ function saveRecordVideoPref() {
 
 function renderRecordSaveHint() {
   const dir = state.system && state.system.paths && state.system.paths.recordings;
-  document.getElementById('record-save-hint').textContent = dir ? t('recordSaveHint').replace('{dir}', dir) : '';
+  document.getElementById('record-save-hint').textContent = dir ? t('recordSaveHint').replace('{dir}', () => dir) : '';
 }
 
 // --- Live captions while recording ---
@@ -705,6 +704,9 @@ function renderStudioModels(target) {
     fetch('/api/live/models').then(r => r.json()).then(d => { studio.llmModels = d.installed || []; syncStudioCaptions(); }).catch(() => {});
   }
 }
+
+function studioSetCaptionModel(value) { return studioSetModels({ caption_model: value }); }
+function studioSetTranslateModel(value) { return studioSetModels({ translate_model: value }); }
 
 async function studioSetModels(change) {
   if (!liveCap.session) return;
@@ -787,7 +789,7 @@ function relabelStudioLanguages() {
 function fillTranslateSelect(codes, value) {
   const sel = document.getElementById('live-translate-select');
   sel.innerHTML = `<option value="">${escapeHtml(t('liveNoTranslation'))}</option>`
-    + `<option value="auto">${escapeHtml(t('liveAutoPair').replace('{pair}', autoPairLabel()))}</option>`
+    + `<option value="auto">${escapeHtml(t('liveAutoPair').replace('{pair}', () => autoPairLabel()))}</option>`
     + textLangOptions(codes, false);
   sel.value = [...sel.options].some(o => o.value === value) ? value : '';
 }
@@ -798,11 +800,11 @@ function renderQuickLangs() {
   const current = document.getElementById('live-translate-select').value;
   const [a, b] = quickLangs();
   const btn = (value, label, title, menuIndex) =>
-    `<button onclick="setQuickTranslate('${value}')" ${menuIndex != null ? `oncontextmenu="openQuickLangMenu(event, ${menuIndex})"` : ''}
+    `<button data-click="setQuickTranslate" data-click-args='[${jsArg(value)}]' ${menuIndex != null ? `data-contextmenu="openQuickLangMenu" data-contextmenu-args='[{"$": "event"}, ${Number(menuIndex) || 0}]'` : ''}
       class="quick-lang ${current === value ? 'on' : ''}" title="${escapeHtml(title)}">${escapeHtml(label)}</button>`;
-  box.innerHTML = btn(a, langCode(a), t('tipQuickLang').replace('{lang}', langName(a)), 0)
-    + btn(b, langCode(b), t('tipQuickLang').replace('{lang}', langName(b)), 1)
-    + btn('auto', `⇄ ${t('liveAutoShort')}`, t('tipQuickAuto').replace('{a}', langName(a)).replace('{b}', langName(b)), null);
+  box.innerHTML = btn(a, langCode(a), t('tipQuickLang').replace('{lang}', () => langName(a)), 0)
+    + btn(b, langCode(b), t('tipQuickLang').replace('{lang}', () => langName(b)), 1)
+    + btn('auto', `⇄ ${t('liveAutoShort')}`, t('tipQuickAuto').replace('{a}', () => langName(a)).replace('{b}', () => langName(b)), null);
 }
 
 function setQuickTranslate(value) {
@@ -822,7 +824,7 @@ function openQuickLangMenu(e, index) {
   menu.className = 'fixed w-56 max-h-80 overflow-y-auto macos-menu z-50';
   menu.innerHTML = `<div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(t('quickLangPick'))}</div>`
     + codes.map(({ c, n }) => `<button class="macos-menu-item" data-code="${c}" ${langs.includes(c) && c !== langs[index] ? 'disabled style="opacity:.4"' : ''}>`
-      + `<span>${escapeHtml(n)}</span><span class="text-[10.5px] opacity-60">${c === langs[index] ? '✓' : escapeHtml(langCode(c))}</span></button>`).join('');
+      + `<span>${escapeHtml(n)}</span><span class="text-[10.5px] opacity-80">${c === langs[index] ? '✓' : escapeHtml(langCode(c))}</span></button>`).join('');
   menu.addEventListener('click', (ev) => {
     const b = ev.target.closest('button[data-code]');
     ev.stopPropagation();
@@ -1316,11 +1318,11 @@ async function startLiveRecording() {
     const disk = await fetch('/api/disk').then(r => r.json()).catch(() => null);
     if (disk && disk.critical) {
       _recVideoStream?.getTracks().forEach(tr => tr.stop());
-      throw new Error(t('diskFullError').replace('{free}', formatSize(Math.max(0, disk.free_bytes))));
+      throw new Error(t('diskFullError').replace('{free}', () => formatSize(Math.max(0, disk.free_bytes))));
     }
     if (disk && disk.low && !await askConfirm(t('diskLowConfirm')
-      .replace('{free}', formatSize(disk.free_bytes))
-      .replace('{min}', recMinutesLeft(disk.free_bytes, !!_recVideoStream || !!appTarget)))) {
+      .replace('{free}', () => formatSize(disk.free_bytes))
+      .replace('{min}', () => recMinutesLeft(disk.free_bytes, !!_recVideoStream || !!appTarget)))) {
       _recVideoStream?.getTracks().forEach(tr => tr.stop());
       document.getElementById('record-video-preview').classList.add('hidden');
       return;
@@ -1506,8 +1508,8 @@ async function checkRecordingDisk() {
     stopAndTranscribeRecording();
   } else if (disk.low && !_recDiskWarned) {
     _recDiskWarned = true;
-    showToast(t('diskLowWarn').replace('{free}', formatSize(disk.free_bytes))
-      .replace('{min}', recMinutesLeft(disk.free_bytes, !!_recVideoStream)));
+    showToast(t('diskLowWarn').replace('{free}', () => formatSize(disk.free_bytes))
+      .replace('{min}', () => recMinutesLeft(disk.free_bytes, !!_recVideoStream)));
   }
 }
 
@@ -1555,7 +1557,7 @@ function _cleanupRecordingResources() {
 
 async function cancelLiveRecording() {
   if (!isRecording()) return;
-  if (!await askConfirm(t('recCancelConfirm'))) return;
+  if (!await askConfirm(t('recCancelConfirm'), true)) return;
   if (_mediaRecorder && _mediaRecorder.state !== 'inactive') {
     _mediaRecorder.ondataavailable = null;
     _mediaRecorder.onstop = null;

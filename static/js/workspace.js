@@ -19,10 +19,11 @@ async function selectMeeting(id, reloadPlayer = true) {
 
   document.getElementById('meeting-title-input').value = m.title;
   document.getElementById('meeting-meta-badge').textContent =
-    `${formatTime(m.duration)} · ${(m.language || 'ru').toUpperCase()} · ${formatModelName(m.model_name)}${m.media_removed ? ' · ' + t('mediaRemovedBadge') : ''}`;
+    `${formatTime(m.duration)} · ${(m.language || 'ru').toUpperCase()} · ${formatModelName(m.transcript_model || m.model_name)}${m.media_removed ? ' · ' + t('mediaRemovedBadge') : ''}`;
   document.getElementById('meeting-meta-badge').title = document.getElementById('meeting-meta-badge').textContent;
 
   updateProcessingBanner(m);
+  renderTxModelBar();
   renderAudioTrackSwitch();
   renderFillerButton();
   renderSeriesUi();
@@ -50,6 +51,169 @@ async function selectMeeting(id, reloadPlayer = true) {
   if (state.appView === 'ask') renderAskScope();
 }
 
+// --- The model of the transcript (the row above the transcript tools). Each model's transcript is
+// kept (app/database.py transcript_versions): picking a model that made one shows it, another one
+// offers Transcribe; the status says which model the text below comes from ---
+function txModelChoices(m) {
+  const done = new Set([m.transcript_model, ...(m.transcript_versions || []).map(v => v.model)].filter(Boolean));
+  const list = (state.whisperCatalog || []).map(i => ({ id: i.id, installed: i.installed, size: modelSizeLabel(i), languages: i.languages }));
+  for (const id of done) if (!list.some(i => i.id === id)) list.push({ id, installed: true, size: '' });  // a removed model
+  return { list, done };
+}
+
+function renderTxModelBar() {
+  const m = state.activeMeeting;
+  const bar = document.getElementById('tx-model-bar');
+  if (!bar) return;
+  bar.classList.toggle('hidden', !m);
+  if (!m) return;
+  if (state.txModelFor !== m.id) { state.txModelFor = m.id; state.txModelPick = null; }
+  const { list, done } = txModelChoices(m);
+  const shown = (m.segments || []).length ? (m.transcript_model || '') : '';
+  const pick = state.txModelPick || shown || m.model_name || (list[0] && list[0].id) || '';
+  const lang = String(m.language || '').slice(0, 2);
+  const sel = document.getElementById('tx-model-select');
+  sel.innerHTML = list.map(i => {
+    // GigaAM knows Russian only: not offered for a recording in another language
+    const fits = !i.languages || !lang || i.languages.includes(lang) || done.has(i.id);
+    return `<option value="${escapeHtml(i.id)}" ${fits ? '' : 'disabled'}>${escapeHtml(formatModelName(i.id))}${done.has(i.id) ? '  ✓' : ''}${
+      i.installed ? '' : `  ↓ ${escapeHtml(i.size)}`}${fits ? '' : ` (${escapeHtml(t('txModelOtherLang'))})`}</option>`;
+  }).join('');
+  sel.value = pick;
+  const busy = !DONE_STATUSES.includes(m.status);
+  sel.disabled = busy;
+  const btn = document.getElementById('tx-transcribe-btn');
+  btn.disabled = busy || !!m.media_removed;  // without the sound there is nothing to transcribe
+  btn.classList.toggle('opacity-40', btn.disabled);
+  btn.classList.toggle('hidden', pick === 'merged');  // the merged text is not made by a model
+  document.getElementById('tx-transcribe-label').textContent = t(pick && pick === shown ? 'txTranscribeAgain' : 'txTranscribe');
+  // Merging: once two models have transcribed the recording
+  const mergeBtn = document.getElementById('tx-merge-btn');
+  mergeBtn.classList.toggle('hidden', [...done].filter(x => x !== 'merged').length < 2);
+  mergeBtn.disabled = busy;
+  mergeBtn.classList.toggle('opacity-40', busy);
+  // Clearing: the transcript of the model picked, when it made one (the one shown)
+  const delBtn = document.getElementById('tx-delete-version-btn');
+  delBtn.classList.toggle('hidden', !pick || pick !== shown);
+  delBtn.disabled = busy;
+  delBtn.classList.toggle('opacity-40', busy);
+  const disputes = (m.segments || []).reduce((n, s) => n + (s.words || []).filter(w => w.alts && w.alts.length).length, 0);
+  const status = document.getElementById('tx-model-status');
+  let text, cls;
+  if (busy) [text, cls] = [m.status === 'merging' ? t('txMergingBusy') : t('txModelBusy').replace('{model}', () => formatModelName(m.model_name)), 'text-apple-secondary'];
+  else if (pick === 'merged' && shown === 'merged') [text, cls] = [`✓ ${t('txMergedDone')}${m.transcript_at ? ' · ' + formatDateTime(m.transcript_at) : ''}${
+    disputes ? ' · ' + t('txDisputes').replace('{n}', () => disputes) : ''}`, 'text-apple-green'];
+  else if (pick && pick === shown) [text, cls] = [`✓ ${t('txModelDone')}${m.transcript_at ? ' · ' + formatDateTime(m.transcript_at) : ''}`, 'text-apple-green'];
+  else if (!shown) [text, cls] = [t('txModelNone'), 'text-apple-secondary'];
+  else [text, cls] = [t('txModelNotYet').replace('{model}', () => formatModelName(shown)), 'text-apple-amber'];
+  status.textContent = text;
+  status.title = text;
+  status.className = `tx-model-status ${cls}`;  // goes to a line of its own when the panel is narrow
+}
+
+async function pickTxModel(sel) {
+  const m = state.activeMeeting;
+  if (!m) return;
+  const id = sel.value;
+  state.txModelPick = id;
+  if (id !== m.transcript_model && (m.transcript_versions || []).some(v => v.model === id)) {
+    const res = await fetch(`/api/meetings/${m.id}/transcript-version`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: id }),
+    });
+    const data = await readJson(res);
+    state.txModelPick = null;
+    if (!res.ok) { showToast(errorText(data, res)); renderTxModelBar(); return; }
+    await selectMeeting(m.id, false);
+    loadMeetingsList();
+    return;
+  }
+  renderTxModelBar();
+}
+
+function disputeTitle(w) {
+  return [t('tipDisputed'), ...w.alts.map(a => `${a.text ? '«' + a.text + '»' : t('altNothing')} — ${a.models.map(formatModelName).join(', ')}`)].join('\n');
+}
+
+function openWordAlts(e, segId, wi) {
+  e.stopPropagation();  // the click would close the menu it opens
+  const seg = ((state.activeMeeting && state.activeMeeting.segments) || []).find(s => s.id === segId);
+  const w = seg && (seg.words || [])[wi];
+  if (!w || !w.alts) return;
+  const shown = seg.words.slice(wi, wi + Number(w.span || 1)).map(x => String(x.word).trim()).join(' ');
+  const items = w.alts.map(a => ({
+    label: `${a.text ? '«' + a.text + '»' : t('altNothing')}${a.text === shown ? '  ✓' : ''}`,
+    key: a.models.map(formatModelName).join(', '),
+    run: () => chooseWordAlt(segId, wi, a.text),
+  }));
+  items.push({ sep: true }, { label: t('ctxPlayFromHere'), key: formatTime(Number(w.start)), run: () => seekPlayer(Number(w.start)) });
+  const r = e.target.getBoundingClientRect();
+  openTextMenuAt(items, r.left, r.bottom + 4);
+}
+
+async function chooseWordAlt(segId, wi, text) {
+  const m = state.activeMeeting;
+  if (!m) return;
+  const res = await fetch(`/api/meetings/${m.id}/segments/${segId}/alternative`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ word: wi, text }),
+  });
+  const data = await readJson(res);
+  if (!res.ok) { showToast(errorText(data, res)); return; }
+  if (state.activeMeeting !== m) return;
+  m.segments = data.segments;
+  renderTranscript();
+  renderTxModelBar();
+}
+
+async function deletePickedTranscript() {
+  const m = state.activeMeeting;
+  if (!m) return;
+  const model = document.getElementById('tx-model-select').value;
+  const others = (m.transcript_versions || []).filter(v => v.model !== model).length;
+  if (!(await confirmDialog(t('txDeleteVersionTitle').replace('{model}', () => formatModelName(model)),
+    t(others ? 'txDeleteVersionText' : 'txDeleteVersionLast'), t('txDeleteVersion')))) return;
+  const res = await fetch(`/api/meetings/${m.id}/transcript-versions/${encodeURIComponent(model)}`, { method: 'DELETE' });
+  const data = await readJson(res);
+  if (!res.ok) { showToast(errorText(data, res)); return; }
+  state.txModelPick = null;
+  await loadMeetingsList();
+  await selectMeeting(m.id, false);
+  showToast(t('txVersionDeleted').replace('{model}', () => formatModelName(model)));
+}
+
+async function mergeTranscripts() {
+  const m = state.activeMeeting;
+  if (!m) return;
+  const hasMerged = m.transcript_model === 'merged' || (m.transcript_versions || []).some(v => v.model === 'merged');
+  if (hasMerged && !(await confirmDialog(t('txMergeAgainTitle'), t('txMergeAgainText'), t('txMerge'), false))) return;
+  const res = await fetch(`/api/meetings/${m.id}/merge-transcripts`, { method: 'POST' });
+  const data = await readJson(res);
+  if (!res.ok) { showToast(errorText(data, res)); return; }
+  state.txModelPick = null;
+  await loadMeetingsList();
+  await selectMeeting(m.id, false);
+  showToast(t('txMergeStarted'));
+}
+
+async function transcribeWithPickedModel() {
+  const m = state.activeMeeting;
+  if (!m) return;
+  const model = document.getElementById('tx-model-select').value;
+  if (!model) return;
+  if (model === m.transcript_model && (m.segments || []).length
+      && !(await confirmDialog(t('txTranscribeAgainTitle'), t('txTranscribeAgainText').replace('{model}', () => formatModelName(model)),
+        t('txTranscribeAgain'), false))) return;
+  const res = await fetch(`/api/meetings/${m.id}/reconfigure`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model_name: model, language: m.language || 'auto', num_speakers_hint: Number(m.num_speakers_hint || 0) }),
+  });
+  const data = await readJson(res);
+  if (!res.ok) { showToast(errorText(data, res)); return; }
+  state.txModelPick = null;
+  await loadMeetingsList();
+  await selectMeeting(m.id, false);
+  showToast(t('txTranscribeStarted').replace('{model}', () => formatModelName(model)));
+}
+
 function updateProcessingBanner(m) {
   const isBusy = !DONE_STATUSES.includes(m.status);
   const banner = document.getElementById('workspace-processing-banner');
@@ -63,7 +227,7 @@ function updateProcessingBanner(m) {
   document.getElementById('workspace-live-dot').classList.toggle('hidden', !running);
   document.getElementById('workspace-progress-time').textContent = running ? formatTiming(jobTiming(q, m.progress || 0)) : '';
   if (isBusy) {
-    document.getElementById('workspace-stage-text').textContent = m.stage_text || t('processingShort');
+    document.getElementById('workspace-stage-text').textContent = serverText(m.stage_text) || t('processingShort');
     document.getElementById('workspace-progress-pct').textContent = `${m.progress}%`;
     bar.style.background = '';
     bar.style.width = `${Math.max(running ? 3 : 0, m.progress || 0)}%`;
@@ -71,7 +235,7 @@ function updateProcessingBanner(m) {
     // Failed or cancelled: the reason, a red (or grey) bar and Retry, not a "finished" blue bar
     const failed = m.status === 'failed';
     document.getElementById('workspace-stage-text').textContent = m.status === 'cleared' ? t('statusCleared')
-      : (failed ? t('statusFailed') : t('statusCancelled')) + (m.error_message ? `: ${m.error_message}` : m.stage_text ? `: ${m.stage_text}` : '');
+      : (failed ? t('statusFailed') : t('statusCancelled')) + (m.error_message ? `: ${serverText(m.error_message)}` : m.stage_text ? `: ${serverText(m.stage_text)}` : '');
     document.getElementById('workspace-progress-pct').textContent = '';
     bar.style.width = '100%';
     bar.style.background = failed ? 'rgba(255, 69, 58, 0.7)' : 'rgba(255, 255, 255, 0.2)';
@@ -106,12 +270,12 @@ function renderAudioTrackSwitch() {
   box.innerHTML = `
     <label class="ui-btn ${onDub ? 'ui-btn-active' : 'ui-btn-subtle'} pr-1 cursor-pointer" title="${escapeHtml(t('tipAudioTrack'))}">
       <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z"/></svg>
-      <select onchange="setAudioTrack(this.value)" class="bg-transparent focus:outline-none cursor-pointer text-[11.5px]">
+      <select data-change="setAudioTrack" data-change-args='[{"$": "value"}]' class="bg-transparent focus:outline-none cursor-pointer text-[11.5px]">
         ${option('orig', t('trackOriginal'))}
         ${dubs.map(d => option(d.lang, `${t('trackDub')} ${d.lang.toUpperCase()}`)).join('')}
       </select>
     </label>${onDub ? `
-    <button onclick="deleteActiveDub()" class="ui-btn ui-btn-subtle px-2" title="${escapeHtml(t('dubDelete'))}">✕</button>` : ''}`;
+    <button data-click="deleteActiveDub" class="ui-btn ui-btn-subtle px-2" title="${escapeHtml(t('dubDelete'))}">✕</button>` : ''}`;
   renderDubExportMenu();
 }
 
@@ -129,7 +293,7 @@ function setAudioTrack(key) {
     if (wasPlaying) player.play().catch(() => {});
   }, { once: true });
   renderAudioTrackSwitch();
-  showToast(key === 'orig' ? t('trackOriginalOn') : t('trackDubOn').replace('{lang}', dubLangName(key)));
+  showToast(key === 'orig' ? t('trackOriginalOn') : t('trackDubOn').replace('{lang}', () => dubLangName(key)));
 }
 
 function renderDubExportMenu() {
@@ -208,8 +372,9 @@ function renderDubSetup(env, prefix = 'dub') {
     if (env.installed) return;
   }
 
-  const meta = [t('dubSetupSize').replace('{gb}', st.download_gb ?? 6)];
-  if (st.free_gb != null) meta.push(t('dubSetupFree').replace('{gb}', st.free_gb));
+  const meta = st.outdated && !st.active ? [t('dubSetupOutdated')] : [];
+  meta.push(t('dubSetupSize').replace('{gb}', () => st.download_gb ?? 6));
+  if (st.free_gb != null) meta.push(t('dubSetupFree').replace('{gb}', () => st.free_gb));
   el('setup-meta').textContent = env.installed && !st.active ? '' : meta.join(' · ');
 
   const logs = st.logs || [];
@@ -242,8 +407,8 @@ function toggleDubSetupLogs(prefix = 'dub') {
 async function startDubSetup() {
   const st = state.dubSetup || {};
   const question = (state.dubEnvInstalled ? t('sdubRepairConfirm') : t('dubSetupConfirm'))
-    .replace('{gb}', st.download_gb ?? 6)
-    .replace('{dir}', st.venv || '.venv-dub');
+    .replace('{gb}', () => st.download_gb ?? 6)
+    .replace('{dir}', () => st.venv || '.venv-dub');
   if (!await askConfirm(question)) return;
   let res = null;
   try { res = await fetch('/api/dub/setup', { method: 'POST' }); } catch (e) { console.error(e); }
@@ -251,7 +416,7 @@ async function startDubSetup() {
   if (!res || !res.ok) {
     // e.g. an older server process is still running behind this window
     const code = res ? res.status : 0;
-    const failed = { installed: false, setup: { ...st, active: false, error: t('dubSetupRequestFailed').replace('{code}', code || '—') } };
+    const failed = { installed: false, setup: { ...st, active: false, error: t('dubSetupRequestFailed').replace('{code}', () => code || '—') } };
     renderDubSetup(failed, 'dub');
     renderDubSetup(failed, 'sdub');
     return;
@@ -290,11 +455,18 @@ async function pollDubSetup() {
 }
 
 // --- Settings → Speech synthesis (dub): environment, weights, disk usage, options ---
+// File sizes in the units Windows Explorer uses (1 KB = 1024 bytes), so the numbers match it
 function formatBytes(n) {
   if (n == null) return '…';
-  if (n >= 1e9) return `${(n / 1e9).toFixed(1)} ${t('unitGB')}`;
-  if (n >= 1e6) return `${Math.round(n / 1e6)} ${t('unitMB')}`;
-  return `${Math.round(n / 1e3)} ${t('unitKB')}`;
+  if (n >= 2 ** 30) return `${(n / 2 ** 30).toFixed(1)} ${t('unitGB')}`;
+  if (n >= 10 * 2 ** 20) return `${Math.round(n / 2 ** 20)} ${t('unitMB')}`;
+  if (n >= 2 ** 20) return `${(n / 2 ** 20).toFixed(1)} ${t('unitMB')}`;
+  return `${Math.round(n / 1024)} ${t('unitKB')}`;
+}
+
+// One weight file of the dub models, from its row
+function downloadDubWeight(id) {
+  downloadDubWeights([id]);
 }
 
 async function loadDubInfo() {
@@ -337,10 +509,10 @@ function renderDubInfo(info) {
       action = `<span class="ui-btn bg-apple-blue/20 text-apple-blue font-mono animate-pulse">${dl.progress || 1}%</span>`;
     } else if (item.installed) {
       action = `<span class="ui-btn bg-apple-green/20 text-apple-green">${SVG_ICONS.check}<span>${escapeHtml(t('sdubWeightsReady'))}</span></span>
-        <button data-id="${escapeHtml(item.id)}" onclick="deleteDubWeights(this.dataset.id)" ${busy ? 'disabled style="opacity:.4"' : ''}
+        <button data-id="${escapeHtml(item.id)}" data-click="deleteDubWeights" data-click-args='[{"$": "data", "k": "id"}]' ${busy ? 'disabled style="opacity:.4"' : ''}
           title="${escapeHtml(t('tipDeleteModel'))}" class="ui-btn ui-btn-subtle px-2 hover:text-apple-red">${SVG_ICONS.trash}</button>`;
     } else {
-      action = `<button data-id="${escapeHtml(item.id)}" onclick="downloadDubWeights([this.dataset.id])" ${busy || !info.installed ? 'disabled style="opacity:.4"' : ''}
+      action = `<button data-id="${escapeHtml(item.id)}" data-click="downloadDubWeight" data-click-args='[{"$": "data", "k": "id"}]' ${busy || !info.installed ? 'disabled style="opacity:.4"' : ''}
           title="${escapeHtml(info.installed ? t('tipDownloadModel') : t('sdubNeedEnv'))}" class="ui-btn ui-btn-primary">${SVG_ICONS.download}<span>${escapeHtml(t('downloadBtn'))} (${escapeHtml(formatBytes(item.expected_bytes))})</span></button>`;
     }
     const size = item.size_bytes ? formatBytes(item.size_bytes) : t('sdubNotDownloaded');
@@ -368,10 +540,10 @@ function renderDubInfo(info) {
 
   const d = info.disk || {};
   document.getElementById('sdub-disk').textContent = t('sdubDisk')
-    .replace('{env}', formatBytes(d.env_bytes))
-    .replace('{weights}', formatBytes(d.weights_bytes))
-    .replace('{outputs}', formatBytes(d.outputs_bytes))
-    .replace('{free}', formatBytes(d.free_bytes));
+    .replace('{env}', () => formatBytes(d.env_bytes))
+    .replace('{weights}', () => formatBytes(d.weights_bytes))
+    .replace('{outputs}', () => formatBytes(d.outputs_bytes))
+    .replace('{free}', () => formatBytes(d.free_bytes));
 
   // Rubber Band is only offered when this FFmpeg build has the filter
   const rb = document.querySelector('#set-dub-stretch option[value="rubberband"]');
@@ -388,9 +560,9 @@ async function downloadDubWeights(ids) {
   if (!items.length) return;
   const total = items.reduce((a, i) => a + (i.expected_bytes || 0), 0);
   const question = t('sdubDownloadConfirm')
-    .replace('{names}', items.map(i => i.name).join(', '))
-    .replace('{size}', formatBytes(total))
-    .replace('{dir}', state.dubInfo.weights.dir);
+    .replace('{names}', () => items.map(i => i.name).join(', '))
+    .replace('{size}', () => formatBytes(total))
+    .replace('{dir}', () => state.dubInfo.weights.dir);
   if (!await askConfirm(question)) return;
   const res = await fetch('/api/dub/weights/download', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ models: items.map(i => i.id) }),
@@ -407,7 +579,7 @@ async function cancelDubWeights() {
 
 async function deleteDubWeights(id) {
   const item = ((state.dubInfo && state.dubInfo.weights.items) || []).find(i => i.id === id);
-  if (!item || !await askConfirm(t('sdubDeleteConfirm').replace('{name}', item.name).replace('{size}', formatBytes(item.size_bytes)))) return;
+  if (!item || !await askConfirm(t('sdubDeleteConfirm').replace('{name}', () => item.name).replace('{size}', () => formatBytes(item.size_bytes)), true)) return;
   const res = await fetch(`/api/dub/weights/${encodeURIComponent(id)}`, { method: 'DELETE' });
   const data = await res.json().catch(() => ({}));
   if (data.error) showToast(data.error);
@@ -497,7 +669,7 @@ function renderDubResults() {
           <div class="text-[10.5px] text-apple-secondary truncate" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
           <div class="text-[10.5px] text-apple-tertiary">${escapeHtml(meta)}</div>
         </div>
-        <button onclick="revealDub('${lang}')" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px] shrink-0">${escapeHtml(t('dubReveal'))}</button>
+        <button data-click="revealDub" data-click-args='[${jsArg(lang)}]' class="ui-btn ui-btn-subtle h-6 px-2 text-[11px] shrink-0">${escapeHtml(t('dubReveal'))}</button>
       </div>
       ${isVideo
         ? `<video controls preload="none" class="w-full rounded-md bg-black max-h-56" src="${src}"></video>`
@@ -538,7 +710,7 @@ async function startDub() {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(pending),
       });
       const d = await r.json().catch(() => ({}));
-      showToast(r.ok && d.status === 'queued' ? t('exportQueued').replace('{what}', t('exportWaiting_dub')).replace('{dir}', d.folder || '') : t('dubQueued'));
+      showToast(r.ok && d.status === 'queued' ? t('exportQueued').replace('{what}', () => t('exportWaiting_dub')).replace('{dir}', () => d.folder || '') : t('dubQueued'));
     } catch (e) {
       showToast(t('dubQueued'));
     }
@@ -587,11 +759,13 @@ function langName(code) {
   // Serbian is written in two scripts: say which one
   if (code === 'sr') code = 'sr-Cyrl';
   if (code === 'sr-latn') code = 'sr-Latn';
+  // Without ICU data for a language the browser returns the code itself: then the dub list's own names
+  const own = () => ((I18N[state.uiLang] || I18N.ru).dubLangNames || {})[code] || String(code).toUpperCase();
   try {
     const n = new Intl.DisplayNames([state.uiLang], { type: 'language' }).of(code);
-    return n ? n.charAt(0).toUpperCase() + n.slice(1) : String(code).toUpperCase();
+    return n && n.toLowerCase() !== String(code).toLowerCase() ? n.charAt(0).toUpperCase() + n.slice(1) : own();
   } catch (e) {
-    return String(code).toUpperCase();
+    return own();
   }
 }
 
@@ -662,13 +836,13 @@ function renderTranslateResults() {
         <div class="min-w-0">
           <div class="text-xs font-semibold text-white">${escapeHtml(langName(lang))} (${escapeHtml(lang.toUpperCase())})</div>
           <div class="text-[10.5px] text-apple-tertiary truncate">${escapeHtml(meta)}</div>
-          ${outdated ? `<div class="text-[10.5px] text-apple-amber">${escapeHtml(t('translateOutdated').replace('{stale}', r.stale || 0).replace('{missing}', r.missing || 0))}</div>` : ''}
+          ${outdated ? `<div class="text-[10.5px] text-apple-amber">${escapeHtml(t('translateOutdated').replace('{stale}', () => r.stale || 0).replace('{missing}', () => r.missing || 0))}</div>` : ''}
         </div>
         <div class="flex items-center gap-1.5 shrink-0">
-          <button onclick="showTranslation('${lang}')" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]">${escapeHtml(t('translateShow'))}</button>
-          ${outdated ? `<button onclick="startTranslation(true, '${lang}')" class="ui-btn ui-btn-primary h-6 px-2 text-[11px]" title="${escapeHtml(t('tipTranslateUpdate'))}">${escapeHtml(t('translateUpdate'))}</button>` : ''}
-          <button onclick="startTranslation(false, '${lang}')" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]" title="${escapeHtml(t('tipTranslateRedo'))}">${escapeHtml(t('translateRedo'))}</button>
-          <button onclick="deleteTranslation('${lang}')" class="ui-btn ui-btn-subtle h-6 px-1.5 text-[11px] hover:text-apple-red" title="${escapeHtml(t('tipTranslateDelete'))}">${SVG_ICONS.trash}</button>
+          <button data-click="showTranslation" data-click-args='[${jsArg(lang)}]' class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]">${escapeHtml(t('translateShow'))}</button>
+          ${outdated ? `<button data-click="startTranslation" data-click-args='[true, ${jsArg(lang)}]' class="ui-btn ui-btn-primary h-6 px-2 text-[11px]" title="${escapeHtml(t('tipTranslateUpdate'))}">${escapeHtml(t('translateUpdate'))}</button>` : ''}
+          <button data-click="startTranslation" data-click-args='[false, ${jsArg(lang)}]' class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]" title="${escapeHtml(t('tipTranslateRedo'))}">${escapeHtml(t('translateRedo'))}</button>
+          <button data-click="deleteTranslation" data-click-args='[${jsArg(lang)}]' class="ui-btn ui-btn-subtle h-6 px-1.5 text-[11px] hover:text-apple-red" title="${escapeHtml(t('tipTranslateDelete'))}">${SVG_ICONS.trash}</button>
         </div>
       </div>
     </div>`;
@@ -680,7 +854,7 @@ function renderSubsControls() {
   const langs = Object.keys(meetingTranslations(m));
   const sel = document.getElementById('subs-lang');
   const prev = sel.value;
-  sel.innerHTML = langs.map(c => `<option value="${c}">${escapeHtml(t('subsLangTranslation').replace('{lang}', langName(c)))}</option>`).join('')
+  sel.innerHTML = langs.map(c => `<option value="${c}">${escapeHtml(t('subsLangTranslation').replace('{lang}', () => langName(c)))}</option>`).join('')
     + `<option value="">${escapeHtml(t('subsLangOriginal'))}</option>`;
   if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
   updateSubsControls();
@@ -749,7 +923,7 @@ async function toggleTranscriptVerified() {
 
 async function deleteTranslation(lang) {
   const m = state.activeMeeting;
-  if (!m || !await askConfirm(t('translateDeleteConfirm').replace('{lang}', langName(lang)))) return;
+  if (!m || !await askConfirm(t('translateDeleteConfirm').replace('{lang}', () => langName(lang)), true)) return;
   const res = await fetch(`/api/meetings/${m.id}/translations/${encodeURIComponent(lang)}`, { method: 'DELETE' });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -802,7 +976,7 @@ async function requestVideoSubtitles(lang, variant, mode, askPath) {
   }
   if (data.cancelled) return false;
   if (data.queued) {
-    showToast(t('subsBurnQueued').replace('{name}', data.filename));
+    showToast(t('subsBurnQueued').replace('{name}', () => data.filename));
     await loadMeetingsList();
     return true;
   }
@@ -822,8 +996,8 @@ function renderTxQuickLangs() {
   box.innerHTML = quickLangs().filter(c => c !== src).map(c => {
     const ready = !!have[c];
     const on = ready && showing === c;
-    return `<button onclick="${on ? "setTranscriptView('orig')" : `quickTranslate('${c}')`}"
-      title="${escapeHtml(on ? t('subsLangOriginal') : ready ? t('translateQuickShow').replace('{lang}', langName(c)) : t('translateQuickMake').replace('{lang}', langName(c)))}"
+    return `<button ${on ? pageCall('click', 'setTranscriptView', ['orig']) : pageCall('click', 'quickTranslate', [c])}
+      title="${escapeHtml(on ? t('subsLangOriginal') : ready ? t('translateQuickShow').replace('{lang}', () => langName(c)) : t('translateQuickMake').replace('{lang}', () => langName(c)))}"
       class="quick-lang ${on ? 'on' : ''}">${ready && !on ? '✓ ' : ''}${escapeHtml(langCode(c))}</button>`;
   }).join('');
 }
@@ -844,48 +1018,46 @@ function renderTranslationControls() {
     view === 'tr' ? tr : view === 'both' ? `${src || t('txViewOrig')} + ${tr}` : t('txViewOrig');
   document.getElementById('tx-view-btn').className = `ui-btn ${view === 'orig' ? 'ui-btn-subtle' : 'ui-btn-active'}`;
 
-  const item = (onclick, mark, label) =>
-    `<button onclick="${onclick}" class="macos-menu-item gap-2" style="justify-content:flex-start">`
+  const item = (args, mark, label) =>
+    `<button ${pageCall('click', args[0], args.slice(1))} class="macos-menu-item gap-2" style="justify-content:flex-start">`
     + `<span class="w-3 shrink-0 text-center">${mark}</span><span class="truncate">${escapeHtml(label)}</span></button>`;
   const sep = '<div class="h-px bg-white/10 my-1"></div>';
-  let html = item("setTxViewChoice('orig')", view === 'orig' ? '✓' : '', src ? `${t('txViewOrig')} (${src})` : t('txViewOrig'));
+  let html = item(['setTxViewChoice', 'orig'], view === 'orig' ? '✓' : '', src ? `${t('txViewOrig')} (${src})` : t('txViewOrig'));
   for (const c of langs) {
     const on = c === state.txLang;
     html += sep;
-    html += item(`setTxViewChoice('tr','${c}')`, view === 'tr' && on ? '✓' : '', `${t('txViewTr')}: ${langName(c)}`);
-    html += item(`setTxViewChoice('both','${c}')`, view === 'both' && on ? '✓' : '', `${t('txViewBothWith')} ${langName(c)}`);
+    html += item(['setTxViewChoice', 'tr', c], view === 'tr' && on ? '✓' : '', `${t('txViewTr')}: ${langName(c)}`);
+    html += item(['setTxViewChoice', 'both', c], view === 'both' && on ? '✓' : '', `${t('txViewBothWith')} ${langName(c)}`);
   }
-  if (canTranslate) html += sep + item("setTxViewChoice('__new')", '＋', t('txTranslateNew').replace(/^＋\s*/, ''));
+  if (canTranslate) html += sep + item(['setTxViewChoice', '__new'], '＋', t('txTranslateNew').replace(/^＋\s*/, ''));
   // Clearing: one translation, or everything the processing made
-  if (langs.length) html += sep + langs.map(c => item(`deleteTranslation('${c}')`, '✕', `${t('txDeleteTr')}: ${langName(c)}`)).join('');
+  if (langs.length) html += sep + langs.map(c => item(['deleteTranslationFromMenu', c], '✕', `${t('txDeleteTr')}: ${langName(c)}`)).join('');
   document.getElementById('tx-view-menu').innerHTML = html;
-  document.getElementById('tx-clear-btn')?.classList.toggle('hidden', !(m && m.status === 'completed'));
   renderVerifiedButton();
   renderExportTranslatedMenu();
 }
 
-async function deleteTranslation(lang) {
+// From the "Text language" menu of the transcript (deleteTranslation above is the Translate window's)
+async function deleteTranslationFromMenu(lang) {
   hideTxViewMenu();
   const m = state.activeMeeting;
-  if (!m || !(await confirmDialog(t('txDeleteTrTitle').replace('{lang}', langName(lang)), t('txDeleteTrText'), t('txDeleteTr')))) return;
+  if (!m || !(await confirmDialog(t('txDeleteTrTitle').replace('{lang}', () => langName(lang)), t('txDeleteTrText'), t('txDeleteTr')))) return;
   const res = await fetch(`/api/meetings/${m.id}/translations/${encodeURIComponent(lang)}`, { method: 'DELETE' });
-  if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
+  const data = await readJson(res);
+  if (!res.ok) { showToast(errorText(data, res)); return; }
   if (state.txLang === lang) state.txView = 'orig';
-  await selectMeeting(m.id, true);
+  state.activeMeeting = data;  // the player keeps playing where it was
+  renderSubsControls();
+  renderTranslationControls();
+  renderTranscript();
 }
 
-function clearActiveResults() {
-  hideTxViewMenu();
-  if (!state.activeMeeting) return;
-  state.contextMeetingId = state.activeMeeting.id;
-  ctxClearResults();
-}
 
 async function deleteActiveDub() {
   const m = state.activeMeeting;
   const lang = state.audioTrack;
   if (!m || !lang || lang === 'orig') return;
-  if (!(await confirmDialog(t('dubDeleteTitle').replace('{lang}', lang.toUpperCase()), t('dubDeleteText'), t('dubDelete')))) return;
+  if (!(await confirmDialog(t('dubDeleteTitle').replace('{lang}', () => lang.toUpperCase()), t('dubDeleteText'), t('dubDelete')))) return;
   const res = await fetch(`/api/meetings/${m.id}/dubs/${encodeURIComponent(lang)}`, { method: 'DELETE' });
   if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
   setAudioTrack('orig');
@@ -922,17 +1094,6 @@ function setTranscriptView(view) {
   updateTheatreCaption(document.getElementById('media-player').currentTime || 0, true);
 }
 
-function setTranscriptViewLang(lang) {
-  if (lang === '__new') {
-    renderTranslationControls();  // put the selection back
-    openTranslateModal();
-    return;
-  }
-  state.txLang = lang;
-  renderTranslationControls();
-  renderTranscript();
-}
-
 // Translation of a segment for the current view, or null in "original" view
 function activeSegmentTranslation(seg) {
   if (!state.txView || state.txView === 'orig') return null;
@@ -957,7 +1118,7 @@ async function cancelProcessing(id) {
     showToast(data.detail || 'Error');
     return;
   }
-  showToast(state.uiLang === 'en' ? 'Cancelling…' : 'Обработка отменяется…');
+  showToastt('uiCancelling');
   await loadMeetingsList();
 }
 
@@ -983,25 +1144,44 @@ function renderSpeakerPillsBar() {
 
   if (keys.length === 0) {
     container.innerHTML = '';
+    fitTranscriptToolbar();
     return;
   }
 
   // Compact: a speaker icon for "everyone" and a numbered circle in each speaker's colour; the
   // name is in the tooltip, right-click plays a sample of the voice
   const allActive = !state.speakerFilter;
-  let html = `<button onclick="filterBySpeaker(null)" title="${escapeHtml(t('tipFilterAllSpeakers'))}"
+  let html = `<button data-click="filterBySpeaker" data-click-args='[null]' title="${escapeHtml(t('tipFilterAllSpeakers'))}"
       class="spk-chip ${allActive ? 'spk-chip-on' : ''}">${ICON_SPEAKERS}</button>`;
   html += keys.map((spkId, i) => {
     const s = speakers[spkId];
     const active = state.speakerFilter === spkId;
     const named = !/^(Участник|Speaker|SPEAKER)[ _]?\d+$/i.test(s.name || '');
     const label = named ? (s.name || '?').trim().slice(0, 1).toUpperCase() : String(i + 1);
-    return `<button onclick="filterBySpeaker('${spkId}')" oncontextmenu="event.preventDefault(); previewSpeakerVoice(${s.sample_start || 0}, ${s.sample_end || 5})"
+    return `<button data-click="filterBySpeaker" data-click-args='[${jsArg(spkId)}]' data-contextmenu="preventThen" data-contextmenu-args='[{"$": "event"}, "previewSpeakerVoice", ${Number(s.sample_start) || 0}, ${Number(s.sample_end) || 5}]'
       title="${escapeHtml(`${s.name}\n${t('tipFilterSpeaker')} · ${t('tipSpeakerChipVoice')}`)}"
       class="spk-chip ${active ? 'spk-chip-on' : ''}" style="--spk:${s.color}">${escapeHtml(label)}</button>`;
   }).join('');
 
   container.innerHTML = html;
+  fitTranscriptToolbar();
+}
+
+// The tools on the right keep only their icons (their titles explain them) when the speaker
+// circles would not fit on one line beside them; a ResizeObserver repeats the check when the
+// window, the sidebar or a button's label changes
+let txToolbarObserver = null;
+function fitTranscriptToolbar() {
+  const bar = document.querySelector('#wview-transcript .tx-toolbar');
+  const pills = document.getElementById('speaker-pills-container');
+  if (!bar || !pills) return;
+  if (!txToolbarObserver && window.ResizeObserver) {
+    txToolbarObserver = new ResizeObserver(() => fitTranscriptToolbar());
+    [bar.parentElement, document.getElementById('tx-tools'), pills].forEach(el => el && txToolbarObserver.observe(el));
+  }
+  bar.classList.remove('tx-compact');
+  const crowded = pills.children.length && (pills.scrollWidth > pills.clientWidth + 1 || pills.offsetHeight > 34);
+  if (crowded || bar.scrollWidth > bar.clientWidth + 1) bar.classList.add('tx-compact');
 }
 
 async function renderTalkAnalytics() {
@@ -1025,7 +1205,7 @@ async function renderTalkAnalytics() {
         ].filter(Boolean).join(' · '))}</div></div>`).join('')}
     </div>
     ${a.longest_monologues.length ? `<div class="text-[11px] text-apple-secondary">${escapeHtml(t('analyticsMonologues'))}: ${a.longest_monologues.map(x =>
-      `<button onclick="seekPlayer(${x.start})" class="text-apple-blue hover:underline font-mono">${formatTime(x.start)}</button> ${escapeHtml(x.name)} (${min(x.seconds)})`).join(' · ')}</div>` : ''}`;
+      `<button data-click="seekPlayer" data-click-args='[${Number(x.start) || 0}]' class="text-apple-blue hover:underline font-mono">${formatTime(x.start)}</button> ${escapeHtml(x.name)} (${min(x.seconds)})`).join(' · ')}</div>` : ''}`;
 }
 
 function renderSpeakersPanel() {
@@ -1035,7 +1215,7 @@ function renderSpeakersPanel() {
   const keys = Object.keys(speakers);
 
   if (keys.length === 0) {
-    box.innerHTML = `<div class="p-6 text-xs text-apple-tertiary text-center">—</div>`;
+    box.innerHTML = `<div class="p-6 text-xs text-apple-tertiary text-center">${escapeHtml(t('emptySpeakers'))}</div>`;
     return;
   }
 
@@ -1045,28 +1225,28 @@ function renderSpeakersPanel() {
 
     return `
       <div class="px-4 py-3 flex items-center gap-3">
-        <input type="color" value="${s.color || '#0A84FF'}"
+        <input type="color" value="${escapeHtml(s.color || '#0A84FF')}"
           title="${escapeHtml(t('tipSpeakerColor'))}"
-          onchange="updateSpeaker('${spkId}', null, this.value)"
+          data-change="updateSpeaker" data-change-args='[${jsArg(spkId)}, null, {"$": "value"}]'
           class="w-4 h-4 rounded-full cursor-pointer bg-transparent border-0 shrink-0" />
 
         <input type="text" value="${escapeHtml(s.name)}"
           title="${escapeHtml(t('tipSpeakerNameInput'))}"
-          onblur="updateSpeaker('${spkId}', this.value, null)"
-          onkeydown="if(event.key==='Enter') this.blur()"
+          data-blur="updateSpeaker" data-blur-args='[${jsArg(spkId)}, {"$": "value"}, null]'
+          data-keydown="blurOnEnter" data-keydown-args='[{"$": "event"}, {"$": "el"}]'
           class="flex-1 bg-transparent hover:bg-white/5 focus:bg-apple-card focus:outline-none px-2.5 py-1 rounded-md text-xs font-medium text-white" />
 
         ${s.voice_profile ? `<span class="text-[10.5px] px-1.5 py-0.5 rounded bg-apple-blue/15 text-apple-blue shrink-0"
           title="${escapeHtml(t('tipVoiceRecognised'))}">${escapeHtml(t('voiceRecognisedBadge'))}</span>` : ''}
         ${s.voice_suggest ? `<span class="flex items-center gap-1 shrink-0 text-[11px] px-1.5 py-0.5 rounded bg-apple-amber/15 text-apple-amber"
-            title="${escapeHtml(t('tipVoiceSuggest'))}">${escapeHtml(t('voiceSuggest').replace('{name}', s.voice_suggest.name))}
-            <button data-spk="${escapeHtml(spkId)}" data-name="${escapeHtml(s.voice_suggest.name)}" onclick="updateSpeaker(this.dataset.spk, this.dataset.name, null)"
+            title="${escapeHtml(t('tipVoiceSuggest'))}">${escapeHtml(t('voiceSuggest').replace('{name}', () => s.voice_suggest.name))}
+            <button data-spk="${escapeHtml(spkId)}" data-name="${escapeHtml(s.voice_suggest.name)}" data-click="updateSpeaker" data-click-args='[{"$": "data", "k": "spk"}, {"$": "data", "k": "name"}, null]'
               class="px-1.5 rounded bg-apple-amber/25 hover:bg-apple-amber/40 text-white">${escapeHtml(t('voiceSuggestYes'))}</button>
-            <button data-spk="${escapeHtml(spkId)}" onclick="dismissVoiceSuggestion(this.dataset.spk)" class="px-1 hover:text-white">${escapeHtml(t('voiceSuggestNo'))}</button>
+            <button data-spk="${escapeHtml(spkId)}" data-click="dismissVoiceSuggestion" data-click-args='[{"$": "data", "k": "spk"}]' class="px-1 hover:text-white">${escapeHtml(t('voiceSuggestNo'))}</button>
           </span>` : ''}
         <span class="text-[11px] text-apple-secondary font-mono">${turnCount} ${t('turns')}</span>
 
-        <button onclick="previewSpeakerVoice(${s.sample_start || 0}, ${s.sample_end || 5})"
+        <button data-click="previewSpeakerVoice" data-click-args='[${Number(s.sample_start) || 0}, ${Number(s.sample_end) || 5}]'
           title="${escapeHtml(t('tipPlayVoiceSample'))}"
           class="ui-btn ui-btn-subtle text-apple-label">
           ${SVG_ICONS.playMini}
@@ -1119,7 +1299,9 @@ async function updateSpeaker(speakerId, newName, newColor) {
       color: colorToSave
     })
   });
-  state.activeMeeting = await readJson(res);
+  const data = await readJson(res);
+  if (!res.ok) { showToast(errorText(data, res)); renderSpeakersPanel(); return; }
+  state.activeMeeting = data;
   renderSpeakerPillsBar();
   renderSpeakersPanel();
   renderTranscript();
@@ -1161,9 +1343,12 @@ function renderTranscript() {
   tx.speakers = speakers;
 
   if (filtered.length === 0) {
-    container.innerHTML = `<div class="py-20 text-center text-xs text-apple-tertiary">
-      ${segments.length === 0 ? '…' : '—'}
-    </div>`;
+    const m = state.activeMeeting || {};
+    const why = segments.length ? 'emptyTxFiltered'
+      : m.status === 'cleared' ? 'emptyTxCleared'
+      : ['failed', 'cancelled'].includes(m.status) ? 'emptyTxFailed'
+      : DONE_STATUSES.includes(m.status) ? 'emptyTxNoSpeech' : 'emptyTxProcessing';
+    container.innerHTML = `<div class="py-20 text-center text-xs text-apple-tertiary">${escapeHtml(t(why))}</div>`;
     rebuildPlaybackIndex();
     return;
   }
@@ -1241,19 +1426,21 @@ function transcriptSegmentHtml(seg, idx) {
     bodyHtml = translationHtml(seg, tr, query, false);
   } else {
     if (words.length > 0 && !query) {
-      bodyHtml = words.map(w =>
-        `<span class="word-token cursor-pointer" data-start="${w.start}" data-end="${w.end}" onclick="seekPlayer(${w.start})">${escapeHtml(w.word)}</span>`
+      bodyHtml = words.map((w, wi) => (w.alts && w.alts.length)
+        // A place the models heard differently (a merged transcript): a click shows the variants
+        ? `<span class="word-token word-disputed cursor-pointer" data-start="${Number(w.start) || 0}" data-end="${Number(w.end) || 0}" title="${escapeHtml(disputeTitle(w))}" data-click="openWordAlts" data-click-args='[{"$": "event"}, ${Number(seg.id)}, ${wi}]'>${escapeHtml(w.word)}</span>`
+        : `<span class="word-token cursor-pointer" data-start="${Number(w.start) || 0}" data-end="${Number(w.end) || 0}" data-click="seekPlayer" data-click-args='[${Number(w.start) || 0}]'>${escapeHtml(w.word)}</span>`
       ).join('');
     } else {
-      bodyHtml = `<span class="cursor-pointer" onclick="seekPlayer(${seg.start})">${highlightSearch(escapeHtml(seg.text), query)}</span>`;
+      bodyHtml = `<span class="cursor-pointer" data-click="seekPlayer" data-click-args='[${Number(seg.start) || 0}]'>${highlightSearch(escapeHtml(seg.text), query)}</span>`;
     }
     if (tr) bodyHtml += translationHtml(seg, tr, query, true);
   }
 
   const mergeBtnHtml = idx > 0 ? `
-    <button onclick="mergeSegmentWithPrevious(${seg.id})"
+    <button data-click="mergeSegmentWithPrevious" data-click-args='[${seg.id}]'
       title="${escapeHtml(t('tipMergeSegment'))}"
-      class="opacity-0 group-hover:opacity-100 inline-flex items-center gap-1 text-[11px] text-apple-tertiary hover:text-apple-blue transition">
+      class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 inline-flex items-center gap-1 text-[11px] text-apple-tertiary hover:text-apple-blue transition">
       ${SVG_ICONS.mergeUp}
       <span>${t('mergeBtn')}</span>
     </button>
@@ -1262,7 +1449,7 @@ function transcriptSegmentHtml(seg, idx) {
   return `
     <div id="seg-${seg.id}" data-start="${seg.start}" data-end="${seg.end}"
       class="segment-row group px-3.5 py-2.5 flex items-baseline gap-4 hover:bg-white/[0.02]">
-      <button onclick="seekPlayer(${seg.start})"
+      <button data-click="seekPlayer" data-click-args='[${Number(seg.start) || 0}]'
         title="${escapeHtml(t('tipSeekTimestamp'))}"
         class="text-[11px] font-mono text-apple-tertiary hover:text-apple-blue shrink-0 w-12 text-right transition">
         ${formatTime(seg.start)}
@@ -1270,7 +1457,7 @@ function transcriptSegmentHtml(seg, idx) {
 
       <div class="flex-1 min-w-0">
         <div class="flex items-center justify-between mb-0.5">
-          <select onchange="changeSegmentSpeaker(${seg.id}, this.value)"
+          <select data-change="changeSegmentSpeaker" data-change-args='[${seg.id}, {"$": "value"}]'
             title="${escapeHtml(t('tipChangeSegSpeaker'))}"
             style="color: ${spk.color}"
             class="bg-transparent text-xs font-semibold focus:outline-none cursor-pointer">
@@ -1280,9 +1467,9 @@ function transcriptSegmentHtml(seg, idx) {
             ? `<span class="ml-2 mr-auto text-[10px] font-mono px-1 rounded bg-white/10 text-apple-secondary" title="${escapeHtml(t('tipSegLang'))}">${escapeHtml(String(seg.lang).toUpperCase())}</span>` : ''}
           <div class="flex items-center gap-2.5">
             ${mergeBtnHtml}
-            <button onclick="openInlineSegmentEditor(${seg.id})"
+            <button data-click="openInlineSegmentEditor" data-click-args='[${seg.id}]'
               title="${escapeHtml(t('tipEditSegment'))}"
-              class="opacity-0 group-hover:opacity-100 text-[11px] text-apple-tertiary hover:text-white transition">
+              class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 text-[11px] text-apple-tertiary hover:text-white transition">
               ${t('editBtn')}
             </button>
           </div>
@@ -1344,7 +1531,7 @@ function translationWordsHtml(seg, text) {
   return parts.map(w => {
     if (!w.trim()) return w;
     const t0 = Math.round(times[i++] * 100) / 100;
-    return `<span class="tr-word" data-start="${t0}" onclick="event.stopPropagation(); seekPlayer(${t0})">${escapeHtml(w)}</span>`;
+    return `<span class="tr-word" data-start="${Number(t0) || 0}" data-click="stopThen" data-click-args='[{"$": "event"}, "seekPlayer", ${Number(t0) || 0}]'>${escapeHtml(w)}</span>`;
   }).join('');
 }
 
@@ -1359,7 +1546,7 @@ function translationHtml(seg, tr, query, secondary) {
       ? highlightSearch(escapeHtml(tr.text), query)
       : translationWordsHtml(seg, tr.text);
   const cls = secondary ? 'block mt-1 text-[13px] text-apple-secondary' : '';
-  return `<span class="tr-text cursor-pointer ${cls} ${tr.stale ? 'opacity-70' : ''}" onclick="seekPlayer(${seg.start})">${body}${staleBadge}</span>`;
+  return `<span class="tr-text cursor-pointer ${cls} ${tr.stale ? 'opacity-70' : ''}" data-click="seekPlayer" data-click-args='[${Number(seg.start) || 0}]'>${body}${staleBadge}</span>`;
 }
 
 // Sorted segment list for O(log n) lookup of the playing segment; words are looked up inside it.
@@ -1470,7 +1657,7 @@ async function mergeSegmentWithPrevious(segId) {
     renderSpeakerPillsBar();
     renderSpeakersPanel();
     renderTranscript();
-    showToast(state.uiLang === 'en' ? 'Segments merged' : 'Реплики объединены');
+    showToastt('uiSegmentsMerged');
   }
 }
 
@@ -1524,8 +1711,8 @@ function openInlineSegmentEditor(segId) {
     <textarea id="seg-edit-area-${segId}" rows="2"
       class="w-full bg-apple-sidebar border border-apple-blue rounded-lg p-2 text-xs text-white focus:outline-none mt-1">${escapeHtml(seg.text)}</textarea>
     <div class="flex justify-end gap-2 mt-1.5">
-      <button onclick="renderTranscript()" title="${escapeHtml(t('tipCancelBtn'))}" class="ui-btn ui-btn-subtle">${t('cancel')}</button>
-      <button onclick="saveSegmentEdit(${segId})" title="${escapeHtml(t('tipSaveSettingsBtn'))}" class="ui-btn ui-btn-primary">${t('save')}</button>
+      <button data-click="renderTranscript" title="${escapeHtml(t('tipCancelBtn'))}" class="ui-btn ui-btn-subtle">${t('cancel')}</button>
+      <button data-click="saveSegmentEdit" data-click-args='[${segId}]' title="${escapeHtml(t('tipSaveSettingsBtn'))}" class="ui-btn ui-btn-primary">${t('save')}</button>
     </div>
   `;
 }
@@ -1537,7 +1724,9 @@ async function saveSegmentEdit(segId) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text: newText })
   });
-  state.activeMeeting = await readJson(res);
+  const data = await readJson(res);
+  if (!res.ok) { showToast(errorText(data, res)); return; }  // the edit box stays open with the text
+  state.activeMeeting = data;
   renderTranscript();
 }
 
@@ -1547,7 +1736,9 @@ async function changeSegmentSpeaker(segId, newSpeaker) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ speaker: newSpeaker })
   });
-  state.activeMeeting = await readJson(res);
+  const data = await readJson(res);
+  if (!res.ok) { showToast(errorText(data, res)); renderTranscript(); return; }
+  state.activeMeeting = data;
   renderSpeakerPillsBar();
   renderSpeakersPanel();
   renderTranscript();

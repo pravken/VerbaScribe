@@ -2,28 +2,12 @@ import tests  # noqa: F401 - keeps the real user data out of reach (see tests/__
 import threading
 import unittest
 
-from app.dub_text import TTS_MAX_WORKERS, choose_tts_workers, extra_tts_workers
+from app.dub_text import TTS_MAX_WORKERS, extra_tts_workers
 
 try:
     from app.dubbing import TtsPool
 except ImportError:  # numpy/httpx are not installed (e.g. in the release CI job)
     TtsPool = None
-
-
-class ChooseWorkersTest(unittest.TestCase):
-    def test_auto_follows_free_vram(self):
-        self.assertEqual(choose_tts_workers("auto", 20.0, 32), TTS_MAX_WORKERS)
-        self.assertEqual(choose_tts_workers("auto", 10.5, 32), 2)
-        self.assertEqual(choose_tts_workers("auto", 3.0, 32), 1)
-        self.assertEqual(choose_tts_workers("auto", 0.0, 32), 1)
-
-    def test_auto_is_limited_by_cpu(self):
-        self.assertEqual(choose_tts_workers("auto", 20.0, 4), 1)
-
-    def test_explicit_setting_is_clamped(self):
-        self.assertEqual(choose_tts_workers("2", 0.0, 1), 2)
-        self.assertEqual(choose_tts_workers("9", 0.0, 1), TTS_MAX_WORKERS)
-        self.assertEqual(choose_tts_workers("0", 0.0, 1), 1)
 
 
 class ExtraWorkersTest(unittest.TestCase):

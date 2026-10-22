@@ -116,16 +116,21 @@ def learn(name: str, embedding: Optional[List[float]]) -> None:
         conn.close()
 
 
-def apply_to_speakers(speakers: Dict[str, Dict[str, Any]], only_unnamed: bool = False) -> int:
+def apply_to_speakers(speakers: Dict[str, Dict[str, Any]], only_unnamed: bool = False,
+                      profiles: Optional[List[Dict[str, Any]]] = None) -> int:
     """
     Gives known names to the speakers of a recording. Each profile names at most one speaker
     (the most similar one) and only above MATCH_THRESHOLD. only_unnamed: speakers the user named
     keep their names, and a name already used in the recording is not given again (for recordings
     made before the profile existed). Returns how many were named.
     """
-    if not speakers or not enabled():
+    if profiles is None:  # given profiles: the caller checked enabled() (it holds the database lock)
+        if not speakers or not enabled():
+            return 0
+        profiles = _load()
+    if not speakers:
         return 0
-    profiles = _load()
+    profiles = list(profiles)
     if only_unnamed:
         taken = {str(m.get("name") or "").strip().lower() for m in speakers.values() if not is_default_name(str(m.get("name") or ""))}
         profiles = [p for p in profiles if p["name"].lower() not in taken]
@@ -167,9 +172,10 @@ def apply_to_speakers(speakers: Dict[str, Dict[str, Any]], only_unnamed: bool = 
 def apply_to_library() -> Dict[str, int]:
     """Looks for the known voices in recordings made before their profiles existed; only unnamed
     speakers get a name. Returns how many recordings and speakers were named."""
-    from app.database import save_meeting_results
+    from app.database import edit_meeting
 
-    if not enabled() or not _load():
+    profiles = _load() if enabled() else []
+    if not profiles:
         return {"meetings": 0, "speakers": 0}
     with _db_lock:
         conn = get_connection()
@@ -183,11 +189,16 @@ def apply_to_library() -> Dict[str, int]:
             continue
         if not any(m.get("embedding") for m in speakers.values() if isinstance(m, dict)):
             continue
-        named = apply_to_speakers(speakers, only_unnamed=True)
-        if named:
-            save_meeting_results(int(r["id"]), speakers=speakers)
+        box = [0]
+
+        def name_voices(m: Dict[str, Any]) -> tuple:  # on the current participants: a rename meanwhile stays
+            box[0] = apply_to_speakers(m.get("speakers") or {}, only_unnamed=True, profiles=profiles)
+            return ("speakers",) if box[0] else ()
+
+        edit_meeting(int(r["id"]), name_voices)
+        if box[0]:
             meetings += 1
-            speakers_named += named
+            speakers_named += box[0]
     return {"meetings": meetings, "speakers": speakers_named}
 
 
@@ -198,20 +209,19 @@ def people() -> List[Dict[str, Any]]:
     with _db_lock:
         conn = get_connection()
         rows = conn.execute(
-            "SELECT id, title, recorded_at, created_at, speakers_json, segments_json FROM meetings WHERE status = 'completed'"
+            "SELECT id, title, recorded_at, created_at, speakers_json FROM meetings WHERE status = 'completed'"
         ).fetchall()
         conn.close()
+    from app.database import speaker_seconds
+
+    talk = speaker_seconds(r["id"] for r in rows)
     by_name: Dict[str, Dict[str, Any]] = {}
     for r in rows:
         try:
             speakers = json.loads(r["speakers_json"] or "{}")
-            segments = json.loads(r["segments_json"] or "[]")
         except ValueError:
             continue
-        seconds: Dict[str, float] = {}
-        for seg in segments:
-            spk = seg.get("speaker")
-            seconds[spk] = seconds.get(spk, 0.0) + max(0.0, float(seg.get("end") or 0) - float(seg.get("start") or 0))
+        seconds = talk.get(r["id"], {})
         for spk_id, meta in speakers.items():
             name = str((meta or {}).get("name") or "").strip()
             if is_default_name(name) or not seconds.get(spk_id):
