@@ -461,6 +461,7 @@ class TrayController:
 
         self.window = window
         self.quitting = False
+        self._told_tray = False  # "the app stays in the tray" is said once per run
         self._status = {"state": "idle", "text": "", "recording": False, "queue": []}
         self._running: dict = {}
         self._mf_default, self._mf_grayed = MF_DEFAULT, MF_GRAYED
@@ -559,6 +560,11 @@ class TrayController:
         tick = 0
         while not self.quitting:
             tick += 1
+            if tick % 300 == 0:  # every five minutes
+                try:
+                    self._update_in_background()
+                except Exception as e:
+                    print(f"[update] background install: {e}", file=sys.stderr)
             if tick % 5 == 0:
                 try:
                     self._apply_hotkey()  # changed in Settings → Recording
@@ -710,14 +716,42 @@ class TrayController:
         self.window.destroy()
 
     def on_closing(self) -> bool:
-        if self.quitting or self._status.get("state") == "idle":
+        from app.database import get_all_settings
+
+        to_tray = (get_all_settings().get("close_to_tray") or "false").lower() == "true"
+        if self.quitting or (self._status.get("state") == "idle" and not to_tray):
             self.quitting = True
             return True
-        # Something runs: keep working in the tray instead of stopping it
+        # Something runs, or the app stays in the tray by choice (Settings → General): the window hides
         threading.Timer(0.05, self.window.hide).start()
-        self._notify("VerbaScribe работает в фоне",
+        if self._status.get("state") != "idle":
+            self._notify("VerbaScribe работает в фоне",
                          "Запись или обработка продолжается. Значок в трее — открыть окно или выйти.")
+        elif not self._told_tray:
+            self._told_tray = True
+            self._notify("VerbaScribe в трее", "Программа продолжает работать. Значок в трее — открыть окно или выйти.")
         return False
+
+    def _update_in_background(self) -> None:
+        """The app now rarely closes (it stays in the tray): an update it downloaded installs while the
+        window is hidden and nothing runs, and the app comes back in the tray."""
+        from app import updater
+
+        if self.quitting or self._status.get("state") != "idle" or not updater.ready_to_install():
+            return
+        hwnd = find_app_window(os.getpid())
+        if hwnd and ctypes.windll.user32.IsWindowVisible(hwnd):
+            return  # someone works in the window: on its closing, as before
+        print("[update] installing the downloaded update in the background")
+        try:
+            updater.launch_installer(restart=True, minimized=True)
+        except Exception as e:
+            print(f"[update] not started: {e}", file=sys.stderr)
+            return
+        global _update_launched
+        _update_launched = True
+        self.quitting = True
+        self.window.destroy()
 
     def stop(self) -> None:
         self.quitting = True
@@ -819,6 +853,8 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8765, help="Server port")
     parser.add_argument("--browser", action="store_true", help="Open in external web browser")
     parser.add_argument("--headless", action="store_true", help="Run server without GUI window")
+    # Started with Windows (app/autostart.py): in the tray, the window shown from the tray icon
+    parser.add_argument("--minimized", action="store_true", help="Start in the tray without showing the window")
     args = parser.parse_args()
 
     if args.host not in ("127.0.0.1", "localhost", "::1"):
@@ -872,7 +908,14 @@ def main() -> None:
                 background_color="#141416",
                 text_select=True,
                 js_api=WindowApi(args.host, args.port),
+                hidden=args.minimized,
             )
+            try:
+                from app import autostart
+
+                autostart.sync()  # the Run key follows the setting and this program folder
+            except Exception as e:
+                print(f"[autostart] {e}", file=sys.stderr)
             tray = None
             try:
                 tray = TrayController(window)

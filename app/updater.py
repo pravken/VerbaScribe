@@ -188,6 +188,13 @@ def _auto_download(st: Dict[str, Any]) -> None:
             pass
 
 
+def ready_to_install() -> bool:
+    """A downloaded update that automatic updates would install now."""
+    with _lock:
+        done = bool(_state["download"].get("done") and _state["download"].get("path"))
+    return done and auto_enabled() and not is_git_checkout()
+
+
 def install_on_exit() -> bool:
     """Called when the app closes: installs a downloaded update without starting the app again."""
     try:
@@ -305,8 +312,9 @@ def quit_soon(delay: float = 0.8) -> None:
     threading.Thread(target=_quit, daemon=True, name="update_quit").start()
 
 
-def launch_installer(restart: bool = True) -> None:
-    """Starts the updater for the downloaded archive; the caller then quits the app."""
+def launch_installer(restart: bool = True, minimized: bool = False) -> None:
+    """Starts the updater for the downloaded archive; the caller then quits the app. minimized: the
+    app comes back in the tray, without its window (installed in the background, run.py)."""
     from app.paths import APP_DIR, DATA_DIR
 
     with _lock:
@@ -314,7 +322,8 @@ def launch_installer(restart: bool = True) -> None:
     if not path or not Path(path).is_file():
         raise RuntimeError("Архив обновления не скачан")
     cmd = [sys.executable, "-m", "app.updater", "apply", "--zip", path, "--app-dir", str(APP_DIR),
-           "--data-dir", str(DATA_DIR), "--pid", str(os.getpid())] + ([] if restart else ["--no-restart"])
+           "--data-dir", str(DATA_DIR), "--pid", str(os.getpid())] + ([] if restart else ["--no-restart"]) \
+        + (["--restart-minimized"] if restart and minimized else [])
     flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
     subprocess.Popen(cmd, cwd=str(APP_DIR), creationflags=flags, close_fds=True)
 
@@ -562,10 +571,11 @@ def _main(argv: List[str]) -> int:
     ap.add_argument("--data-dir", required=True)
     ap.add_argument("--pid", type=int, default=0)
     ap.add_argument("--no-restart", action="store_true")  # installed on exit: the user closed the app
+    ap.add_argument("--restart-minimized", action="store_true")  # installed in the background: back in the tray
     a = ap.parse_args(argv)
     app_dir, data_dir = Path(a.app_dir), Path(a.data_dir)
 
-    ui = _ProgressWindow()
+    ui = _ProgressWindow(visible=not a.restart_minimized)  # in the background: no window, only a failure is said
     ok, message = True, ""
 
     def work() -> None:
@@ -583,7 +593,10 @@ def _main(argv: List[str]) -> int:
                 lf.write(traceback.format_exc())
         finally:
             launcher = app_dir / "VerbaScribe.exe"
-            if launcher.is_file() and not (a.no_restart and ok):
+            pythonw = app_dir / ".venv" / "Scripts" / "pythonw.exe"
+            if a.restart_minimized and pythonw.is_file():  # after a failure too: the previous version is back
+                subprocess.Popen([str(pythonw), str(app_dir / "run.py"), "--minimized"], cwd=str(app_dir))
+            elif launcher.is_file() and not (a.no_restart and ok):
                 subprocess.Popen([str(launcher)], cwd=str(app_dir))
             ui.close(None if ok else f"Обновление не установлено: {message}")
 
@@ -593,11 +606,15 @@ def _main(argv: List[str]) -> int:
 
 
 class _ProgressWindow:
-    """A small always-on-top window; falls back to nothing if tkinter is unavailable."""
+    """A small always-on-top window; falls back to nothing if tkinter is unavailable. visible=False
+    (installed in the background): no window, a failure is told in a message box."""
 
-    def __init__(self) -> None:
+    def __init__(self, visible: bool = True) -> None:
         self._tk = None
         self._msg = "Обновление VerbaScribe…"
+        self._visible = visible
+        if not visible:
+            return
         try:
             import tkinter as tk
 
@@ -623,6 +640,10 @@ class _ProgressWindow:
 
     def close(self, error: Optional[str]) -> None:
         if self._tk is None:
+            if error and not self._visible and sys.platform == "win32":
+                import ctypes
+
+                ctypes.windll.user32.MessageBoxW(None, error, "VerbaScribe", 0x10 | 0x40000)  # error, on top
             return
 
         def _close() -> None:

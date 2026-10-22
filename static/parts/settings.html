@@ -75,6 +75,22 @@
         </div>
 
         <!-- Version and updates from GitHub Releases (app/updater.py) -->
+        <!-- Start with Windows, in the tray (app/autostart.py, run.py --minimized) -->
+        <div class="settings-card">
+          <div>
+            <h4 class="text-[13px] font-semibold text-white" data-i18n="startupTitle">Запуск и трей</h4>
+            <p class="text-[11px] text-apple-secondary leading-snug" data-i18n="startupHint">Чтобы автозапись по календарю, звонкам и горячие клавиши работали всегда, программа может жить в трее.</p>
+          </div>
+          <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label">
+            <input type="checkbox" id="set-start-with-windows" data-change="syncStartupToggles" data-change-args='[{"$": "el"}]' class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <span data-i18n="startWithWindows">Запускать вместе с Windows (в трее, без окна)</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label">
+            <input type="checkbox" id="set-close-to-tray" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <span data-i18n="closeToTray">Закрытие окна оставляет программу в трее (выход — из меню значка)</span>
+          </label>
+        </div>
+
         <div class="settings-card">
           <div class="flex items-center justify-between gap-3">
             <div class="min-w-0">

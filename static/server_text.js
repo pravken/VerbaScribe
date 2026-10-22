@@ -284,6 +284,7 @@ const SERVER_PATTERNS_EN = [
   ["Скачивание модели {}: {} из {} МБ", "Downloading the {0} model: {1} of {2} MB"],
   ["Не удалось скачать модель {}: {}", "Could not download the {0} model: {1}"],
   ["Ollama ответила ошибкой {}: {}", "Ollama answered with error {0}: {1}"],
+  ["Не удалось изменить автозапуск Windows: {}", "Could not change starting with Windows: {0}"],
   ["Сведение версий: спорные места {}–{} из {}", "Merging the versions: disputed places {0}–{1} of {2}"],
   ["Сведено из {} версий ({}): спорных мест {}, из них выбрала модель анализа {}.{}", "Merged from {0} versions ({1}): {2} disputed places, {3} of them chosen by the analysis model.{4}"],
   ["Транскрибация{}: {} из {}", "Transcribing{0}: {1} of {2}"],

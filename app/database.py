@@ -159,7 +159,9 @@ def init_db() -> None:
             "dictation_language": "auto",
             "dictation_translate_hotkey": "Ctrl+Alt+T",  # dictation typed in another language; empty: off
             "dictation_translate_to": "en",
-            "dictation_save": "true",  # each dictation is kept in the library, folder "Dictations"
+            "dictation_save": "true",
+            "start_with_windows": "false",  # in the tray, without a window, when the user signs in (app/autostart.py)
+            "close_to_tray": "false",  # closing the window keeps the app in the tray (quit from its menu)  # each dictation is kept in the library, folder "Dictations"
             "dictation_translate_cloud": "false",  # dictation is translated by the local model unless allowed
             "quiet_mode": "false",  # no tray notifications (run.py TrayController)
             "call_auto_record": "false",  # record calls by themselves (app/call_watch.py)
