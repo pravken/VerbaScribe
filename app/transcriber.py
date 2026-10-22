@@ -143,6 +143,11 @@ def queue_snapshot() -> List[Dict[str, Any]]:
     return out
 
 
+def _cancel_wanted(meeting_id: int) -> bool:
+    with _jobs_lock:
+        return meeting_id in _cancel_requested
+
+
 def _check_cancel(meeting_id: int) -> None:
     with _jobs_lock:
         if meeting_id in _cancel_requested:
@@ -193,10 +198,13 @@ def _run_job(meeting_id: int) -> None:
             _cancel_requested.discard(meeting_id)
             queue_empty = not _active_jobs
         if queue_empty:
-            release_whisper_model()
-            from app import asr_onnx
+            try:  # a driver failing here (after sleep) must not skip the exports below
+                release_whisper_model()
+                from app import asr_onnx
 
-            asr_onnx.release_gpu()  # the video memory goes back to the summary model
+                asr_onnx.release_gpu()  # the video memory goes back to the summary model
+            except Exception:
+                traceback.print_exc()
         _run_pending_exports(meeting_id)
 
 
@@ -997,8 +1005,12 @@ def _process_meeting_job(meeting_id: int) -> None:
 
         clear_vram()
 
+        # Cancelled once the transcript is saved: it is complete and stays; the steps after it (the
+        # overview, the title, the note) are skipped instead of running for minutes
+        skipped = _cancel_wanted(meeting_id)
+
         # 4. Automatic AI Summary via local Ollama (if enabled and Ollama has a model)
-        auto_summary = settings.get("auto_summary", "true").lower() == "true"
+        auto_summary = settings.get("auto_summary", "true").lower() == "true" and not skipped
         summaries = meeting.get("summaries") or {}
 
         if auto_summary and merged_segments:
@@ -1046,7 +1058,9 @@ def _process_meeting_job(meeting_id: int) -> None:
         clear_vram()
 
         # 5. A title from the content instead of a file name, and the note in Obsidian
-        notes = _after_transcription(meeting_id, merged_segments, speakers_meta, detected_lang, settings)
+        skipped = skipped or _cancel_wanted(meeting_id)
+        notes = ["обзор и название пропущены (отмена)"] if skipped else \
+            _after_transcription(meeting_id, merged_segments, speakers_meta, detected_lang, settings)
         from app import semantic
 
         semantic.kick()  # indexed for search by meaning once the queue is free
