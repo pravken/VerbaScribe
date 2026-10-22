@@ -298,10 +298,12 @@ def acquire_single_instance() -> bool:
     if sys.platform != "win32":
         return True
     ERROR_ALREADY_EXISTS = 183
-    kernel32 = ctypes.windll.kernel32
+    # use_last_error: ctypes keeps the error of this very call (another call in between, even
+    # inside ctypes, may reset GetLastError)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel32.CreateMutexW.restype = ctypes.c_void_p
     _instance_mutex = kernel32.CreateMutexW(None, False, "Local\\VerbaScribe.Desktop.Window")
-    if _instance_mutex and kernel32.GetLastError() != ERROR_ALREADY_EXISTS:
+    if _instance_mutex and ctypes.get_last_error() != ERROR_ALREADY_EXISTS:
         return True
     # Our handle would keep the other instance's lock alive even after it ends
     if _instance_mutex:
@@ -317,10 +319,55 @@ def _pid_file() -> Path:
 
 
 def write_pid_file() -> None:
+    """The window's process and its program file: a stuck instance is only ended when the PID
+    still belongs to that program (Windows reuses PIDs of ended processes)."""
     try:
-        _pid_file().write_text(str(os.getpid()), encoding="utf-8")
+        # The image of this process itself: the python.exe of a venv only starts the base interpreter
+        image = _process_image(os.getpid()) or sys.executable
+        _pid_file().write_text(f"{os.getpid()}\n{image}", encoding="utf-8")
     except OSError:
         pass
+
+
+def remove_pid_file() -> None:
+    try:
+        lines = _pid_file().read_text(encoding="utf-8").split("\n")
+        if lines[0].strip() == str(os.getpid()):
+            _pid_file().unlink()
+    except (OSError, IndexError):
+        pass
+
+
+def _process_image(pid: int) -> str:
+    """The program file of a running process, '' if there is none or it cannot be read."""
+    if sys.platform != "win32":
+        return ""
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.restype = ctypes.c_void_p
+    h = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not h:
+        return ""
+    try:
+        buf = ctypes.create_unicode_buffer(1024)
+        size = ctypes.c_ulong(len(buf))
+        ok = kernel32.QueryFullProcessImageNameW(ctypes.c_void_p(h), 0, buf, ctypes.byref(size))
+        return buf.value if ok else ""
+    finally:
+        kernel32.CloseHandle(ctypes.c_void_p(h))
+
+
+def stuck_instance_pid() -> int:
+    """The PID from app.pid when that process is still the VerbaScribe that wrote it, else 0."""
+    try:
+        lines = _pid_file().read_text(encoding="utf-8").split("\n")
+        pid, exe = int(lines[0].strip()), (lines[1].strip() if len(lines) > 1 else "")
+    except (OSError, ValueError):
+        return 0
+    if not exe or pid == os.getpid():
+        return 0  # written by an older version without the program file: not safe to end
+    image = _process_image(pid)
+    return pid if image and os.path.normcase(os.path.abspath(image)) == os.path.normcase(os.path.abspath(exe)) else 0
 
 
 # MB_TOPMOST | MB_SETFOREGROUND: the launcher's splash stays on top, a question must not hide under it
@@ -349,17 +396,21 @@ def recover_stuck_instance() -> bool:
     The other instance holds the single-instance lock but shows no window (its window crashed and
     the process hangs). Offers to end it; True if it was ended and this launch may continue.
     """
-    try:
-        pid = int(_pid_file().read_text(encoding="utf-8").strip())
-    except (OSError, ValueError):
-        pid = 0
+    pid = stuck_instance_pid()
     MB_YESNO, MB_ICONWARNING, IDYES = 0x4, 0x30, 6
+    if not pid:  # which process it is is not known for sure: ending a guess could hit another program
+        ctypes.windll.user32.MessageBoxW(
+            None,
+            "VerbaScribe уже запущен, но его окно не отвечает.\n\n"
+            "Завершите процесс python.exe программы VerbaScribe в Диспетчере задач или перезагрузите компьютер.",
+            "VerbaScribe", MB_ICONWARNING | MB_ON_TOP)
+        return False
     answer = ctypes.windll.user32.MessageBoxW(
         None,
         "VerbaScribe уже запущен, но его окно не отвечает.\n\n"
         "Завершить зависший процесс и открыть программу заново? Незавершённая обработка будет прервана.",
         "VerbaScribe", MB_YESNO | MB_ICONWARNING | MB_ON_TOP)
-    if answer != IDYES or not pid or pid == os.getpid():
+    if answer != IDYES:
         return False
     import subprocess
 
@@ -693,6 +744,7 @@ _update_launched = False
 
 def _stop_work() -> None:
     """Before the process ends: recordings finished, work processes ended (app/shutdown.py)."""
+    remove_pid_file()
     try:
         from app import shutdown
 

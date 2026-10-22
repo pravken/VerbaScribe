@@ -282,3 +282,28 @@ class NativeDialogTest(unittest.TestCase):
         self.assertEqual(ours[0].kwargs["cwd"], str(APP_DIR))
         with mock.patch("subprocess.run", return_value=mock.Mock(returncode=1, stdout="", stderr="No module named app")):
             self.assertIsNone(native_dialog.run(["--mode", "save"]))
+
+
+class PidFileTest(unittest.TestCase):
+    """A stuck instance is ended only when the PID in app.pid still runs the program that wrote it."""
+
+    def test_reused_or_old_pid_is_not_ended(self):
+        import run
+
+        with tempfile.TemporaryDirectory() as tmp:
+            pid_file = Path(tmp) / "app.pid"
+            with mock.patch.object(run, "_pid_file", return_value=pid_file), \
+                    mock.patch.object(run, "_process_image", side_effect=lambda pid: {4242: "C:\\py\\python.exe", 77: "C:\\Games\\game.exe"}.get(pid, "")):
+                pid_file.write_text("4242\nC:\\py\\python.exe")
+                self.assertEqual(run.stuck_instance_pid(), 4242)
+                pid_file.write_text("77\nC:\\py\\python.exe")  # the PID now belongs to another program
+                self.assertEqual(run.stuck_instance_pid(), 0)
+                pid_file.write_text("4242")  # an older app.pid without the program file
+                self.assertEqual(run.stuck_instance_pid(), 0)
+                pid_file.write_text("999\nC:\\py\\python.exe")  # the process ended
+                self.assertEqual(run.stuck_instance_pid(), 0)
+
+                run.write_pid_file()
+                self.assertTrue(pid_file.read_text().startswith(f"{run.os.getpid()}\n"))
+                run.remove_pid_file()
+                self.assertFalse(pid_file.exists())
