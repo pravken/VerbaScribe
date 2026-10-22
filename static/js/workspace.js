@@ -110,7 +110,8 @@ function renderAudioTrackSwitch() {
         ${option('orig', t('trackOriginal'))}
         ${dubs.map(d => option(d.lang, `${t('trackDub')} ${d.lang.toUpperCase()}`)).join('')}
       </select>
-    </label>`;
+    </label>${onDub ? `
+    <button onclick="deleteActiveDub()" class="ui-btn ui-btn-subtle px-2" title="${escapeHtml(t('dubDelete'))}">✕</button>` : ''}`;
   renderDubExportMenu();
 }
 
@@ -829,8 +830,39 @@ function renderTranslationControls() {
     html += item(`setTxViewChoice('both','${c}')`, view === 'both' && on ? '✓' : '', `${t('txViewBothWith')} ${langName(c)}`);
   }
   if (canTranslate) html += sep + item("setTxViewChoice('__new')", '＋', t('txTranslateNew').replace(/^＋\s*/, ''));
+  // Clearing: one translation, or everything the processing made
+  if (langs.length) html += sep + langs.map(c => item(`deleteTranslation('${c}')`, '✕', `${t('txDeleteTr')}: ${langName(c)}`)).join('');
+  if (m && m.status === 'completed') html += sep + item('clearActiveResults()', '✕', t('ctxClearResults'));
   document.getElementById('tx-view-menu').innerHTML = html;
   renderExportTranslatedMenu();
+}
+
+async function deleteTranslation(lang) {
+  hideTxViewMenu();
+  const m = state.activeMeeting;
+  if (!m || !(await confirmDialog(t('txDeleteTrTitle').replace('{lang}', langName(lang)), t('txDeleteTrText'), t('txDeleteTr')))) return;
+  const res = await fetch(`/api/meetings/${m.id}/translations/${encodeURIComponent(lang)}`, { method: 'DELETE' });
+  if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
+  if (state.txLang === lang) state.txView = 'orig';
+  await selectMeeting(m.id, true);
+}
+
+function clearActiveResults() {
+  hideTxViewMenu();
+  if (!state.activeMeeting) return;
+  state.contextMeetingId = state.activeMeeting.id;
+  ctxClearResults();
+}
+
+async function deleteActiveDub() {
+  const m = state.activeMeeting;
+  const lang = state.audioTrack;
+  if (!m || !lang || lang === 'orig') return;
+  if (!(await confirmDialog(t('dubDeleteTitle').replace('{lang}', lang.toUpperCase()), t('dubDeleteText'), t('dubDelete')))) return;
+  const res = await fetch(`/api/meetings/${m.id}/dubs/${encodeURIComponent(lang)}`, { method: 'DELETE' });
+  if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
+  setAudioTrack('orig');
+  await selectMeeting(m.id, true);
 }
 
 function toggleTxViewMenu(e) {

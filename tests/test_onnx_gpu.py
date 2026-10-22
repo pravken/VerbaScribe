@@ -144,5 +144,29 @@ class ClearResultsTest(unittest.TestCase):
         self.assertEqual((got["user_notes"], got["media_path"]), ("мои заметки", "/tmp/c.m4a"))
 
 
+class ClearOneThingTest(unittest.TestCase):
+    def test_one_summary_one_dub_promises(self):
+        from app import commitments
+        from app.database import (DATA_DIR, create_meeting, delete_meeting_dub, get_meeting, init_db, merge_summaries,
+                                  save_meeting_dub)
+
+        init_db()
+        m = create_meeting("Встреча", "d.m4a", "/tmp/d.m4a")
+        merge_summaries(m["id"], {"protocol": "## Обзор", "tasks": "- [ ] задача"})
+        merge_summaries(m["id"], {}, remove=("tasks",))
+        self.assertEqual(get_meeting(m["id"])["summaries"], {"protocol": "## Обзор"})
+
+        dub = Path(DATA_DIR) / "dubs" / "d_en.m4a"
+        dub.parent.mkdir(parents=True, exist_ok=True)
+        dub.write_bytes(b"x")
+        save_meeting_dub(m["id"], {"lang": "en", "path": str(dub)})
+        self.assertTrue(delete_meeting_dub(m["id"], "en"))
+        self.assertFalse(dub.exists())
+        self.assertEqual(get_meeting(m["id"])["dubs"], [])
+        self.assertFalse(delete_meeting_dub(m["id"], "en"))
+
+        self.assertEqual(commitments.delete_for_meeting(m["id"]), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

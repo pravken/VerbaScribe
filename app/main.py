@@ -1889,6 +1889,36 @@ def api_remove_media(meeting_id: int) -> Dict[str, Any]:
     return get_meeting(meeting_id)
 
 
+@app.delete("/api/meetings/{meeting_id}/summaries")
+def api_delete_summary(meeting_id: int, key: str) -> Dict[str, Any]:
+    """One analysis of a recording (a tab of Analysis: overview, tasks, chapters, a template...)."""
+    from app.database import merge_summaries
+    from app.obsidian import refresh_if_exported
+
+    if not get_meeting(meeting_id):
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    merge_summaries(meeting_id, {}, remove=(key,))
+    refresh_if_exported(meeting_id)
+    return get_meeting(meeting_id)
+
+
+@app.delete("/api/meetings/{meeting_id}/commitments")
+def api_delete_meeting_commitments(meeting_id: int) -> Dict[str, Any]:
+    from app import commitments
+
+    return {"deleted": commitments.delete_for_meeting(meeting_id)}
+
+
+@app.delete("/api/meetings/{meeting_id}/dubs/{lang}")
+def api_delete_dub(meeting_id: int, lang: str) -> Dict[str, Any]:
+    from app.database import delete_meeting_dub
+
+    _ensure_not_processing(meeting_id)
+    if not delete_meeting_dub(meeting_id, lang):
+        raise HTTPException(status_code=404, detail="Дубляж не найден")
+    return get_meeting(meeting_id)
+
+
 @app.post("/api/meetings/{meeting_id}/clear-results")
 def api_clear_results(meeting_id: int) -> Dict[str, Any]:
     """Deletes the transcript and the analysis of a recording, keeps its sound (to transcribe it again)."""

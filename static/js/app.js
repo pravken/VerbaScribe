@@ -291,9 +291,38 @@ function updateActiveChapter(cur) {
   _activeChapter = idx;
 }
 
+// "Clear": what the open tab of Analysis holds (an analysis, my notes, the promises)
+function setClearSummaryVisible(on) {
+  document.getElementById('clear-summary-btn')?.classList.toggle('hidden', !on);
+}
+
+async function clearSummaryTab() {
+  const m = state.activeMeeting;
+  if (!m) return;
+  const tab = state.activeSummaryTab;
+  const label = document.getElementById(`sumtab-${tab.startsWith('tpl:') ? 'tpl-' + tab.slice(4) : tab}`)?.textContent.trim() || t('tabSummary');
+  if (!(await confirmDialog(t('clearTabTitle').replace('{tab}', label), t('clearTabText'), t('clearBtn')))) return;
+  let res;
+  if (tab === 'mynotes') {
+    res = await fetch(`/api/meetings/${m.id}/notes`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notes: '' }) });
+    if (res.ok) m.user_notes = '';
+  } else if (tab === 'commitments') {
+    res = await fetch(`/api/meetings/${m.id}/commitments`, { method: 'DELETE' });
+  } else {
+    res = await fetch(`/api/meetings/${m.id}/summaries?key=${encodeURIComponent(tab)}`, { method: 'DELETE' });
+    if (res.ok) state.activeMeeting.summaries = (await readJson(res)).summaries || {};
+  }
+  if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
+  if (tab === 'chapters') renderChaptersBar();
+  renderSummaryPanel();
+}
+
 function renderSummaryPanel() {
   const box = document.getElementById('summary-content');
   if (!state.activeMeeting) return;
+  const tab = state.activeSummaryTab;
+  setClearSummaryVisible(tab === 'mynotes' ? !!(state.activeMeeting.user_notes || '').trim()
+    : tab !== 'commitments' && !!((state.activeMeeting.summaries || {})[tab] || '').trim());
   if (state.activeSummaryTab === 'mynotes') { renderMyNotesEditor(box); return; }
   if (!aiAvailable()) { renderNoModelCard(box); return; }
   if (state.activeSummaryTab === 'commitments') { renderCommitments(box); return; }
@@ -403,6 +432,7 @@ async function renderCommitments(box) {
   box.innerHTML = `<div class="py-6 text-center text-xs text-apple-secondary animate-pulse">…</div>`;
   const items = await fetch(`/api/meetings/${m.id}/commitments`).then(r => r.json()).catch(() => []);
   if (state.activeMeeting !== m || state.activeSummaryTab !== 'commitments') return;
+  setClearSummaryVisible(items.length > 0);
   box.innerHTML = items.length
     ? `<div>${items.map(c => commitmentRowHtml(c, false)).join('')}</div>${commitmentExportBar(m.id)}`
     : `<div class="py-12 text-center text-xs text-apple-secondary">${escapeHtml(t('commitmentsEmpty'))}</div>`;
@@ -517,6 +547,7 @@ function renderMyNotesEditor(box) {
   ta.oninput = () => {
     const id = m.id, text = ta.value;
     m.user_notes = text;
+    setClearSummaryVisible(!!text.trim());
     clearTimeout(window._notesSaveTimer);
     document.getElementById('my-notes-status').textContent = '…';
     window._notesSaveTimer = setTimeout(async () => {

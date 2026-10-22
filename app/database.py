@@ -717,6 +717,35 @@ def save_meeting_dub(meeting_id: int, entry: Dict[str, Any]) -> None:
                     pass
 
 
+def delete_meeting_dub(meeting_id: int, lang: str) -> bool:
+    """Removes one dub of a recording and its files (only the ones the app made, in the data folder)."""
+    with _db_lock:
+        conn = get_connection()
+        row = conn.execute("SELECT dubs_json FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+        if row is None:
+            conn.close()
+            return False
+        try:
+            dubs = json.loads(row["dubs_json"] or "[]")
+        except Exception:
+            dubs = []
+        gone = [_dub_paths_from_storage(d) for d in dubs if d.get("lang") == lang]
+        conn.execute("UPDATE meetings SET dubs_json = ? WHERE id = ?",
+                     (json.dumps([d for d in dubs if d.get("lang") != lang], ensure_ascii=False), meeting_id))
+        conn.commit()
+        conn.close()
+    for old in gone:
+        for key in _DUB_PATH_KEYS:
+            p = Path(old.get(key) or "")
+            if p.name and p.exists() and DATA_DIR in p.resolve().parents:
+                try:
+                    p.unlink()
+                except OSError:
+                    pass
+    events.publish({"type": "list"})
+    return bool(gone)
+
+
 def get_meeting_translations_raw(meeting_id: int) -> Dict[str, Any]:
     """Stored translations as saved ({lang: entry}), see app/translation.py."""
     with _db_lock:
