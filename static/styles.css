@@ -427,9 +427,49 @@ label.settings-toggle { display: flex; }
   12% { opacity: 1; }
   100% { transform: translate(var(--x), var(--y)) scale(1.1) rotate(var(--r)); opacity: 0; }
 }
+/* About: the willow sways by itself; a click shakes it, five quick clicks start the big easter egg */
+.about-logo {
+  width: 104px; height: 104px; border-radius: 26px; display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 50% 30%, #1d4a68 0%, #0E2233 70%); border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06); cursor: pointer;
+  transition: transform .15s ease;
+}
+.about-logo:active { transform: scale(0.96); }
+.about-willow { width: 64px; height: 64px; transform-origin: 20% 85%; animation: willow-sway 5s ease-in-out infinite; }
+.about-willow .catkin { transform-box: fill-box; transform-origin: center; animation: catkin-puff 3.2s ease-in-out infinite; animation-delay: var(--d); }
+.about-logo.about-shake .about-willow { animation: willow-shake .5s ease-in-out; }
+@keyframes willow-shake {
+  0%, 100% { transform: rotate(0deg); }
+  20% { transform: rotate(-14deg); }
+  45% { transform: rotate(11deg); }
+  70% { transform: rotate(-6deg); }
+}
+.about-caption { min-height: 26px; font-size: 13.5px; color: #fff; }
+.about-caption:not(:empty) { padding-bottom: 8px; }
+.about-caption .caret { display: inline-block; width: 7px; height: 1em; vertical-align: -0.12em; margin-left: 2px; background: #0A84FF; animation: caret-blink 1s steps(1) infinite; }
+@keyframes caret-blink { 50% { opacity: 0; } }
+.about-egg {
+  position: absolute; inset: 0; padding: 22px 26px; background: rgba(4, 4, 6, 0.97); cursor: pointer;
+  animation: egg-in .6s ease forwards;
+}
+@keyframes egg-in { from { opacity: 0; } to { opacity: 1; } }
+.about-card { transition: min-height .4s ease; min-height: 0; }
+.about-card.about-egg-on { min-height: 420px; }
+.about-rec-dot { width: 8px; height: 8px; border-radius: 50%; background: #FF453A; box-shadow: 0 0 8px #FF453A; animation: caret-blink 1s steps(1) infinite; }
+.about-egg .ts { color: #636366; margin-right: 8px; }
+.about-egg .who { font-weight: 600; margin-right: 6px; }
+.about-egg .sys { color: #FF9F0A; }
+.about-egg .glitch { color: #fff; font-size: 13px; animation: glitch 1.2s steps(2) 2; }
+@keyframes glitch {
+  0% { text-shadow: 2px 0 #FF453A, -2px 0 #0A84FF; transform: translateX(0); }
+  25% { text-shadow: -2px 0 #FF453A, 2px 0 #0A84FF; transform: translateX(1px); }
+  50% { text-shadow: 1px 0 #FF453A, -1px 0 #30D158; transform: translateX(-1px); }
+  100% { text-shadow: none; transform: none; }
+}
 @media (prefers-reduced-motion: reduce) {
   .app-logo:hover .app-logo-branch, .app-logo:hover .catkin { animation: none; }
   .willow-fluff { display: none; }
+  .about-willow, .about-willow .catkin, .about-logo.about-shake .about-willow, .about-egg .glitch { animation: none; }
 }
 
 /* Studio captions: small language label in front of a line */

@@ -619,6 +619,16 @@ def api_calls_status() -> Dict[str, Any]:
     return call_watch.status()
 
 
+@app.get("/api/about")
+def api_about() -> Dict[str, Any]:
+    """The About window: version, and how much the program has transcribed on this computer."""
+    done = [m for m in list_meetings() if m.get("status") == "completed"]
+    firsts = sorted(str(m.get("created_at") or "")[:10] for m in done if m.get("created_at"))
+    return {"version": __version__, "repo": "pravken/VerbaScribe", "recordings": len(done),
+            "hours": round(sum(float(m.get("duration") or 0) for m in done) / 3600, 1),
+            "since": firsts[0] if firsts else ""}
+
+
 @app.get("/api/hotkey")
 def api_hotkey() -> Dict[str, Any]:
     """Whether the recording hotkey is registered (it lives in the desktop window's tray thread)."""

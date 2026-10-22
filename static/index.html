@@ -51,7 +51,7 @@
             </svg>
           </div>
           <div>
-            <div class="font-semibold text-[14px] leading-tight tracking-tight text-white">VerbaScribe</div>
+            <button onclick="openAbout()" data-i18n-title="tipAbout" title="О программе" class="font-semibold text-[14px] leading-tight tracking-tight text-white hover:text-apple-label">VerbaScribe</button>
           </div>
         </div>
         <button onclick="openExternal(SUPPORT_URL)" data-i18n-title="tipSupport" title="Поддержать разработку на Ko-fi"
@@ -1579,9 +1579,12 @@
               <h4 class="text-[13px] font-semibold text-white" data-i18n="supportTitle">Поддержать проект</h4>
               <p class="text-[11px] text-apple-secondary leading-snug mt-0.5" data-i18n="supportDesc">VerbaScribe бесплатна. Если она экономит вам время, можно угостить разработчика кофе.</p>
             </div>
+            <div class="flex items-center gap-2 shrink-0">
+            <button onclick="openAbout()" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px]" data-i18n="aboutBtn">О программе</button>
             <button onclick="openExternal(SUPPORT_URL)" class="ui-btn ui-btn-primary h-8 px-3 text-[11px] shrink-0 gap-1.5">
               <svg class="w-3 h-3 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 2.9 4.5 6.6 4.5c2.1 0 3.6 1.2 4.4 2.5.8-1.3 2.3-2.5 4.4-2.5 3.7 0 5.7 3.9 4.2 7.3C19.5 16.4 12 21 12 21z"/></svg><span data-i18n="supportBtn">Поддержать на Ko-fi</span>
             </button>
+            </div>
           </div>
         </div>
 
@@ -2394,6 +2397,45 @@
             title="Сохранить все настройки приложения и закрыть окно"
             class="ui-btn ui-btn-primary h-8 px-5" data-i18n="save">Сохранить</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- About (openAbout in static/js/app.js): a click on the willow is a small easter egg, five quick clicks a big one -->
+  <div id="modal-about" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4" onclick="closeModalOnBackdrop(event, 'about')">
+    <div class="about-card relative w-full max-w-lg bg-apple-card border apple-border rounded-2xl shadow-2xl overflow-hidden modal-card">
+      <div class="px-7 pt-7 pb-4 flex items-center gap-6">
+        <button id="about-logo" onclick="aboutLogoClick()" class="about-logo shrink-0" data-i18n-title="tipAboutLogo" title="Это верба. Она всё слышит">
+          <svg class="about-willow" viewBox="0 0 24 24" fill="none">
+              <path d="M5 20C8.5 15.5 13 10.5 18.5 4.5" stroke="#4ADE80" stroke-width="1.8" stroke-linecap="round"/>
+              <g class="catkin" style="--d: 0ms"><ellipse cx="8.2" cy="13.2" rx="2.1" ry="3.1" transform="rotate(-28 8.2 13.2)" fill="#F8FAFC"/></g>
+              <g class="catkin" style="--d: 300ms"><ellipse cx="14.2" cy="12.8" rx="2.0" ry="3.0" transform="rotate(32 14.2 12.8)" fill="#F8FAFC"/></g>
+              <g class="catkin" style="--d: 600ms"><ellipse cx="12.0" cy="7.5" rx="2.0" ry="3.0" transform="rotate(-22 12.0 7.5)" fill="#F8FAFC"/></g>
+              <g class="catkin" style="--d: 900ms"><ellipse cx="18.2" cy="5.2" rx="1.7" ry="2.5" transform="rotate(25 18.2 5.2)" fill="#F8FAFC"/></g>
+          </svg>
+        </button>
+        <div class="min-w-0 space-y-1.5">
+          <h3 class="text-[22px] font-semibold text-white tracking-tight leading-tight">VerbaScribe <span id="about-version" class="text-apple-secondary font-medium"></span></h3>
+          <p class="text-[13px] text-apple-label" data-i18n="aboutTagline">Локальная расшифровка встреч, переводы и анализ — без облака</p>
+          <p id="about-stats" class="text-[13px] text-white font-medium"></p>
+          <button onclick="openExternal('https://github.com/pravken/VerbaScribe')" class="text-[13px] text-apple-blue hover:underline">github.com/pravken/VerbaScribe</button>
+        </div>
+      </div>
+      <div id="about-caption" class="about-caption px-7"></div>
+      <div class="px-7 pb-6 pt-2 flex items-center gap-2">
+        <button onclick="openExternal(SUPPORT_URL)" class="ui-btn ui-btn-subtle h-9 px-4 gap-2">
+          <svg class="w-3.5 h-3.5 text-[#FF5E5B]" fill="currentColor" viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 2.9 4.5 6.6 4.5c2.1 0 3.6 1.2 4.4 2.5.8-1.3 2.3-2.5 4.4-2.5 3.7 0 5.7 3.9 4.2 7.3C19.5 16.4 12 21 12 21z"/></svg>
+          <span data-i18n="aboutSupport">Поддержать</span>
+        </button>
+        <div class="flex-1"></div>
+        <button onclick="openExternal('https://github.com/pravken/VerbaScribe/releases')" class="ui-btn ui-btn-subtle h-9 px-4" data-i18n="aboutWhatsNew">Что нового</button>
+        <button onclick="closeModal('about')" class="ui-btn ui-btn-primary h-9 px-6">OK</button>
+      </div>
+      <!-- The big easter egg: the room, transcribed -->
+      <div id="about-egg" class="about-egg hidden" onclick="endAboutEgg()">
+        <div class="flex items-center gap-2 text-[11px] font-mono text-apple-red"><span class="about-rec-dot"></span><span>REC</span><span id="about-egg-timer">00:00</span></div>
+        <div id="about-egg-lines" class="mt-3 space-y-1.5 font-mono text-[12px]"></div>
       </div>
     </div>
   </div>

@@ -1368,3 +1368,139 @@ document.addEventListener('click', closeTextMenu);
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeTextMenu(); });
 window.addEventListener('blur', closeTextMenu);
 document.addEventListener('scroll', closeTextMenu, true);
+
+// --- About (GET /api/about) and its easter eggs: the willow hears everything ---
+const ABOUT_LINES = {
+  ru: [
+    'Участник 3 просил не записывать. Записано.',
+    '[неразборчиво] — но мы поняли.',
+    'Ваша последняя фраза уже в протоколе. [00:00]',
+    'Пункт помечен [?]: доказательств нет. Пока.',
+    'Слова-паразиты удалены. Паразиты — нет.',
+    'Обещание найдено: «сделаю к пятнице». Пятница не найдена.',
+    'Верба не спит. Верба транскрибирует.',
+    'Тишина длилась 3 секунды. Расшифровано: «…».',
+    'Голос узнан: это вы. Опять.',
+  ],
+  en: [
+    'Participant 3 asked not to be recorded. Recorded.',
+    '[inaudible], but we got it.',
+    'Your last sentence is already in the minutes. [00:00]',
+    'Point marked [?]: no evidence. Yet.',
+    'Filler words removed. The fillers themselves are still here.',
+    'Promise found: "done by Friday". Friday not found.',
+    'The willow does not sleep. The willow transcribes.',
+    'Silence lasted 3 seconds. Transcribed: "…".',
+    'Voice recognized: it is you. Again.',
+  ],
+};
+const ABOUT_EGG = {
+  ru: [
+    ['00:00', 'Участник 1', '#64D2FF', '…он опять кликает по вербе.'],
+    ['00:02', 'Участник 2', '#BF5AF2', 'Пусть. Мы всё равно всё записываем.'],
+    ['00:04', 'Участник ?', '#FF453A', 'Тише. Он читает субтитры.'],
+    ['00:07', null, null, 'Разделение по голосам: найдено 4 участника. В комнате — 1 человек. [?]'],
+    ['00:09', null, null, 'Обещание: «больше не кликать по логотипу». Срок: никогда.'],
+    ['00:11', 'Участник 4', '#FF9F0A', 'Не оборачивайся.'],
+  ],
+  en: [
+    ['00:00', 'Participant 1', '#64D2FF', '…he is clicking the willow again.'],
+    ['00:02', 'Participant 2', '#BF5AF2', 'Let him. We are recording everything anyway.'],
+    ['00:04', 'Participant ?', '#FF453A', 'Quiet. He is reading the captions.'],
+    ['00:07', null, null, 'Speaker separation: 4 participants found. People in the room: 1. [?]'],
+    ['00:09', null, null, 'Promise: "no more clicking the logo". Due: never.'],
+    ['00:11', 'Participant 4', '#FF9F0A', 'Do not turn around.'],
+  ],
+};
+const about = { clicks: [], line: -1, typing: null, egg: [], eggOn: false };
+
+async function openAbout() {
+  hideContextMenu();
+  const d = await fetch('/api/about').then(r => r.json()).catch(() => null);
+  const en = state.uiLang === 'en';
+  if (d) {
+    document.getElementById('about-version').textContent = d.version;
+    const since = d.since ? d.since.split('-').reverse().join('.') : '';
+    const n = d.recordings;
+    const amount = d.hours >= 1 ? `${d.hours} ${en ? 'h' : 'ч'}` : `${Math.max(1, Math.round(d.hours * 60))} ${en ? 'min' : 'мин'}`;
+    const recs = en ? (n === 1 ? 'recording' : 'recordings') : (n % 10 === 1 && n % 100 !== 11 ? 'записи' : 'записях');
+    document.getElementById('about-stats').textContent = n
+      ? (en ? `Transcribed ${amount} of speech in ${n} ${recs} since ${since}` : `Расшифровано ${amount} речи в ${n} ${recs} с ${since}`)
+      : (en ? 'Nothing transcribed yet: the willow is waiting' : 'Пока ничего не расшифровано — верба ждёт');
+  }
+  document.getElementById('about-caption').textContent = '';
+  endAboutEgg();
+  openModal('about');
+}
+
+function aboutTypeLine(text) {
+  const box = document.getElementById('about-caption');
+  clearInterval(about.typing);
+  let i = 0;
+  box.innerHTML = '<span></span><span class="caret"></span>';
+  const span = box.firstChild;
+  about.typing = setInterval(() => {
+    span.textContent = text.slice(0, ++i);
+    if (i >= text.length) clearInterval(about.typing);
+  }, 28);
+}
+
+function aboutLogoClick() {
+  if (about.eggOn) return;
+  const logo = document.getElementById('about-logo');
+  logo.classList.remove('about-shake');
+  void logo.offsetWidth;  // restart the animation
+  logo.classList.add('about-shake');
+  releaseWillowFluff(10, 1.3, logo);
+  const now = Date.now();
+  about.clicks = about.clicks.filter(t => now - t < 2000).concat(now);
+  if (about.clicks.length >= 5) { about.clicks = []; startAboutEgg(); return; }
+  const lines = ABOUT_LINES[state.uiLang === 'en' ? 'en' : 'ru'];
+  about.line = (about.line + 1) % lines.length;
+  aboutTypeLine(lines[about.line]);
+}
+
+function startAboutEgg() {
+  const en = state.uiLang === 'en';
+  const box = document.getElementById('about-egg');
+  const list = document.getElementById('about-egg-lines');
+  const timer = document.getElementById('about-egg-timer');
+  list.innerHTML = '';
+  box.classList.remove('hidden');
+  box.parentElement.classList.add('about-egg-on');  // room for the whole transcript
+  about.eggOn = true;
+  const started = Date.now();
+  const tick = setInterval(() => {
+    const s = Math.floor((Date.now() - started) / 1000);
+    timer.textContent = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+  }, 250);
+  about.egg.push(tick);
+  const lines = ABOUT_EGG[en ? 'en' : 'ru'];
+  lines.forEach(([ts, who, color, text], i) => {
+    about.egg.push(setTimeout(() => {
+      const row = document.createElement('div');
+      row.innerHTML = `<span class="ts">[${ts}]</span>` + (who
+        ? `<span class="who" style="color:${color}">${escapeHtml(who)}:</span><span class="text-white">${escapeHtml(text)}</span>`
+        : `<span class="sys">${escapeHtml(text)}</span>`);
+      list.appendChild(row);
+    }, 900 + i * 1700));
+  });
+  about.egg.push(setTimeout(() => {
+    const row = document.createElement('div');
+    row.className = 'glitch pt-3';
+    row.textContent = en ? 'Kidding. Everything runs locally, the microphone is off. Probably.'
+      : 'Шутка. Всё работает локально, микрофон выключен. Наверное.';
+    list.appendChild(row);
+    releaseWillowFluff(60, 3.4, document.getElementById('about-logo'));
+  }, 900 + lines.length * 1700 + 600));
+  about.egg.push(setTimeout(endAboutEgg, 900 + lines.length * 1700 + 6000));
+}
+
+function endAboutEgg() {
+  about.egg.forEach(id => { clearTimeout(id); clearInterval(id); });
+  about.egg = [];
+  about.eggOn = false;
+  const box = document.getElementById('about-egg');
+  box?.classList.add('hidden');
+  box?.parentElement.classList.remove('about-egg-on');
+}

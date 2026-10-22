@@ -413,9 +413,9 @@ document.addEventListener('keydown', (e) => {
 });
 
 // --- Easter egg: willow fluff from the logo ---
-function releaseWillowFluff(count, spread) {
+function releaseWillowFluff(count, spread, origin) {
   if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const logo = document.getElementById('app-logo');
+  const logo = origin || document.getElementById('app-logo');
   if (!logo) return;
   const r = logo.getBoundingClientRect();
   for (let i = 0; i < count; i++) {
