@@ -6,16 +6,16 @@
 
     <!-- The parts of the app (switchAppView in static/js/library.js): the library, the recording studio, the assistant -->
     <nav id="app-bar" class="app-bar shrink-0" role="tablist">
-      <button data-click="switchAppView" data-click-args='["library"]' id="nav-library" role="tab" class="app-tab app-tab-active" data-i18n-title="tipNavLibrary" title="Расшифровка, анализ и правка выбранной записи">
+      <button data-click="switchAppView" data-click-args='["library"]' id="nav-library" role="tab" class="app-tab app-tab-active" data-i18n-title="tipNavLibrary" title="Расшифровка, анализ и правка выбранной записи (Ctrl+1)">
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"/></svg>
         <span data-i18n="navLibrary">Редактор</span>
       </button>
-      <button data-click="switchAppView" data-click-args='["studio"]' id="nav-studio" role="tab" class="app-tab" data-i18n-title="tipNavStudio" title="Запись звука и экрана с субтитрами и переводом в реальном времени">
+      <button data-click="switchAppView" data-click-args='["studio"]' id="nav-studio" role="tab" class="app-tab" data-i18n-title="tipNavStudio" title="Запись звука и экрана с субтитрами и переводом в реальном времени (Ctrl+2)">
         <span id="nav-studio-dot" class="hidden w-2 h-2 rounded-full bg-apple-red animate-pulse"></span>
         <svg id="nav-studio-icon" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"/></svg>
         <span id="nav-studio-label" data-i18n="navStudio">Студия</span>
       </button>
-      <button data-click="switchAppView" data-click-args='["ask"]' id="nav-ask" role="tab" class="app-tab" data-i18n-title="tipNavAsk" title="Вопросы к одной записи, к папке или ко всей медиатеке">
+      <button data-click="switchAppView" data-click-args='["ask"]' id="nav-ask" role="tab" class="app-tab" data-i18n-title="tipNavAsk" title="Вопросы к одной записи, к папке или ко всей медиатеке (Ctrl+3)">
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
         <span data-i18n="navAsk">Ассистент</span>
       </button>
