@@ -16,10 +16,23 @@ try { sessionStorage.removeItem('vs_relocked'); } catch (e) { /* storage off */ 
 const PAGE_EVENTS = ['click', 'change', 'input', 'keydown', 'contextmenu', 'dragstart', 'dragover', 'dragleave', 'drop'];
 const PAGE_OWN_EVENTS = { focusin: 'focus', focusout: 'blur', error: 'error' };  // of the element itself
 
+// The event as an inline handler saw it: its currentTarget is the element that has the handler
+// (the listener is on the document, so the real one is the document). Methods act on the real event.
+function pageEvent(ev, el) {
+  return new Proxy(ev, {
+    get(target, key) {
+      if (key === 'currentTarget') return el;
+      const value = Reflect.get(target, key, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+    set(target, key, value) { target[key] = value; return true; },
+  });
+}
+
 function pageArg(a, el, ev) {
   if (!a || typeof a !== 'object' || Array.isArray(a) || typeof a.$ !== 'string') return a;
   switch (a.$) {
-    case 'event': return ev;
+    case 'event': return pageEvent(ev, el);
     case 'el': return el;
     case 'value': return el.value;
     case 'checked': return el.checked;

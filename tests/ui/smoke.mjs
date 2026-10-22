@@ -25,6 +25,22 @@ for (const view of ['studio', 'ask', 'library']) {
   await step(`view ${view}`, () => page.evaluate(v => switchAppView(v), view));
   await page.waitForTimeout(400);
 }
+// Handlers that use their element (event.currentTarget): the view menu is placed under its button,
+// a click on a window's backdrop closes it
+await step('library view menu', async () => {
+  await page.evaluate(() => switchAppView('library'));
+  await page.click('button[data-click="openLibViewMenu"]');
+  await page.waitForTimeout(200);
+  if (!(await page.isVisible('#lib-view-menu'))) throw new Error('not opened');
+  await page.mouse.click(5, 5);
+});
+await step('backdrop closes a window', async () => {
+  await page.evaluate(() => openModal('shortcuts'));
+  await page.waitForTimeout(300);
+  await page.mouse.click(5, 795);
+  await page.waitForTimeout(200);
+  if (!(await page.evaluate(() => document.getElementById('modal-shortcuts').classList.contains('hidden')))) throw new Error('still open');
+});
 await step('settings', () => page.evaluate(() => openModal('settings', 'general')));
 for (const tab of await page.evaluate(() => SETTINGS_TABS)) {
   await step(`settings tab ${tab}`, async () => {
