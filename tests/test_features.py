@@ -530,3 +530,11 @@ class UrlImportLimitsTest(unittest.TestCase):
         self.assertEqual(m["status"], "cancelled")
         self.assertEqual(m["error_message"], "")
         self.assertFalse(url_import.cancel(m["id"]))  # nothing runs any more
+
+
+class DubMemoryTest(unittest.TestCase):
+    def test_estimate(self):
+        from app.dubbing import dub_memory_gb
+
+        self.assertLess(dub_memory_gb(3600), 7)          # an hour fits 16 GB
+        self.assertGreater(dub_memory_gb(3 * 3600), 14)  # three hours do not

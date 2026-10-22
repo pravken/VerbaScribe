@@ -226,6 +226,14 @@ def api_start_dub(meeting_id: int, payload: DubRequestPayload) -> Dict[str, Any]
         raise HTTPException(status_code=400, detail="Язык перевода совпадает с языком записи")
     if not dub_environment_status()["installed"]:
         raise HTTPException(status_code=409, detail="Окружение дубляжа не установлено. Установите его в окне «Дубляж».")
+    from app.dubbing import dub_memory_gb
+    from app.sysinfo import memory
+
+    need, ram = dub_memory_gb(float(m.get("duration") or 0)), (memory() or {}).get("total_gb")
+    if ram and need > ram * 0.8:  # it would run out of memory hours into the job
+        raise HTTPException(status_code=409, detail=(
+            f"Для дубляжа записи длиной {float(m.get('duration') or 0) / 3600:.1f} ч нужно около {need:.0f} ГБ памяти, "
+            f"а в компьютере {ram:.0f} ГБ. Сделайте дубляж частей записи (Нарезка) или более короткой записи."))
     if not enqueue_dub_job(meeting_id, payload.target_lang):
         raise HTTPException(status_code=409, detail="Запись уже обрабатывается")
     return get_meeting(meeting_id)
