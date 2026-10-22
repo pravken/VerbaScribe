@@ -44,6 +44,7 @@ if %ERRORLEVEL% EQU 0 (
     echo [2/2] Installing dependencies via uv...
     rem requirements.txt is an exact lock with SHA-256 hashes (see requirements.in)
     uv pip install --python ".venv\Scripts\python.exe" -r requirements.txt --require-hashes --index-strategy unsafe-best-match --extra-index-url https://download.pytorch.org/whl/cu124
+    if errorlevel 1 goto :install_failed
     goto :done
 )
 
@@ -56,6 +57,7 @@ if defined SIGNED_PY (
 echo [2/2] Installing dependencies via pip...
 ".venv\Scripts\python.exe" -m pip install --upgrade pip
 ".venv\Scripts\python.exe" -m pip install -r requirements.txt --require-hashes --extra-index-url https://download.pytorch.org/whl/cu124
+if errorlevel 1 goto :install_failed
 
 :done
 echo.
@@ -63,6 +65,18 @@ echo ==============================================================
 echo   Setup complete. Launching VerbaScribe...
 echo ==============================================================
 goto :eof
+
+rem --- An environment half installed would look ready to the launcher and fail at start: it is
+rem --- removed, so the next start runs the setup again
+:install_failed
+echo.
+echo ==============================================================
+echo   Installing the libraries failed (see the messages above).
+echo   Check the internet connection and run setup.bat again.
+echo ==============================================================
+rmdir /s /q .venv
+pause
+exit /b 1
 
 rem --- Python 3.10 from python.org: the usual install folders, then the py launcher (never the
 rem --- Microsoft Store Python in WindowsApps)

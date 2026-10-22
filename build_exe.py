@@ -274,6 +274,19 @@ class VerbaScribeLauncher
             return;
         }
         ShowSplashUntilWindow(app);
+        // Exit code 1: run.py has shown why it stopped. Any other failure at start (python.exe itself
+        // did not run: a missing DLL, a blocked file) would end silently: say so here.
+        if (app.HasExited && app.ExitCode != 0 && app.ExitCode != 1)
+        {
+            MessageBox.Show(
+                "VerbaScribe не запустился (код " + app.ExitCode + ").\n" +
+                "Запустите setup.bat ещё раз; журнал: %LOCALAPPDATA%\\VerbaScribe\\logs\n\n" +
+                "VerbaScribe did not start. Run setup.bat again.",
+                "VerbaScribe",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error
+            );
+        }
     }
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]

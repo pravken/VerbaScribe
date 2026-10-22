@@ -11,9 +11,8 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 ICO_PATH = BASE_DIR / "assets" / "icon.ico"
 WINDOW_TITLE = "VerbaScribe"  # the launcher (build_exe.py) closes its splash when a window with this title appears
-
-import uvicorn
-from app.hardware import register_cuda_dlls
+# uvicorn and the app are imported where they are used, inside the error handling of __main__: an
+# incomplete .venv (setup interrupted, a blocked .pyd) then shows a message instead of nothing at all
 
 
 def set_app_user_model_id() -> None:
@@ -119,6 +118,10 @@ SERVER_STATE = {"error": ""}
 
 
 def start_server_in_thread(host: str, port: int) -> threading.Thread:
+    import uvicorn
+
+    from app.hardware import register_cuda_dlls
+
     # The token is chosen here and handed to the server, so the window never opens with a stale
     # token file left by the previous run (the server may still be starting)
     import secrets
@@ -613,6 +616,10 @@ def show_error_box(text: str) -> None:
 
 
 def main() -> None:
+    import uvicorn
+
+    from app.hardware import register_cuda_dlls
+
     set_app_user_model_id()
 
     parser = argparse.ArgumentParser(description="VerbaScribe Desktop Studio")
@@ -734,22 +741,39 @@ def main() -> None:
     uvicorn.run("app.main:app", host=args.host, port=args.port, log_level="info", timeout_graceful_shutdown=3)
 
 
-if __name__ == "__main__":
-    from app.applog import LOG_FILE, start_file_log
+def _startup_failed(log_file) -> None:
+    """Shows why the app did not start; without the log (the data folder unusable) it goes to %TEMP%."""
+    import tempfile
+    import traceback
 
-    if "--headless" not in sys.argv:
-        start_file_log()
+    text = traceback.format_exc()
+    if log_file is None:
+        log_file = Path(tempfile.gettempdir()) / "verbascribe-start-error.log"
+        try:
+            log_file.write_text(text, encoding="utf-8")
+        except OSError:
+            pass
+    else:
+        print(text, file=sys.stderr)
+    hint = ("\n\nЕсли установка прерывалась, запустите setup.bat ещё раз." if isinstance(sys.exc_info()[1], ImportError)
+            else "")
+    show_error_box(
+        "Не удалось запустить VerbaScribe.\n\n"
+        f"Подробности записаны в журнал:\n{log_file}{hint}\n\n"
+        "VerbaScribe could not start. Details are in the log file above."
+    )
+
+
+if __name__ == "__main__":
+    LOG_FILE = None
     try:
+        from app.applog import LOG_FILE, start_file_log
+
+        if "--headless" not in sys.argv:
+            start_file_log()
         main()
     except SystemExit:
         raise
     except BaseException:
-        import traceback
-
-        traceback.print_exc()
-        show_error_box(
-            "Не удалось запустить VerbaScribe.\n\n"
-            f"Подробности записаны в журнал:\n{LOG_FILE}\n\n"
-            "VerbaScribe could not start. Details are in the log file above."
-        )
-        sys.exit(1)
+        _startup_failed(LOG_FILE)
+        sys.exit(1)  # the launcher (build_exe.py) shows nothing more for exit code 1

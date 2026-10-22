@@ -121,3 +121,25 @@ class LauncherTitleTest(unittest.TestCase):
         exe_src = (root / "build_exe.py").read_text(encoding="utf-8")
         self.assertIn(f'const string WindowTitle = "{run_title}";', exe_src)
         self.assertNotIn(f'splash.Text = "{run_title}";', exe_src)
+
+
+class StartupFailureTest(unittest.TestCase):
+    def test_broken_environment_is_reported(self):
+        """An incomplete .venv (a library missing or blocked) says so instead of ending silently."""
+        import os
+        import subprocess
+        import sys
+
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            fake = Path(tmp) / "uvicorn"
+            fake.mkdir()
+            (fake / "__init__.py").write_text("raise ImportError('DLL load failed: blocked by policy')\n")
+            env = {**os.environ, "PYTHONPATH": os.pathsep.join([tmp, str(root), os.environ.get("PYTHONPATH", "")]),
+                   "VERBASCRIBE_DATA_DIR": str(Path(tmp) / "data")}
+            res = subprocess.run([sys.executable, str(root / "run.py"), "--headless"], capture_output=True, text=True,
+                                 encoding="utf-8", env=env, timeout=120, cwd=tmp)
+        self.assertEqual(res.returncode, 1)
+        self.assertIn("Не удалось запустить VerbaScribe", res.stderr)
+        self.assertIn("setup.bat", res.stderr)
+        self.assertIn("blocked by policy", res.stderr)
