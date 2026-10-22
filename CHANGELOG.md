@@ -10,6 +10,16 @@
   текст и перевод. Папка только для локального анализа. Отключается в настройках диктовки.
 - **Переименование участников из текста:** правый щелчок по кружку участника («Переименовать…»,
   «Прослушать», «Показать только его реплики») и пункт «Переименовать…» в списке имени у реплики.
+- **Запуск вместе с Windows** в трее, без окна, и закрытие окна, которое оставляет программу в трее
+  («Настройки → Общие → Запуск и трей»). Скачанное обновление ставится само, пока окно скрыто и
+  ничего не идёт, и программа возвращается в трей.
+- **Медиатека:** кнопка «Свернуть всё / Развернуть всё»; точка у свёрнутой папки или дня, где открытая запись.
+
+### Изменено
+- Значки в медиатеке: всегда видно только важное (обработка, ошибка, своя пометка «локально»);
+  анализ, переводы и дубляж — при наведении и у выбранной записи. «Вид → Значки → Все всегда» — как раньше.
+- Боковая панель: CPU, RAM и GPU с иконками подряд, модели — в отдельной рамке, разделённой на
+  «Модели на видеокарте» и «Модели на процессоре», с числом загруженных.
 
 ### Исправлено
 - Диктовка с переводом (и анализ, перевод, дубляж) больше не берёт модель поиска по смыслу (bge-m3)
@@ -20,6 +30,14 @@
 ### New
 - **Dictations in the library**, in a system folder "Dictations" (sound, text, translation; local analysis only).
 - **Rename a speaker from the text:** right click on their circle, or "Rename…" in a line's speaker list.
+- **Start with Windows** in the tray without a window, and closing the window keeps the app in the tray;
+  a downloaded update installs while the window is hidden and nothing runs.
+- **Library:** fold / unfold everything; a dot on a folded folder or day holding the open recording.
+
+### Changed
+- Library badges: only what needs attention always; analysis, translations, dubs on hover and on the
+  selected row ("View → Badges → All, always" for the old list).
+- Sidebar: CPU, RAM, GPU with icons, the models framed apart, on the video card and on the processor.
 
 ### Fixed
 - Dictation with translation (and analysis, translation, dubbing) no longer picks the embedding model
