@@ -13,9 +13,9 @@
 
 | Коммит | Что |
 |---|---|
-| `af4e041` | Окружение дубляжа из lock с хешами, chatterbox-tts отдельным файлом с хешами, аудит в CI |
-| `d3bc32a` | Модели Hugging Face с закреплённых коммитов (Whisper, GigaAM, Parakeet, Silero, ECAPA, Chatterbox) |
-| `508309e` | torch/torchaudio 2.11.0+cu126 вместо 2.6.0+cu124 |
+| `ff5e6f6` | Окружение дубляжа из lock с хешами, chatterbox-tts отдельным файлом с хешами, аудит в CI |
+| `120c485` | Модели Hugging Face с закреплённых коммитов (Whisper, GigaAM, Parakeet, Silero, ECAPA, Chatterbox) |
+| `1360e74` | torch/torchaudio 2.11.0+cu126 вместо 2.6.0+cu124 |
 
 Перед каждым коммитом: `python -m unittest discover -s tests -t .` — 325 тестов, код возврата 0
 (и на torch 2.6, и на torch 2.11), `compileall` — 0.
