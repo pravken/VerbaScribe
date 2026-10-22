@@ -1889,6 +1889,17 @@ def api_remove_media(meeting_id: int) -> Dict[str, Any]:
     return get_meeting(meeting_id)
 
 
+@app.post("/api/meetings/{meeting_id}/clear-results")
+def api_clear_results(meeting_id: int) -> Dict[str, Any]:
+    """Deletes the transcript and the analysis of a recording, keeps its sound (to transcribe it again)."""
+    from app.database import clear_results
+
+    _ensure_not_processing(meeting_id)
+    if not clear_results(meeting_id):
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    return get_meeting(meeting_id)
+
+
 @app.get("/api/privacy/cloud-log")
 def api_cloud_log() -> List[Dict[str, Any]]:
     from app.llm import cloud_log

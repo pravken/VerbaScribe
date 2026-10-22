@@ -20,19 +20,47 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 TARGET = Path(sys.prefix) / "onnxruntime-gpu"
+NEW = TARGET.with_name(TARGET.name + ".new")           # a build waiting to replace TARGET at the next start
+REMOVE_MARK = TARGET.with_name(TARGET.name + ".remove")  # TARGET is deleted at the next start
 _state: Dict[str, Any] = {"installing": False, "error": "", "activated": False}
 _lock = threading.Lock()
 
 
+def _complete(d: Path) -> bool:
+    return (d / "onnxruntime" / "__init__.py").is_file() and (d / "onnxruntime" / "capi").is_dir()
+
+
 def installed() -> bool:
-    return (TARGET / "onnxruntime" / "capi").is_dir()
+    return not REMOVE_MARK.exists() and (_complete(TARGET) or _complete(NEW))
+
+
+def _rmtree(d: Path) -> bool:
+    import shutil
+
+    shutil.rmtree(d, ignore_errors=True)
+    return not d.exists()
+
+
+def _finish_pending() -> None:
+    """What a running program could not do: its DLLs were loaded (Windows keeps them locked)."""
+    if REMOVE_MARK.exists():
+        if _rmtree(TARGET) and _rmtree(NEW):
+            REMOVE_MARK.unlink(missing_ok=True)
+    elif _complete(NEW) and _rmtree(TARGET):
+        NEW.rename(TARGET)
 
 
 def activate() -> bool:
     """Puts the GPU build first on sys.path (only before onnxruntime is imported)."""
     if _state["activated"]:
         return True
-    if os.environ.get("VERBASCRIBE_NO_ONNX_GPU") or not installed() or "onnxruntime" in sys.modules:
+    if "onnxruntime" not in sys.modules:
+        try:
+            _finish_pending()
+        except OSError:
+            pass
+    if os.environ.get("VERBASCRIBE_NO_ONNX_GPU") or not _complete(TARGET) or REMOVE_MARK.exists() \
+            or "onnxruntime" in sys.modules:
         return False
     sys.path.insert(0, str(TARGET))
     _state["activated"] = True
@@ -104,8 +132,9 @@ def enabled() -> bool:
 def status() -> Dict[str, Any]:
     with _lock:
         st = dict(_state)
-    st.update(nvidia=nvidia_present(), installed=installed(), active=cuda_available())
-    st["restart_needed"] = st["installed"] and not st["activated"]
+    st.update(nvidia=nvidia_present(), installed=installed(), active=cuda_available(),
+              removal_pending=REMOVE_MARK.exists() and TARGET.exists())
+    st["restart_needed"] = st["installed"] and (not st["activated"] or _complete(NEW))
     return st
 
 
@@ -129,11 +158,9 @@ def _install() -> None:
 
     try:
         spec = f"onnxruntime-gpu=={_cpu_version()}"  # the same API onnx-asr runs on now
+        REMOVE_MARK.unlink(missing_ok=True)
         tmp = TARGET.with_name(TARGET.name + ".partial")
-        if tmp.exists():
-            import shutil
-
-            shutil.rmtree(tmp, ignore_errors=True)
+        _rmtree(tmp)
         errors = []
         for cmd in _install_commands([spec, "--no-deps", "--target", str(tmp)]):
             proc = _run(cmd)
@@ -142,12 +169,12 @@ def _install() -> None:
             errors.append((proc.stderr or proc.stdout or "").strip()[-300:])
         else:
             raise RuntimeError("Не удалось установить onnxruntime-gpu: " + (errors[-1] if errors else "нет uv и pip"))
-        if TARGET.exists():
-            import shutil
-
-            shutil.rmtree(TARGET, ignore_errors=True)
-        tmp.rename(TARGET)
-        activate()  # works now if nothing has imported onnxruntime yet, else after a restart
+        _rmtree(NEW)
+        tmp.rename(NEW)
+        if not _state["activated"] and "onnxruntime" not in sys.modules:
+            _finish_pending()
+            activate()  # works now: nothing has imported onnxruntime yet
+        # else NEW replaces TARGET at the next start
     except Exception as e:
         with _lock:
             _state["error"] = str(e)[:300]
@@ -157,10 +184,11 @@ def _install() -> None:
 
 
 def remove() -> None:
-    """Back to the CPU build (from the next start)."""
-    import shutil
-
-    shutil.rmtree(TARGET, ignore_errors=True)
+    """Back to the CPU build. A loaded build cannot be deleted (its DLLs are locked): the rest goes at
+    the next start."""
+    _rmtree(NEW)
+    if TARGET.exists() and not _rmtree(TARGET):
+        REMOVE_MARK.touch()
 
 
 def maybe_install_on_start() -> None:

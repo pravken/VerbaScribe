@@ -102,6 +102,17 @@ function setExportDubLang(lang) {
   renderExportMenu();
 }
 
+async function ctxClearResults() {
+  hideContextMenu();
+  const id = state.contextMeetingId;
+  const m = state.meetings.find(x => x.id === id);
+  if (!m || !(await confirmDialog(t('clearResultsTitle'), t('clearResultsText').replace('{title}', m.title), t('ctxClearResults')))) return;
+  const res = await fetch(`/api/meetings/${id}/clear-results`, { method: 'POST' });
+  if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
+  await loadMeetingsList();
+  if (state.activeMeeting && state.activeMeeting.id === id) await selectMeeting(id, true);
+}
+
 async function ctxRemoveMedia() {
   hideContextMenu();
   const id = state.contextMeetingId;

@@ -244,12 +244,20 @@ class OnnxAsrTest(unittest.TestCase):
 
         res = [SimpleNamespace(start=1.0, end=3.0, text=" Добрый  день ", tokens=[" Добрый", " день"], timestamps=[0.0, 0.8]),
                SimpleNamespace(start=4.0, end=5.0, text="", tokens=[], timestamps=[])]
-        fake = SimpleNamespace(recognize=lambda path: iter(res))
+        import tempfile
+        import wave
+        from pathlib import Path
+
+        wav = Path(tempfile.mkdtemp()) / "a.wav"
+        with wave.open(str(wav), "wb") as w:
+            w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000); w.writeframes(b"\0\0" * 16000)
+        fake = SimpleNamespace(recognize=lambda audio, sample_rate=16000: iter(res))
         seen = []
         with mock.patch.object(asr_onnx, "_load", return_value=fake):
-            segs = asr_onnx.transcribe("gigaam-v3", "a.wav", 10.0, seen.append, lambda: None)
+            segs = asr_onnx.transcribe("gigaam-v3", wav, 10.0, seen.append, lambda: None)
+        # a word ends a little after its last token (WORD_TAIL_SEC), the last one with the phrase
         self.assertEqual(segs, [{"start": 1.0, "end": 3.0, "text": "Добрый день",
-                                 "words": [{"word": " Добрый", "start": 1.0, "end": 1.8, "prob": 1.0},
+                                 "words": [{"word": " Добрый", "start": 1.0, "end": 1.25, "prob": 1.0},
                                            {"word": " день", "start": 1.8, "end": 3.0, "prob": 1.0}]}])
         self.assertEqual(seen, [0.3])
         self.assertFalse(asr_onnx.supports_language("gigaam-v3", "en"))

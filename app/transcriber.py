@@ -831,9 +831,11 @@ def _process_meeting_job(meeting_id: int) -> None:
                                     + (" на видеокарте" if use_gpu else ""))
             total_dur = max(1.0, float(duration or 1.0))
 
+            where = {"gpu": " на видеокарте" if use_gpu else ""}
+
             def _onnx_progress(ratio: float) -> None:
                 update_meeting_progress(meeting_id, progress=16 + int(49 * ratio),
-                                        stage_text=f"Транскрибация: {format_timestamp(ratio * total_dur)} из {format_timestamp(total_dur)}")
+                                        stage_text=f"Транскрибация{where['gpu']}: {format_timestamp(ratio * total_dur)} из {format_timestamp(total_dur)}")
 
             partial = _PartialTranscript(meeting_id)
             onnx_done: List[Dict[str, Any]] = []
@@ -853,6 +855,7 @@ def _process_meeting_job(meeting_id: int) -> None:
                 traceback.print_exc()  # CUDA out of memory, a missing DLL: the CPU does the same work
                 asr_onnx.release(model_name, gpu=True)
                 onnx_done.clear()
+                where["gpu"] = " на процессоре"
                 update_meeting_progress(meeting_id, stage_text="Видеокарта не справилась — распознавание на процессоре")
                 raw_segments = asr_onnx.transcribe(model_name, wav_path, total_dur, _onnx_progress_and_partial,
                                                    lambda: _check_cancel(meeting_id), out=onnx_done)

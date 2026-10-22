@@ -11,6 +11,7 @@ the pipeline (speakers, translation, subtitles) does not change.
 Models are downloaded from Hugging Face (the ONNX exports in istupakov/*) into <models>/onnx.
 """
 
+import re
 import threading
 import traceback
 from pathlib import Path
@@ -230,19 +231,59 @@ def guess_language(text: str) -> str:
     return "ru" if cyr > len(text) * 0.3 else "en"
 
 
+_UNK_IN_WORD = re.compile(r"(?<=[а-яё])<unk>(?=[а-яё])", re.IGNORECASE)
+
+
+def clean_text(text: str) -> str:
+    """GigaAM writes "ё", which its vocabulary lacks, as "<unk>" ("ид<unk>т"): "е" inside a Russian
+    word, nothing elsewhere."""
+    if "<unk>" not in text:
+        return text
+    return " ".join(_UNK_IN_WORD.sub("е", text).replace("<unk>", "").split())
+
+
+def _clean_words(words: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out = []
+    for w in words:
+        word = clean_text(w["word"])
+        if word.strip():
+            out.append({**w, "word": " " + word.strip()})
+    return out
+
+
+QUIET_PEAK = 0.3     # below this the sound is raised, so the VAD does not take quiet speech for silence
+SILENT_PEAK = 0.002  # nothing but noise: left as it is
+MAX_GAIN = 30.0
+
+
+def level(audio: Any) -> Any:
+    """A quiet recording (far from the microphone, low gain) brought to a normal level: the VAD of
+    GigaAM / Parakeet drops whole quiet phrases otherwise (bench-report/gpu-report.md)."""
+    import numpy as np
+
+    a = np.asarray(audio, dtype=np.float32)
+    if a.size == 0:
+        return a
+    peak = float(np.percentile(np.abs(a), 99.9))  # not one click
+    if SILENT_PEAK < peak < QUIET_PEAK:
+        a = np.clip(a * min(0.9 / peak, MAX_GAIN), -1.0, 1.0)
+    return a
+
+
 def recognize_array(model_id: str, audio: Any) -> List[Tuple[float, float, str]]:
     """Sentences of a short 16 kHz float32 window (live captions): [(start, end, text)], cut at the
     word timings, so a sentence ends exactly where the next one starts."""
     asr = _load(model_id)
     out = []
-    for res in asr.recognize(audio, sample_rate=16000):
-        text = " ".join((res.text or "").split())
+    for res in asr.recognize(level(audio), sample_rate=16000):
+        text = clean_text(" ".join((res.text or "").split()))
         if not text:
             continue
         start, end = float(res.start), float(res.end)
         if res.tokens and res.timestamps:
             seg = {"start": start, "end": end, "text": text,
-                   "words": words_from_text(text, res.tokens, res.timestamps, start, end)}
+                   "words": _clean_words(words_from_text(" ".join((res.text or "").split()), res.tokens, res.timestamps,
+                                                         start, end))}
             out.extend((p["start"], p["end"], p["text"]) for p in split_sentences_words(seg))
         else:
             out.extend(split_sentences_text(start, end, text))
@@ -287,25 +328,40 @@ def words_from_text(text: str, tokens: List[str], timestamps: List[float], offse
     for tok, ts in zip(tokens, timestamps):
         starts.extend([float(ts)] * sum(1 for ch in tok.replace("▁", " ") if not ch.isspace()))
     words: List[Dict[str, Any]] = []
+    last: List[float] = []  # time of the last token of each word
     pos = 0
     for w in text.split():
         if pos >= len(starts):
             return words_from_tokens(tokens, timestamps, offset, end)  # text and tokens differ
         words.append({"word": " " + w, "start": round(offset + starts[pos], 2)})
+        last.append(offset + starts[min(len(starts), pos + len(w)) - 1])
         pos += len(w)
     if pos != len(starts):
         return words_from_tokens(tokens, timestamps, offset, end)
-    for i, w in enumerate(words):
-        nxt = words[i + 1]["start"] if i + 1 < len(words) else end
-        w["end"] = round(max(w["start"] + 0.05, min(nxt, w["start"] + 2.0)), 2)
-        w["prob"] = 1.0
+    _set_ends(words, last, end)
     return words
+
+
+WORD_TAIL_SEC = 0.25  # a word goes on this long after its last token is emitted
+
+
+def _set_ends(words: List[Dict[str, Any]], last: List[float], end: float) -> None:
+    """A word ends a little after its last token, not where the next one starts: the pauses between
+    words stay visible, and speaker separation cuts long phrases there (app/diarizer.py)."""
+    for i, w in enumerate(words):
+        if i + 1 < len(words):
+            stop = min(words[i + 1]["start"], last[i] + WORD_TAIL_SEC)
+        else:
+            stop = end  # the phrase ends where the VAD heard the speech end
+        w["end"] = round(max(w["start"] + 0.05, min(stop, w["start"] + 2.0)), 2)
+        w["prob"] = 1.0
 
 
 def words_from_tokens(tokens: List[str], timestamps: List[float], offset: float, end: float) -> List[Dict[str, Any]]:
     """Joins sub-word tokens into words: a token starting with a space (or "▁") starts a new word.
     A word lasts until the next word starts (the last one until the end of the phrase)."""
     words: List[Dict[str, Any]] = []
+    last: List[float] = []
     space = True  # a space before the next piece (GigaAM v3 gives it as a separate "▁" token)
     for tok, ts in zip(tokens, timestamps):
         piece = tok.replace("▁", " ")
@@ -316,13 +372,12 @@ def words_from_tokens(tokens: List[str], timestamps: List[float], offset: float,
             continue
         if space or piece[0].isspace() or not words:
             words.append({"word": " " + piece.strip(), "start": round(offset + float(ts), 2)})
+            last.append(offset + float(ts))
         else:
             words[-1]["word"] += piece.rstrip()
+            last[-1] = offset + float(ts)
         space = piece[-1].isspace()
-    for i, w in enumerate(words):
-        nxt = words[i + 1]["start"] if i + 1 < len(words) else end
-        w["end"] = round(max(w["start"] + 0.05, min(nxt, w["start"] + 2.0)), 2)
-        w["prob"] = 1.0
+    _set_ends(words, last, end)
     return words
 
 
@@ -369,16 +424,22 @@ def transcribe(model_id: str, wav_path: Path, total_dur: float, on_progress: Cal
                gpu: bool = False) -> List[Dict[str, Any]]:
     """Segments like faster-whisper's: [{start, end, text, words: [{word, start, end, prob}]}].
     `out` (optional) receives them as they come, for showing the text while it is recognized."""
+    import soundfile as sf
+
     asr = _load(model_id, gpu)
-    results: Iterator[Any] = asr.recognize(str(wav_path))
+    audio, sr = sf.read(str(wav_path), dtype="float32")  # 16 kHz mono (app/audio_utils.py)
+    if getattr(audio, "ndim", 1) > 1:
+        audio = audio.mean(axis=1)
+    results: Iterator[Any] = asr.recognize(level(audio), sample_rate=sr)
     segments: List[Dict[str, Any]] = out if out is not None else []
     for res in results:
         check_cancel()
-        text = " ".join((res.text or "").split())
+        raw = " ".join((res.text or "").split())
+        text = clean_text(raw)
         if not text:
             continue
         start, end = float(res.start), float(res.end)
-        words = words_from_text(text, res.tokens, res.timestamps, start, end) if res.tokens and res.timestamps else []
+        words = _clean_words(words_from_text(raw, res.tokens, res.timestamps, start, end)) if res.tokens and res.timestamps else []
         seg = {"start": round(start, 2), "end": round(end, 2), "text": text, "words": words}
         segments.extend(split_sentences_words(seg) if words else
                         [{"start": a, "end": b, "text": t, "words": []} for a, b, t in split_sentences_text(start, end, text)])

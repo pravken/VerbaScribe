@@ -167,7 +167,7 @@ function vramChipLabel(c) {
   if (c.kind === 'dub') return `${t('vramChipDub')}${c.count > 1 ? ' ×' + c.count : ''}`;
   if (c.kind === 'speakers') return t('vramChipSpeakers');
   if (c.kind === 'live') return `${t('vramChipLive')} · ${c.label || c.name}`;
-  if (c.kind === 'onnx') return `${c.label || c.name}${c.live ? ' · ' + t('vramChipLive') : ''}`;
+  if (c.kind === 'onnx') return `${c.label || c.name}${c.device === 'cuda' ? ' · GPU' : ''}${c.live ? ' · ' + t('vramChipLive') : ''}`;
   if (c.kind === 'ollama') return `${c.label || c.name}${c.size_gb ? ' · ' + c.size_gb + ' ' + t('unitGB') : ''}`;
   return c.label || c.name;
 }
@@ -503,8 +503,9 @@ function firstRunPicks(data, lang) {
   const vram = Number(hw.vram_total_gb || 0);
   const speech = [];
   if (lang === 'ru') speech.push({ id: 'gigaam-v3', why: t('frWhyGigaam') });
-  speech.push({ id: 'parakeet-v3', why: t('frWhyParakeet') });  // more accurate than Whisper in the comparison
+  // With a GPU Whisper is the more accurate one outside Russian (bench-report/gpu-report.md), Parakeet the fast one
   if (gpu) speech.push({ id: 'large-v3-turbo', why: t('frWhyTurbo') });
+  speech.push({ id: 'parakeet-v3', why: t('frWhyParakeet') });
   if (!gpu && lang !== 'ru') speech.push({ id: 'large-v3-turbo', why: t('frWhyTurboCpu') });
   const llm = vram >= 10 ? 'qwen3:8b' : 'qwen3.5:4b';  // bench-report/report.md
   return { speech: speech.slice(0, 3), llm, gpu };
@@ -839,6 +840,7 @@ function renderOnnxGpu(st) {
   label.className = 'text-[11px] ' + (st.error ? 'text-apple-amber' : st.active ? 'text-apple-green' : 'text-apple-secondary');
   label.textContent = st.installing ? t('onnxGpuInstalling')
     : st.error ? st.error
+    : st.removal_pending ? t('onnxGpuRemovePending')
     : st.active ? t('onnxGpuActive')
     : st.restart_needed ? t('onnxGpuRestart')
     : st.installed ? t('onnxGpuNoCuda')

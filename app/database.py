@@ -946,6 +946,31 @@ def delete_meeting(meeting_id: int, with_source: bool = False, with_exports: boo
     return True
 
 
+def clear_results(meeting_id: int) -> bool:
+    """Everything the processing made (transcript, speakers, summaries, translations, promises,
+    search index) is deleted; the sound, the title and the user's notes stay. Status "cleared": the
+    recording waits for Retry."""
+    if not get_meeting(meeting_id):
+        return False
+    with _db_lock:
+        conn = get_connection()
+        conn.execute(
+            "UPDATE meetings SET segments_json = '[]', speakers_json = '{}', summaries_json = '{}', translations_json = '{}', "
+            "segments_backup_json = '', status = 'cleared', progress = 0, stage_text = '', error_message = '' WHERE id = ?",
+            (meeting_id,))
+        conn.execute("DELETE FROM segments_fts WHERE meeting_id = ?", (meeting_id,))
+        conn.execute("DELETE FROM semantic_chunks WHERE meeting_id = ?", (meeting_id,))
+        conn.execute("DELETE FROM semantic_meta WHERE meeting_id = ?", (meeting_id,))
+        try:
+            conn.execute("DELETE FROM commitments WHERE meeting_id = ?", (meeting_id,))
+        except sqlite3.OperationalError:
+            pass
+        conn.commit()
+        conn.close()
+    events.publish({"type": "list"})
+    return True
+
+
 def _deserialize_meeting(d: Dict[str, Any]) -> Dict[str, Any]:
     d["has_segments_backup"] = bool(d.pop("segments_backup_json", ""))
     d["pending_exports"] = _loads_list(d.pop("pending_exports_json", None))

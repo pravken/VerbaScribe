@@ -771,6 +771,19 @@ function autoPairLabel() {
   return `${langCode(a)} ⇄ ${langCode(b)}`;
 }
 
+// The interface language changed: the language lists are written in it
+function relabelStudioLanguages() {
+  const tr = document.getElementById('live-translate-select');
+  const speech = document.getElementById('studio-speech');
+  if (!tr || !tr.options.length) return;
+  const codes = _textLangs || TEXT_LANG_FALLBACK;
+  fillTranslateSelect(codes, tr.value);
+  const value = speech.value;
+  speech.innerHTML = `<option value="auto">${escapeHtml(t('studioSpeechAuto'))}</option>` + textLangOptions(codes, true);
+  speech.value = value;
+  renderQuickLangs();
+}
+
 function fillTranslateSelect(codes, value) {
   const sel = document.getElementById('live-translate-select');
   sel.innerHTML = `<option value="">${escapeHtml(t('liveNoTranslation'))}</option>`

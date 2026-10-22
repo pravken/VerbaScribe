@@ -53,7 +53,7 @@ async function selectMeeting(id, reloadPlayer = true) {
 function updateProcessingBanner(m) {
   const isBusy = !DONE_STATUSES.includes(m.status);
   const banner = document.getElementById('workspace-processing-banner');
-  banner.classList.toggle('hidden', !isBusy && m.status !== 'failed' && m.status !== 'cancelled');
+  banner.classList.toggle('hidden', !isBusy && !['failed', 'cancelled', 'cleared'].includes(m.status));
   document.getElementById('workspace-cancel-btn').classList.toggle('hidden', !isBusy);
   document.getElementById('workspace-retry-btn').classList.toggle('hidden', isBusy);
   const bar = document.getElementById('workspace-progress-bar');
@@ -70,8 +70,8 @@ function updateProcessingBanner(m) {
   } else {
     // Failed or cancelled: the reason, a red (or grey) bar and Retry, not a "finished" blue bar
     const failed = m.status === 'failed';
-    document.getElementById('workspace-stage-text').textContent =
-      (failed ? t('statusFailed') : t('statusCancelled')) + (m.error_message ? `: ${m.error_message}` : m.stage_text ? `: ${m.stage_text}` : '');
+    document.getElementById('workspace-stage-text').textContent = m.status === 'cleared' ? t('statusCleared')
+      : (failed ? t('statusFailed') : t('statusCancelled')) + (m.error_message ? `: ${m.error_message}` : m.stage_text ? `: ${m.stage_text}` : '');
     document.getElementById('workspace-progress-pct').textContent = '';
     bar.style.width = '100%';
     bar.style.background = failed ? 'rgba(255, 69, 58, 0.7)' : 'rgba(255, 255, 255, 0.2)';

@@ -2,7 +2,7 @@
 // The parts are classic scripts sharing one global scope, loaded in order by index.html.
 
 // VerbaScribe UI logic. Depends on vendor/marked.min.js, vendor/purify.min.js and i18n.js.
-const DONE_STATUSES = ['completed', 'failed', 'cancelled'];
+const DONE_STATUSES = ['completed', 'failed', 'cancelled', 'cleared'];
 
 let state = {
   uiLang: localStorage.getItem('whisper_ui_lang') || 'ru',
@@ -87,6 +87,7 @@ function setUILanguage(lang) {
     renderSummaryPanel();
   }
   applyVideoLayout();
+  if (typeof relabelStudioLanguages === 'function') relabelStudioLanguages();
   if (state.appView === 'studio') { renderStudioState(); syncStudioCaptions(); }
   if (state.appView === 'ask') { renderAskScope(); renderAskThread(); }
   if (state.activeWorkspaceTab === 'info' && state.activeMeeting) loadMeetingInfo();

@@ -364,14 +364,14 @@
     </div>
 
     <div id="studio-stage" class="flex-1 min-w-0 min-h-0 flex flex-col">
-      <div class="h-14 px-5 flex items-center gap-4 border-b apple-border shrink-0 bg-apple-sidebar/95">
+      <div class="h-14 px-5 flex items-center gap-3 xl:gap-4 border-b apple-border shrink-0 bg-apple-sidebar/95 overflow-hidden">
         <span id="studio-rec-dot" class="relative flex w-3 h-3 shrink-0"><span class="studio-ping absolute inset-0 rounded-full bg-apple-red animate-ping opacity-60"></span><span class="relative w-3 h-3 rounded-full bg-apple-red"></span></span>
-        <div class="min-w-0">
-          <div id="studio-heading" class="text-[13px] font-semibold text-white leading-tight" data-i18n="studioIdle">Студия записи</div>
+        <div class="min-w-0 flex-1 xl:flex-none">
+          <div id="studio-heading" class="text-[13px] font-semibold text-white leading-tight truncate" data-i18n="studioIdle">Студия записи</div>
           <div id="studio-source" class="text-[11px] text-apple-secondary truncate"></div>
         </div>
-        <div id="studio-timer" class="text-2xl font-mono font-semibold text-white tracking-wider ml-2">00:00</div>
-        <div class="flex-1 flex items-center gap-2 min-w-[90px] max-w-[220px]">
+        <div id="studio-timer" class="text-xl xl:text-2xl font-mono font-semibold text-white tracking-wider shrink-0 whitespace-nowrap">00:00</div>
+        <div class="hidden lg:flex flex-1 items-center gap-2 min-w-[70px] max-w-[220px]">
           <div class="flex-1 h-1.5 bg-black/50 rounded-full overflow-hidden border border-white/5">
             <div id="studio-level" class="h-full bg-apple-green transition-all duration-75" style="width: 2%"></div>
           </div>
@@ -380,7 +380,7 @@
         <div class="flex items-center gap-2 shrink-0 ml-auto">
           <button onclick="toggleStudioFocus()" id="studio-focus-btn" class="ui-btn ui-btn-subtle h-8" data-i18n-title="tipStudioFocus" title="Субтитры на всё окно (Esc — выход)">
             <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"/></svg>
-            <span id="studio-focus-label" data-i18n="studioFocus">На всё окно</span>
+            <span id="studio-focus-label" class="hidden xl:inline" data-i18n="studioFocus">На всё окно</span>
           </button>
           <button onclick="cancelLiveRecording()" id="studio-cancel-btn" class="hidden ui-btn ui-btn-subtle h-8" data-i18n-title="tipStudioCancel" title="Остановить запись без сохранения" data-i18n="studioCancel">Отменить</button>
           <button onclick="stopAndTranscribeRecording()" id="studio-stop-btn" class="hidden ui-btn h-8 px-4 bg-apple-red hover:bg-apple-red/85 text-white font-semibold">
@@ -1082,6 +1082,9 @@
     </button>
     <button id="ctx-local-item" onclick="ctxToggleLocalOnly()" data-i18n-title="tipLocalOnly" title="Не отправлять в облачную модель: анализ, названия и ответы ассистента — только локальной моделью" class="macos-menu-item">
       <span data-i18n="ctxLocalOnly">Только локальный анализ</span><span id="ctx-local-item-check" class="text-[11px] opacity-70"></span>
+    </button>
+    <button onclick="ctxClearResults()" class="macos-menu-item" data-i18n-title="tipClearResults" title="Удалить расшифровку, участников, саммари, переводы и обещания; звук и ваши заметки остаются, запись можно расшифровать заново">
+      <span data-i18n="ctxClearResults">Очистить результаты</span>
     </button>
     <button onclick="ctxRemoveMedia()" class="macos-menu-item" data-i18n-title="tipRemoveMedia" title="Удалить звук и видео записи, оставив расшифровку, анализ и заметки">
       <span data-i18n="ctxRemoveMedia">Удалить звук, оставить текст</span>

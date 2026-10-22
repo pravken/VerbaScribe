@@ -890,7 +890,7 @@ function meetingRowHtml(m, depth) {
     ? `<img src="/api/meetings/${m.id}/thumb" loading="lazy" alt="" draggable="false" onerror="this.remove()"
         class="w-12 h-[27px] rounded object-cover bg-black/60 shrink-0 border border-white/10" />`
     : '';
-  const status = m.status === 'failed' ? t('statusFailed') : m.status === 'cancelled' ? t('statusCancelled')
+  const status = m.status === 'failed' ? t('statusFailed') : m.status === 'cancelled' ? t('statusCancelled') : m.status === 'cleared' ? t('statusClearedShort')
     : `${spkCount || 1} ${t('spkShort')} · ${(m.language || 'ru').toUpperCase()}`;
   return `
     <div onclick="libRowClick(event, ${m.id})" data-mid="${m.id}"
