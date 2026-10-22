@@ -482,5 +482,12 @@ def api_media_peaks(meeting_id: int, bars: int = 120) -> Dict[str, Any]:
     try:
         kept = json.loads(peaks_file(meeting_id).read_text(encoding="utf-8"))
     except (OSError, ValueError):
+        # No envelope kept: a recording whose own file is a WAV (a dictation) is read directly
+        media = Path(m.get("media_path") or "")
+        if media.suffix.lower() == ".wav" and media.is_file():
+            try:
+                return {"peaks": loudness_peaks(media, bars)}
+            except Exception:
+                pass
         return {"peaks": []}
     return {"peaks": resample_peaks([float(x) for x in kept], bars)}

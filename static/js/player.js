@@ -8,7 +8,9 @@ async function buildPlayerWaveformEnvelope(meeting) {
   // Flat placeholder until the real loudness envelope of the recording is loaded
   state.playerPeaks = new Array(120).fill(0.14);
   renderPlayerWaveform(0);
-  if (!meeting || !meeting.audio_path) return;
+  // Asked for every recording: after processing the 16 kHz WAV is gone (audio_path is empty) and
+  // the server answers from the envelope it kept then
+  if (!meeting || meeting.media_removed) return;
   try {
     const res = await fetch(`/api/meetings/${meeting.id}/peaks?bars=120`);
     if (!res.ok) return;
