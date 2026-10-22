@@ -217,9 +217,6 @@ class PeopleTest(unittest.TestCase):
         self.assertEqual(self.vp.apply_to_library()["meetings"], 0)  # nothing left to name
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class DeleteWithSourceTest(unittest.TestCase):
     def test_source_file_only_on_request(self):
@@ -609,3 +606,35 @@ class WorkAudioTest(unittest.TestCase):
         sf.write(str(wav2), np.zeros(16000, dtype=np.float32), 16000)
         transcriber._drop_work_audio(m2["id"], wav2)
         self.assertTrue(wav2.exists())
+
+
+class IdleUnloadTest(unittest.TestCase):
+    def test_unload_frees_our_models_and_leaves_the_users_ollama_models(self):
+        from unittest import mock
+
+        from app import asr_onnx, diarizer, idle_unload, transcriber, vram
+        from app.database import init_db
+
+        init_db()
+        posted = []
+        client = mock.MagicMock()
+        client.__enter__.return_value.post.side_effect = lambda url, json: posted.append(json["model"])
+        with mock.patch.object(transcriber, "whisper_cache_key", return_value="large-v3-turbo"), \
+                mock.patch.object(transcriber, "release_whisper_model") as rel_whisper, \
+                mock.patch.object(diarizer, "ecapa_loaded_on", return_value=None), \
+                mock.patch.object(asr_onnx, "loaded_models", return_value=["gigaam-v3"]), \
+                mock.patch.object(asr_onnx, "release") as rel_onnx, \
+                mock.patch.object(vram, "ollama_loaded", return_value=[{"name": "qwen3.5:4b"}, {"name": "users-own:7b"}]), \
+                mock.patch.object(idle_unload, "_ollama_used", {"qwen3.5:4b"}), \
+                mock.patch.object(idle_unload.httpx, "Client", return_value=client):
+            out = idle_unload.unload_now()
+        rel_whisper.assert_called_once()
+        rel_onnx.assert_called_once()
+        self.assertEqual(posted, ["qwen3.5:4b"])  # a model the user loaded in Ollama is not ours to unload
+        self.assertEqual(out["released"][:2], ["whisper", "onnx"])
+        self.assertIn("qwen3.5:4b", out["released"])
+        self.assertNotIn("speakers", out["released"])
+
+
+if __name__ == "__main__":
+    unittest.main()

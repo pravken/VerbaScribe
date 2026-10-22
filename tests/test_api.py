@@ -63,6 +63,84 @@ class SessionAndSearchApiTest(unittest.TestCase):
 
 
 @unittest.skipIf(main is None, "fastapi and app dependencies not installed")
+class TranscriptEditApiTest(unittest.TestCase):
+    """PATCH of a line and of a participant, through HTTP as the page sends them."""
+
+    def setUp(self):
+        main.init_db()
+        words = [{"word": " старый", "start": 0.0, "end": 0.5}, {"word": " текст", "start": 0.5, "end": 1.0}]
+        m = main.create_meeting(title="Правка через API", filename="a.wav", media_path="a.wav")
+        main.save_meeting_results(m["id"], segments=[{"id": 1, "start": 0.0, "end": 1.0, "speaker": "SPEAKER_00",
+                                                      "text": "старый текст", "words": words}],
+                                  speakers={"SPEAKER_00": {"id": "SPEAKER_00", "name": "Анна", "color": "#0A84FF"}})
+        self.mid = m["id"]
+        from app.database import update_meeting_progress
+
+        update_meeting_progress(self.mid, status="completed")  # a pending one is queued again when the app starts
+        self.c = TestClient(main.app, base_url="http://127.0.0.1:8790")
+        self.c.__enter__()
+        self.addCleanup(self.c.__exit__, None, None, None)
+        self.c.get(f"/?token={main.SESSION_TOKEN}")
+
+    def test_line_text_and_speaker(self):
+        url = f"/api/meetings/{self.mid}/segments/1"
+        r = self.c.patch(url, json={"text": "  новый длинный текст  "})
+        self.assertEqual(r.status_code, 200)
+        seg = r.json()["segments"][0]
+        self.assertEqual(seg["text"], "новый длинный текст")
+        self.assertEqual([w["word"].strip() for w in seg["words"]], ["новый", "длинный", "текст"])  # the player follows
+        self.assertEqual(self.c.patch(url, json={"text": "   "}).status_code, 400)
+        self.assertEqual(self.c.patch(url, json={"speaker": "SPEAKER_99"}).status_code, 400)
+        self.assertEqual(self.c.patch(f"/api/meetings/{self.mid}/segments/42", json={"text": "x"}).status_code, 404)
+        self.assertEqual(self.c.patch(f"/api/meetings/999999/segments/1", json={"text": "x"}).status_code, 404)
+        self.assertEqual(main.get_meeting(self.mid)["segments"][0]["text"], "новый длинный текст")
+
+    def test_participant(self):
+        url = f"/api/meetings/{self.mid}/speakers"
+        r = self.c.patch(url, json={"speaker_id": "SPEAKER_00", "name": "Анна Петрова", "color": "#FF9F0A"})
+        self.assertEqual(r.status_code, 200)
+        spk = main.get_meeting(self.mid)["speakers"]["SPEAKER_00"]
+        self.assertEqual((spk["name"], spk["color"]), ("Анна Петрова", "#FF9F0A"))
+        self.assertEqual(self.c.patch(url, json={"speaker_id": "<script>", "name": "x"}).status_code, 400)
+        self.assertEqual(self.c.patch(url, json={"speaker_id": "SPEAKER_00", "name": "x", "color": "red"}).status_code, 400)
+
+    def test_edits_wait_while_the_recording_is_transcribed(self):
+        from unittest import mock
+
+        with mock.patch("app.transcriber.is_transcribing", return_value=True):
+            r = self.c.patch(f"/api/meetings/{self.mid}/segments/1", json={"text": "правка"})
+            self.assertEqual(r.status_code, 409)
+            r = self.c.patch(f"/api/meetings/{self.mid}/speakers", json={"speaker_id": "SPEAKER_00", "name": "Б"})
+            self.assertEqual(r.status_code, 409)
+        self.assertEqual(main.get_meeting(self.mid)["segments"][0]["text"], "старый текст")
+
+
+@unittest.skipIf(main is None, "fastapi and app dependencies not installed")
+class StartupResumeTest(unittest.TestCase):
+    """Work cut off by a restart: recognition is queued again, a dub or a link download is closed."""
+
+    def test_interrupted_work_after_a_restart(self):
+        from unittest import mock
+
+        from app.database import update_meeting_progress
+
+        main.init_db()
+        ids = {}
+        for state in ("transcribing", "dubbing", "downloading", "completed"):
+            m = main.create_meeting(title=f"После перезапуска {state}", filename="a.wav", media_path="a.wav")
+            update_meeting_progress(m["id"], status=state)
+            ids[state] = m["id"]
+        with mock.patch.object(main, "enqueue_meeting_job") as enqueue:
+            with TestClient(main.app, base_url="http://127.0.0.1:8790"):
+                pass
+        queued = {c.args[0] for c in enqueue.call_args_list}
+        self.assertIn(ids["transcribing"], queued)
+        self.assertNotIn(ids["completed"], queued)
+        self.assertEqual(main.get_meeting(ids["dubbing"])["status"], "completed")
+        self.assertEqual(main.get_meeting(ids["downloading"])["status"], "failed")
+
+
+@unittest.skipIf(main is None, "fastapi and app dependencies not installed")
 class ConcurrentEditsTest(unittest.TestCase):
     """Edits that arrive at once (two segments, two participants) must all stay."""
 
