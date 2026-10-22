@@ -213,6 +213,8 @@ const SERVER_TEXT_EN = {
   "процесс распознавания завершился": "the recognition process ended",
   "процесс распознавания не отвечает": "the recognition process does not answer",
   "это прямая трансляция: она не кончается, скачать её целиком нельзя": "it is a live stream: it never ends, it cannot be downloaded whole",
+  "Неверное сочетание клавиш": "Not a valid key combination",
+  "Сочетание уже занято другой программой": "Another program already uses this combination",
 };
 
 // Messages with values in them: {} in the Russian text, {0} {1} … in the English one
@@ -284,4 +286,5 @@ const SERVER_PATTERNS_EN = [
   ["Ошибка ({}): {}", "Error ({0}): {1}"],
   ["{} готова: {}", "{0} ready: {1}"],
   ["Ошибка: {}", "Error: {0}"],
+  ["На раскладке клавиатуры это сочетание (AltGr) печатает «{}» — выберите другое", "On a keyboard layout this combination (AltGr) types “{0}”: choose another one"],
 ];

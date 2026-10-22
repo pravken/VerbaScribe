@@ -449,13 +449,43 @@ class TrayController:
             self.tray.set_hotkey(dspec, "hotkey_dictation", slot=DICTATION_HOTKEY_ID)
 
     def _hotkey_record(self) -> None:
-        recording = bool(self._status.get("recording"))
+        # The notice waits for the page to report the new state (_check_hotkey_result): starting can
+        # fail (no microphone, the page still loading)
+        self._hotkey_wait = (bool(self._status.get("recording")), time.time())
         self.window.evaluate_js("window.trayCommand && window.trayCommand('record', null)")
+
+    def _check_hotkey_result(self, st: dict) -> None:
+        wait = getattr(self, "_hotkey_wait", None)
+        if not wait:
+            return
+        was, since = wait
+        now = bool(st.get("recording"))
         key = self._hotkey_spec
-        if recording:
-            self._notify("Запись остановлена", "Запись сохранена и отправлена на расшифровку")
-        else:
-            self._notify("Запись начата", f"Чтобы остановить, нажмите {key}" if key else "")
+        if now != was:
+            self._hotkey_wait = None
+            if now:
+                self._notify("Запись начата", f"Чтобы остановить, нажмите {key}" if key else "")
+            else:
+                self._notify("Запись остановлена", "Запись сохранена и отправлена на расшифровку")
+        elif time.time() - since > 10:
+            self._hotkey_wait = None
+            self._notify("Запись не остановилась" if was else "Запись не началась",
+                         "Откройте окно VerbaScribe, чтобы увидеть причину", warning=True)
+
+    def _warn_hotkey_failures(self) -> None:
+        """A hotkey that could not be registered is said once, not only on the settings page."""
+        from app.hotkey import dictation_hotkey_state, hotkey_state
+
+        warned = getattr(self, "_hotkey_warned", set())
+        self._hotkey_warned = warned
+        for name, state in (("записи", hotkey_state), ("диктовки", dictation_hotkey_state)):
+            if state.get("ok") is False:
+                key = (name, state.get("spec"), state.get("error"))
+                if key not in warned:
+                    warned.add(key)
+                    self._notify(f"Горячая клавиша {name} не работает",
+                                 f"{state.get('spec')}: {state.get('error')}. Её можно сменить в Настройках → Запись",
+                                 warning=True)
 
     # ---- status
     def _poll(self) -> None:
@@ -468,11 +498,13 @@ class TrayController:
             if tick % 5 == 0:
                 try:
                     self._apply_hotkey()  # changed in Settings → Recording
+                    self._warn_hotkey_failures()
                 except Exception as e:
                     print(f"[tray] hotkey error: {e}", file=sys.stderr)
             try:
                 st = snapshot()
                 self._status = st
+                self._check_hotkey_result(st)
                 self.tray.set_status(st["state"], st["text"])
                 running = {(q["id"], q["kind"]): q for q in st["queue"] if q.get("state") == "running"}
                 for key, q in self._running.items():

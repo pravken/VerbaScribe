@@ -51,6 +51,36 @@ class HotkeyTest(unittest.TestCase):
         for bad in ("", "R", "Shift+R", "Ctrl+Alt", "Ctrl+Я", "Hyper+R", "Ctrl+F25"):
             self.assertIsNone(parse_hotkey(bad), bad)
 
+    def test_altgr_letters_are_not_taken(self):
+        from app.hotkey import altgr_clash
+
+        polish = {ord("A"): "ą", ord("E"): "ę"}  # AltGr = Ctrl+Alt on Windows
+        typed = lambda mods, vk: polish.get(vk, "")
+        self.assertEqual(altgr_clash("Ctrl+Alt+A", typed), "ą")
+        self.assertEqual(altgr_clash("Ctrl+Alt+R", typed), "")
+        self.assertEqual(altgr_clash("Ctrl+Shift+A", typed), "")  # no Alt: AltGr is not involved
+        self.assertEqual(altgr_clash("Ctrl+Alt+Win+A", typed), "")
+        self.assertEqual(altgr_clash("Ctrl+Alt+A", lambda m, v: 1 / 0), "")  # a failing check allows the key
+
+    def test_record_notice_follows_what_really_happened(self):
+        import time
+        from types import SimpleNamespace
+
+        import run
+
+        notes = []
+        tc = SimpleNamespace(_hotkey_spec="Ctrl+Alt+R", _notify=lambda title, text, warning=False: notes.append((title, warning)))
+        check = lambda st: run.TrayController._check_hotkey_result(tc, st)
+        tc._hotkey_wait = (False, time.time())
+        check({"recording": False})
+        self.assertEqual(notes, [])  # not started yet: nothing said
+        check({"recording": True})
+        self.assertEqual(notes, [("Запись начата", False)])
+        tc._hotkey_wait = (False, time.time() - 11)
+        check({"recording": False})
+        self.assertEqual(notes[-1], ("Запись не началась", True))
+        self.assertIsNone(tc._hotkey_wait)
+
 
 class CallWatchTest(unittest.TestCase):
     def test_matching(self):

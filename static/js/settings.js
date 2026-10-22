@@ -1017,7 +1017,7 @@ async function loadHotkeyStatus() {
   const box = document.getElementById('hotkey-status');
   const st = await fetch('/api/hotkey').then(r => r.json()).catch(() => null);
   if (!box || !st || st.ok === null || st.ok === undefined) { if (box) box.textContent = ''; return; }
-  box.textContent = st.ok ? t('hotkeyActive') : (st.error || t('hotkeyFailed'));
+  box.textContent = st.ok ? t('hotkeyActive') : (st.error ? serverText(st.error) : t('hotkeyFailed'));
   box.className = 'text-[11px] ' + (st.ok ? 'text-apple-green' : 'text-apple-amber');
 }
 
