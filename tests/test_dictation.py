@@ -157,3 +157,22 @@ class OllamaModelChoiceTest(unittest.TestCase):
             ollama_client.raise_for_ollama(resp)
         self.assertIn("does not support chat", str(e.exception))
         self.assertIn("400", str(e.exception))
+
+
+class EmbeddingSettingTest(unittest.TestCase):
+    def test_an_embedding_model_chosen_for_analysis_is_replaced_once(self):
+        import httpx
+
+        from app import database, ollama_client
+
+        init_db()
+        update_settings({"ollama_model": "bge-m3", "semantic_model": "bge-m3"})
+        tags = {"models": [{"name": "bge-m3:latest"}, {"name": "qwen3:8b"}]}
+        real = httpx.Client
+        with mock.patch.object(ollama_client, "_is_ollama_port_open", return_value=True), \
+                mock.patch("httpx.Client", side_effect=lambda **kw: real(transport=httpx.MockTransport(
+                    lambda req: httpx.Response(200, json=tags)), **kw)):
+            st = ollama_client.get_ollama_status()
+        self.assertEqual(st["active_model"], "qwen3:8b")
+        self.assertEqual(database.get_all_settings()["ollama_model"], "qwen3:8b")
+        self.assertEqual(st["chat_models"], ["qwen3:8b"])

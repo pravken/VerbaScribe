@@ -281,6 +281,15 @@ def get_ollama_status(base_url: Optional[str] = None) -> Dict[str, Any]:
         except Exception:
             running = False
 
+    # The embedding model chosen as the analysis model (it was listed among them before 0.5.1): the
+    # first model that writes text takes its place, once
+    if models and is_embedding_model(active_model):
+        usable = chat_models(models)
+        if usable:
+            active_model = usable[0]
+            update_settings({"ollama_model": active_model})
+            print(f"[ollama] analysis model was an embedding model, now {active_model}", flush=True)
+
     # Build catalog with installed flags
     catalog = []
     installed_set = set(models)
