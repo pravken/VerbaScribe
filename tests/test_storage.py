@@ -5,6 +5,7 @@ import sqlite3
 import tempfile
 import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from app import database, events
@@ -276,6 +277,97 @@ class ShutdownTest(unittest.TestCase):
                 self.assertIn("Установка дубляжа", st["text"])
             with mock.patch.object(backup, "busy", 1):
                 self.assertIn("Резервная копия", app_status.snapshot()["text"])
+
+
+class SegmentsTableTest(unittest.TestCase):
+    """The transcript is one row per line; older libraries kept it as JSON in the recording's row."""
+
+    def _raw(self, sql, *args):
+        with database._db_lock:
+            conn = database.get_connection()
+            rows = conn.execute(sql, args).fetchall()
+            conn.commit()
+            conn.close()
+        return rows
+
+    def test_transcripts_of_an_older_library_are_moved_once_and_found(self):
+        import json
+
+        database.init_db()
+        m = database.create_meeting(title="Старая библиотека", filename="a.wav", media_path="a.wav")
+        segs = [{"id": i, "start": i, "end": i + 1, "speaker": "SPEAKER_00", "text": f"строка {i}",
+                 "words": [{"word": " строка", "start": i, "end": i + 0.5}]} for i in range(5)]
+        # as an older version stored it (or a version this one replaced, after going back to it)
+        self._raw("UPDATE meetings SET segments_json = ?, has_transcript = 1 WHERE id = ?", json.dumps(segs), m["id"])
+        self._raw("DELETE FROM segments WHERE meeting_id = ?", m["id"])
+        with database._db_lock:  # that version kept the search index of the text too
+            conn = database.get_connection()
+            database._reindex_segments(conn, m["id"], segs)
+            conn.commit()
+            conn.close()
+        database.init_db()
+        self.assertEqual(database.get_meeting(m["id"])["segments"], segs)
+        self.assertEqual(self._raw("SELECT segments_json FROM meetings WHERE id = ?", m["id"])[0][0], "")
+        self.assertEqual(len(self._raw("SELECT pos FROM segments WHERE meeting_id = ?", m["id"])), 5)
+        self.assertIn(m["id"], [h["meeting_id"] for h in database.search_all_meetings("строка")])
+
+        # written as JSON while the app runs (read as a fallback): an edit replaces it for good
+        self._raw("UPDATE meetings SET segments_json = ? WHERE id = ?", json.dumps(segs[:3]), m["id"])
+        self._raw("DELETE FROM segments WHERE meeting_id = ?", m["id"])
+        self.assertEqual(len(database.get_meeting(m["id"])["segments"]), 3)
+
+        def edit(meeting):
+            meeting["segments"][0]["text"] = "правка"
+            return ("segments",)
+
+        database.edit_meeting(m["id"], edit)
+        database.init_db()
+        self.assertEqual(database.get_meeting(m["id"])["segments"][0]["text"], "правка")
+
+        # an older version transcribed it again: its newer JSON replaces the rows at the next start
+        self._raw("UPDATE meetings SET segments_json = ? WHERE id = ?", json.dumps(segs[:2]), m["id"])
+        database.init_db()
+        self.assertEqual(database.get_meeting(m["id"])["segments"], segs[:2])
+
+    def test_editing_one_line_writes_one_row(self):
+        database.init_db()
+        m = database.create_meeting(title="Правка строки", filename="a.wav", media_path="a.wav")
+        database.save_meeting_results(m["id"], segments=[{"id": i, "start": i, "end": i + 1, "text": f"t{i}"} for i in range(50)])
+        writes = []
+        real = database.get_connection
+
+        def counting():
+            conn = real()
+            conn.set_trace_callback(lambda sql: writes.append(sql) if sql.lstrip().upper().startswith(("UPDATE SEGMENTS", "INSERT INTO SEGMENTS", "DELETE FROM SEGMENTS")) else None)  # the lines and their search index
+            return conn
+
+        def change(meeting):
+            meeting["segments"][7]["text"] = "правка"
+            return ("segments",)
+
+        with mock.patch.object(database, "get_connection", side_effect=counting):
+            database.edit_meeting(m["id"], change)
+        self.assertEqual(len(writes), 3, writes)  # the line, and its search entry deleted and added
+        got = database.get_meeting(m["id"])["segments"]
+        hits = [h for h in database.search_all_meetings("правка") if h["meeting_id"] == m["id"]]
+        self.assertTrue(hits)
+        self.assertFalse([h for h in database.search_all_meetings("t7") if h["meeting_id"] == m["id"]])
+        self.assertEqual([s["text"] for s in got][6:9], ["t6", "правка", "t8"])
+
+    def test_rows_go_with_clear_and_delete_and_talk_time_is_read_from_them(self):
+        database.init_db()
+        m = database.create_meeting(title="Удаление", filename="a.wav", media_path="a.wav")
+        database.save_meeting_results(m["id"], segments=[
+            {"id": 1, "start": 0, "end": 4, "speaker": "SPEAKER_00", "text": "а"},
+            {"id": 2, "start": 4, "end": 5.5, "speaker": "SPEAKER_01", "text": "б"},
+            {"id": 3, "start": 6, "end": 8, "speaker": "SPEAKER_00", "text": "в"}])
+        self.assertEqual(database.speaker_seconds([m["id"]])[m["id"]], {"SPEAKER_00": 6.0, "SPEAKER_01": 1.5})
+        database.clear_results(m["id"])
+        self.assertEqual(self._raw("SELECT COUNT(*) FROM segments WHERE meeting_id = ?", m["id"])[0][0], 0)
+        self.assertEqual(database.get_meeting(m["id"])["segments"], [])
+        database.save_meeting_results(m["id"], segments=[{"id": 1, "start": 0, "end": 1, "text": "снова"}])
+        database.delete_meeting(m["id"])
+        self.assertEqual(self._raw("SELECT COUNT(*) FROM segments WHERE meeting_id = ?", m["id"])[0][0], 0)
 
 
 class OrphanFilesTest(unittest.TestCase):

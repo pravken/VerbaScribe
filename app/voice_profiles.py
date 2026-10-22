@@ -209,20 +209,19 @@ def people() -> List[Dict[str, Any]]:
     with _db_lock:
         conn = get_connection()
         rows = conn.execute(
-            "SELECT id, title, recorded_at, created_at, speakers_json, segments_json FROM meetings WHERE status = 'completed'"
+            "SELECT id, title, recorded_at, created_at, speakers_json FROM meetings WHERE status = 'completed'"
         ).fetchall()
         conn.close()
+    from app.database import speaker_seconds
+
+    talk = speaker_seconds(r["id"] for r in rows)
     by_name: Dict[str, Dict[str, Any]] = {}
     for r in rows:
         try:
             speakers = json.loads(r["speakers_json"] or "{}")
-            segments = json.loads(r["segments_json"] or "[]")
         except ValueError:
             continue
-        seconds: Dict[str, float] = {}
-        for seg in segments:
-            spk = seg.get("speaker")
-            seconds[spk] = seconds.get(spk, 0.0) + max(0.0, float(seg.get("end") or 0) - float(seg.get("start") or 0))
+        seconds = talk.get(r["id"], {})
         for spk_id, meta in speakers.items():
             name = str((meta or {}).get("name") or "").strip()
             if is_default_name(name) or not seconds.get(spk_id):

@@ -234,21 +234,32 @@ def init_db() -> None:
             )
             """
         )
+        # The transcript: one row per line (see _write_segments), not one JSON in the recording's row
+        cur.execute(_SEGMENTS_DDL)
+        cur.execute("DROP TRIGGER IF EXISTS meetings_flags_segments")  # has_transcript is set by _write_segments
         for ddl in _FLAG_TRIGGERS:
             cur.execute(ddl)
         if not cur.execute("SELECT 1 FROM settings WHERE key = 'meeting_flags_v1'").fetchone():
             # Recordings made before the triggers existed (read once)
-            cur.execute(f"UPDATE meetings SET has_transcript = {_HAS_TRANSCRIPT.format(row='meetings')}, "
+            cur.execute(f"UPDATE meetings SET has_transcript = ({_HAS_TRANSCRIPT.format(row='meetings')} "
+                        "OR EXISTS (SELECT 1 FROM segments WHERE segments.meeting_id = meetings.id)), "
                         f"has_summary = {_HAS_SUMMARY.format(row='meetings')}")
             cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('meeting_flags_v1', '1')")
+        moved = _move_segments_to_table(conn)
         if cur.execute("PRAGMA user_version").fetchone()[0] < _FTS_SCHEMA_VERSION:
             # First start with the index (or a newer index format): build it from stored transcripts
             cur.execute("DELETE FROM segments_fts")
-            for row in cur.execute("SELECT id, segments_json FROM meetings").fetchall():
-                _reindex_segments(conn, row["id"], _loads_list(row["segments_json"]))
+            for row in cur.execute("SELECT id FROM meetings").fetchall():
+                _reindex_segments(conn, row["id"], _read_segments(conn, row["id"]))
             cur.execute(f"PRAGMA user_version = {_FTS_SCHEMA_VERSION}")
 
         conn.commit()
+        if moved:
+            # The transcripts' old place is free space in the file: given back to the disk once
+            try:
+                conn.execute("VACUUM")
+            except sqlite3.Error as e:  # not enough room for the copy VACUUM makes: the space is reused later
+                print(f"[data] database not compacted: {e}", flush=True)
         conn.close()
 
 
@@ -278,17 +289,86 @@ _MEETING_EXTRA_COLUMNS = {
     "has_summary": "INTEGER DEFAULT 0",
 }
 
-_HAS_TRANSCRIPT = "(COALESCE({row}.segments_json, '') NOT IN ('', '[]'))"
+_HAS_TRANSCRIPT = "(COALESCE({row}.segments_json, '') NOT IN ('', '[]'))"  # recordings stored before the segments table
 _HAS_SUMMARY = "(COALESCE({row}.summaries_json, '') NOT IN ('', '{{}}'))"
 _FLAG_TRIGGERS = [
     f"""CREATE TRIGGER IF NOT EXISTS meetings_flags_insert AFTER INSERT ON meetings BEGIN
         UPDATE meetings SET has_transcript = {_HAS_TRANSCRIPT.format(row="NEW")},
             has_summary = {_HAS_SUMMARY.format(row="NEW")} WHERE id = NEW.id; END""",
-    f"""CREATE TRIGGER IF NOT EXISTS meetings_flags_segments AFTER UPDATE OF segments_json ON meetings BEGIN
-        UPDATE meetings SET has_transcript = {_HAS_TRANSCRIPT.format(row="NEW")} WHERE id = NEW.id; END""",
     f"""CREATE TRIGGER IF NOT EXISTS meetings_flags_summaries AFTER UPDATE OF summaries_json ON meetings BEGIN
         UPDATE meetings SET has_summary = {_HAS_SUMMARY.format(row="NEW")} WHERE id = NEW.id; END""",
 ]
+
+# A transcript is a list of lines (segments); each is stored as its own row, in order. The row of the
+# recording stays small, so the library list reads it fast, and an edit of one line writes one row.
+# `data` is the line as it is (JSON: start, end, speaker, text, words, ...), nothing is lost.
+_SEGMENTS_DDL = """CREATE TABLE IF NOT EXISTS segments (
+    meeting_id INTEGER NOT NULL,
+    pos INTEGER NOT NULL,
+    data TEXT NOT NULL,
+    PRIMARY KEY (meeting_id, pos)
+) WITHOUT ROWID"""
+
+
+def _read_segments(conn: sqlite3.Connection, meeting_id: int) -> List[Dict[str, Any]]:
+    out = []
+    for (data,) in conn.execute("SELECT data FROM segments WHERE meeting_id = ? ORDER BY pos", (meeting_id,)):
+        try:
+            seg = json.loads(data)
+        except ValueError:
+            continue
+        if isinstance(seg, dict):
+            out.append(seg)
+    return out
+
+
+def _segment_rows(segments: List[Dict[str, Any]]) -> List[str]:
+    return [json.dumps(seg, ensure_ascii=False) for seg in segments]
+
+
+def _write_segments(conn: sqlite3.Connection, meeting_id: int, segments: List[Dict[str, Any]],
+                    before: Optional[List[str]] = None) -> None:
+    """Stores the transcript of a recording; call inside the caller's transaction. `before`: the
+    stored rows as they were read in this transaction (_segment_rows); with the same number of lines
+    only the lines that changed are written (an edit of one line writes one row)."""
+    rows = _segment_rows(segments)
+    if before is not None and len(before) == len(segments):
+        old = before
+        conn.executemany("UPDATE segments SET data = ? WHERE meeting_id = ? AND pos = ?",
+                         [(r, meeting_id, i) for i, (r, o) in enumerate(zip(rows, old)) if r != o])
+    else:
+        conn.execute("DELETE FROM segments WHERE meeting_id = ?", (meeting_id,))
+        conn.executemany("INSERT INTO segments (meeting_id, pos, data) VALUES (?, ?, ?)",
+                         [(meeting_id, i, r) for i, r in enumerate(rows)])
+    # The JSON of an older version (read as a fallback until moved) is replaced by these rows: left
+    # behind, it would overwrite them at the next start
+    conn.execute("UPDATE meetings SET has_transcript = ?, segments_json = '' WHERE id = ?", (1 if segments else 0, meeting_id))
+
+
+def _move_segments_to_table(conn: sqlite3.Connection) -> int:
+    """Transcripts still kept in meetings.segments_json go to the segments table, and the column is
+    emptied; returns how many recordings were moved. At every start: a recording an older version
+    transcribed (after going back to it) is moved too, its newer transcript replacing the rows of
+    the earlier one. The search index was built from this same text (or is built from the table
+    right after, see init_db), so it is left alone."""
+    pending = "COALESCE(segments_json, '') NOT IN ('', '[]')"
+    ids = [r["id"] for r in conn.execute(f"SELECT id FROM meetings WHERE {pending}").fetchall()]
+    if not ids:
+        return 0
+    conn.execute(f"DELETE FROM segments WHERE meeting_id IN (SELECT id FROM meetings WHERE {pending})")
+    try:
+        # In SQL: a library of a million lines moves in seconds, not minutes
+        conn.execute(f"""INSERT INTO segments (meeting_id, pos, data)
+            SELECT m.id, j.key, j.value FROM meetings AS m, json_each(m.segments_json) AS j
+            WHERE m.{pending} AND json_valid(m.segments_json) AND j.type = 'object'""")
+    except sqlite3.OperationalError:  # SQLite without JSON functions
+        for row in conn.execute(f"SELECT id, segments_json FROM meetings WHERE {pending}").fetchall():
+            _write_segments(conn, row["id"], [x for x in _loads_list(row["segments_json"]) if isinstance(x, dict)])
+    conn.execute(f"UPDATE meetings SET has_transcript = EXISTS (SELECT 1 FROM segments WHERE meeting_id = meetings.id), "
+                 f"segments_json = '' WHERE {pending}")
+    print(f"[data] transcripts of {len(ids)} recording(s) moved to the segments table", flush=True)
+    return len(ids)
+
 
 SYSTEM_FOLDERS = {"recordings": "Записи", "imports": "Импорт"}
 _VIDEO_EXTS = {".mp4", ".mkv", ".mov", ".avi", ".m4v", ".webm", ".wmv", ".flv", ".mpg", ".mpeg", ".ts", ".mts", ".3gp"}
@@ -344,24 +424,44 @@ def _loads_list(raw: Optional[str]) -> List[Dict[str, Any]]:
         return []
 
 
-def _reindex_segments(conn: sqlite3.Connection, meeting_id: int, segments: List[Dict[str, Any]]) -> None:
-    """Replaces the search index rows of one recording. Call inside the caller's transaction."""
-    conn.execute("DELETE FROM segments_fts WHERE meeting_id = ?", (meeting_id,))
+def _reindex_segments(conn: sqlite3.Connection, meeting_id: int, segments: List[Dict[str, Any]],
+                      before: Optional[List[str]] = None) -> None:
+    """Replaces the search index rows of one recording. Call inside the caller's transaction.
+    `before` (the stored rows before an edit, see _write_segments): with the same lines, each with
+    its own id, only the lines that changed are indexed again."""
     # The meaning index of this recording is out of date: app/semantic.py indexes it again a while
     # after the last edit, embedding only the chunks whose text changed
     conn.execute("UPDATE semantic_meta SET stale = 1, updated_at = datetime('now', 'localtime') WHERE meeting_id = ?",
                  (meeting_id,))
+
+    def seg_id(seg: Dict[str, Any]) -> int:
+        return int(seg.get("id", 0) or 0)
+
+    lines = segments
+    if before is not None and len(before) == len(segments):
+        old = [json.loads(r) for r in before]
+        ids, old_ids = [seg_id(x) for x in segments], [seg_id(x) for x in old]
+        if len(set(ids)) == len(ids) and len(set(old_ids)) == len(old_ids):
+            rows = _segment_rows(segments)
+            changed = [i for i, (r, o) in enumerate(zip(rows, before)) if r != o]
+            conn.executemany("DELETE FROM segments_fts WHERE meeting_id = ? AND segment_id = ?",
+                             [(meeting_id, old_ids[i]) for i in changed])
+            lines = [segments[i] for i in changed]
+        else:
+            before = None
+    if before is None or len(before) != len(segments):
+        conn.execute("DELETE FROM segments_fts WHERE meeting_id = ?", (meeting_id,))
     conn.executemany(
         "INSERT INTO segments_fts (text, meeting_id, segment_id, start, speaker) VALUES (?, ?, ?, ?, ?)",
         [
             (
                 seg.get("text") or "",
                 meeting_id,
-                int(seg.get("id", 0) or 0),
+                seg_id(seg),
                 float(seg.get("start", 0.0) or 0.0),
                 seg.get("speaker") or "SPEAKER_00",
             )
-            for seg in segments
+            for seg in lines
             if (seg.get("text") or "").strip()
         ],
     )
@@ -500,9 +600,10 @@ def create_meeting(
         meeting_id = cur.lastrowid
         conn.commit()
         row = conn.execute("SELECT * FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+        m = _deserialize_meeting(dict(row), conn)
         conn.close()
     events.publish({"type": "list"})
-    return _deserialize_meeting(dict(row))
+    return m
 
 
 def update_meeting_progress(
@@ -575,9 +676,6 @@ def save_meeting_results(
     if speakers is not None:
         fields.append("speakers_json = ?")
         values.append(json.dumps(speakers, ensure_ascii=False))
-    if segments is not None:
-        fields.append("segments_json = ?")
-        values.append(json.dumps(segments, ensure_ascii=False))
     if summaries is not None:
         fields.append("summaries_json = ?")
         values.append(json.dumps(summaries, ensure_ascii=False))
@@ -585,15 +683,18 @@ def save_meeting_results(
         fields.append("language = ?")
         values.append(language)
 
-    if not fields:
+    if not fields and segments is None:
         return
 
     values.append(meeting_id)
     with _db_lock:
         conn = get_connection()
-        conn.execute(f"UPDATE meetings SET {', '.join(fields)} WHERE id = ?", tuple(values))
-        if segments is not None and reindex:
-            _reindex_segments(conn, meeting_id, segments)
+        if fields:
+            conn.execute(f"UPDATE meetings SET {', '.join(fields)} WHERE id = ?", tuple(values))
+        if segments is not None:
+            _write_segments(conn, meeting_id, segments)
+            if reindex:
+                _reindex_segments(conn, meeting_id, segments)
         conn.commit()
         conn.close()
 
@@ -613,12 +714,15 @@ def edit_meeting(meeting_id: int, mutate: Callable[[Dict[str, Any]], Iterable[st
             row = conn.execute("SELECT * FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
             if not row:
                 return None
-            m = _deserialize_meeting(dict(row))
+            m = _deserialize_meeting(dict(row), conn)
+            # As text: mutate changes the lines (and their words) in place. Only rows that are stored
+            # can be updated one by one (a transcript read from older JSON is written whole)
+            stored = conn.execute("SELECT 1 FROM segments WHERE meeting_id = ? LIMIT 1", (meeting_id,)).fetchone()
+            before = _segment_rows(m["segments"]) if stored else None
             changed = set(mutate(m) or ())
             if "segments" in changed:
-                conn.execute("UPDATE meetings SET segments_json = ? WHERE id = ?",
-                             (json.dumps(m["segments"], ensure_ascii=False), meeting_id))
-                _reindex_segments(conn, meeting_id, m["segments"])
+                _write_segments(conn, meeting_id, m["segments"], before)
+                _reindex_segments(conn, meeting_id, m["segments"], before)
             if "speakers" in changed:
                 conn.execute("UPDATE meetings SET speakers_json = ? WHERE id = ?",
                              (json.dumps(m["speakers"], ensure_ascii=False), meeting_id))
@@ -630,7 +734,7 @@ def edit_meeting(meeting_id: int, mutate: Callable[[Dict[str, Any]], Iterable[st
                 return m
             conn.commit()
             row = conn.execute("SELECT * FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
-            return _deserialize_meeting(dict(row))
+            return _deserialize_meeting(dict(row), conn)
         finally:
             conn.close()
 
@@ -694,7 +798,8 @@ def filler_stats(meeting_id: int) -> Dict[str, Any]:
     how long they took to say. {"cleaned": False} when there is no such copy."""
     with _db_lock:
         conn = get_connection()
-        row = conn.execute("SELECT segments_json, segments_backup_json FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+        row = conn.execute("SELECT segments_backup_json FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+        current = _read_segments(conn, meeting_id)
         conn.close()
     if not row or not row["segments_backup_json"]:
         return {"cleaned": False, "words": 0, "seconds": 0.0}
@@ -707,11 +812,11 @@ def filler_stats(meeting_id: int) -> Dict[str, Any]:
                 out[key] = max(0.0, float(w.get("end") or 0) - float(w.get("start") or 0))
         return out
 
-    before, after = words(_loads_list(row["segments_backup_json"])), words(_loads_list(row["segments_json"]))
+    before, after = words(_loads_list(row["segments_backup_json"])), words(current)
     gone = [d for k, d in before.items() if k not in after]
     if not before:  # no word timings: count words of the text
         n_before = sum(len((s.get("text") or "").split()) for s in _loads_list(row["segments_backup_json"]))
-        n_after = sum(len((s.get("text") or "").split()) for s in _loads_list(row["segments_json"]))
+        n_after = sum(len((s.get("text") or "").split()) for s in current)
         return {"cleaned": True, "words": max(0, n_before - n_after), "seconds": 0.0}
     return {"cleaned": True, "words": len(gone), "seconds": round(sum(gone), 1)}
 
@@ -725,11 +830,10 @@ def restore_segments_backup(meeting_id: int) -> bool:
         if not row or not row["segments_backup_json"]:
             conn.close()
             return False
-        conn.execute(
-            "UPDATE meetings SET segments_json = segments_backup_json, segments_backup_json = '' WHERE id = ?",
-            (meeting_id,),
-        )
-        _reindex_segments(conn, meeting_id, _loads_list(row["segments_backup_json"]))
+        restored = _loads_list(row["segments_backup_json"])
+        _write_segments(conn, meeting_id, restored)
+        conn.execute("UPDATE meetings SET segments_backup_json = '' WHERE id = ?", (meeting_id,))
+        _reindex_segments(conn, meeting_id, restored)
         conn.commit()
         conn.close()
     return True
@@ -876,14 +980,40 @@ def meeting_status(meeting_id: int) -> str:
     return str(row["status"] or "") if row else ""
 
 
+def speaker_seconds(meeting_ids: Iterable[int]) -> Dict[int, Dict[str, float]]:
+    """How long each speaker talks in each recording: {meeting_id: {speaker_id: seconds}}, read from
+    the lines without loading whole transcripts."""
+    ids = [int(i) for i in meeting_ids]
+    out: Dict[int, Dict[str, float]] = {i: {} for i in ids}
+    if not ids:
+        return out
+    with _db_lock:
+        conn = get_connection()
+        try:
+            for i in range(0, len(ids), 500):
+                part = ids[i:i + 500]
+                q = (f"SELECT meeting_id, json_extract(data, '$.speaker') AS spk, "
+                     f"SUM(MAX(0.0, COALESCE(json_extract(data, '$.end'), 0) - COALESCE(json_extract(data, '$.start'), 0))) AS sec "
+                     f"FROM segments WHERE meeting_id IN ({','.join('?' * len(part))}) GROUP BY meeting_id, spk")
+                for r in conn.execute(q, part):
+                    out[r["meeting_id"]][r["spk"]] = float(r["sec"] or 0.0)
+        except sqlite3.OperationalError:  # SQLite without JSON functions
+            for mid in ids:
+                for seg in _read_segments(conn, mid):
+                    spk = seg.get("speaker")
+                    out[mid][spk] = out[mid].get(spk, 0.0) + max(0.0, float(seg.get("end") or 0) - float(seg.get("start") or 0))
+        finally:
+            conn.close()
+    return out
+
+
 def get_meeting(meeting_id: int) -> Optional[Dict[str, Any]]:
     with _db_lock:
         conn = get_connection()
         row = conn.execute("SELECT * FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+        m = _deserialize_meeting(dict(row), conn) if row else None
         conn.close()
-        if not row:
-            return None
-        return _deserialize_meeting(dict(row))
+        return m
 
 
 _LIST_COLUMNS = """id, title, filename, media_path, duration, status, progress, stage_text,
@@ -1170,6 +1300,7 @@ def delete_meeting(meeting_id: int, with_source: bool = False, with_exports: boo
     with _db_lock:
         conn = get_connection()
         conn.execute("DELETE FROM meetings WHERE id = ?", (meeting_id,))
+        conn.execute("DELETE FROM segments WHERE meeting_id = ?", (meeting_id,))
         conn.execute("DELETE FROM segments_fts WHERE meeting_id = ?", (meeting_id,))
         conn.execute("DELETE FROM semantic_chunks WHERE meeting_id = ?", (meeting_id,))
         conn.execute("DELETE FROM semantic_meta WHERE meeting_id = ?", (meeting_id,))
@@ -1199,10 +1330,11 @@ def clear_results(meeting_id: int) -> bool:
     with _db_lock:
         conn = get_connection()
         conn.execute(
-            "UPDATE meetings SET segments_json = '[]', speakers_json = '{}', summaries_json = '{}', translations_json = '{}', "
+            "UPDATE meetings SET segments_json = '', has_transcript = 0, speakers_json = '{}', summaries_json = '{}', translations_json = '{}', "
             "segments_backup_json = '', dubs_json = '[]', pending_exports_json = '[]', status = 'cleared', progress = 0, "
             "stage_text = '', error_message = '', transcript_verified = 0 WHERE id = ?",
             (meeting_id,))
+        conn.execute("DELETE FROM segments WHERE meeting_id = ?", (meeting_id,))
         conn.execute("DELETE FROM segments_fts WHERE meeting_id = ?", (meeting_id,))
         conn.execute("DELETE FROM semantic_chunks WHERE meeting_id = ?", (meeting_id,))
         conn.execute("DELETE FROM semantic_meta WHERE meeting_id = ?", (meeting_id,))
@@ -1216,20 +1348,21 @@ def clear_results(meeting_id: int) -> bool:
     return True
 
 
-def _deserialize_meeting(d: Dict[str, Any]) -> Dict[str, Any]:
+def _deserialize_meeting(d: Dict[str, Any], conn: sqlite3.Connection) -> Dict[str, Any]:
     d["has_segments_backup"] = bool(d.pop("segments_backup_json", ""))
     d["pending_exports"] = _loads_list(d.pop("pending_exports_json", None))
     d["exports"] = [p for p in _loads_list(d.pop("exports_json", None)) if isinstance(p, str)]
     d["is_video"] = is_video(d)
     d["local_only"] = bool(d.get("local_only"))
+    legacy = _loads_list(d.pop("segments_json", None))  # not moved yet (see _move_segments_to_table)
+    d["segments"] = _read_segments(conn, d["id"]) or legacy
     for key, target in (
         ("speakers_json", "speakers"),
-        ("segments_json", "segments"),
         ("summaries_json", "summaries"),
         ("dubs_json", "dubs"),
     ):
         raw = d.pop(key, None)
-        default_val = [] if target in ("segments", "dubs") else {}
+        default_val = [] if target == "dubs" else {}
         if raw:
             try:
                 d[target] = json.loads(raw)
