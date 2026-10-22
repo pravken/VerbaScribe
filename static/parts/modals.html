@@ -1,0 +1,380 @@
+<!-- Import, shortcuts, reconfigure, translate, dub and dictionary windows: part of static/index.html (assembled by app/page.py) -->
+  <!-- =========================================================================
+       MODAL 1: IMPORT / ADD RECORDINGS
+       ========================================================================= -->
+  <div id="modal-import" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4" onclick="closeModalOnBackdrop(event, 'import')">
+    <div class="w-full max-w-lg bg-apple-card border apple-border rounded-2xl shadow-2xl overflow-hidden modal-card">
+      <div class="p-6 space-y-5">
+        <div class="flex items-center justify-between">
+          <h3 class="text-sm font-semibold text-white" data-i18n="importModalTitle">Добавить аудио и видео файлы</h3>
+          <button onclick="closeModal('import')" data-i18n-title="tipCloseModal" title="Закрыть окно" class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
+        </div>
+
+        <!-- Dropzone -->
+        <div onclick="document.getElementById('file-input').click()"
+          ondragover="event.preventDefault()"
+          ondrop="handleFileDrop(event)"
+          data-i18n-title="tipDropzone"
+          title="Нажмите для выбора файлов с диска или перетащите их мышью"
+          class="border border-dashed border-white/20 hover:border-apple-blue rounded-xl p-8 text-center cursor-pointer bg-apple-sidebar/60 transition">
+          <input id="file-input" type="file" multiple accept="video/*,audio/*,.mkv,.webm,.mov,.mp4,.mp3,.wav,.m4a,.ogg,.flac" class="hidden" onchange="handleFileSelect(this.files)" />
+          <p class="text-xs font-medium text-white mb-1" data-i18n="dropFilesHere">Нажмите для выбора файлов или перетащите их сюда</p>
+          <p class="text-[11px] text-apple-secondary">MP4, MKV, MOV, WEBM, MP3, WAV, M4A</p>
+          <div id="upload-status-text" class="mt-3 text-xs text-apple-blue hidden"></div>
+        </div>
+
+        <!-- Recognition Options -->
+        <div class="grid grid-cols-3 gap-3">
+          <div>
+            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="modelLabel">Модель распознавания</label>
+            <select id="upload-model" data-i18n-title="tipSelectWhisper" title="Выберите модель Whisper для распознавания речи" class="w-full bg-apple-sidebar border apple-border rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none">
+              <option value="large-v3-turbo">Whisper Turbo</option>
+              <option value="large-v3">Whisper Pro</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="speechLangLabel">Язык речи</label>
+            <select id="upload-language" data-i18n-title="tipSelectSpeechLang" title="Выберите язык разговора или оставьте автоопределение" class="w-full bg-apple-sidebar border apple-border rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none">
+              <option value="auto">Auto (RU / EN)</option>
+              <option value="mixed" data-i18n="langMixed">Несколько языков (RU + EN вперемешку)</option>
+              <option value="ru">Русский (RU)</option>
+              <option value="en">English (EN)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="speakersCountLabel">Число участников</label>
+            <select id="upload-speakers" data-i18n-title="tipSelectSpeakersCount" title="Укажите точное число участников или оставьте Auto" class="w-full bg-apple-sidebar border apple-border rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none">
+              <option value="0">Auto</option>
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="5">5</option>
+              <option value="6">6</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Direct Path Input -->
+        <div class="pt-3 border-t apple-border space-y-1.5">
+          <label class="block text-[11px] text-apple-secondary" data-i18n="localPathLabel">Или путь к файлу / папке на диске (без копирования):</label>
+          <div class="flex gap-2">
+            <input id="local-path-input" type="text"
+              data-i18n-title="tipLocalPathInput"
+              title="Укажите полный путь к файлу или папке на диске"
+              placeholder="D:\Recordings\meeting.mp4"
+              class="flex-1 h-8 bg-apple-sidebar border apple-border rounded-lg px-3 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
+            <button onclick="submitLocalPath()"
+              data-i18n-title="tipAddLocalPathBtn"
+              title="Добавить файл или папку по указанному пути в очередь обработки"
+              class="ui-btn ui-btn-primary h-8 px-3.5" data-i18n="addBtnText">Добавить</button>
+          </div>
+        </div>
+
+        <!-- By link (app/url_import.py) -->
+        <div class="pt-3 border-t apple-border space-y-1.5">
+          <label class="block text-[11px] text-apple-secondary" data-i18n="urlImportLabel">Или ссылка на видео или подкаст (YouTube, VK Видео, RuTube, прямая ссылка на файл):</label>
+          <div class="flex gap-2">
+            <input id="url-import-input" type="url" onkeydown="if(event.key==='Enter') submitUrlImport()"
+              placeholder="https://…"
+              class="flex-1 h-8 bg-apple-sidebar border apple-border rounded-lg px-3 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
+            <button onclick="submitUrlImport()" class="ui-btn ui-btn-primary h-8 px-3.5" data-i18n="urlImportBtn">Скачать</button>
+          </div>
+          <p class="text-[10.5px] text-apple-tertiary" data-i18n="urlImportHint">Скачивается только звук. Используйте для записей, которые вы вправе скачивать.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-shortcuts" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4" onclick="closeModalOnBackdrop(event, 'shortcuts')">
+    <div class="w-full max-w-sm bg-apple-card border apple-border rounded-2xl shadow-2xl overflow-hidden modal-card">
+      <div class="p-6 space-y-3">
+        <div class="flex items-center justify-between">
+          <h3 class="text-sm font-semibold text-white" data-i18n="shortcutsTitle">Горячие клавиши</h3>
+          <button onclick="closeModal('shortcuts')" data-i18n-title="tipCloseModal" title="Закрыть окно" class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
+        </div>
+        <div>
+          <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
+            <span class="text-xs text-apple-label" data-i18n="scPlay">Воспроизведение / пауза</span>
+            <kbd class="sc-kbd">Space</kbd>
+          </div>
+          <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
+            <span class="text-xs text-apple-label" data-i18n="scSeek">Перемотка на 5 секунд</span>
+            <kbd class="sc-kbd">← →</kbd>
+          </div>
+          <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
+            <span class="text-xs text-apple-label" data-i18n="scSeekLong">Перемотка на 15 секунд</span>
+            <kbd class="sc-kbd">Shift + ← →</kbd>
+          </div>
+          <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
+            <span class="text-xs text-apple-label" data-i18n="scTheatre">Режим кинотеатра (для видео)</span>
+            <kbd class="sc-kbd">F</kbd>
+          </div>
+          <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
+            <span class="text-xs text-apple-label" data-i18n="scSearch">Поиск в тексте записи</span>
+            <kbd class="sc-kbd">/</kbd> <kbd class="sc-kbd">Ctrl + F</kbd>
+          </div>
+          <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
+            <span class="text-xs text-apple-label" data-i18n="scImport">Открыть файлы</span>
+            <kbd class="sc-kbd">Ctrl + O</kbd>
+          </div>
+          <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
+            <span class="text-xs text-apple-label" data-i18n="scRecord">Новая запись звука (с подтверждением)</span>
+            <kbd class="sc-kbd">R</kbd>
+          </div>
+          <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
+            <span class="text-xs text-apple-label" data-i18n="scMulti">Выбрать несколько записей</span>
+            <kbd class="sc-kbd">Ctrl / Shift + клик</kbd>
+          </div>
+          <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
+            <span class="text-xs text-apple-label" data-i18n="scSelectAll">Выбрать все записи (после клика в медиатеке)</span>
+            <kbd class="sc-kbd">Ctrl + A</kbd>
+          </div>
+          <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
+            <span class="text-xs text-apple-label" data-i18n="scDelete">Удалить выбранные записи</span>
+            <kbd class="sc-kbd">Delete</kbd>
+          </div>
+          <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
+            <span class="text-xs text-apple-label" data-i18n="scGlobalRec">Запись из любого окна (настраивается)</span>
+            <kbd class="sc-kbd">Ctrl + Alt + R</kbd>
+          </div>
+          <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
+            <span class="text-xs text-apple-label" data-i18n="scEsc">Закрыть окно или режим кинотеатра</span>
+            <kbd class="sc-kbd">Esc</kbd>
+          </div>
+          <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
+            <span class="text-xs text-apple-label" data-i18n="scHelp">Эта справка</span>
+            <kbd class="sc-kbd">?</kbd>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-reconfigure" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4" onclick="closeModalOnBackdrop(event, 'reconfigure')">
+    <div class="w-full max-w-md bg-apple-card border apple-border rounded-2xl shadow-2xl overflow-hidden modal-card">
+      <div class="p-6 space-y-4">
+        <div class="flex items-center justify-between">
+          <h3 class="text-sm font-semibold text-white" data-i18n="reconfigTitle">Параметры обработки записи</h3>
+          <button onclick="closeModal('reconfigure')" data-i18n-title="tipCloseModal" title="Закрыть окно" class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
+        </div>
+        <p id="reconfig-recording-name" class="text-xs text-apple-secondary truncate"></p>
+
+        <div class="settings-card">
+          <div>
+            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="modelLabel">Модель распознавания</label>
+            <select id="reconfig-model" data-i18n-title="tipSelectWhisper" title="Выберите модель Whisper" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none">
+              <option value="large-v3-turbo">Whisper Turbo</option>
+              <option value="large-v3">Whisper Pro</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="speechLangLabel">Язык речи</label>
+            <select id="reconfig-language" data-i18n-title="tipSelectSpeechLang" title="Выберите язык речи" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none">
+              <option value="auto">Auto (RU / EN)</option>
+              <option value="mixed" data-i18n="langMixed">Несколько языков (RU + EN вперемешку)</option>
+              <option value="ru">Русский (RU)</option>
+              <option value="en">English (EN)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="speakersCountLabel">Число участников</label>
+            <select id="reconfig-speakers" data-i18n-title="tipSelectSpeakersCount" title="Выберите количество участников" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none">
+              <option value="0">Auto</option>
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="5">5</option>
+              <option value="6">6</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="pt-2 flex justify-end gap-2">
+          <button onclick="closeModal('reconfigure')" data-i18n-title="tipCancelBtn" title="Отменить изменения" class="ui-btn ui-btn-subtle px-3.5" data-i18n="cancel">Отмена</button>
+          <button onclick="submitReconfigure()" data-i18n-title="tipRerunBtn" title="Запустить повторную расшифровку записи с новыми параметрами" class="ui-btn ui-btn-primary px-4" data-i18n="rerunBtn">Обработать заново</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MODAL: TRANSLATE TEXT + SUBTITLES
+       ========================================================================= -->
+  <div id="modal-translate" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4" onclick="closeModalOnBackdrop(event, 'translate')">
+    <div class="w-full max-w-lg bg-apple-card border apple-border rounded-2xl shadow-2xl overflow-hidden modal-card">
+      <div class="p-6 space-y-4 overflow-y-auto" style="max-height: 85vh">
+        <div class="flex items-center justify-between">
+          <h3 class="text-sm font-semibold text-white" data-i18n="translateTitle">Перевод текста</h3>
+          <button onclick="closeModal('translate')" class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
+        </div>
+        <p class="text-xs text-apple-secondary leading-relaxed" data-i18n="translateIntro">Каждая реплика переводится выбранной моделью Ollama на этом компьютере — текст никуда не отправляется. Это машинный перевод: качество зависит от модели, имена и термины стоит проверить. Таймкоды реплик сохраняются.</p>
+        <div id="translate-last-error" class="hidden text-xs rounded-lg border border-apple-red/30 bg-apple-red/15 text-apple-red px-3 py-2"></div>
+        <div id="translate-no-ollama" class="hidden text-xs rounded-lg border apple-border bg-apple-amber/15 text-apple-amber px-3 py-2" data-i18n="translateNoOllama">Ollama сейчас не запущена или в ней нет моделей. Программа попробует запустить её при старте перевода; модель можно скачать в настройках.</div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="translateLangLabel">Язык перевода</label>
+            <select id="translate-lang" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none"></select>
+          </div>
+          <div>
+            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="translateModelLabel">Модель Ollama</label>
+            <select id="translate-model" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none"></select>
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-2">
+          <button onclick="closeModal('translate')" class="ui-btn ui-btn-subtle px-3.5" data-i18n="cancel">Отмена</button>
+          <button onclick="startTranslation(false)" id="translate-start-btn" class="ui-btn ui-btn-primary px-4" data-i18n="translateStartBtn">Перевести</button>
+        </div>
+
+        <div id="translate-results" class="space-y-2 pt-2 border-t apple-border"></div>
+
+        <div id="translate-subs" class="space-y-2.5 pt-3 border-t apple-border">
+          <div class="text-xs font-semibold text-white" data-i18n="subsTitle">Субтитры для видео</div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="subsLangLabel">Текст субтитров</label>
+              <select id="subs-lang" onchange="updateSubsControls()" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none"></select>
+            </div>
+            <div>
+              <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="subsVariantLabel">Вариант</label>
+              <select id="subs-variant" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none">
+                <option value="translated" data-i18n="subsVariantTranslated">Только перевод</option>
+                <option value="bilingual" data-i18n="subsVariantBilingual">Оригинал + перевод</option>
+              </select>
+            </div>
+          </div>
+          <label class="flex items-center gap-2 text-[11.5px] text-apple-label cursor-pointer">
+            <input type="checkbox" id="subs-ask-path" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <span data-i18n="subsAskPath">Спросить, куда сохранить видео (иначе — папка exports в папке данных)</span>
+          </label>
+          <div class="grid grid-cols-3 gap-2">
+            <button onclick="makeSubtitles('srt')" class="ui-btn ui-btn-subtle justify-center text-[11.5px]" data-i18n-title="tipSubsSrt" title="Отдельный файл субтитров .srt" data-i18n="subsSrtBtn">Файл .srt</button>
+            <button onclick="makeSubtitles('soft')" id="subs-soft-btn" class="ui-btn ui-btn-subtle justify-center text-[11.5px]" data-i18n-title="tipSubsSoft" title="Копия видео с отключаемой дорожкой субтитров, без перекодирования" data-i18n="subsSoftBtn">Дорожка в видео</button>
+            <button onclick="makeSubtitles('burn')" id="subs-burn-btn" class="ui-btn ui-btn-subtle justify-center text-[11.5px]" data-i18n-title="tipSubsBurn" title="Копия видео с субтитрами в изображении; видео перекодируется, задача идёт через очередь" data-i18n="subsBurnBtn">Встроить в изображение</button>
+          </div>
+          <p id="subs-no-video" class="hidden text-[11px] text-apple-tertiary" data-i18n="subsNoVideo">У этой записи нет видео — доступен только файл .srt.</p>
+          <p class="text-[11px] text-apple-tertiary leading-relaxed" data-i18n="subsNote">Исходный файл не изменяется: создаётся новая копия. «Дорожка в видео» занимает секунды; «Встроить в изображение» перекодирует видео (H.264) и может занять много времени. Длинные реплики делятся на несколько субтитров, время внутри реплики распределяется приблизительно.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MODAL: TRANSLATE & DUB (prototype)
+       ========================================================================= -->
+  <div id="modal-dub" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4" onclick="closeModalOnBackdrop(event, 'dub')">
+    <div class="w-full max-w-lg bg-apple-card border apple-border rounded-2xl shadow-2xl overflow-hidden modal-card">
+      <div class="p-6 space-y-4 overflow-y-auto" style="max-height: 85vh">
+        <div class="flex items-center justify-between">
+          <h3 class="text-sm font-semibold text-white"><span data-i18n="dubTitle">Перевод и дубляж</span> <span class="text-[10px] font-normal text-apple-secondary" data-i18n="dubProto">(бета)</span></h3>
+          <button onclick="closeModal('dub')" class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
+        </div>
+        <p class="text-xs text-apple-secondary leading-relaxed" data-i18n="dubIntro">Каждая фраза переводится локальной моделью Ollama, озвучивается клоном голоса её участника (Chatterbox Multilingual), фон сохраняется (Demucs), результат пишется в новый файл. Всё работает локально.</p>
+        <div id="dub-env-panel" class="hidden rounded-xl border apple-border bg-apple-amber/15 p-3 space-y-2">
+          <div class="text-xs text-apple-amber leading-relaxed" data-i18n="dubNoEnv">Для дубляжа нужно отдельное окружение: PyTorch, Chatterbox Multilingual и Demucs. Оно ставится в папку программы (.venv-dub) и не затрагивает основную установку.</div>
+          <div id="dub-setup-meta" class="text-[11px] text-apple-secondary"></div>
+          <div id="dub-setup-progress" class="hidden space-y-1.5">
+            <div class="flex items-center justify-between gap-2 text-[11px]">
+              <span id="dub-setup-step" class="text-apple-label truncate"></span>
+              <span id="dub-setup-pct" class="font-mono text-apple-blue shrink-0">0%</span>
+            </div>
+            <div class="w-full h-1 bg-white/10 rounded-full overflow-hidden">
+              <div id="dub-setup-bar" class="h-full bg-apple-blue transition-all duration-300" style="width: 0%"></div>
+            </div>
+            <div id="dub-setup-logs" class="hidden max-h-32 overflow-y-auto font-mono text-[10px] leading-snug text-apple-secondary bg-black/30 rounded-md p-2"></div>
+          </div>
+          <div id="dub-setup-error" class="hidden text-[11px] text-apple-red"></div>
+          <div class="flex items-center justify-end gap-2">
+            <button id="dub-setup-logs-btn" onclick="toggleDubSetupLogs()" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px] hidden" data-i18n="logsBtn">Журнал</button>
+            <button id="dub-setup-cancel-btn" onclick="cancelDubSetup()" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px] hidden" data-i18n="cancel">Отмена</button>
+            <button id="dub-setup-btn" onclick="startDubSetup()" class="ui-btn ui-btn-primary h-7 px-3 text-[11px]">Установить</button>
+          </div>
+        </div>
+        <div id="dub-last-error" class="hidden text-xs rounded-lg border border-apple-red/30 bg-apple-red/15 text-apple-red px-3 py-2"></div>
+
+        <div>
+          <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="dubLangLabel">Язык озвучки</label>
+          <select id="dub-lang" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none"></select>
+        </div>
+
+        <div class="rounded-xl border apple-border bg-apple-amber/15 p-3 space-y-2">
+          <div class="text-xs font-semibold text-apple-amber" data-i18n="dubConsentTitle">⚠ Клонирование голоса</div>
+          <p class="text-[11.5px] text-apple-label leading-relaxed" data-i18n="dubConsentText">Дубляж имитирует голоса реальных людей, произносящих слова, которых они не говорили. Используйте его только с разрешения участников и никогда для обмана, выдачи себя за другого или клеветы. Результат помечается как сгенерированный ИИ: «.AI-dub.» в имени файла, пометка в метаданных и неслышимый водяной знак Perth в синтезированном голосе.</p>
+          <label class="flex items-start gap-2 text-[11.5px] text-white cursor-pointer">
+            <input type="checkbox" id="dub-consent" onchange="updateDubStartButton()" class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <span data-i18n="dubConsentLabel">У меня есть согласие всех, чей голос будет клонирован, и я не буду выдавать результат за их настоящую речь.</span>
+          </label>
+        </div>
+
+        <!-- Noise handling for this dub (same settings as in Settings → Speech synthesis) -->
+        <div class="space-y-2">
+          <label class="flex items-start gap-2 cursor-pointer text-[11.5px] text-white">
+            <input type="checkbox" id="dub-denoise" onchange="syncDubNoiseControls('dub')" class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <span><span data-i18n="dubDenoiseLabel">Шумоподавление</span>
+              <span class="block text-[10.5px] text-apple-tertiary leading-snug mt-0.5" data-i18n="dubDenoiseHint">Шумоподавление FFmpeg для фона дубляжа и для исходной дорожки в файле дубляжа. Убирает ровный шум (гул, шипение, вентилятор), но не стук и голоса вдали; музыка и атмосфера становятся немного глуше. Голос при этом чистый на обеих дорожках.</span></span>
+          </label>
+          <label class="flex items-start gap-2 cursor-pointer text-[11.5px] text-white">
+            <input type="checkbox" id="dub-roomtone" checked class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <span><span data-i18n="dubRoomToneLabel">Добавлять к синтезированному голосу шум помещения</span>
+              <span class="block text-[10.5px] text-apple-tertiary leading-snug mt-0.5" data-i18n="dubRoomToneHint">Фон остаётся как в оригинале. К синтезированному голосу добавляется шум помещения из пауз исходной записи, чтобы голос звучал естественно, а не наложенным поверх. Голос станет немного менее чистым. При включённом шумоподавлении не применяется.</span></span>
+          </label>
+        </div>
+
+        <p class="text-[11px] text-apple-tertiary leading-relaxed" data-i18n="dubLimits">Ограничения бета-версии: нет синхронизации губ; фразы ускоряются (до 1,6×) или обрезаются под исходный тайминг; качество перевода зависит от модели Ollama (рекомендуется 7B+); перекрывающаяся речь озвучивается по одной фразе.</p>
+
+        <div class="flex justify-end gap-2">
+          <button onclick="closeModal('dub')" class="ui-btn ui-btn-subtle px-3.5" data-i18n="cancel">Отмена</button>
+          <button onclick="startDub()" id="dub-start-btn" disabled class="ui-btn ui-btn-primary px-4" data-i18n="dubStartBtn">Запустить дубляж</button>
+        </div>
+
+        <div id="dub-results" class="space-y-2 pt-2 border-t apple-border"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MODAL 3: CUSTOM DICTIONARY
+       ========================================================================= -->
+  <div id="modal-dictionary" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4" onclick="closeModalOnBackdrop(event, 'dictionary')">
+    <div class="w-full max-w-lg bg-apple-card border apple-border rounded-2xl shadow-2xl overflow-hidden max-h-[80vh] flex flex-col modal-card">
+      <div class="p-6 space-y-4 flex-1 flex flex-col overflow-hidden">
+        <div class="flex items-center justify-between shrink-0">
+          <div>
+            <h3 class="text-sm font-semibold text-white" data-i18n="dictTitle">Пользовательский словарь</h3>
+            <p class="text-[11px] text-apple-secondary" data-i18n="dictSubtitle">Имена, бренды и профильные термины для точного распознавания</p>
+          </div>
+          <button onclick="closeModal('dictionary')" data-i18n-title="tipCloseModal" title="Закрыть окно" class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
+        </div>
+
+        <div class="flex gap-2 shrink-0">
+          <input id="dict-term-input" type="text"
+            onkeydown="if(event.key==='Enter') addDictionaryItems()"
+            data-i18n-title="tipDictInput"
+            title="Введите одно или несколько слов через запятую"
+            data-i18n-placeholder="dictInputPh"
+            placeholder="Слова через запятую…"
+            class="flex-1 h-8 bg-apple-sidebar border apple-border rounded-lg px-3 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
+          <select id="dict-category-input" data-i18n-title="tipDictCategory" title="Категория термина" class="h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
+            <option value="Имя">Имя / Name</option>
+            <option value="Проект">Проект / Project</option>
+            <option value="Термин">Термин / Term</option>
+          </select>
+          <button onclick="addDictionaryItems()"
+            data-i18n-title="tipDictAddBtn"
+            title="Добавить слово в пользовательский словарь"
+            class="ui-btn ui-btn-primary h-8 px-3.5" data-i18n="addBtnText">Добавить</button>
+        </div>
+
+        <div id="dictionary-list" class="flex-1 overflow-y-auto divide-y divide-white/5 border apple-border rounded-xl bg-apple-sidebar">
+          <!-- Populated dynamically -->
+        </div>
+        <div class="flex justify-end shrink-0">
+          <button id="dict-clear-btn" onclick="clearDictionary()" class="hidden ui-btn ui-btn-subtle h-7 px-3 text-[11px] hover:text-apple-red" data-i18n="dictClear">Очистить словарь</button>
+        </div>
+      </div>
+    </div>
+  </div>
+

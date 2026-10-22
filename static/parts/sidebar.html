@@ -1,0 +1,205 @@
+<!-- The left sidebar: logo, hardware, library tree: part of static/index.html (assembled by app/page.py) -->
+  <!-- =========================================================================
+       LEFT SIDEBAR (Willow Brand Header + Action Buttons + Recordings List)
+       ========================================================================= -->
+  <aside id="app-sidebar" class="relative bg-apple-sidebar border-r apple-border flex flex-col shrink-0 overflow-hidden" style="width: 312px;">
+    <!-- Drag to change the sidebar width (double-click: back to the default) -->
+    <div id="sidebar-resizer" class="sidebar-resizer" data-i18n-title="tipSidebarResize" title="Потяните, чтобы изменить ширину. Двойной щелчок — ширина по умолчанию"></div>
+
+    <!-- Sidebar Header Row 1: Willow (Verba) Plant Logo + Full VerbaScribe Title -->
+    <div class="px-3.5 pt-3 pb-2.5 border-b apple-border shrink-0 space-y-2.5">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <!-- Custom Minimalist Willow Branch (Verba) Botanical Logo -->
+          <!-- The willow sways and sheds fluff on hover; five quick clicks release a whole cloud (initLogoEasterEgg) -->
+          <div id="app-logo" class="app-logo w-7 h-7 rounded-lg bg-gradient-to-b from-[#163850] to-[#0E2233] border border-white/10 flex items-center justify-center shadow-sm shrink-0"
+               data-i18n-title="tipAppLogo" title="VerbaScribe — локальное распознавание речи и анализ расшифровок">
+            <svg class="w-4 h-4 app-logo-branch" viewBox="0 0 24 24" fill="none">
+              <!-- Willow branch stem -->
+              <path d="M5 20C8.5 15.5 13 10.5 18.5 4.5" stroke="#4ADE80" stroke-width="1.8" stroke-linecap="round"/>
+              <!-- Fluffy willow catkins (buds) -->
+              <g class="catkin" style="--d: 0ms"><ellipse cx="8.2" cy="13.2" rx="2.1" ry="3.1" transform="rotate(-28 8.2 13.2)" fill="#F8FAFC"/></g>
+              <g class="catkin" style="--d: 90ms"><ellipse cx="14.2" cy="12.8" rx="2.0" ry="3.0" transform="rotate(32 14.2 12.8)" fill="#F8FAFC"/></g>
+              <g class="catkin" style="--d: 180ms"><ellipse cx="12.0" cy="7.5" rx="2.0" ry="3.0" transform="rotate(-22 12.0 7.5)" fill="#F8FAFC"/></g>
+              <g class="catkin" style="--d: 270ms"><ellipse cx="18.2" cy="5.2" rx="1.7" ry="2.5" transform="rotate(25 18.2 5.2)" fill="#F8FAFC"/></g>
+            </svg>
+          </div>
+          <div>
+            <button onclick="openAbout()" data-i18n-title="tipAbout" title="О программе" class="font-semibold text-[14px] leading-tight tracking-tight text-white hover:text-apple-label">VerbaScribe</button>
+          </div>
+        </div>
+        <button onclick="openExternal(SUPPORT_URL)" data-i18n-title="tipSupport" title="Поддержать разработку на Ko-fi"
+          class="w-7 h-7 rounded-lg flex items-center justify-center text-apple-tertiary hover:text-[#FF5E5B] hover:bg-white/5 transition shrink-0">
+          <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 2.9 4.5 6.6 4.5c2.1 0 3.6 1.2 4.4 2.5.8-1.3 2.3-2.5 4.4-2.5 3.7 0 5.7 3.9 4.2 7.3C19.5 16.4 12 21 12 21z"/></svg>
+        </button>
+
+
+      </div>
+
+      <!-- Hardware, grouped by device: the GPU with its memory and the models in it, the processor, RAM -->
+      <div id="hw-block" class="hw-block">
+        <button onclick="openModal('settings', 'recognition')" class="hw-row hw-row-btn" data-i18n-title="tipHwStatus" title="Открыть настройки оборудования и моделей ИИ">
+          <span class="hw-label">GPU</span>
+          <span class="hw-name"><span id="hw-dot" class="w-1.5 h-1.5 rounded-full bg-apple-green shrink-0"></span><span id="hw-text" class="truncate">…</span></span>
+          <span class="hw-bar"><span id="vram-bar" class="bg-apple-blue/70" style="width: 0%"></span></span>
+          <span id="vram-text" class="hw-value"></span>
+        </button>
+        <div id="vram-row" class="hidden pl-[38px]">
+          <div id="vram-chips" class="flex flex-wrap gap-1"></div>
+        </div>
+        <div id="sys-row" class="hidden space-y-1">
+          <div class="hw-row" data-i18n-title="tipCpuUsage" title="Загрузка процессора всеми программами" id="cpu-cell">
+            <span class="hw-label">CPU</span>
+            <span id="cpu-name" class="hw-name truncate"></span>
+            <span class="hw-bar"><span id="cpu-bar" class="bg-apple-green/70" style="width: 0%"></span></span>
+            <span id="cpu-text" class="hw-value"></span>
+          </div>
+          <div class="hw-row" id="ram-cell">
+            <span class="hw-label">RAM</span>
+            <span id="ram-name" class="hw-name truncate"></span>
+            <span class="hw-bar"><span id="ram-bar" class="bg-apple-amber/70" style="width: 0%"></span></span>
+            <span id="ram-text" class="hw-value"></span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ===== Sidebar: library ===== -->
+    <div id="side-library" class="flex-1 min-h-0 flex flex-col">
+      <div class="px-3.5 pt-2.5">
+      <div class="grid grid-cols-2 gap-2">
+        <!-- One click records with the default preset; the arrow lists the presets (quickRecord in static/js/studio.js) -->
+        <div class="relative flex h-8">
+          <button onclick="quickRecord()" id="record-quick-btn"
+            data-i18n-title="tipRecordBtn"
+            title="Начать запись по пресету по умолчанию"
+            class="ui-btn h-8 flex-1 min-w-0 rounded-r-none bg-apple-red/15 hover:bg-apple-red/25 text-apple-red border border-apple-red/30">
+            <svg class="w-3 h-3 shrink-0" viewBox="0 0 12 12" fill="currentColor">
+              <circle cx="6" cy="6" r="4" />
+            </svg>
+            <span data-i18n="recordBtn">Запись</span>
+          </button>
+          <button onclick="toggleRecordPresetMenu(event)" data-i18n-title="tipRecordPresets" title="Пресеты записи"
+            class="ui-btn h-8 !px-1.5 rounded-l-none border border-l-0 border-apple-red/30 bg-apple-red/15 hover:bg-apple-red/25 text-apple-red"><svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg></button>
+          <div id="record-preset-menu" class="hidden absolute left-0 top-full mt-1.5 w-64 macos-menu z-40" onclick="event.stopPropagation()"></div>
+        </div>
+
+        <button onclick="openModal('import')"
+          data-i18n-title="tipImportBtn"
+          title="Добавить аудио или видео файлы для расшифровки"
+          class="ui-btn ui-btn-primary h-8 w-full shadow-sm"
+          id="btn-new-recording">
+          <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
+          </svg>
+          <span data-i18n="add">Импорт</span>
+        </button>
+      </div>
+      </div>
+
+    <!-- Global Full-Text Search Across All Recordings -->
+    <div class="px-3 pt-2.5 pb-1">
+      <div class="relative">
+        <svg class="w-3.5 h-3.5 text-apple-tertiary absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/>
+        </svg>
+        <input id="global-search-input" type="text"
+          oninput="handleGlobalSidebarSearch(this.value)"
+          data-i18n-placeholder="globalSearchPlaceholder"
+          data-i18n-title="tipGlobalSearch"
+          title="Полнотекстовый поиск слова или фразы по всей медиатеке"
+          placeholder="Поиск по всем записям…"
+          class="w-full h-7 bg-white/5 focus:bg-apple-card border border-transparent focus:border-apple-blue/60 rounded-lg pl-8 pr-6 text-xs text-white placeholder-apple-tertiary focus:outline-none transition" />
+      </div>
+    </div>
+
+    <!-- Processing queue (shown only while something is queued or running) -->
+    <div id="queue-panel" class="hidden mx-2.5 mt-1 mb-1 rounded-lg border apple-border bg-white/[0.03]">
+      <div class="px-2.5 pt-2 pb-1 flex items-center justify-between">
+        <span class="text-[11px] font-semibold text-apple-secondary uppercase tracking-wider">
+          <span data-i18n="queueTitle">Очередь</span> <span id="queue-count" class="font-mono text-apple-blue"></span>
+        </span>
+      </div>
+      <div id="queue-list" class="px-1.5 pb-1.5 space-y-1 max-h-48 overflow-y-auto"></div>
+    </div>
+
+    <!-- Sidebar Section Header -->
+    <div class="px-4 pt-2 pb-1 flex items-center justify-between gap-2">
+      <span class="text-[11px] font-semibold text-apple-secondary uppercase tracking-wider" data-i18n="recordings">Медиатека</span>
+      <span class="flex items-center gap-1.5 min-w-0">
+        <span class="text-[10px] text-apple-tertiary truncate" data-i18n="rightClickHint">Правый клик — меню</span>
+        <button onclick="openLibViewMenu(event)" data-i18n-title="tipLibView" title="Вид и сортировка"
+          class="shrink-0 p-1 rounded-md text-apple-secondary hover:text-white hover:bg-white/10 transition">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7.5L7.5 3m0 0L12 7.5M7.5 3v13.5m13.5 0L16.5 21m0 0L12 16.5m4.5 4.5V7.5"/></svg>
+        </button>
+        <button onclick="createFolderPrompt(null)" data-i18n-title="tipNewFolder" title="Новая папка"
+          class="shrink-0 p-1 rounded-md text-apple-secondary hover:text-white hover:bg-white/10 transition">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10.5v6m3-3H9m4.06-7.19l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
+        </button>
+      </span>
+    </div>
+
+    <!-- Recordings in folders (drag recordings and folders to sort them; right-click for the menu) -->
+    <div id="meetings-list" class="flex-1 overflow-y-auto px-2.5 py-1 space-y-0.5"
+      ondragover="libraryDragOver(event, null)" ondragleave="libraryDragLeave(event)" ondrop="libraryDrop(event, null)">
+      <!-- Populated dynamically -->
+    </div>
+    </div>
+
+    <!-- Background Model Download Widget (Docked in Sidebar so user can work freely while downloading) -->
+    <div id="sidebar-download-widget" class="hidden mx-2.5 mb-2 rounded-xl bg-apple-card/95 border border-apple-blue/35 p-2.5 space-y-2 shadow-lg shrink-0">
+      <div class="flex items-center justify-between gap-1.5">
+        <div class="flex items-center gap-1.5 min-w-0">
+          <span class="w-2 h-2 rounded-full bg-apple-blue animate-pulse shrink-0"></span>
+          <span id="sidebar-dl-title" class="text-[11.5px] font-semibold text-white truncate">Загрузка модели…</span>
+        </div>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <span id="sidebar-dl-pct" class="text-[11px] font-mono font-semibold text-apple-blue">0%</span>
+          <button onclick="toggleSidebarDownloadLogs()"
+            data-i18n-title="tipToggleDlLogs"
+            title="Показать или скрыть подробный лог скачивания"
+            class="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 text-[10px] text-apple-secondary hover:text-white transition"
+            data-i18n="logsBtn">Журнал</button>
+        </div>
+      </div>
+
+      <div class="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+        <div id="sidebar-dl-bar" class="h-full bg-apple-blue transition-all duration-300" style="width: 2%"></div>
+      </div>
+
+      <div id="sidebar-dl-status" class="text-[10.5px] text-apple-secondary truncate">Подготовка…</div>
+
+      <div id="sidebar-dl-logs" class="hidden max-h-24 overflow-y-auto overflow-x-hidden font-mono text-[10px] text-apple-secondary space-y-0.5 bg-black/40 rounded-lg p-2 border apple-border break-all whitespace-pre-wrap">
+      </div>
+    </div>
+
+    <!-- Sidebar Footer: Dictionary, Settings & RU/EN Switcher -->
+    <div class="px-2.5 py-2.5 border-t apple-border flex items-center justify-between gap-1.5 bg-apple-sidebar/90 shrink-0">
+      <button onclick="openModal('dictionary')"
+        data-i18n-title="tipDictBtn"
+        title="Открыть пользовательский словарь имён и терминов"
+        class="ui-btn ui-btn-subtle flex-1 min-w-0 justify-between !px-2 text-[11.5px]">
+        <span class="flex items-center gap-1.5 min-w-0 truncate">
+          <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/>
+          </svg>
+          <span data-i18n="dictionary" class="truncate">Словарь</span>
+        </span>
+        <span id="dict-count-badge" class="text-[10.5px] font-mono text-apple-tertiary shrink-0 ml-1">0</span>
+      </button>
+
+      <button onclick="openModal('settings')"
+        data-i18n-title="tipSettingsBtn"
+        title="Открыть настройки приложения, звука и моделей ИИ"
+        class="ui-btn ui-btn-subtle flex-1 min-w-0 justify-center !px-2 text-[11.5px]">
+        <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+        <span data-i18n="settings" class="truncate">Настройки</span>
+      </button>
+
+    </div>
+  </aside>
+

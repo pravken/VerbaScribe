@@ -239,8 +239,10 @@ def index() -> HTMLResponse:
     index_file = STATIC_DIR / "index.html"
     if not index_file.exists():
         return HTMLResponse("<h1>UI loading...</h1>")
+    from app.page import render
+
     return HTMLResponse(
-        index_file.read_text(encoding="utf-8"),
+        render(STATIC_DIR),  # index.html with static/parts/*.html in place
         headers={
             "Cache-Control": "no-store, no-cache, must-revalidate",
             # Everything is served locally; the page may only talk to this server.

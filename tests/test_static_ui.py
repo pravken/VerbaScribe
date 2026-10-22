@@ -5,7 +5,9 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-HTML = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+from app.page import render  # noqa: E402
+
+HTML = render(ROOT / "static")  # index.html with its parts
 I18N = (ROOT / "static" / "i18n.js").read_text(encoding="utf-8")
 
 
@@ -30,6 +32,11 @@ class StaticUiTest(unittest.TestCase):
     def test_page_is_balanced(self):
         body = _no_comments(HTML)
         self.assertEqual(len(re.findall(r"<div\b", body)), len(re.findall(r"</div>", body)))
+
+    def test_every_part_is_included(self):
+        self.assertNotIn("@include", HTML)
+        for part in (ROOT / "static" / "parts").glob("*.html"):
+            self.assertIn(f"parts/{part.name}", (ROOT / "static" / "index.html").read_text(encoding="utf-8"), part.name)
 
     def test_ids_are_unique(self):
         ids = re.findall(r'\bid="([^"$]+)"', _no_comments(HTML))
