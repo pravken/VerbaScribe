@@ -9,21 +9,16 @@ function renderUpdateStatus() {
   const text = document.getElementById('update-status-text');
   const btn = document.getElementById('update-install-btn');
   if (!text || !info) return;
-  const en = state.uiLang === 'en';
   const dl = info.download || {};
-  let msg = (en ? 'Installed version ' : 'Установлена версия ') + info.current + '.';
-  if (dl.active) msg += en ? ` Downloading ${info.latest.version}… ${dl.progress}%` : ` Скачивание ${info.latest.version}… ${dl.progress}%`;
+  const ver = () => (info.latest || {}).version || '';
+  let msg = t('updInstalled').replace('{v}', () => info.current);
+  if (dl.active) msg += ' ' + t('updDownloading').replace('{v}', () => ver()).replace('{pct}', () => dl.progress);
   else if (dl.error) msg += ' ' + dl.error;
-  else if (info.available && info.git_checkout) {
-    msg += en ? ` Version ${info.latest.version} is available: this copy is a git clone, update it with git pull.`
-      : ` Доступна версия ${info.latest.version}: это клон git, обновите его командой git pull.`;
-  } else if (info.available && dl.done) {
-    msg += en ? ` Version ${info.latest.version} is downloaded` : ` Версия ${info.latest.version} скачана`;
-    msg += info.auto ? (en ? ' and will be installed when you close the app.' : ' и установится при закрытии программы.') : '.';
-  } else if (info.available) {
-    msg += en ? ` Version ${info.latest.version} is available.` : ` Доступна версия ${info.latest.version}.`;
-  } else if (info.error) msg += (en ? ' Check failed: ' : ' Не удалось проверить: ') + info.error;
-  else if (info.checked_at) msg += en ? ' This is the latest version.' : ' Это последняя версия.';
+  else if (info.available && info.git_checkout) msg += ' ' + t('updGitClone').replace('{v}', () => ver());
+  else if (info.available && dl.done) msg += ' ' + t(info.auto ? 'updDownloadedOnExit' : 'updDownloaded').replace('{v}', () => ver());
+  else if (info.available) msg += ' ' + t('updAvailable').replace('{v}', () => ver());
+  else if (info.error) msg += ' ' + t('updCheckFailed').replace('{why}', () => info.error);
+  else if (info.checked_at) msg += ' ' + t('updLatest');
   text.textContent = msg;
   btn.classList.toggle('hidden', !info.can_install || !!dl.active);
   btn.textContent = dl.done ? t('updateRestartBtn') : t('updateInstallBtn');
@@ -36,15 +31,14 @@ async function checkForUpdates(force) {
   } catch (e) { return; }
   renderUpdateStatus();
   const info = updateState.info;
-  const en = state.uiLang === 'en';
   if (info.available && info.auto && (info.download || {}).active) {
     followUpdateDownload();  // started by the server (automatic updates): tell when it is ready
   } else if (!force && info.available && !updateState.notified) {
     updateState.notified = true;
-    showToast(en ? `VerbaScribe ${info.latest.version} is available` : `Доступна версия VerbaScribe ${info.latest.version}`,
-      { label: en ? 'Details' : 'Подробнее', onClick: () => openModal('settings', 'general') });
+    showToast(t('updToastAvailable').replace('{v}', () => info.latest.version),
+      { label: t('updDetails'), onClick: () => openModal('settings', 'general') });
   } else if (force && !info.available && !info.error) {
-    showToast(en ? 'You have the latest version' : 'У вас последняя версия');
+    showToast(t('updToastLatest'));
   }
 }
 
@@ -63,17 +57,14 @@ async function followUpdateDownload() {
   const info = updateState.info;
   if (info.download.done && !updateState.notified) {
     updateState.notified = true;
-    const en = state.uiLang === 'en';
-    showToast(en ? `VerbaScribe ${info.latest.version} is downloaded and will be installed when you close the app`
-      : `VerbaScribe ${info.latest.version} скачана и установится при закрытии программы`,
-      { label: en ? 'Restart now' : 'Перезапустить', onClick: () => installUpdate() });
+    showToast(t('updToastReady').replace('{v}', () => info.latest.version),
+      { label: t('updRestartNow'), onClick: () => installUpdate() });
   }
 }
 
 async function installUpdate() {
   const info = updateState.info;
   if (!info || !info.can_install) return;
-  const en = state.uiLang === 'en';
   if (!(info.download || {}).done) {
     if (updateState.polling) return;
     const r = await fetch('/api/update/download', { method: 'POST' });
@@ -90,13 +81,11 @@ async function installUpdate() {
     updateState.polling = false;
     if (!updateState.info.download.done) return;
   }
-  const ok = await askConfirm(en
-    ? `Install VerbaScribe ${info.latest.version}? The app will close, update itself and start again.`
-    : `Установить VerbaScribe ${info.latest.version}? Программа закроется, обновится и запустится снова.`);
+  const ok = await askConfirm(t('updInstallConfirm').replace('{v}', () => info.latest.version));
   if (!ok) return;
   const r = await fetch('/api/update/install', { method: 'POST' });
-  if (!r.ok) { showToast((await r.json()).detail || 'Error'); return; }
-  showToast(en ? 'Installing the update…' : 'Установка обновления…');
+  if (!r.ok) { showToast(errorText(await readJson(r), r)); return; }
+  showToast(t('updInstalling'));
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -712,7 +701,7 @@ async function generateSummaryForActiveTab() {
   const box = document.getElementById('summary-content');
   const { chosenModel, prettyModel } = summaryModelChoice();
   btn.disabled = true;
-  box.innerHTML = `<div class="py-12 flex items-center justify-center gap-2 text-xs text-apple-secondary animate-pulse"><span>${state.uiLang === 'en' ? 'Generating analysis' : 'Формирование анализа'}</span><span class="px-2 py-0.5 rounded-md bg-white/10 text-white font-medium">${escapeHtml(prettyModel)}</span></div>`;
+  box.innerHTML = `<div class="py-12 flex items-center justify-center gap-2 text-xs text-apple-secondary animate-pulse"><span>${t('uiGeneratingAnalysis')}</span><span class="px-2 py-0.5 rounded-md bg-white/10 text-white font-medium">${escapeHtml(prettyModel)}</span></div>`;
 
   const forId = state.activeMeeting.id;  // the answer may come minutes later, for another recording
   try {
@@ -742,7 +731,7 @@ async function runCustomQuestion() {
 
   const { chosenModel, prettyModel } = summaryModelChoice();
   const box = document.getElementById('summary-content');
-  box.innerHTML = `<div class="py-12 flex items-center justify-center gap-2 text-xs text-apple-secondary animate-pulse"><span>${state.uiLang === 'en' ? 'Searching for answer' : 'Поиск ответа'}</span><span class="px-2 py-0.5 rounded-md bg-white/10 text-white font-medium">${escapeHtml(prettyModel)}</span></div>`;
+  box.innerHTML = `<div class="py-12 flex items-center justify-center gap-2 text-xs text-apple-secondary animate-pulse"><span>${t('uiSearchingForAnswer')}</span><span class="px-2 py-0.5 rounded-md bg-white/10 text-white font-medium">${escapeHtml(prettyModel)}</span></div>`;
 
   const forId = state.activeMeeting.id;
   try {
@@ -768,7 +757,7 @@ function copySummaryText() {
   const text = ((state.activeMeeting.summaries || {})[state.activeSummaryTab] || '').replaceAll('[?]', `(${t('unverifiedBadge')})`);
   if (!text) return;
   navigator.clipboard.writeText(text);
-  showToast(state.uiLang === 'en' ? 'Copied' : 'Скопировано');
+  showToastt('uiCopied');
 }
 
 // --- Export ---

@@ -34,7 +34,7 @@ async function populateAudioInputDevices() {
 
     const mics = devices.filter(d => d.kind === 'audioinput');
     const optionsHtml = mics.map((m, i) => {
-      const label = m.label || (state.uiLang === 'en' ? `Microphone ${i + 1}` : `Микрофон ${i + 1}`);
+      const label = m.label || t('micNumbered').replace('{n}', () => i + 1);
       const sel = m.deviceId === savedMic ? 'selected' : '';
       return `<option value="${escapeHtml(m.deviceId)}" ${sel}>${escapeHtml(label)}</option>`;
     }).join('');
@@ -42,7 +42,7 @@ async function populateAudioInputDevices() {
     if (settingsSelect) settingsSelect.innerHTML = optionsHtml || `<option value="">Default Microphone</option>`;
     if (modalSelect) modalSelect.innerHTML = optionsHtml || `<option value="">Default Microphone</option>`;
   } catch (e) {
-    const fallback = `<option value="">${state.uiLang === 'en' ? 'Default System Microphone' : 'Системный микрофон по умолчанию'}</option>`;
+    const fallback = `<option value="">${t('uiDefaultSystemMicrophone')}</option>`;
     if (settingsSelect) settingsSelect.innerHTML = fallback;
     if (modalSelect) modalSelect.innerHTML = fallback;
   }
@@ -124,9 +124,7 @@ async function buildCaptureStream(sourceMode, micDeviceId, systemByApp = false) 
     sysStream.getVideoTracks().forEach(vt => vt.stop());
     if (sysStream.getAudioTracks().length === 0) {
       throw new Error(
-        state.uiLang === 'en'
-          ? 'Please enable "Share system audio" in the screen share prompt.'
-          : 'При выборе окна/экрана обязательно включите галочку «Поделиться системным звуком» (Share audio).'
+        t('uiPleaseEnableShareSystem')
       );
     }
     const sysNode = ctx.createMediaStreamSource(new MediaStream(sysStream.getAudioTracks()));
@@ -264,8 +262,8 @@ async function toggleSettingsAudioTest() {
         ? 'w-2 h-2 rounded-full bg-apple-green animate-pulse'
         : 'w-2 h-2 rounded-full bg-apple-amber';
       document.getElementById('settings-audio-status').textContent = hasSound
-        ? (state.uiLang === 'en' ? 'Signal detected — audio is active' : 'Звук есть — сигнал поступает')
-        : (state.uiLang === 'en' ? 'Listening — speak to test level' : 'Ожидание сигнала — скажите что-нибудь');
+        ? t('uiSignalDetectedAudioIs')
+        : t('uiListeningSpeakToTest');
 
       _settingsTestAnim = requestAnimationFrame(step);
     }

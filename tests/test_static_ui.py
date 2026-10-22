@@ -50,6 +50,9 @@ class StaticUiTest(unittest.TestCase):
         self.assertEqual(sorted(used - ru), [], "no Russian text")
         self.assertEqual(sorted(used - en), [], "no English text")
         self.assertEqual(sorted(ru - en), [], "Russian text without English")
+        for block in (I18N[:en_at], I18N[en_at:]):  # a key given twice: only the last one is ever shown
+            names = re.findall(r"^\s{4}([A-Za-z0-9_]+):", block, flags=re.M)
+            self.assertEqual(sorted({k for k in names if names.count(k) > 1}), [])
 
     def test_placeholders_take_text_as_is(self):
         """t('…{title}…').replace('{title}', title): a title with "$'" or "$&" would be read as a pattern;

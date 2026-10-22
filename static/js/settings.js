@@ -406,10 +406,10 @@ function updateWhisperModelsUI(models) {
   const diarInstalled = models.diarizer_installed || (models.diarizer && models.diarizer.installed);
   if (diarPill) {
     if (diarInstalled) {
-      diarPill.textContent = state.uiLang === 'en' ? 'Speaker model ready' : 'Модель участников готова';
+      diarPill.textContent = t('uiSpeakerModelReady');
       diarPill.className = 'text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-apple-green/15 text-apple-green shrink-0';
     } else {
-      diarPill.textContent = state.uiLang === 'en' ? 'Downloads with Whisper' : 'Скачается вместе с Whisper';
+      diarPill.textContent = t('uiDownloadsWithWhisper');
       diarPill.className = 'text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-white/5 text-apple-secondary shrink-0';
     }
   }
@@ -437,7 +437,7 @@ function updateWhisperModelsUI(models) {
       } else if (item.installed && isSelected) {
         actionHtml = `
           <div class="flex items-center gap-1.5">
-            <span class="ui-btn bg-apple-green/20 text-apple-green">${SVG_ICONS.check}<span>${state.uiLang === 'en' ? 'Active' : 'Активна'}</span></span>
+            <span class="ui-btn bg-apple-green/20 text-apple-green">${SVG_ICONS.check}<span>${t('uiActive')}</span></span>
             <button data-id="${escapeHtml(item.id)}" onclick="${item.engine === 'onnx' ? 'deleteOnnxModel' : 'deleteWhisperModel'}(this.dataset.id)" title="${escapeHtml(t('tipDeleteModel'))}"
               class="ui-btn ui-btn-subtle px-2 hover:text-apple-red">${SVG_ICONS.trash}</button>
           </div>
@@ -447,7 +447,7 @@ function updateWhisperModelsUI(models) {
           <div class="flex items-center gap-1.5">
             <button data-id="${escapeHtml(item.id)}" onclick="selectActiveWhisperModel(this.dataset.id)" title="${escapeHtml(t('tipSelectModel'))}"
               class="ui-btn ui-btn-subtle text-white hover:bg-apple-blue">
-              ${state.uiLang === 'en' ? 'Select' : 'Выбрать'}
+              ${t('uiSelect')}
             </button>
             <button data-id="${escapeHtml(item.id)}" onclick="${item.engine === 'onnx' ? 'deleteOnnxModel' : 'deleteWhisperModel'}(this.dataset.id)" title="${escapeHtml(t('tipDeleteModel'))}"
               class="ui-btn ui-btn-subtle px-2 hover:text-apple-red">${SVG_ICONS.trash}</button>
@@ -458,7 +458,7 @@ function updateWhisperModelsUI(models) {
           <button data-id="${escapeHtml(item.id)}" onclick="${item.engine === 'onnx' ? 'startOnnxModelDownload' : 'startWhisperModelDownload'}(this.dataset.id)" title="${escapeHtml(item.error || t('tipDownloadModel'))}"
             class="ui-btn ui-btn-primary">
             ${SVG_ICONS.download}
-            <span>${state.uiLang === 'en' ? 'Download' : 'Скачать'} (${escapeHtml(sizeLabel)})</span>
+            <span>${t('uiDownload')} (${escapeHtml(sizeLabel)})</span>
           </button>
         `;
       }
@@ -599,7 +599,7 @@ async function selectActiveWhisperModel(modelId) {
   });
   await loadSystemInfo();
   const pretty = formatModelName(modelId);
-  showToast(state.uiLang === 'en' ? `Speech model: ${pretty}` : `Модель речи: ${pretty}`);
+  showToast(t('modelSpeechPicked').replace('{name}', () => pretty));
 }
 
 // Where a downloaded model is on the disk, with its size and a button to show it in Explorer
@@ -624,7 +624,7 @@ async function deleteWhisperModel(modelId) {
   const res = await fetch(`/api/models/${encodeURIComponent(modelId)}`, { method: 'DELETE' });
   if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
   await loadSystemInfo();
-  showToast(state.uiLang === 'en' ? `Deleted ${pretty} from disk` : `Модель ${pretty} удалена с диска`);
+  showToast(t('modelDeletedToast').replace('{name}', () => pretty));
 }
 
 async function deleteOllamaModel(name) {
@@ -648,7 +648,7 @@ function startWhisperPollingLoop(modelId) {
         await loadSystemInfo();
         if (data.setup_state && data.setup_state.progress === 100) {
           const pretty = formatModelName(modelId);
-          showToast(state.uiLang === 'en' ? `${pretty} is ready!` : `Модель ${pretty} установлена и готова к работе!`);
+          showToast(t('modelReadyToast').replace('{name}', () => pretty));
         }
       }
     } catch (e) {}
@@ -664,7 +664,7 @@ async function startWhisperModelDownload(modelId) {
     active: true,
     model_id: modelId,
     progress: 1,
-    status: state.uiLang === 'en' ? `Starting download of ${pretty}` : `Запуск скачивания ${pretty}`,
+    status: t('modelDownloadStarting').replace('{name}', () => pretty),
     logs: []
   };
   syncSidebarDownloadWidget();
@@ -703,12 +703,12 @@ function updateOllamaUI(ollama) {
   const activeModel = document.getElementById('set-ollama-model').value || ollama.active_model || 'qwen2.5:7b';
 
   if (ollama.running) {
-    pill.textContent = state.uiLang === 'en' ? 'Ollama Active' : 'Ollama запущена';
+    pill.textContent = t('uiOllamaActive');
     pill.className = 'text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-apple-green/15 text-apple-green shrink-0';
   } else {
     pill.textContent = ollama.installed
-      ? (state.uiLang === 'en' ? 'Ollama not running' : 'Ollama не запущена')
-      : (state.uiLang === 'en' ? 'Ollama not installed' : 'Ollama не установлена');
+      ? t('uiOllamaNotRunning')
+      : t('uiOllamaNotInstalled');
     pill.className = 'text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-apple-amber/15 text-apple-amber shrink-0';
   }
 
@@ -731,18 +731,18 @@ function updateOllamaUI(ollama) {
         const del = `<button data-id="${escapeHtml(item.id)}" onclick="deleteOllamaModel(this.dataset.id)" title="${escapeHtml(t('tipDeleteModel'))}"
               class="ui-btn ui-btn-subtle px-2 hover:text-apple-red">${SVG_ICONS.trash}</button>`;
         actionHtml = isSelected
-          ? `<div class="flex items-center gap-1.5"><span class="ui-btn bg-apple-green/20 text-apple-green">${SVG_ICONS.check}<span>${state.uiLang === 'en' ? 'Active' : 'Активна'}</span></span>${del}</div>`
+          ? `<div class="flex items-center gap-1.5"><span class="ui-btn bg-apple-green/20 text-apple-green">${SVG_ICONS.check}<span>${t('uiActive')}</span></span>${del}</div>`
           : `<div class="flex items-center gap-1.5">
           <button data-id="${escapeHtml(item.id)}" onclick="selectActiveOllamaModel(this.dataset.id)" title="${escapeHtml(t('tipSelectModel'))}"
             class="ui-btn ui-btn-subtle text-white hover:bg-apple-blue">
-            ${state.uiLang === 'en' ? 'Select' : 'Выбрать'}
+            ${t('uiSelect')}
           </button>${del}</div>`;
       } else {
         actionHtml = `
           <button data-id="${escapeHtml(item.id)}" onclick="pullOllamaModel(this.dataset.id)" title="${escapeHtml(t('tipDownloadModel'))}"
             class="ui-btn ui-btn-primary">
             ${SVG_ICONS.download}
-            <span>${state.uiLang === 'en' ? 'Download' : 'Скачать'} (${escapeHtml(item.size)})</span>
+            <span>${t('uiDownload')} (${escapeHtml(item.size)})</span>
           </button>
         `;
       }
@@ -1447,7 +1447,7 @@ async function selectActiveOllamaModel(modelId) {
   });
   await loadSystemInfo();
   const pretty = formatModelName(modelId);
-  showToast(state.uiLang === 'en' ? `Selected LLM: ${pretty}` : `Выбрана модель: ${pretty}`);
+  showToast(t('llmPickedToast').replace('{name}', () => pretty));
 }
 
 async function saveAllSettings() {
@@ -1531,7 +1531,7 @@ function startOllamaPollingLoop(model) {
         await loadSystemInfo();
         if (data.pull_state && data.pull_state.progress === 100) {
           const pretty = formatModelName(model);
-          showToast(state.uiLang === 'en' ? `Model ${pretty} ready!` : `Модель ${pretty} установлена и активна!`);
+          showToast(t('llmReadyToast').replace('{name}', () => pretty));
         }
       }
     } catch (e) {}
@@ -1542,9 +1542,7 @@ async function pullOllamaModel(modelArg, makeActive = true) {
   const model = (modelArg || document.getElementById('set-ollama-model').value || 'qwen2.5:7b').trim();
   let allowInstall = false;
   if (state.system && state.system.ollama && !state.system.ollama.installed) {
-    allowInstall = await askConfirm(state.uiLang === 'en'
-      ? 'Ollama is not installed. Install it now via winget (package Ollama.Ollama, about 1 GB)?\n\nYou can also install it manually from https://ollama.com/download'
-      : 'Ollama не установлена. Установить её сейчас через winget (пакет Ollama.Ollama, около 1 ГБ)?\n\nМожно установить и вручную: https://ollama.com/download');
+    allowInstall = await askConfirmt('uiOllamaIsNotInstalled');
     if (!allowInstall) return;
   }
   if (makeActive) document.getElementById('set-ollama-model').value = model;  // not for the embedding model
@@ -1554,7 +1552,7 @@ async function pullOllamaModel(modelArg, makeActive = true) {
     active: true,
     model: model,
     progress: 1,
-    status: state.uiLang === 'en' ? `Starting download of ${pretty}` : `Запуск установки ${pretty}`,
+    status: t('llmInstallStarting').replace('{name}', () => pretty),
     logs: []
   };
   syncSidebarDownloadWidget();

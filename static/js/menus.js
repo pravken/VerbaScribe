@@ -404,7 +404,7 @@ async function ctxRenameRecording() {
   hideContextMenu();
   const m = state.meetings.find(x => x.id === state.contextMeetingId);
   if (!m) return;
-  const newTitle = await askText(state.uiLang === 'en' ? 'New recording title:' : 'Новое название записи:', m.title);
+  const newTitle = await askText(t('uiNewRecordingTitle'), m.title);
   if (!newTitle || !newTitle.trim() || newTitle.trim() === m.title) return;
 
   const res = await fetch(`/api/meetings/${m.id}/title`, {
@@ -450,7 +450,7 @@ async function submitReconfigure() {
   });
   await loadMeetingsList();
   await selectMeeting(id, false);
-  showToast(state.uiLang === 'en' ? 'Re-processing started' : 'Запущена повторная обработка');
+  showToastt('uiReProcessingStarted');
 }
 
 async function ctxCancelProcessing() {
@@ -475,7 +475,7 @@ async function restoreSegments(id) {
     renderTranscript();
     renderSpeakersPanel();
   }
-  showToast(state.uiLang === 'en' ? 'Original text restored' : 'Исходный текст восстановлен');
+  showToastt('uiOriginalTextRestored');
 }
 
 async function ctxRevealInExplorer() {
@@ -564,5 +564,5 @@ async function ctxDeleteRecording() {
     document.getElementById('workspace-empty').classList.remove('hidden');
   }
   await loadMeetingsList();
-  showToast(state.uiLang === 'en' ? 'Recording deleted' : 'Запись удалена');
+  showToastt('uiRecordingDeleted');
 }

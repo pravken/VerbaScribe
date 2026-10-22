@@ -951,7 +951,7 @@ async function cancelProcessing(id) {
     showToast(data.detail || 'Error');
     return;
   }
-  showToast(state.uiLang === 'en' ? 'Cancelling…' : 'Обработка отменяется…');
+  showToastt('uiCancelling');
   await loadMeetingsList();
 }
 
@@ -1466,7 +1466,7 @@ async function mergeSegmentWithPrevious(segId) {
     renderSpeakerPillsBar();
     renderSpeakersPanel();
     renderTranscript();
-    showToast(state.uiLang === 'en' ? 'Segments merged' : 'Реплики объединены');
+    showToastt('uiSegmentsMerged');
   }
 }
 
