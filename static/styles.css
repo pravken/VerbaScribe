@@ -202,6 +202,14 @@ input[type="range"].volume-slider::-webkit-slider-thumb:hover {
   background-color: rgba(255, 255, 255, 0.1);
   border-radius: 4px;
 }
+/* Transcript tab: "Recognition" (the model of the text, a panel of its own) and "Text" (the tools
+   for the text shown), each with its label, so the two kinds of buttons do not read as one group */
+.tx-section-panel { padding: 5px 8px; border-radius: 10px; background: rgba(255, 255, 255, 0.035); border: 1px solid rgba(255, 255, 255, 0.07); }
+.tx-section-label { font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #8E8E93;
+  flex-shrink: 0; min-width: 104px; }
+.tx-section-label-text { padding-left: 9px; }  /* in line with the label of the panel above */
+.tx-model-status { font-size: 11px; flex: 1 1 14rem; min-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* A place of a merged transcript the models heard differently (app/transcript_merge.py) */
 .word-disputed {
   text-decoration: underline dotted rgba(255, 159, 10, 0.85);

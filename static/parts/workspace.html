@@ -445,10 +445,11 @@
 
         <!-- Contextual Transcript Sub-Toolbar: Speaker Pills on Left + Transcript Action Buttons & Search on Right -->
         <div class="border-b apple-border bg-apple-bg/95 px-6 py-2 shrink-0">
-          <!-- The model the text was made with: each model's transcript is kept, picking one shows it
-               (renderTxModelBar in static/js/workspace.js) -->
-          <div id="tx-model-bar" class="hidden max-w-6xl mx-auto flex items-center gap-2 mb-2 min-w-0">
-            <label for="tx-model-select" class="text-[11px] text-apple-tertiary shrink-0" data-i18n="txModelLabel">Модель</label>
+          <!-- Two parts: "Recognition" (a panel of its own: the model the text was made with, each model's
+               transcript kept, picking one shows it; renderTxModelBar in static/js/workspace.js) and
+               "Text" (the row below: what is done with the text shown) -->
+          <div id="tx-model-bar" class="hidden tx-section-panel max-w-6xl mx-auto flex flex-wrap items-center gap-x-2 gap-y-1.5 mb-2 min-w-0">
+            <label for="tx-model-select" class="tx-section-label" data-i18n="txSectionRecognition">Распознавание</label>
             <select id="tx-model-select" data-change="pickTxModel" data-change-args='[{"$": "el"}]'
               data-i18n-title="tipTxModel" title="Модель распознавания. Текст каждой модели хранится отдельно: выберите модель, чтобы увидеть её расшифровку"
               class="h-7 max-w-[15rem] bg-apple-sidebar border apple-border rounded-[7px] px-2 text-xs text-white focus:outline-none shrink-0"></select>
@@ -467,9 +468,10 @@
               <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
               <span data-i18n="txDeleteVersion">Очистить</span>
             </button>
-            <span id="tx-model-status" class="text-[11px] truncate min-w-0"></span>
+            <span id="tx-model-status" class="tx-model-status"></span>
           </div>
           <div class="tx-toolbar max-w-6xl mx-auto flex items-center justify-between gap-3">
+            <span class="tx-section-label tx-section-label-text" data-i18n="txSectionText">Текст</span>
             <!-- Left: Speaker Filter Pills (they wrap within their part; the tools stay on one line) -->
             <div class="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap min-h-[28px]" id="speaker-pills-container">
               <!-- Populated dynamically -->
@@ -529,16 +531,6 @@
                   <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
                 <span class="tx-tool-label" id="tx-verified-label" data-i18n="txVerify">Проверено</span>
-              </button>
-
-              <button data-click="clearActiveResults" id="tx-clear-btn"
-                data-i18n-title="tipClearResults"
-                title="Удалить расшифровку, участников, саммари, переводы и обещания; звук и ваши заметки остаются, запись можно расшифровать заново"
-                class="hidden ui-btn ui-btn-subtle text-apple-label">
-                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/>
-                </svg>
-                <span class="tx-tool-label" data-i18n="txClearResults">Удалить результаты</span>
               </button>
             </div>
           </div>

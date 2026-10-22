@@ -108,7 +108,7 @@ function renderTxModelBar() {
   else [text, cls] = [t('txModelNotYet').replace('{model}', () => formatModelName(shown)), 'text-apple-amber'];
   status.textContent = text;
   status.title = text;
-  status.className = `text-[11px] truncate min-w-0 ${cls}`;
+  status.className = `tx-model-status ${cls}`;  // goes to a line of its own when the panel is narrow
 }
 
 async function pickTxModel(sel) {
@@ -1033,7 +1033,6 @@ function renderTranslationControls() {
   // Clearing: one translation, or everything the processing made
   if (langs.length) html += sep + langs.map(c => item(['deleteTranslationFromMenu', c], '✕', `${t('txDeleteTr')}: ${langName(c)}`)).join('');
   document.getElementById('tx-view-menu').innerHTML = html;
-  document.getElementById('tx-clear-btn')?.classList.toggle('hidden', !(m && m.status === 'completed'));
   renderVerifiedButton();
   renderExportTranslatedMenu();
 }
@@ -1053,12 +1052,6 @@ async function deleteTranslationFromMenu(lang) {
   renderTranscript();
 }
 
-function clearActiveResults() {
-  hideTxViewMenu();
-  if (!state.activeMeeting) return;
-  state.contextMeetingId = state.activeMeeting.id;
-  ctxClearResults();
-}
 
 async function deleteActiveDub() {
   const m = state.activeMeeting;
