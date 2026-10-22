@@ -4,7 +4,9 @@
 // --- Meetings List, Global Search & Sidebar ---
 async function loadMeetingsList() {
   const [res] = await Promise.all([fetch('/api/meetings'), loadFolders()]);
-  state.meetings = await readJson(res);
+  const list = await readJson(res);
+  if (!res.ok || !Array.isArray(list)) return;  // the list shown stays (a lost session reloads the page)
+  state.meetings = list;
   if (!state.globalSearchQuery) {
     renderMeetingsSidebar();
   } else if (typeof rerunGlobalSearch === 'function') {

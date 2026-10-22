@@ -160,6 +160,35 @@ function showAlert(text) {
   return confirmDialog(t('attentionTitle'), String(text), t('ok'), false).then(() => {});
 }
 
+// What a failed answer says, for a toast: FastAPI's "detail" is a text, or a list of invalid fields
+function errorText(data, res) {
+  const d = data && data.detail;
+  if (Array.isArray(d)) return d.map(x => (x && (x.msg || x.message)) || String(x)).join('; ');
+  return (typeof d === 'string' && d) || `${t('serverError')} (HTTP ${res ? res.status : '?'})`;
+}
+
+// A lost session (the server started again with a new token, the cookie is gone): every request then
+// answers 401. Instead of a page that silently stops working, the window reloads itself with a fresh
+// address (in a browser the user is told to open the app again).
+const _nativeFetch = window.fetch.bind(window);
+let _sessionLost = false;
+window.fetch = async (...args) => {
+  const res = await _nativeFetch(...args);
+  if (res.status === 401 && !_sessionLost && /^\/api\//.test(String(args[0]))) {
+    _sessionLost = true;
+    onSessionLost();
+  }
+  return res;
+};
+
+async function onSessionLost() {
+  showToast(t('sessionLost'));
+  try {
+    const url = window.pywebview && window.pywebview.api && await window.pywebview.api.app_url();
+    if (url && url.indexOf('token=') > 0) setTimeout(() => location.replace(url), 1500);
+  } catch (e) { /* in a browser: the toast says what to do */ }
+}
+
 // The JSON of a response; a non-JSON answer (a server error page) becomes {detail: "..."} instead of
 // "Unexpected token ... is not valid JSON" shown to the user
 async function readJson(res) {

@@ -1486,20 +1486,26 @@ async function saveAllSettings() {
       ...dubSettingsPayload(),
     }
   };
-  // Close the modal immediately so the user is never blocked by background downloads
-  closeModal('settings');
-  showToast(state.uiLang === 'en' ? 'Settings saved' : 'Настройки сохранены');
-
+  // "Saved" only once the server has the settings: on an error the window stays open with them
+  let res;
   try {
-    await fetch('/api/settings', {
+    res = await fetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    await loadSystemInfo();
   } catch (e) {
-    console.error(e);
+    showToast(t('settingsSaveFailed').replace('{why}', () => String(e.message || e)));
+    return;
   }
+  if (!res.ok) {
+    const why = errorText(await readJson(res), res);
+    showToast(t('settingsSaveFailed').replace('{why}', () => why));
+    return;
+  }
+  closeModal('settings');
+  showToast(t('settingsSaved'));
+  loadSystemInfo().catch(console.error);
 }
 
 function pullCustomOllamaModel() {
@@ -1569,7 +1575,9 @@ async function pullOllamaModel(modelArg, makeActive = true) {
 // --- Dictionary ---
 async function loadDictionary() {
   const res = await fetch('/api/dictionary');
-  state.dictionary = await readJson(res);
+  const terms = await readJson(res);
+  if (!res.ok || !Array.isArray(terms)) return;
+  state.dictionary = terms;
   document.getElementById('dict-count-badge').textContent = state.dictionary.filter(d => d.active).length;
 
   const box = document.getElementById('dictionary-list');

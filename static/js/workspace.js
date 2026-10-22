@@ -1119,7 +1119,9 @@ async function updateSpeaker(speakerId, newName, newColor) {
       color: colorToSave
     })
   });
-  state.activeMeeting = await readJson(res);
+  const data = await readJson(res);
+  if (!res.ok) { showToast(errorText(data, res)); renderSpeakersPanel(); return; }
+  state.activeMeeting = data;
   renderSpeakerPillsBar();
   renderSpeakersPanel();
   renderTranscript();
@@ -1537,7 +1539,9 @@ async function saveSegmentEdit(segId) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text: newText })
   });
-  state.activeMeeting = await readJson(res);
+  const data = await readJson(res);
+  if (!res.ok) { showToast(errorText(data, res)); return; }  // the edit box stays open with the text
+  state.activeMeeting = data;
   renderTranscript();
 }
 
@@ -1547,7 +1551,9 @@ async function changeSegmentSpeaker(segId, newSpeaker) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ speaker: newSpeaker })
   });
-  state.activeMeeting = await readJson(res);
+  const data = await readJson(res);
+  if (!res.ok) { showToast(errorText(data, res)); renderTranscript(); return; }
+  state.activeMeeting = data;
   renderSpeakerPillsBar();
   renderSpeakersPanel();
   renderTranscript();
