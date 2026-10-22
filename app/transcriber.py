@@ -22,6 +22,7 @@ from app.database import (
     get_all_settings,
     get_dictionary_hotwords,
     get_meeting,
+    meeting_status,
     save_meeting_dub,
     save_meeting_results,
     merge_summaries,
@@ -209,6 +210,17 @@ def _run_pending_exports(meeting_id: int) -> None:
         traceback.print_exc()
 
 
+# A job on a finished recording (dub, translation, cut, subtitles) gives it back the status it had:
+# a cancelled or failed recording with half a transcript must not become "completed" (the retention
+# setting deletes the sound of completed recordings)
+FINISHED_STATUSES = ("completed", "failed", "cancelled", "cleared")
+
+
+def _status_to_return(meeting_id: int) -> str:
+    status = meeting_status(meeting_id)
+    return status if status in FINISHED_STATUSES else "completed"
+
+
 def enqueue_dub_job(meeting_id: int, target_lang: str) -> bool:
     """Queues a translate-and-dub job in the same single worker, so it never shares VRAM with a transcription."""
     with _jobs_lock:
@@ -217,22 +229,23 @@ def enqueue_dub_job(meeting_id: int, target_lang: str) -> bool:
         _active_jobs.add(meeting_id)
         _cancel_requested.discard(meeting_id)
         _queue_add(meeting_id, "dub", target_lang)
+    back = _status_to_return(meeting_id)
     update_meeting_progress(
         meeting_id, status="dubbing", progress=0, stage_text="Дубляж в очереди...", error_message=""
     )
-    _executor.submit(_run_dub_job, meeting_id, target_lang)
+    _executor.submit(_run_dub_job, meeting_id, target_lang, back)
     _publish_queue_changed()
     return True
 
 
-def _run_dub_job(meeting_id: int, target_lang: str) -> None:
+def _run_dub_job(meeting_id: int, target_lang: str, back: str = "completed") -> None:
     from app.dubbing import run_dub_job
 
     def _progress(pct: int, text: str) -> None:
         update_meeting_progress(meeting_id, progress=pct, stage_text=text)
 
-    # The transcript stays valid whatever happens to the dub, so the recording always goes back to
-    # "completed"; the dub result (or error) is reported in stage_text / error_message.
+    # The transcript stays valid whatever happens to the dub, so the recording goes back to the status
+    # it had (`back`); the dub result (or error) is reported in stage_text / error_message.
     _queue_start(meeting_id)
     try:
         meeting = get_meeting(meeting_id)
@@ -244,19 +257,19 @@ def _run_dub_job(meeting_id: int, target_lang: str) -> None:
         save_meeting_dub(meeting_id, entry)
         update_meeting_progress(
             meeting_id,
-            status="completed",
+            status=back,
             progress=100,
             stage_text=f"Дубляж ({target_lang.upper()}) готов: {Path(entry['path']).name}"
             + (f"; не удалось озвучить фраз: {failed}" if (failed := (entry.get("stats") or {}).get("failed_phrases")) else ""),
             error_message="",
         )
     except JobCancelled:
-        update_meeting_progress(meeting_id, status="completed", progress=100, stage_text="Дубляж отменён", error_message="")
+        update_meeting_progress(meeting_id, status=back, progress=100, stage_text="Дубляж отменён", error_message="")
     except Exception as e:
         tb = traceback.format_exc()
         update_meeting_progress(
             meeting_id,
-            status="completed",
+            status=back,
             progress=100,
             stage_text=f"Ошибка дубляжа: {str(e)[:140]}",
             error_message=f"{e}\n\n{tb[-800:]}",
@@ -278,26 +291,27 @@ def _enqueue_side_job(meeting_id: int, kind: str, lang: str, status: str, queued
         _active_jobs.add(meeting_id)
         _cancel_requested.discard(meeting_id)
         _queue_add(meeting_id, kind, lang)
+    back = _status_to_return(meeting_id)
     update_meeting_progress(meeting_id, status=status, progress=0, stage_text=queued_text, error_message="")
-    _executor.submit(_run_side_job, meeting_id, runner, *args)
+    _executor.submit(_run_side_job, meeting_id, back, runner, *args)
     _publish_queue_changed()
     return True
 
 
-def _run_side_job(meeting_id: int, runner, *args) -> None:
-    # Like a dub, these jobs never invalidate the transcript: the recording always goes back to
-    # "completed" and the outcome (done, cancelled, error) is reported in stage_text / error_message.
+def _run_side_job(meeting_id: int, back: str, runner, *args) -> None:
+    # Like a dub, these jobs never invalidate the transcript: the recording goes back to the status it
+    # had (`back`) and the outcome (done, cancelled, error) is reported in stage_text / error_message.
     _queue_start(meeting_id)
     try:
         done_text = runner(meeting_id, *args)
-        update_meeting_progress(meeting_id, status="completed", progress=100, stage_text=done_text, error_message="")
+        update_meeting_progress(meeting_id, status=back, progress=100, stage_text=done_text, error_message="")
     except JobCancelled:
-        update_meeting_progress(meeting_id, status="completed", progress=100, stage_text=_SIDE_JOB_NAMES[runner][1], error_message="")
+        update_meeting_progress(meeting_id, status=back, progress=100, stage_text=_SIDE_JOB_NAMES[runner][1], error_message="")
     except Exception as e:
         tb = traceback.format_exc()
         update_meeting_progress(
             meeting_id,
-            status="completed",
+            status=back,
             progress=100,
             stage_text=f"Ошибка ({_SIDE_JOB_NAMES[runner][0]}): {str(e)[:140]}",
             error_message=f"{e}\n\n{tb[-800:]}",

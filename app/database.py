@@ -832,6 +832,15 @@ def _loads_dict(raw: Optional[str]) -> Dict[str, Any]:
         return {}
 
 
+def meeting_status(meeting_id: int) -> str:
+    """The status alone (no transcript is read); "" when there is no such recording."""
+    with _db_lock:
+        conn = get_connection()
+        row = conn.execute("SELECT status FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+        conn.close()
+    return str(row["status"] or "") if row else ""
+
+
 def get_meeting(meeting_id: int) -> Optional[Dict[str, Any]]:
     with _db_lock:
         conn = get_connection()

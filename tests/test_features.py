@@ -380,3 +380,20 @@ class LiveAskTest(unittest.TestCase):
             self.assertIn("[01:05] Переносим релиз на пятницу", sent[0])
             self.assertEqual(c.post("/api/live/nope/ask", json={"question": "x"}).status_code, 404)
         live.stop_session(s.id)
+
+
+class SideJobStatusTest(unittest.TestCase):
+    """A job on a finished recording gives back its status: a cancelled one must not become completed."""
+
+    def test_status_is_returned(self):
+        from app import transcriber
+        from app.database import create_meeting, init_db, meeting_status, update_meeting_progress
+
+        init_db()
+        for status in ("cancelled", "failed", "completed"):
+            m = create_meeting(title=f"Задание после {status}", filename="a.wav", media_path="/nonexistent/a.wav")
+            update_meeting_progress(m["id"], status=status)
+            # a cut of a missing file fails: whatever the outcome, the status is the one before
+            self.assertTrue(transcriber.enqueue_cut_job(m["id"], "denoise", [(0.0, 1.0)], False, "/nonexistent/out.wav"))
+            transcriber._executor.submit(lambda: None).result(timeout=30)
+            self.assertEqual(meeting_status(m["id"]), status)

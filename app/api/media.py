@@ -338,6 +338,8 @@ def api_meeting_cut(meeting_id: int, payload: CutPayload) -> Dict[str, Any]:
     if payload.kind not in ("clean", "highlights", "denoise"):
         raise HTTPException(status_code=400, detail="Неизвестный вид нарезки")
     _ensure_not_processing(meeting_id)
+    if payload.kind != "denoise" and (m.get("status") != "completed" or not m.get("segments")):
+        raise HTTPException(status_code=400, detail="Нарезка доступна после полной расшифровки записи")
     media = Path(m.get("media_path") or "")
     if not media.is_file():
         raise HTTPException(status_code=404, detail="Исходный файл не найден")
@@ -394,6 +396,8 @@ def api_video_subtitles(meeting_id: int, payload: SubtitlesRequestPayload) -> Di
     if payload.mode not in ("soft", "burn"):
         raise HTTPException(status_code=400, detail="Неизвестный режим субтитров")
     _ensure_not_processing(meeting_id)
+    if m.get("status") != "completed" or not m.get("segments"):
+        raise HTTPException(status_code=400, detail="Субтитры доступны после полной расшифровки записи")
     lang = (payload.lang or "").strip()
     variant = payload.variant if lang else "original"
     if lang and variant not in _EXPORT_VARIANTS:
