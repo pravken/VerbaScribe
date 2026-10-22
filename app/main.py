@@ -1891,6 +1891,21 @@ def api_remove_media(meeting_id: int) -> Dict[str, Any]:
     return get_meeting(meeting_id)
 
 
+class VerifiedPayload(BaseModel):
+    verified: bool = True
+
+
+@app.patch("/api/meetings/{meeting_id}/verified")
+def api_set_verified(meeting_id: int, payload: VerifiedPayload) -> Dict[str, Any]:
+    """The user checked the transcript: it is a reference for the model comparison (app/bench.py)."""
+    from app.database import update_meeting_fields
+
+    if not get_meeting(meeting_id):
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    update_meeting_fields(meeting_id, transcript_verified=1 if payload.verified else 0)
+    return get_meeting(meeting_id)
+
+
 @app.delete("/api/meetings/{meeting_id}/summaries")
 def api_delete_summary(meeting_id: int, key: str) -> Dict[str, Any]:
     """One analysis of a recording (a tab of Analysis: overview, tasks, chapters, a template...)."""

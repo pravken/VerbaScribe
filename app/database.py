@@ -235,9 +235,10 @@ _MEETING_EXTRA_COLUMNS = {
     "obsidian_path": "TEXT DEFAULT ''",
     "obsidian_hash": "TEXT DEFAULT ''",  # sha256 of the part of the note VerbaScribe wrote last
     "pending_exports_json": "TEXT DEFAULT '[]'",
-    "exports_json": "TEXT DEFAULT '[]'",
-    "user_notes": "TEXT DEFAULT ''",
-    "media_removed": "INTEGER DEFAULT 0",  # 1: the sound was deleted for privacy, the transcript kept  # the user's own notes of the meeting (studio or "My notes" tab)  # files saved by exports (Save as), deleted with the recording on request
+    "exports_json": "TEXT DEFAULT '[]'",  # files saved by exports (Save as), deleted with the recording on request
+    "user_notes": "TEXT DEFAULT ''",  # the user's own notes of the meeting (studio or "My notes" tab)
+    "media_removed": "INTEGER DEFAULT 0",  # 1: the sound was deleted for privacy, the transcript kept
+    "transcript_verified": "INTEGER DEFAULT 0",  # 1: the user checked and corrected it: a reference for app/bench.py
     "has_video": "INTEGER DEFAULT NULL",  # NULL: told from the file extension (see is_video)
     "local_only": "INTEGER DEFAULT 0",  # 1: never sent to a cloud model (see is_local_only)
     "media_size": "INTEGER DEFAULT NULL",  # bytes of the media file; NULL: not measured yet
@@ -652,6 +653,7 @@ def restore_segments_backup(meeting_id: int) -> bool:
 
 def update_meeting_fields(meeting_id: int, **fields: Any) -> None:
     allowed = {"title", "model_name", "language", "num_speakers_hint", "folder_id", "title_is_default", "obsidian_path", "obsidian_hash", "user_notes",
+               "transcript_verified",
                "local_only", "series_id"}
     items = [(k, v) for k, v in fields.items() if k in allowed]
     if not items:
@@ -797,6 +799,7 @@ def get_meeting(meeting_id: int) -> Optional[Dict[str, Any]]:
 _LIST_COLUMNS = """id, title, filename, media_path, duration, status, progress, stage_text,
     error_message, language, model_name, num_speakers_hint,
     speakers_json, created_at, completed_at, folder_id, source, recorded_at, has_video, local_only, media_size, series_id,
+    transcript_verified,
     obsidian_path, exports_json,
     segments_json NOT IN ('', '[]') AS has_transcript,
     summaries_json NOT IN ('', '{}') AS has_summary"""
@@ -985,7 +988,7 @@ def clear_results(meeting_id: int) -> bool:
         conn = get_connection()
         conn.execute(
             "UPDATE meetings SET segments_json = '[]', speakers_json = '{}', summaries_json = '{}', translations_json = '{}', "
-            "segments_backup_json = '', status = 'cleared', progress = 0, stage_text = '', error_message = '' WHERE id = ?",
+            "segments_backup_json = '', status = 'cleared', progress = 0, stage_text = '', error_message = '', transcript_verified = 0 WHERE id = ?",
             (meeting_id,))
         conn.execute("DELETE FROM segments_fts WHERE meeting_id = ?", (meeting_id,))
         conn.execute("DELETE FROM semantic_chunks WHERE meeting_id = ?", (meeting_id,))

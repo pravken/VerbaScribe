@@ -138,7 +138,10 @@ class ClearResultsTest(unittest.TestCase):
         save_meeting_results(m["id"], segments=[{"id": 0, "start": 0, "end": 1, "text": "текст", "speaker": "S1"}],
                              speakers={"S1": {"name": "Анна"}}, summaries={"protocol": "## Итоги"})
         update_meeting_fields(m["id"], user_notes="мои заметки")
+        update_meeting_fields(m["id"], transcript_verified=1)
+        self.assertEqual(get_meeting(m["id"])["transcript_verified"], 1)
         self.assertTrue(clear_results(m["id"]))
+        self.assertEqual(get_meeting(m["id"])["transcript_verified"], 0)  # nothing left to be a reference
         got = get_meeting(m["id"])
         self.assertEqual((got["segments"], got["speakers"], got["summaries"], got["status"]), ([], {}, {}, "cleared"))
         self.assertEqual((got["user_notes"], got["media_path"]), ("мои заметки", "/tmp/c.m4a"))

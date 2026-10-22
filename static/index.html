@@ -726,6 +726,16 @@
                   class="w-full h-7 bg-white/5 focus:bg-apple-card border border-transparent focus:border-apple-blue/60 rounded-[7px] pl-8 pr-2.5 text-xs text-white placeholder-apple-tertiary focus:outline-none transition" />
               </div>
 
+              <button onclick="toggleTranscriptVerified()" id="tx-verified-btn"
+                data-i18n-title="tipTxVerified"
+                title="Отметьте, когда проверили и исправили расшифровку: она станет эталоном для «Сравнения моделей»"
+                class="hidden ui-btn ui-btn-subtle text-apple-label">
+                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <span class="tx-tool-label" id="tx-verified-label" data-i18n="txVerify">Проверено</span>
+              </button>
+
               <button onclick="clearActiveResults()" id="tx-clear-btn"
                 data-i18n-title="tipClearResults"
                 title="Удалить расшифровку, участников, саммари, переводы и обещания; звук и ваши заметки остаются, запись можно расшифровать заново"
@@ -2343,7 +2353,7 @@
         <div class="settings-card">
           <div>
             <h4 class="text-[13px] font-semibold text-white" data-i18n="benchTitle">Сравнение моделей на ваших записях</h4>
-            <p class="text-[11px] text-apple-secondary leading-snug mt-0.5" data-i18n="benchDesc">Возьмите запись, расшифровку которой вы проверили и исправили, — она будет эталоном. Каждая выбранная модель распознает тот же фрагмент, и вы увидите долю ошибок (WER), скорость и нужную память. Для анализа модели пишут протокол, и считается доля пунктов, которых нет в расшифровке. Всё на этом компьютере.</p>
+            <p class="text-[11px] text-apple-secondary leading-snug mt-0.5" data-i18n="benchDesc">Возьмите запись, расшифровку которой вы проверили и исправили (кнопка «Проверено» над текстом), — она будет эталоном. Каждая выбранная модель распознает тот же фрагмент, и вы увидите долю ошибок (WER), скорость и нужную память. Для анализа модели пишут протокол, и считается доля пунктов, которых нет в расшифровке. Всё на этом компьютере.</p>
           </div>
           <div class="flex items-center gap-2 flex-wrap">
             <div class="apple-segmented" style="height: 30px;">
