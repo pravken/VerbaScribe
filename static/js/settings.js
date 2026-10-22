@@ -105,6 +105,9 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     document.getElementById('set-record-hotkey').value = s.record_hotkey ?? 'Ctrl+Alt+R';
     document.getElementById('set-dictation-hotkey').value = s.dictation_hotkey ?? 'Ctrl+Alt+D';
     document.getElementById('set-dictation-language').value = s.dictation_language || 'auto';
+    document.getElementById('set-translate-hotkey').value = s.dictation_translate_hotkey ?? 'Ctrl+Alt+T';
+    document.getElementById('set-dictation-translate-cloud').checked = s.dictation_translate_cloud === 'true';
+    fillDictationTranslateLangs(s.dictation_translate_to || 'en');
     document.getElementById('set-calendar-ics').value = s.calendar_ics || '';
     loadCalendarSource();
     document.getElementById('set-onnx-gpu').checked = s.onnx_gpu !== 'false';
@@ -1044,11 +1047,24 @@ function clearHotkey() {
 }
 
 async function loadHotkeyStatus() {
-  const box = document.getElementById('hotkey-status');
   const st = await fetch('/api/hotkey').then(r => r.json()).catch(() => null);
-  if (!box || !st || st.ok === null || st.ok === undefined) { if (box) box.textContent = ''; return; }
-  box.textContent = st.ok ? t('hotkeyActive') : (st.error ? serverText(st.error) : t('hotkeyFailed'));
-  box.className = 'text-[11px] ' + (st.ok ? 'text-apple-green' : 'text-apple-amber');
+  // The recording hotkey, and the dictation with translation (registered by the tray, app/tray.py)
+  for (const [id, one] of [['hotkey-status', st], ['translate-hotkey-status', st && st.translate]]) {
+    const box = document.getElementById(id);
+    if (!box) continue;
+    if (!one || one.ok === null || one.ok === undefined) { box.textContent = ''; continue; }
+    box.textContent = one.ok ? t('hotkeyActive') : (one.error ? serverText(one.error) : t('hotkeyFailed'));
+    box.className = 'text-[11px] ' + (one.ok ? 'text-apple-green' : 'text-apple-amber');
+  }
+}
+
+// The languages a dictation can be translated into: the same as for text translation
+async function fillDictationTranslateLangs(value) {
+  const sel = document.getElementById('set-dictation-translate-to');
+  if (!sel) return;
+  sel.innerHTML = textLangOptions(await textLanguages(), false);
+  sel.value = value;
+  if (sel.value !== value) sel.value = 'en';
 }
 
 // Captions while recording: "auto" or one of the downloaded Whisper models
@@ -1512,6 +1528,9 @@ async function saveAllSettings() {
       record_hotkey: document.getElementById('set-record-hotkey')?.value.trim() || '',
       dictation_hotkey: document.getElementById('set-dictation-hotkey')?.value.trim() || '',
       dictation_language: document.getElementById('set-dictation-language')?.value || 'auto',
+      dictation_translate_hotkey: document.getElementById('set-translate-hotkey')?.value.trim() || '',
+      dictation_translate_to: document.getElementById('set-dictation-translate-to')?.value || 'en',
+      dictation_translate_cloud: document.getElementById('set-dictation-translate-cloud')?.checked ? 'true' : 'false',
       calendar_ics: document.getElementById('set-calendar-ics')?.value.trim() || '',
       onnx_gpu: document.getElementById('set-onnx-gpu')?.checked ? 'true' : 'false',
       ...callSettingsPayload(),

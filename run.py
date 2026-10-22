@@ -504,6 +504,12 @@ class TrayController:
 
             self._dictation_spec = dspec
             self.tray.set_hotkey(dspec, "hotkey_dictation", slot=DICTATION_HOTKEY_ID)
+        tspec = (settings.get("dictation_translate_hotkey") or "").strip()
+        if tspec != getattr(self, "_translate_spec", None):
+            from app.tray import TRANSLATE_HOTKEY_ID
+
+            self._translate_spec = tspec
+            self.tray.set_hotkey(tspec, "hotkey_dictation_translate", slot=TRANSLATE_HOTKEY_ID)
 
     def _hotkey_record(self) -> None:
         # The notice waits for the page to report the new state (_check_hotkey_result): starting can
@@ -531,11 +537,12 @@ class TrayController:
 
     def _warn_hotkey_failures(self) -> None:
         """A hotkey that could not be registered is said once, not only on the settings page."""
-        from app.hotkey import dictation_hotkey_state, hotkey_state
+        from app.hotkey import dictation_hotkey_state, hotkey_state, translate_hotkey_state
 
         warned = getattr(self, "_hotkey_warned", set())
         self._hotkey_warned = warned
-        for name, state in (("записи", hotkey_state), ("диктовки", dictation_hotkey_state)):
+        for name, state in (("записи", hotkey_state), ("диктовки", dictation_hotkey_state),
+                            ("диктовки с переводом", translate_hotkey_state)):
             if state.get("ok") is False:
                 key = (name, state.get("spec"), state.get("error"))
                 if key not in warned:
@@ -651,6 +658,16 @@ class TrayController:
             # The text is typed where the cursor is; the notice is shown only when it starts
             if dictation.toggle(notify=self._notify) == "started":
                 self._notify("Диктовка", f"Говорите. Чтобы вставить текст, нажмите {self._dictation_spec} ещё раз")
+            return
+        if cmd == "hotkey_dictation_translate":
+            from app import dictation
+            from app.translation import TEXT_LANGUAGES
+
+            if dictation.toggle(notify=self._notify, translate=True) == "started":
+                lang = dictation.translate_target()
+                self._notify("Диктовка с переводом",
+                             f"Говорите. Текст будет переведён ({TEXT_LANGUAGES.get(lang, lang)}). "
+                             f"Чтобы вставить его, нажмите {self._translate_spec} ещё раз")
             return
         if cmd.startswith("record:"):
             self.show_window()

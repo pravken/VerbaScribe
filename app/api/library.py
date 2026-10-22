@@ -193,9 +193,9 @@ def api_about() -> Dict[str, Any]:
 @router.get("/api/hotkey")
 def api_hotkey() -> Dict[str, Any]:
     """Whether the recording hotkey is registered (it lives in the desktop window's tray thread)."""
-    from app.hotkey import dictation_hotkey_state, hotkey_state
+    from app.hotkey import dictation_hotkey_state, hotkey_state, translate_hotkey_state
 
-    return {**hotkey_state, "dictation": dict(dictation_hotkey_state)}
+    return {**hotkey_state, "dictation": dict(dictation_hotkey_state), "translate": dict(translate_hotkey_state)}
 
 @router.get("/api/calendar/upcoming")
 def api_calendar_upcoming(refresh: bool = False) -> Dict[str, Any]:

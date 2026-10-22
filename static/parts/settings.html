@@ -274,6 +274,26 @@
             <p class="text-[10.5px] text-apple-tertiary mt-1" data-i18n="dictationHint">Нажмите и говорите, нажмите ещё раз — текст напечатается там, где стоит курсор, в любой программе. Только микрофон, в медиатеку ничего не сохраняется.</p>
           </div>
 
+          <div>
+            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="dictTrLabel">Надиктовать с переводом</label>
+            <div class="flex items-center gap-2 flex-wrap">
+              <input id="set-translate-hotkey" type="text" readonly onkeydown="captureHotkey(event)" onfocus="this.select()"
+                data-i18n-title="tipDictTr" title="Нажмите сочетание: говорите на своём языке, а в программу вставится перевод"
+                class="w-44 h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono focus:outline-none focus:border-apple-blue cursor-pointer" />
+              <button onclick="document.getElementById('set-translate-hotkey').value = ''" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" data-i18n="hotkeyClear">Отключить</button>
+              <label for="set-dictation-translate-to" class="text-[11px] text-apple-secondary" data-i18n="dictTrTo">на</label>
+              <select id="set-dictation-translate-to" class="h-7 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none">
+                <option value="en">English</option>
+              </select>
+              <span id="translate-hotkey-status" class="text-[11px] text-apple-tertiary"></span>
+            </div>
+            <label class="flex items-center gap-2 cursor-pointer text-[11px] text-apple-label mt-1.5">
+              <input type="checkbox" id="set-dictation-translate-cloud" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+              <span data-i18n="dictTrCloud">Разрешить облачную модель для перевода диктовки</span>
+            </label>
+            <p class="text-[10.5px] text-apple-tertiary mt-1" data-i18n="dictTrHint">Говорите на любом языке — вставится перевод. Переводит локальная модель Ollama; облачная — только если отмечено выше и облако включено в «Анализе». Если перевод не удался, вставляется исходный текст.</p>
+          </div>
+
         </div>
 
         <!-- Calls recorded by themselves (app/call_watch.py) -->

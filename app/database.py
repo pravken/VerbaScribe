@@ -157,6 +157,9 @@ def init_db() -> None:
             "record_hotkey": "Ctrl+Alt+R",
             "dictation_hotkey": "Ctrl+Alt+D",  # dictation into any program (app/dictation.py); empty: off
             "dictation_language": "auto",
+            "dictation_translate_hotkey": "Ctrl+Alt+T",  # dictation typed in another language; empty: off
+            "dictation_translate_to": "en",
+            "dictation_translate_cloud": "false",  # dictation is translated by the local model unless allowed
             "quiet_mode": "false",  # no tray notifications (run.py TrayController)
             "call_auto_record": "false",  # record calls by themselves (app/call_watch.py)
             "call_apps": "zoom,teams,telegram",

@@ -22,7 +22,7 @@ BOOLS = {
     "call_auto_record", "semantic_search", "auto_title", "obsidian_auto", "summary_grounding", "auto_commitments",
     "delete_media_after", "update_auto", "obsidian_summary", "obsidian_tasks", "obsidian_chapters",
     "obsidian_transcript", "obsidian_generate", "llm_cloud_consent", "watch_folder_recursive",
-    "dub_keep_original_track", "dub_denoise", "dub_room_tone", "dub_keep_workdir",
+    "dub_keep_original_track", "dub_denoise", "dub_room_tone", "dub_keep_workdir", "dictation_translate_cloud",
 }
 INTS = {"num_speakers": (0, 20), "idle_unload_minutes": (0, 24 * 60), "media_retention_days": (0, 3650),
         "onnx_gpu_batch": (1, 256)}
@@ -104,6 +104,12 @@ def clean(key: str, value: Any) -> str:
         return str(min(hi, max(lo, x)))
     if key in CHOICES:
         if text_s not in CHOICES[key]:
+            raise ValueError(f"{key}: недопустимое значение")
+        return text_s
+    if key == "dictation_translate_to":
+        from app.translation import TEXT_LANGUAGES
+
+        if text_s not in TEXT_LANGUAGES:
             raise ValueError(f"{key}: недопустимое значение")
         return text_s
     if key == "ollama_url":

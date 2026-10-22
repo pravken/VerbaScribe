@@ -44,7 +44,7 @@ Recordings and transcripts are processed and stored locally (NVIDIA GPU via CUDA
 - **Checked summaries**: each point of an overview gets the time it comes from, and points the transcript does not support are marked `[?]`. **My notes** taken during the meeting go into every summary; your own summary templates.
 - **Promises across meetings**: who promised what to whom and by when, collected after each summary, shown before the next meeting of the series, exported to Obsidian, Todoist (CSV) or Markdown, and a follow-up email draft.
 - **Calendar** (an `.ics` file or link, read only): a recording made during a meeting gets its title and participants; the Studio lists the next meetings with a brief.
-- **Dictation into any program**: `Ctrl+Alt+D` records the microphone and types the text where the cursor is.
+- **Dictation into any program**: `Ctrl+Alt+D` records the microphone and types the text where the cursor is. `Ctrl+Alt+T` does the same with translation: speak Russian, and the English text (or another language chosen in Settings → Recording) is typed. The local Ollama model translates; a cloud model only if you allow it for dictation.
 - **Import by link** (YouTube and other sites, via yt-dlp installed on first use); **noise cleanup** export; **privacy** options: delete the sound after transcription or after N days, and a log of everything sent to a cloud model.
 - **Translate text**: machine translation of a transcript with your local Ollama model, shown under or instead of the original, exported as translated or bilingual files and as video subtitles. See [Translate text](#translate-text).
 
@@ -244,7 +244,7 @@ To update Python dependencies, edit `requirements.in` and regenerate the lock (c
 - **Проверенные саммари**: у каждого пункта обзора есть время, откуда он взят, а пункты, которых нет в расшифровке, помечены `[?]`. **Мои заметки** во время встречи учитываются в каждом саммари; свои шаблоны саммари.
 - **Обещания между встречами**: кто, что, кому и к какому сроку пообещал — собирается после саммари, показывается перед следующей встречей серии, выгружается в Obsidian, Todoist (CSV) или Markdown; черновик письма по итогам.
 - **Календарь** (файл или ссылка `.ics`, только чтение): запись во время встречи получает её название и участников; в Студии видны ближайшие встречи со справкой.
-- **Диктовка в любую программу**: `Ctrl+Alt+D` записывает микрофон и печатает текст там, где стоит курсор.
+- **Диктовка в любую программу**: `Ctrl+Alt+D` записывает микрофон и печатает текст там, где стоит курсор. `Ctrl+Alt+T` делает то же с переводом: говорите по-русски, а вставляется английский текст (или другой язык из «Настройки → Запись»). Переводит локальная модель Ollama; облачная — только если вы разрешите её для диктовки.
 - **Импорт по ссылке** (YouTube и другие сайты, через yt-dlp, который ставится при первом использовании); экспорт **с очисткой шума**; **приватность**: удаление звука после расшифровки или через N дней и журнал всего, что отправлялось облачной модели.
 - **Перевод текста**: машинный перевод расшифровки локальной моделью Ollama — под оригиналом или вместо него, экспорт переведённых и двуязычных файлов, субтитры для видео. Подробнее — в разделе [Перевод текста](#перевод-текста).
 

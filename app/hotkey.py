@@ -15,6 +15,8 @@ _KEY_NAMES = {"space": 0x20, "pause": 0x13, "insert": 0x2D, "home": 0x24, "end":
 hotkey_state: Dict[str, object] = {"spec": "", "ok": None, "error": ""}
 # The same for the dictation hotkey (app/dictation.py)
 dictation_hotkey_state: Dict[str, object] = {"spec": "", "ok": None, "error": ""}
+# And for the dictation with translation
+translate_hotkey_state: Dict[str, object] = {"spec": "", "ok": None, "error": ""}
 
 
 def parse_hotkey(spec: str) -> Optional[Tuple[int, int]]:
