@@ -129,6 +129,58 @@ class GpuSharingTest(unittest.TestCase):
         sleep.assert_not_called()
 
 
+class ModelDownloadForJobTest(unittest.TestCase):
+    """A recording processed with a Whisper model that is not downloaded yet downloads it first."""
+
+    def setUp(self):
+        from app import model_manager
+
+        self.mm = model_manager
+        self.addCleanup(self.mm._setup_state.update, {"active": False, "error": ""})
+
+    def test_downloads_into_the_app_folder_with_progress(self):
+        seen = []
+
+        def download(repo_id, target_dir, label, base_pct, span_pct, on_progress=None):
+            self.assertTrue(self.mm._setup_state["active"])  # the settings show this download
+            on_progress(10.0, 100.0)
+
+        with mock.patch.object(self.mm, "is_whisper_model_installed", return_value=False), \
+                mock.patch.object(self.mm, "_download_hf_repo_with_progress", side_effect=download) as dl:
+            self.mm.ensure_whisper_model("large-v3", lambda mb, total: seen.append((mb, total)))
+        self.assertEqual(dl.call_args.kwargs["repo_id"], "Systran/faster-whisper-large-v3")
+        self.assertEqual(seen, [(10.0, 100.0)])
+        self.assertFalse(self.mm._setup_state["active"])
+
+    def test_a_failure_frees_the_downloader(self):
+        with mock.patch.object(self.mm, "is_whisper_model_installed", return_value=False), \
+                mock.patch.object(self.mm, "_download_hf_repo_with_progress", side_effect=OSError("no network")):
+            with self.assertRaises(OSError):
+                self.mm.ensure_whisper_model("large-v3")
+        self.assertFalse(self.mm._setup_state["active"])
+        self.assertIn("no network", self.mm._setup_state["error"])
+
+    def test_waits_for_a_download_already_running(self):
+        self.mm._setup_state["active"] = True
+        checks = {"n": 0}
+
+        def installed(model_id):
+            checks["n"] += 1
+            return checks["n"] > 2  # the other download (the same model) ends meanwhile
+
+        with mock.patch.object(self.mm, "is_whisper_model_installed", side_effect=installed), \
+                mock.patch.object(self.mm.time, "sleep"), \
+                mock.patch.object(self.mm, "_download_hf_repo_with_progress") as dl:
+            self.mm.ensure_whisper_model("large-v3")
+        dl.assert_not_called()
+
+    def test_a_downloaded_model_is_left_alone(self):
+        with mock.patch.object(self.mm, "is_whisper_model_installed", return_value=True), \
+                mock.patch.object(self.mm, "_download_hf_repo_with_progress") as dl:
+            self.mm.ensure_whisper_model("large-v3")
+        dl.assert_not_called()
+
+
 class ScreenCaptureTest(unittest.TestCase):
     def test_capture_command(self):
         from pathlib import Path

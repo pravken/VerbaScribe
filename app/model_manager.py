@@ -1,8 +1,9 @@
 import shutil
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import httpx
 import huggingface_hub
@@ -213,10 +214,12 @@ def _download_hf_repo_with_progress(
     label: str,
     base_pct: int,
     span_pct: int,
+    on_progress: Optional[Callable[[float, float], None]] = None,
 ) -> None:
     """
     Downloads all required files from a HuggingFace repo directly via HTTP stream
     into target_dir with exact byte/MB progress tracking and zero symlink issues.
+    on_progress(downloaded MB, total MB) after each piece; an exception it raises stops the download.
     """
     target_dir.mkdir(parents=True, exist_ok=True)
     api = huggingface_hub.HfApi()
@@ -278,6 +281,8 @@ def _download_hf_repo_with_progress(
                         if int(ratio * 100) - last_logged_pct >= 20:
                             last_logged_pct = int(ratio * 100)
                             _log(f"{label}: скачано {dl_mb} / {total_mb} МБ ({int(ratio * 100)}%)")
+                        if on_progress:
+                            on_progress(dl_mb, total_mb)
 
             if dest_file.exists():
                 dest_file.unlink()
@@ -358,6 +363,37 @@ def start_models_setup(
 
     threading.Thread(target=_worker, daemon=True).start()
     return dict(_setup_state)
+
+
+def ensure_whisper_model(model_id: str, on_progress: Optional[Callable[[float, float], None]] = None,
+                         check_cancel: Optional[Callable[[], None]] = None) -> None:
+    """A recording processed with a Whisper model that is not downloaded yet: the model is downloaded
+    first, into the same folder and with the same progress in the settings as their Download button
+    (faster-whisper would fetch it into its own cache, with no progress). Another download running
+    (the settings, another recording) is waited for."""
+    item = next((x for x in WHISPER_CATALOG if x["id"] == model_id), None)
+    if not item or is_whisper_model_installed(model_id):
+        return
+    while True:
+        with _setup_lock:
+            if not _setup_state["active"]:
+                _setup_state.update({"active": True, "model_id": model_id, "status": f"Подготовка к скачиванию {item['name']}",
+                                     "progress": 1, "downloaded_mb": 0.0, "total_mb": 0.0, "error": "", "logs": []})
+                break
+        if check_cancel:
+            check_cancel()
+        time.sleep(1)
+        if is_whisper_model_installed(model_id):
+            return
+    try:
+        _log(f"Скачивание модели {item['name']} для обработки записи")
+        _download_hf_repo_with_progress(repo_id=item["repo_id"], target_dir=_whisper_model_dir(model_id), label=item["name"],
+                                        base_pct=2, span_pct=97, on_progress=on_progress)
+        _log(f"Модель {item['name']} скачана")
+        _setup_state.update({"active": False, "progress": 100})
+    except Exception as e:
+        _setup_state.update({"active": False, "status": f"Ошибка загрузки: {e}", "error": str(e)})
+        raise
 
 
 def delete_whisper_model(model_id: str) -> bool:

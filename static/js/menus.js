@@ -434,6 +434,7 @@ function ctxOpenReconfigureModal() {
   const modelSel = document.getElementById('reconfig-model');
   modelSel.value = m.model_name || 'large-v3-turbo';
   if (!modelSel.value && modelSel.options.length) modelSel.selectedIndex = 0;  // a removed model
+  renderModelHints();
   document.getElementById('reconfig-language').value = m.language || 'auto';
   document.getElementById('reconfig-speakers').value = String(m.num_speakers_hint || 0);
   openModal('reconfigure');

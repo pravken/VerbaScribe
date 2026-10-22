@@ -45,6 +45,7 @@ class ProcessMeetingJobTest(unittest.TestCase):
             mock.patch.object(transcriber, "get_media_duration", return_value=2.0),
             mock.patch.object(transcriber, "_after_transcription", return_value=[]),
             mock.patch.object(asr_onnx, "supports_language", return_value=True),
+            mock.patch.object(asr_onnx, "is_installed", return_value=True),
             mock.patch.object(semantic, "kick"),
             mock.patch("app.diarizer.diarize_and_merge_segments", side_effect=diarize),
             mock.patch("app.voice_profiles.apply_to_speakers", return_value=0),
@@ -96,6 +97,33 @@ class ProcessMeetingJobTest(unittest.TestCase):
         self.assertEqual(m["status"], "failed")
         self.assertIn("model file damaged", m["error_message"])
         self.assertEqual([s["text"] for s in m["segments"]], ["прежняя правка"])
+
+    def test_a_model_not_downloaded_is_downloaded_first(self):
+        stages = []
+        real_update = transcriber.update_meeting_progress
+
+        def update(mid, **kw):
+            if kw.get("stage_text"):
+                stages.append(kw["stage_text"])
+            return real_update(mid, **kw)
+
+        def download(model, on_progress):
+            on_progress(40)
+
+        with mock.patch.object(self.asr, "is_installed", return_value=False), \
+                mock.patch.object(self.asr, "ensure_downloaded", side_effect=download) as dl, \
+                mock.patch.object(transcriber, "update_meeting_progress", side_effect=update):
+            m = self._run(lambda *a, **k: NEW)
+        dl.assert_called_once()
+        self.assertIn("Скачивание модели GigaAM v3: 40%", stages)
+        self.assertEqual(m["status"], "completed")
+
+    def test_a_failed_model_download_says_so(self):
+        with mock.patch.object(self.asr, "is_installed", return_value=False), \
+                mock.patch.object(self.asr, "ensure_downloaded", side_effect=OSError("no network")):
+            m = self._run(lambda *a, **k: self.fail("recognition must not start"))
+        self.assertEqual(m["status"], "failed")
+        self.assertIn("Не удалось скачать модель GigaAM v3: no network", m["error_message"])
 
     def test_missing_media_fails_at_once(self):
         Path(get_meeting(self.mid)["media_path"]).unlink()

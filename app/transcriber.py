@@ -896,6 +896,15 @@ def _process_meeting_job(meeting_id: int) -> None:
                                    "Выберите Whisper или другую модель для этой записи.")
             from app import onnx_gpu
 
+            onnx_name = asr_onnx.ONNX_MODELS[model_name]["name"]
+            if not asr_onnx.is_installed(model_name):  # picked before it was downloaded: its files first
+                update_meeting_progress(meeting_id, progress=12, stage_text=f"Скачивание модели {onnx_name}...")
+                try:
+                    asr_onnx.ensure_downloaded(model_name, lambda pct: update_meeting_progress(
+                        meeting_id, stage_text=f"Скачивание модели {onnx_name}: {pct}%"))
+                except Exception as e:
+                    raise RuntimeError(f"Не удалось скачать модель {onnx_name}: {e}")
+                _check_cancel(meeting_id)
             use_gpu = onnx_gpu.gpu_for_job(model_name)
             update_meeting_progress(meeting_id, status="transcribing", progress=15,
                                     stage_text=f"Распознавание речи — {asr_onnx.ONNX_MODELS[model_name]['name']}"
@@ -935,6 +944,24 @@ def _process_meeting_job(meeting_id: int) -> None:
             whisper_model = None
             reused = False
         else:
+            from app.model_manager import ensure_whisper_model, is_whisper_model_installed
+
+            if not is_whisper_model_installed(model_name):  # picked before it was downloaded: the model first
+                update_meeting_progress(meeting_id, progress=12, stage_text=f"Скачивание модели {pretty_whisper}...")
+                shown = {"mb": -100.0}
+
+                def _download_progress(mb: float, total: float) -> None:
+                    _check_cancel(meeting_id)  # a cancel stops the download too
+                    if mb - shown["mb"] >= 20 or mb >= total:
+                        shown["mb"] = mb
+                        update_meeting_progress(meeting_id, stage_text=f"Скачивание модели {pretty_whisper}: {mb:.0f} из {total:.0f} МБ")
+
+                try:
+                    ensure_whisper_model(model_name, _download_progress, lambda: _check_cancel(meeting_id))
+                except JobCancelled:
+                    raise
+                except Exception as e:
+                    raise RuntimeError(f"Не удалось скачать модель {pretty_whisper}: {e}")
             if device == "cuda" and _whisper_cache["key"] != (model_name, device, compute_type):
                 _wait_for_vram_after_live(meeting_id, model_name)
             whisper_model, reused = _get_whisper_model(model_name, device, compute_type)

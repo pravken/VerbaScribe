@@ -432,7 +432,7 @@ function updateWhisperModelsUI(models) {
       const isSelected = item.id === activeModel;
       const desc = state.uiLang === 'en' ? item.desc_en : item.desc_ru;
       const isDownloadingThis = (st.active && st.model_id === item.id) || (item.engine === 'onnx' && item.downloading);
-      const sizeLabel = item.size || (item.size_mb >= 1000 ? (item.size_mb / 1024).toFixed(1) + ' GB' : (item.size_mb || '') + ' MB');
+      const sizeLabel = modelSizeLabel(item);
       const badgeLabel = item.badge || sizeLabel;
 
       let actionHtml = '';
@@ -1068,19 +1068,36 @@ async function fillDictationTranslateLangs(value) {
 }
 
 // Captions while recording: "auto" or one of the downloaded Whisper models
-// Upload and re-transcribe dialogs: the downloaded models (Whisper, GigaAM, Parakeet)
+// Upload and re-transcribe dialogs: every model (Whisper, GigaAM, Parakeet). One not downloaded yet
+// has ↓ and its size: the job downloads it first (app/transcriber.py), the hint under the list says so
+function modelSizeLabel(item) {
+  return item.size || (item.size_mb >= 1000 ? (item.size_mb / 1024).toFixed(1) + ' GB' : (item.size_mb || '') + ' MB');
+}
+
 function fillRecognitionSelects(list, active) {
-  const items = list.filter(i => i.installed);
+  if (!list.length) return;
+  const installed = list.filter(i => i.installed);
   ['upload-model', 'reconfig-model'].forEach(id => {
     const sel = document.getElementById(id);
     if (!sel) return;
-    if (!items.length) {  // nothing downloaded yet: no model to offer (a job would fail)
-      sel.innerHTML = `<option value="">${escapeHtml(t('noModelInstalled'))}</option>`;
-      return;
-    }
     const value = sel.value;
-    sel.innerHTML = items.map(i => `<option value="${escapeHtml(i.id)}">${escapeHtml(formatModelName(i.id))}</option>`).join('');
-    sel.value = items.some(i => i.id === value) ? value : (items.some(i => i.id === active) ? active : items[0].id);
+    sel.innerHTML = list.map(i => `<option value="${escapeHtml(i.id)}">${escapeHtml(formatModelName(i.id))}${
+      i.installed ? '' : `  ↓ ${escapeHtml(modelSizeLabel(i))}`}</option>`).join('');
+    sel.value = list.some(i => i.id === value) ? value
+      : list.some(i => i.id === active) ? active : (installed[0] || list[0]).id;
+  });
+  renderModelHints();
+}
+
+// Under the model lists: "not downloaded: downloads before the processing (1.5 GB)"
+function renderModelHints() {
+  ['upload-model', 'reconfig-model'].forEach(id => {
+    const sel = document.getElementById(id);
+    const hint = document.getElementById(`${id}-hint`);
+    if (!sel || !hint) return;
+    const item = (state.whisperCatalog || []).find(i => i.id === sel.value);
+    hint.classList.toggle('hidden', !item || item.installed);
+    if (item && !item.installed) hint.textContent = t('modelDownloadsFirst').replace('{size}', () => modelSizeLabel(item));
   });
 }
 

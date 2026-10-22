@@ -388,6 +388,7 @@ function openModal(name, tab) {
   modal.setAttribute('aria-modal', 'true');
   modal.classList.remove('hidden');
   setTimeout(() => { if (!modal.contains(document.activeElement)) (focusablesIn(modal)[0] || modal).focus(); }, 60);
+  if (name === 'import') renderModelHints();
   if (name === 'settings') {
     let last = null;
     try { last = localStorage.getItem('verbascribe_settings_tab'); } catch (e) {}

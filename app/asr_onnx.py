@@ -402,6 +402,31 @@ def start_download(model_id: str) -> Dict[str, Any]:
     return _downloads[model_id]
 
 
+def ensure_downloaded(model_id: str, on_progress: Callable[[int], None]) -> None:
+    """A recording processed with a model that is not downloaded yet: its files first, with the
+    percentage (of the folder's size) every second; the settings show the same download."""
+    if is_installed(model_id):
+        return
+    ensure_package()
+    stop = threading.Event()
+
+    def watch() -> None:
+        while not stop.wait(1.0):
+            on_progress(download_progress(model_id))
+
+    _downloads[model_id] = {"active": True, "error": ""}
+    threading.Thread(target=watch, daemon=True, name=f"onnx_dl_watch_{model_id}").start()
+    try:
+        with _fetch_lock:
+            fetch(model_id)
+        _downloads[model_id] = {"active": False, "error": ""}
+    except Exception as e:
+        _downloads[model_id] = {"active": False, "error": str(e)[:300]}
+        raise
+    finally:
+        stop.set()
+
+
 def delete_model(model_id: str) -> bool:
     import shutil
 

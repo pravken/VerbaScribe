@@ -27,10 +27,11 @@
         <div class="grid grid-cols-3 gap-3">
           <div>
             <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="modelLabel">Модель распознавания</label>
-            <select id="upload-model" data-i18n-title="tipSelectWhisper" title="Выберите модель Whisper для распознавания речи" class="w-full bg-apple-sidebar border apple-border rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none">
+            <select id="upload-model" data-change="renderModelHints" data-i18n-title="tipSelectWhisper" title="Выберите модель Whisper для распознавания речи" class="w-full bg-apple-sidebar border apple-border rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none">
               <option value="large-v3-turbo">Whisper Turbo</option>
               <option value="large-v3">Whisper Pro</option>
             </select>
+            <p id="upload-model-hint" class="hidden text-[10.5px] text-apple-secondary mt-1"></p>
           </div>
           <div>
             <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="speechLangLabel">Язык речи</label>
@@ -167,10 +168,11 @@
         <div class="settings-card">
           <div>
             <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="modelLabel">Модель распознавания</label>
-            <select id="reconfig-model" data-i18n-title="tipSelectWhisper" title="Выберите модель Whisper" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none">
+            <select id="reconfig-model" data-change="renderModelHints" data-i18n-title="tipSelectWhisper" title="Выберите модель Whisper" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none">
               <option value="large-v3-turbo">Whisper Turbo</option>
               <option value="large-v3">Whisper Pro</option>
             </select>
+            <p id="reconfig-model-hint" class="hidden text-[10.5px] text-apple-secondary mt-1"></p>
           </div>
           <div>
             <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="speechLangLabel">Язык речи</label>
