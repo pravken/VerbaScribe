@@ -201,7 +201,11 @@ document.addEventListener('DOMContentLoaded', () => {
   setTimeout(() => checkForUpdates(false), 4000);  // after the page has settled; only if enabled in settings
   loadDictionary();
   loadVram();
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) scheduleVramRefresh(100); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    scheduleVramRefresh(100);
+    loadMeetingsList().then(loadQueue).catch(console.error);  // what changed while the window was in the tray
+  });
   startLiveUpdates();
   loadQueue().catch(console.error);
   pollMeetingsLoop();

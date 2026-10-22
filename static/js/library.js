@@ -129,7 +129,7 @@ function formatTiming(timing) {
 
 // Re-render the elapsed time every second while something is running
 setInterval(() => {
-  if (!(state.queue || []).some(q => q.state === 'running')) return;
+  if (document.hidden || !(state.queue || []).some(q => q.state === 'running')) return;
   renderQueuePanel();
   if (state.activeMeeting) updateProcessingBanner(state.activeMeeting);
 }, 1000);
@@ -237,7 +237,9 @@ async function pollMeetingsLoop() {
     console.error(e);
   }
   const busy = state.meetings.some(m => !DONE_STATUSES.includes(m.status));
-  setTimeout(pollMeetingsLoop, live.connected ? 30000 : (busy ? 2000 : 8000));
+  // Live updates come by events; the poll is the fallback. A hidden window (tray) asks rarely and
+  // catches up when it is shown again (app.js visibilitychange)
+  setTimeout(pollMeetingsLoop, live.connected || document.hidden ? 30000 : (busy ? 2000 : 8000));
 }
 
 async function handleGlobalSidebarSearch(rawVal) {

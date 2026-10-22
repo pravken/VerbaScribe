@@ -161,7 +161,9 @@ async function loadVram() {
   } catch (e) {
     // the server may be restarting; try again later
   } finally {
-    scheduleVramRefresh(document.hidden ? VRAM_POLL_MS * 4 : VRAM_POLL_MS);
+    // Without a video card only the models in memory change: asked less often
+    const noGpu = state.system && state.system.hardware && !state.system.hardware.cuda_available;
+    scheduleVramRefresh(VRAM_POLL_MS * (document.hidden ? 4 : 1) * (noGpu ? 3 : 1));
   }
 }
 
