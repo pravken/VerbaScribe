@@ -30,5 +30,16 @@ class LiveTranslateTextTest(unittest.TestCase):
         self.assertEqual(serbian_to_latin("Љубљана, џем, ћемо"), "Ljubljana, džem, ćemo")
 
 
+class PhraseLanguageTest(unittest.TestCase):
+    def test_plain_russian_and_english(self):
+        from app.live_translate import phrase_language
+
+        self.assertEqual(phrase_language("Давайте перенесём встречу на пятницу"), "ru")
+        self.assertEqual(phrase_language("Let's move the meeting to Friday"), "en")
+        self.assertIsNone(phrase_language("Привіт, як справи? Їдемо завтра"))  # Ukrainian
+        self.assertIsNone(phrase_language("Wir verschieben das Treffen auf Freitag"))  # German: no English words
+        self.assertIsNone(phrase_language("Ок"))  # too short to tell
+
+
 if __name__ == "__main__":
     unittest.main()

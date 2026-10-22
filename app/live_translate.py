@@ -119,6 +119,27 @@ def _base(lang: Optional[str]) -> str:
     return (lang or "").split("-")[0].lower()
 
 
+_EN_WORDS = {"the", "and", "is", "are", "to", "of", "you", "we", "it", "that", "this", "what", "i", "a", "in", "for",
+             "on", "with", "do", "not", "be", "have", "can", "so", "but", "they", "was", "will", "yes", "no"}
+_NOT_RU = set("іїєґўІЇЄҐЎ")  # Ukrainian and Belarusian letters
+
+
+def phrase_language(text: str) -> Optional[str]:
+    """"ru" or "en" when one phrase is plainly in that language, else None. In a bilingual meeting the
+    recognizer gives one language for a whole window; the phrase itself tells which one it is, so a
+    Russian phrase is not "translated" into Russian (and AUTO picks the right direction)."""
+    letters = [ch for ch in text if ch.isalpha()]
+    if len(letters) < 6:
+        return None
+    cyr = sum(1 for ch in letters if "\u0400" <= ch <= "\u04ff")
+    if cyr >= 0.85 * len(letters):
+        return None if any(ch in _NOT_RU for ch in text) else "ru"
+    if cyr == 0 and all(ch.isascii() for ch in letters):
+        words = {w.strip(".,!?;:'\"()").lower() for w in text.split()}
+        return "en" if words & _EN_WORDS else None
+    return None
+
+
 class LiveTranslator:
     def __init__(self, get_source_lang: Callable[[], Optional[str]], target: str, speed: str = "quality",
                  pair: Optional[List[str]] = None):
@@ -310,19 +331,21 @@ class LiveTranslator:
             try:
                 self._ensure_ready()
                 if line is not None:
-                    target = self.target_for(line.get("lang"))
+                    lang = phrase_language(line["text"]) or line.get("lang")
+                    target = self.target_for(lang)
                     line["target"] = target
-                    if line.get("lang") and _base(line["lang"]) == _base(target):
+                    if lang and _base(lang) == _base(target):
                         line["translation"] = line["text"]  # already in the target language
                     else:
-                        line["translation"] = self._translate_clean(line["text"], line.get("lang"), target=target)
+                        line["translation"] = self._translate_clean(line["text"], lang, target=target)
                     self._context.append(line["text"])
                     self._context = self._context[-4:]
                     self.error = ""
                 elif draft:
                     self._last_draft_at = time.time()
-                    target = self.target_for(self._source_lang())
-                    tr = draft if _base(self._source_lang()) == _base(target) else \
+                    src = phrase_language(draft) or self._source_lang()
+                    target = self.target_for(src)
+                    tr = draft if _base(src) == _base(target) else \
                         self._translate_clean(draft, None, timeout=10.0, target=target)
                     self.draft_target = target
                     with self._cond:
