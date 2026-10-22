@@ -99,7 +99,7 @@ def installed_models() -> List[str]:
         return []
 
 
-def model_choices() -> Dict[str, Optional[str]]:
+def model_choices() -> Dict[str, Any]:
     """{"quality": configured model, "fast": a small installed model or None}."""
     from app.database import get_all_settings
 
@@ -109,13 +109,43 @@ def model_choices() -> Dict[str, Optional[str]]:
         same = [m for m in models if m.startswith(quality.split(":")[0])]
         quality = same[0] if same else models[0]
     fast = next((m for m in FAST_MODEL_HINTS if m in models), None)
-    return {"quality": quality, "fast": fast}
+    return {"quality": quality, "fast": fast, "installed": models}
+
+
+AUTO = "auto"  # target "auto": a pair of languages, each line goes into the other one (RU ⇄ EN)
+
+
+def _base(lang: Optional[str]) -> str:
+    return (lang or "").split("-")[0].lower()
+
+
+_EN_WORDS = {"the", "and", "is", "are", "to", "of", "you", "we", "it", "that", "this", "what", "i", "a", "in", "for",
+             "on", "with", "do", "not", "be", "have", "can", "so", "but", "they", "was", "will", "yes", "no"}
+_NOT_RU = set("іїєґўІЇЄҐЎ")  # Ukrainian and Belarusian letters
+
+
+def phrase_language(text: str) -> Optional[str]:
+    """"ru" or "en" when one phrase is plainly in that language, else None. In a bilingual meeting the
+    recognizer gives one language for a whole window; the phrase itself tells which one it is, so a
+    Russian phrase is not "translated" into Russian (and AUTO picks the right direction)."""
+    letters = [ch for ch in text if ch.isalpha()]
+    if len(letters) < 6:
+        return None
+    cyr = sum(1 for ch in letters if "\u0400" <= ch <= "\u04ff")
+    if cyr >= 0.85 * len(letters):
+        return None if any(ch in _NOT_RU for ch in text) else "ru"
+    if cyr == 0 and all(ch.isascii() for ch in letters):
+        words = {w.strip(".,!?;:'\"()").lower() for w in text.split()}
+        return "en" if words & _EN_WORDS else None
+    return None
 
 
 class LiveTranslator:
-    def __init__(self, get_source_lang: Callable[[], Optional[str]], target: str, speed: str = "quality"):
+    def __init__(self, get_source_lang: Callable[[], Optional[str]], target: str, speed: str = "quality",
+                 pair: Optional[List[str]] = None):
         self._source_lang = get_source_lang
         self.target = target
+        self.pair = list(pair or ["ru", "en"])[:2]
         self.speed = speed
         self.error = ""
         self.ready = False
@@ -123,10 +153,12 @@ class LiveTranslator:
         self._draft_text = ""                      # latest draft line to translate
         self._draft_done_for = ""
         self.draft_translation = ""
+        self.draft_target = ""
         self._last_draft_at = 0.0
         self._cond = threading.Condition()
         self._stop = False
         self._model: Optional[str] = None
+        self.model_override: Optional[str] = None  # chosen by hand in the studio; None: by speed
         self._context: List[str] = []  # last final lines, given to the model as context
         threading.Thread(target=self._run, daemon=True, name="live_translate").start()
 
@@ -145,11 +177,26 @@ class LiveTranslator:
                 self.draft_translation = ""
             self._cond.notify()
 
+    def reset_draft(self) -> None:
+        with self._cond:
+            self.draft_translation = ""
+            self._draft_done_for = ""
+
+    def target_for(self, src_lang: Optional[str]) -> str:
+        """The language a line is translated into; in "auto" mode the other language of the pair
+        (Russian speech into English and English speech into Russian)."""
+        if self.target != AUTO:
+            return self.target
+        a, b = (self.pair + ["en"])[:2]
+        return b if _base(src_lang) == _base(a) else a
+
     def configure(self, target: Optional[str] = None, speed: Optional[str] = None,
-                  retranslate: Optional[List[Dict[str, Any]]] = None) -> None:
+                  retranslate: Optional[List[Dict[str, Any]]] = None, pair: Optional[List[str]] = None) -> None:
         with self._cond:
             if target:
                 self.target = target
+            if pair:
+                self.pair = list(pair)[:2]
             if speed and speed != self.speed:
                 self.speed = speed
                 self._model = None  # resolved again (and preloaded) on the next request
@@ -161,6 +208,14 @@ class LiveTranslator:
                     ln["translation"] = None
                     ln["_attempts"] = 0
                 self._pending = list(retranslate) + [p for p in self._pending if p not in retranslate]
+            self._cond.notify()
+
+    def set_model(self, model: Optional[str]) -> None:
+        with self._cond:
+            if (model or None) != self.model_override:
+                self.model_override = model or None
+                self._model = None  # loaded on the next request
+                self.ready = False
             self._cond.notify()
 
     def stop(self) -> None:
@@ -175,6 +230,8 @@ class LiveTranslator:
         base = _base_url()
         ensure_ollama_running(base)
         # Ollama may have just been started: wait for it instead of failing the first lines
+        if self.model_override:
+            return self.model_override
         for _ in range(60):
             choices = model_choices()
             model = choices["fast"] if self.speed == "fast" and choices["fast"] else choices["quality"]
@@ -189,11 +246,12 @@ class LiveTranslator:
         return other if other and other != self._model else None
 
     def _chat(self, text: str, timeout: float = 30.0, src_lang: Optional[str] = None, strict: bool = False,
-              model: Optional[str] = None) -> str:
+              model: Optional[str] = None, target: Optional[str] = None) -> str:
         from app.translation import TEXT_LANGUAGES
 
         src = TEXT_LANGUAGES.get(src_lang or self._source_lang() or "", "the source language")
-        dst = TEXT_LANGUAGES.get(self.target, self.target)
+        target = target or self.target_for(src_lang or self._source_lang())
+        dst = TEXT_LANGUAGES.get(target, target)
         # Live speech arrives in fragments; Qwen models, left alone with a fragment, sometimes
         # answer in Chinese or ask for "the full sentence" instead of translating
         system = (
@@ -206,36 +264,44 @@ class LiveTranslator:
             system += f" Do not use any Chinese, Japanese or Korean characters. Use only {dst}."
         # No surrounding lines: given as context, models mix them into the translation
         user = text
+        from app import idle_unload
+
+        idle_unload.touch(model or self._model)
         payload = {
-            "model": model or self._model, "stream": False, "keep_alive": KEEP_ALIVE,
+            "model": model or self._model, "stream": False, "keep_alive": idle_unload.ollama_keep_alive() or KEEP_ALIVE,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
             "options": {"temperature": 0.0 if strict else 0.1, "num_ctx": NUM_CTX, "num_predict": 200,
                         "repeat_penalty": 1.15},
         }
+        from app.llm_text import strip_think, thinking_off
+
+        payload.update(thinking_off(payload["model"]))
         with httpx.Client(timeout=timeout) as c:
             r = c.post(f"{_base_url()}/api/chat", json=payload)
             r.raise_for_status()
-            return str((r.json().get("message") or {}).get("content") or "").strip().strip('"«»`')
+            return strip_think(str((r.json().get("message") or {}).get("content") or "")).strip('"«»`')
 
-    def _translate_clean(self, text: str, src_lang: Optional[str], timeout: float = 30.0) -> str:
+    def _translate_clean(self, text: str, src_lang: Optional[str], timeout: float = 30.0,
+                         target: Optional[str] = None) -> str:
         """A translation without Chinese/Japanese/Korean leakage (retried strictly, else stripped),
         one line only, and Serbian in the chosen alphabet."""
         from app.dub_text import has_foreign_script
 
+        target = target or self.target_for(src_lang)
         if len(re.sub(r"[\W_]+", "", text)) <= 3:
             return text  # "Um...", "Ok": nothing to translate, models invent symbols for it
-        tr = collapse_repeats(_first_line(self._chat(text, timeout=timeout, src_lang=src_lang)))
-        if has_foreign_script(tr, self.target) or _degenerate(text, tr):
-            tr = collapse_repeats(_first_line(self._chat(text, timeout=timeout, src_lang=src_lang, strict=True)))
+        tr = collapse_repeats(_first_line(self._chat(text, timeout=timeout, src_lang=src_lang, target=target)))
+        if has_foreign_script(tr, target) or _degenerate(text, tr):
+            tr = collapse_repeats(_first_line(self._chat(text, timeout=timeout, src_lang=src_lang, strict=True, target=target)))
         if _degenerate(text, tr) and self._fallback_model():
             # Larger models sometimes loop on a fragment; the small one usually does not
             tr = collapse_repeats(_first_line(self._chat(text, timeout=timeout, src_lang=src_lang,
-                                                         model=self._fallback_model())))
-        if has_foreign_script(tr, self.target):
+                                                         model=self._fallback_model(), target=target)))
+        if has_foreign_script(tr, target):
             tr = _CJK_RUN.sub("", tr).strip(" ,.;:-")
-        if self.target == "sr":
+        if target == "sr":
             tr = serbian_to_cyrillic(tr)
-        elif self.target == "sr-latn":
+        elif target == "sr-latn":
             tr = serbian_to_latin(tr)
         return tr
 
@@ -265,17 +331,23 @@ class LiveTranslator:
             try:
                 self._ensure_ready()
                 if line is not None:
-                    if line.get("lang") and line["lang"] == self.target.split("-")[0]:
+                    lang = phrase_language(line["text"]) or line.get("lang")
+                    target = self.target_for(lang)
+                    line["target"] = target
+                    if lang and _base(lang) == _base(target):
                         line["translation"] = line["text"]  # already in the target language
                     else:
-                        line["translation"] = self._translate_clean(line["text"], line.get("lang"))
+                        line["translation"] = self._translate_clean(line["text"], lang, target=target)
                     self._context.append(line["text"])
                     self._context = self._context[-4:]
                     self.error = ""
                 elif draft:
                     self._last_draft_at = time.time()
-                    tr = draft if self._source_lang() == self.target.split("-")[0] else \
-                        self._translate_clean(draft, None, timeout=10.0)
+                    src = phrase_language(draft) or self._source_lang()
+                    target = self.target_for(src)
+                    tr = draft if _base(src) == _base(target) else \
+                        self._translate_clean(draft, None, timeout=10.0, target=target)
+                    self.draft_target = target
                     with self._cond:
                         if draft == self._draft_text:  # still the current draft
                             self.draft_translation = tr

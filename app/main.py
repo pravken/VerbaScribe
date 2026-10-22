@@ -1,59 +1,50 @@
 import asyncio
 import hmac
-import json
-import mimetypes
 import os
 import re
 import secrets
 import shutil
-import subprocess
 import sys
+import threading
 import traceback
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-from urllib.parse import quote
+from typing import Any, Dict, List, Optional, Tuple
 
-import httpx
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response, StreamingResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
 
-from app import __version__, events, paths
-from app.paths import APP_DIR as BASE_DIR, DATA_DIR, MODELS_DIR, SESSION_TOKEN_FILE, UPLOADS_DIR
+from app import __version__
+from app.paths import APP_DIR as BASE_DIR, SESSION_TOKEN_FILE, UPLOADS_DIR, recordings_dir
 from app.database import (
-    add_dictionary_term,
     create_meeting,
-    delete_dictionary_term,
-    delete_meeting,
     get_all_settings,
     get_meeting,
     init_db,
-    list_dictionary,
+    is_local_only,
     list_meetings,
-    save_meeting_results,
-    toggle_dictionary_term,
+    save_meeting_results,  # noqa: F401 - reached as app.main.save_meeting_results
     update_meeting_progress,
     update_settings,
 )
-from app.exporter import export_docx, export_json, export_markdown, export_srt, export_txt
-from app.ffmpeg_manager import ffmpeg_status, start_ffmpeg_download
-from app.hardware import get_hardware_info
-from app.ollama_client import generate_meeting_summary, get_ollama_status, start_model_pull
-from app.text_utils import realign_words
+from app.export_build import EXPORT_VARIANTS, default_export_dir
 from app.transcriber import (
-    enqueue_burn_subtitles_job,
-    enqueue_dub_job,
     enqueue_meeting_job,
-    enqueue_translate_job,
     is_job_active,
-    request_cancel,
 )
 
 _SPEAKER_ID_RE = re.compile(r"^[A-Za-z0-9_\-]{1,40}$")
 _COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def _ensure_not_transcribing(meeting_id: int) -> None:
+    """Edits of the transcript would be overwritten by a recognition job that is queued or running."""
+    from app.transcriber import is_transcribing
+
+    if is_transcribing(meeting_id):
+        raise HTTPException(status_code=409, detail="Запись распознаётся — правки станут доступны после окончания")
 
 
 def _ensure_not_processing(meeting_id: int) -> None:
@@ -159,6 +150,33 @@ def _quiet_windows_connection_resets() -> None:
 async def lifespan(_app: FastAPI):
     _quiet_windows_connection_resets()
     init_db()
+    from app import idle_unload
+
+    try:
+        recover_orphan_recordings()
+    except Exception:
+        traceback.print_exc()
+    threading.Thread(target=_retention_loop, daemon=True, name="retention").start()
+    try:
+        from app.model_manager import remove_retired_models
+
+        remove_retired_models()
+    except Exception:
+        traceback.print_exc()
+
+    idle_unload.start()
+    from app import onnx_gpu
+
+    onnx_gpu.maybe_install_on_start()
+    from app import semantic
+
+    semantic.start_indexer()
+    from app import call_watch
+
+    call_watch.start()
+    from app import watch_folder
+
+    watch_folder.start()
     # Resume recordings that were interrupted mid-processing
     active_states = {"queued", "extracting_audio", "transcribing", "diarizing", "summarizing"}
     for m in list_meetings():
@@ -167,6 +185,9 @@ async def lifespan(_app: FastAPI):
         elif m.get("status") == "dubbing":
             # A dub interrupted by a restart is simply dropped; the transcript itself is complete
             update_meeting_progress(int(m["id"]), status="completed", progress=100, stage_text="Дубляж прерван перезапуском")
+        elif m.get("status") == "downloading":
+            update_meeting_progress(int(m["id"]), status="failed", progress=0, stage_text="",
+                                    error_message="Скачивание по ссылке прервано перезапуском — нажмите «Повторить»")
         elif m.get("status") in ("translating", "rendering"):
             # Partial translations are kept and can be completed with "Update translation"
             update_meeting_progress(int(m["id"]), status="completed", progress=100, stage_text="Задача прервана перезапуском")
@@ -201,7 +222,7 @@ async def local_session_guard(request: Request, call_next):
 
     if path.startswith(_PUBLIC_PREFIXES):
         resp = await call_next(request)
-        # Revalidate (ETag) so an updated app.js/styles.css is never served from a stale cache
+        # Revalidate (ETag) so an updated page script/styles.css is never served from a stale cache
         resp.headers.setdefault("Cache-Control", "no-cache")
         return resp
 
@@ -218,8 +239,10 @@ def index() -> HTMLResponse:
     index_file = STATIC_DIR / "index.html"
     if not index_file.exists():
         return HTMLResponse("<h1>UI loading...</h1>")
+    from app.page import render
+
     return HTMLResponse(
-        index_file.read_text(encoding="utf-8"),
+        render(STATIC_DIR),  # index.html with static/parts/*.html in place
         headers={
             "Cache-Control": "no-store, no-cache, must-revalidate",
             # Everything is served locally; the page may only talk to this server.
@@ -232,1297 +255,206 @@ def index() -> HTMLResponse:
     )
 
 
-# --- System, Hardware & Settings ---
-@app.get("/api/system")
-def api_system_info() -> Dict[str, Any]:
-    from app.model_manager import get_models_status
-
-    return {
-        "hardware": get_hardware_info(),
-        "settings": get_all_settings(),
-        "ollama": get_ollama_status(),
-        "models": get_models_status(),
-        "ffmpeg": ffmpeg_status(),
-        "paths": {"data": str(DATA_DIR), "models": str(MODELS_DIR), "legacy_conflict": paths.LEGACY_CONFLICT},
-    }
-
-
-@app.get("/api/ffmpeg/status")
-def api_ffmpeg_status() -> Dict[str, Any]:
-    return ffmpeg_status()
-
-
-@app.post("/api/ffmpeg/install")
-def api_ffmpeg_install() -> Dict[str, Any]:
-    """Downloads the pinned FFmpeg build into the user data folder (only on explicit request)."""
-    return start_ffmpeg_download()
-
-
-@app.get("/api/models/status")
-def api_models_status() -> Dict[str, Any]:
-    from app.model_manager import get_models_status
-
-    return get_models_status()
-
-
-class ModelsSetupPayload(BaseModel):
-    whisper_model: str = "large-v3-turbo"
-    install_diarizer: bool = True
-
-
-@app.post("/api/models/setup")
-def api_models_setup(payload: ModelsSetupPayload) -> Dict[str, Any]:
-    from app.model_manager import start_models_setup
-
-    return start_models_setup(
-        whisper_model_id=payload.whisper_model.strip(),
-        install_diarizer=payload.install_diarizer,
-    )
-
-
-@app.delete("/api/models/{model_id}")
-def api_delete_whisper_model(model_id: str) -> Dict[str, Any]:
-    from app.model_manager import delete_whisper_model, get_models_status
-
-    delete_whisper_model(model_id)
-    return get_models_status()
-
-
-class SettingsUpdatePayload(BaseModel):
-    settings: Dict[str, Any]
-
-
-@app.post("/api/settings")
-def api_update_settings(payload: SettingsUpdatePayload) -> Dict[str, Any]:
-    updated = update_settings(payload.settings)
-    return {"settings": updated, "ollama": get_ollama_status()}
-
-
-@app.get("/api/ollama/status")
-def api_ollama_status() -> Dict[str, Any]:
-    return get_ollama_status()
-
-
-class OllamaPullPayload(BaseModel):
-    model: str
-    allow_install: bool = False
-
-
-@app.post("/api/ollama/pull")
-def api_ollama_pull(payload: OllamaPullPayload) -> Dict[str, Any]:
-    return start_model_pull(payload.model.strip(), allow_install=payload.allow_install)
-
-
-# --- Custom Dictionary ---
-@app.get("/api/dictionary")
-def api_list_dictionary() -> List[Dict[str, Any]]:
-    return list_dictionary(active_only=False)
-
-
-class DictionaryCreatePayload(BaseModel):
-    term: str
-    category: str = "Термин"
-
-
-@app.post("/api/dictionary")
-def api_add_dictionary(payload: DictionaryCreatePayload) -> Dict[str, Any]:
-    try:
-        # Support adding comma-separated or newline-separated batch of terms at once
-        raw_terms = [
-            t.strip()
-            for line in payload.term.splitlines()
-            for t in line.split(",")
-            if t.strip()
-        ]
-        if not raw_terms:
-            raise HTTPException(status_code=400, detail="Введите хотя бы одно слово или фразу")
-        last_item = {}
-        for t in raw_terms:
-            last_item = add_dictionary_term(t, payload.category)
-        return {"added": len(raw_terms), "last": last_item, "items": list_dictionary()}
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-class DictionaryTogglePayload(BaseModel):
-    active: bool
-
-
-@app.patch("/api/dictionary/{term_id}")
-def api_toggle_dictionary(term_id: int, payload: DictionaryTogglePayload) -> Dict[str, Any]:
-    toggle_dictionary_term(term_id, payload.active)
-    return {"ok": True}
-
-
-@app.delete("/api/dictionary/{term_id}")
-def api_delete_dictionary(term_id: int) -> Dict[str, Any]:
-    delete_dictionary_term(term_id)
-    return {"ok": True}
-
-
-# --- Live progress (Server-Sent Events) ---
-_SSE_HEARTBEAT_SEC = 15.0
-
-
-@app.get("/api/events")
-async def api_events(request: Request) -> StreamingResponse:
-    """
-    Pushes processing progress and library changes to the UI instead of it polling every 2 s.
-    Events: {"type": "progress", "id", status?, progress?, stage_text?, error_message?, duration?}
-    and {"type": "list"} (a recording was added, renamed or deleted).
-    """
-    sub = events.subscribe()
-
-    async def stream():
-        try:
-            yield 'retry: 3000\ndata: {"type": "hello"}\n\n'
-            while True:
-                batch = await sub.next_batch(_SSE_HEARTBEAT_SEC)
-                if await request.is_disconnected():
-                    break
-                if not batch:
-                    yield ": ping\n\n"
-                    continue
-                for ev in batch:
-                    yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
-        finally:
-            events.unsubscribe(sub)
-
-    return StreamingResponse(
-        stream(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
-    )
-
-
-# --- Meetings & Batch Processing ---
-@app.get("/api/meetings")
-def api_list_meetings() -> List[Dict[str, Any]]:
-    return list_meetings()
-
-
-@app.get("/api/meetings/search")
-def api_search_meetings(q: str = "") -> List[Dict[str, Any]]:
-    from app.database import search_all_meetings
-
-    return search_all_meetings(q)
-
-
-@app.get("/api/meetings/{meeting_id}")
 def api_get_meeting(meeting_id: int) -> Dict[str, Any]:
     m = get_meeting(meeting_id)
     if not m:
         raise HTTPException(status_code=404, detail="Встреча не найдена")
-    return m
+    return {**m, "local_only_effective": is_local_only(m)}
 
 
-@app.post("/api/meetings/upload")
-async def api_upload_meetings(
-    files: List[UploadFile] = File(...),
-    language: str = Form("auto"),
-    model_name: str = Form(""),
-    num_speakers: int = Form(0),
-) -> Dict[str, Any]:
-    settings = get_all_settings()
-    chosen_model = model_name.strip() or settings.get("whisper_model", "large-v3-turbo")
-    chosen_lang = language.strip() or settings.get("language", "auto")
-    chosen_speakers = num_speakers if num_speakers > 0 else int(settings.get("num_speakers", 0))
-
-    created = []
-    for uf in files:
-        orig_name = uf.filename or "recording.mp4"
-        ext = Path(orig_name).suffix.lower() or ".mp4"
-        safe_stem = Path(orig_name).stem
-        unique_name = f"{uuid.uuid4().hex[:8]}_{safe_stem}{ext}"
-        dest_path = UPLOADS_DIR / unique_name
-
-        with dest_path.open("wb") as out_f:
-            shutil.copyfileobj(uf.file, out_f)
-
-        m = create_meeting(
-            title=safe_stem,
-            filename=orig_name,
-            media_path=str(dest_path),
-            language=chosen_lang,
-            model_name=chosen_model,
-            num_speakers_hint=chosen_speakers,
-        )
-        enqueue_meeting_job(m["id"])
-        created.append(m)
-
-    return {"created": created}
+def _recordings_dir() -> Path:
+    return recordings_dir(get_all_settings().get("recordings_dir") or "")
 
 
-class LocalPathPayload(BaseModel):
-    path: str
-    language: str = "auto"
-    model_name: str = ""
-    num_speakers: int = 0
+def _recording_folder() -> Path:
+    """Where a new studio recording goes: the recordings folder, or today's folder in it."""
+    from datetime import datetime
+
+    from app.naming import in_date_folder
+
+    return in_date_folder(_recordings_dir(), datetime.now())
 
 
-@app.post("/api/meetings/local-path")
-def api_add_local_path(payload: LocalPathPayload) -> Dict[str, Any]:
-    """
-    Allows adding a local file or an entire folder of recordings directly from disk
-    without duplicating large video files.
-    """
-    raw_path = payload.path.strip().strip('"').strip("'")
-    target = Path(raw_path)
-    if not target.exists():
-        raise HTTPException(status_code=400, detail=f"Путь не найден на диске: {raw_path}")
-
-    settings = get_all_settings()
-    chosen_model = payload.model_name.strip() or settings.get("whisper_model", "large-v3-turbo")
-    chosen_lang = payload.language.strip() or settings.get("language", "auto")
-    chosen_speakers = (
-        payload.num_speakers if payload.num_speakers > 0 else int(settings.get("num_speakers", 0))
-    )
-
-    media_files: List[Path] = []
-    if target.is_file():
-        if target.suffix.lower() not in SUPPORTED_EXTENSIONS:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Формат файла {target.suffix} не поддерживается",
-            )
-        media_files.append(target)
-    elif target.is_dir():
-        for p in sorted(target.iterdir()):
-            if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS:
-                media_files.append(p)
-        if not media_files:
-            raise HTTPException(
-                status_code=400,
-                detail="В указанной папке не найдено поддерживаемых видео или аудио файлов",
-            )
-
-    created = []
-    for mf in media_files:
-        m = create_meeting(
-            title=mf.stem,
-            filename=mf.name,
-            media_path=str(mf.resolve()),
-            language=chosen_lang,
-            model_name=chosen_model,
-            num_speakers_hint=chosen_speakers,
-        )
-        enqueue_meeting_job(m["id"])
-        created.append(m)
-
-    return {"created": created}
+# Recording stops by itself below this much free space, so the file and the database stay intact
+DISK_STOP_BYTES = 300 * 1024 * 1024
+DISK_WARN_BYTES = 2 * 1024 * 1024 * 1024
 
 
-class MeetingTitlePayload(BaseModel):
-    title: str
-
-
-@app.patch("/api/meetings/{meeting_id}/title")
-def api_rename_meeting(meeting_id: int, payload: MeetingTitlePayload) -> Dict[str, Any]:
-    from app.database import update_meeting_fields
-
-    title = payload.title.strip()
-    if not title:
-        raise HTTPException(status_code=400, detail="Название не может быть пустым")
-    update_meeting_fields(meeting_id, title=title[:300])
-    return get_meeting(meeting_id)
-
-
-@app.post("/api/meetings/{meeting_id}/retry")
-def api_retry_meeting(meeting_id: int) -> Dict[str, Any]:
-    m = get_meeting(meeting_id)
-    if not m:
-        raise HTTPException(status_code=404, detail="Встреча не найдена")
-    _ensure_not_processing(meeting_id)
-    update_meeting_progress(
-        meeting_id,
-        status="queued",
-        progress=0,
-        stage_text="Повторная постановка в очередь...",
-        error_message="",
-    )
-    enqueue_meeting_job(meeting_id)
-    return get_meeting(meeting_id)
-
-
-class MeetingReconfigurePayload(BaseModel):
-    model_name: str
-    language: str = "auto"
-    num_speakers_hint: int = 0
-
-
-@app.post("/api/meetings/{meeting_id}/reconfigure")
-def api_reconfigure_meeting(meeting_id: int, payload: MeetingReconfigurePayload) -> Dict[str, Any]:
-    from app.database import update_meeting_fields
-
-    m = get_meeting(meeting_id)
-    if not m:
-        raise HTTPException(status_code=404, detail="Встреча не найдена")
-    _ensure_not_processing(meeting_id)
-
-    update_meeting_fields(
-        meeting_id,
-        model_name=payload.model_name.strip() or "large-v3-turbo",
-        language=payload.language.strip() or "auto",
-        num_speakers_hint=max(0, int(payload.num_speakers_hint)),
-    )
-    update_meeting_progress(
-        meeting_id,
-        status="queued",
-        progress=0,
-        stage_text="Повторная обработка с новыми параметрами...",
-        error_message="",
-    )
-    enqueue_meeting_job(meeting_id)
-    return get_meeting(meeting_id)
-
-
-@app.post("/api/meetings/{meeting_id}/cancel")
-def api_cancel_meeting(meeting_id: int) -> Dict[str, Any]:
-    m = get_meeting(meeting_id)
-    if not m:
-        raise HTTPException(status_code=404, detail="Встреча не найдена")
-    if not request_cancel(meeting_id):
-        raise HTTPException(status_code=409, detail="Запись сейчас не обрабатывается")
-    update_meeting_progress(meeting_id, stage_text="Отмена обработки...")
-    return get_meeting(meeting_id)
-
-
-@app.post("/api/meetings/{meeting_id}/reveal")
-def api_reveal_meeting_file(meeting_id: int) -> Dict[str, Any]:
-    import subprocess
-
-    m = get_meeting(meeting_id)
-    if not m:
-        raise HTTPException(status_code=404, detail="Встреча не найдена")
-
-    media_path = Path(m.get("media_path", ""))
-    audio_path = Path(m.get("audio_path", ""))
-    target = media_path if media_path.exists() else audio_path
-    if not target or not target.exists():
-        raise HTTPException(status_code=404, detail="Файл не найден на диске")
-
+def _free_bytes(path: Path) -> int:
     try:
-        subprocess.Popen(["explorer.exe", f"/select,{target.resolve()}"])
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    return {"ok": True}
+        return shutil.disk_usage(str(path)).free
+    except OSError:
+        return -1
 
 
-@app.delete("/api/meetings/{meeting_id}")
-def api_delete_meeting(meeting_id: int) -> Dict[str, Any]:
-    if is_job_active(meeting_id):
-        request_cancel(meeting_id)
-        raise HTTPException(status_code=409, detail="Запись обрабатывается: обработка отменяется, удалите её через несколько секунд.")
-    ok = delete_meeting(meeting_id)
-    if not ok:
-        raise HTTPException(status_code=404, detail="Встреча не найдена")
-    return {"ok": True}
+def disk_state() -> Dict[str, Any]:
+    """Free space where recordings are written (the recordings folder and the data folder, which
+    holds the system-audio capture)."""
+    rec, data = _recordings_dir(), UPLOADS_DIR
+    free = [b for b in (_free_bytes(rec), _free_bytes(data)) if b >= 0]
+    low = min(free) if free else -1
+    return {"free_bytes": low, "recordings_dir": str(rec), "warn_bytes": DISK_WARN_BYTES,
+            "stop_bytes": DISK_STOP_BYTES, "low": 0 <= low < DISK_WARN_BYTES, "critical": 0 <= low < DISK_STOP_BYTES}
 
 
-# --- Speaker Renaming & Segment Editing ---
-class SpeakerUpdatePayload(BaseModel):
-    speaker_id: str
-    name: str
-    color: Optional[str] = None
+def _local_time(ts: float) -> str:
+    from datetime import datetime
+
+    return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
 
 
-@app.patch("/api/meetings/{meeting_id}/speakers")
-def api_update_speaker(meeting_id: int, payload: SpeakerUpdatePayload) -> Dict[str, Any]:
-    m = get_meeting(meeting_id)
-    if not m:
-        raise HTTPException(status_code=404, detail="Встреча не найдена")
-
-    if not _SPEAKER_ID_RE.match(payload.speaker_id):
-        raise HTTPException(status_code=400, detail="Некорректный идентификатор участника")
-    if payload.color and not _COLOR_RE.match(payload.color):
-        raise HTTPException(status_code=400, detail="Цвет должен быть в формате #RRGGBB")
-    name = payload.name.strip()[:120]
-
-    speakers = m.get("speakers") or {}
-    if payload.speaker_id not in speakers:
-        speakers[payload.speaker_id] = {
-            "id": payload.speaker_id,
-            "name": name or payload.speaker_id,
-            "color": payload.color or "#6366f1",
-            "sample_start": 0.0,
-            "sample_end": 5.0,
-        }
-    else:
-        old_name = speakers[payload.speaker_id].get("name") or ""
-        speakers[payload.speaker_id]["name"] = name or payload.speaker_id
-        if payload.color:
-            speakers[payload.speaker_id]["color"] = payload.color
-        if name and name != old_name:
-            # Naming a voice teaches its profile: later recordings get the name automatically
-            from app.voice_profiles import learn
-
-            try:
-                learn(name, speakers[payload.speaker_id].get("embedding"))
-            except Exception:
-                traceback.print_exc()
-            speakers[payload.speaker_id].pop("voice_profile", None)
-
-    save_meeting_results(meeting_id, speakers=speakers)
-    return get_meeting(meeting_id)
-
-
-# --- System audio recorded by the app itself (app/system_audio.py): no screen-share prompt ---
-class RecordStartPayload(BaseModel):
-    system: bool = True
-
-
-@app.post("/api/record/start")
-def api_record_start(payload: RecordStartPayload) -> Dict[str, Any]:
-    from app.system_audio import start_capture
-
-    if not payload.system:
-        return {"capture_id": None}
+def _file_time(path: Path) -> str:
+    """When a media file was made: the modification time survives copying, the creation time does not."""
     try:
-        cap = start_capture(UPLOADS_DIR / f"system_{uuid.uuid4().hex[:8]}.wav")
-    except Exception as e:  # the page falls back to the browser's screen-share capture
-        raise HTTPException(status_code=503, detail=str(e)[:300])
-    return {"capture_id": cap.id}
+        return _local_time(path.stat().st_mtime)
+    except OSError:
+        return ""
 
 
-@app.get("/api/record/{capture_id}/level")
-def api_record_level(capture_id: str) -> Dict[str, Any]:
-    from app.system_audio import get_capture
-
-    cap = get_capture(capture_id)
-    if not cap:
-        raise HTTPException(status_code=404, detail="Запись не найдена")
-    return {"level": cap.level, "error": cap.error}
-
-
-@app.post("/api/record/{capture_id}/cancel")
-def api_record_cancel(capture_id: str) -> Dict[str, Any]:
-    from app.system_audio import finish_capture
-
-    cap = finish_capture(capture_id)
-    if cap:
-        cap.path.unlink(missing_ok=True)
-    return {"ok": True}
-
-
-@app.post("/api/record/{capture_id}/finish")
-async def api_record_finish(
-    capture_id: str,
-    title: str = Form("Запись"),
-    file: Optional[UploadFile] = File(None),
-) -> Dict[str, Any]:
-    """Stops the system-audio capture, mixes it with the page's microphone recording (if any) and
-    queues the result for transcription like an imported file."""
-    from starlette.concurrency import run_in_threadpool
-
-    from app.ffmpeg_manager import tool_cmd
-    from app.system_audio import finish_capture
-
-    cap = finish_capture(capture_id)
-    if not cap or not cap.path.is_file():
-        raise HTTPException(status_code=404, detail="Запись системного звука не найдена")
-    safe_stem = re.sub(r'[\\/:*?"<>|]', "_", title.strip() or "Запись")[:100]
-    dest = UPLOADS_DIR / f"{uuid.uuid4().hex[:8]}_{safe_stem}.m4a"
-    mic_path = None
-    if file is not None:
-        mic_path = UPLOADS_DIR / f"mic_{uuid.uuid4().hex[:8]}{Path(file.filename or 'mic.webm').suffix or '.webm'}"
-        with mic_path.open("wb") as out_f:
-            shutil.copyfileobj(file.file, out_f)
-    if mic_path:
-        # normalize=0: each source keeps its level instead of both being halved
-        cmd = [tool_cmd("ffmpeg"), "-y", "-hide_banner", "-loglevel", "error", "-i", str(mic_path), "-i", str(cap.path),
-               "-filter_complex", "[0:a][1:a]amix=inputs=2:duration=longest:normalize=0[a]", "-map", "[a]",
-               "-c:a", "aac", "-b:a", "160k", str(dest)]
+def screen_mix_command(ffmpeg: str, screen: Path, audio: List[Path], dest: Path) -> List[str]:
+    """The picture recorded by the app with the sound of the page (microphone) and/or the system:
+    the video is copied as recorded, the sound sources are mixed into one AAC track."""
+    cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-i", str(screen)]
+    for a in audio:
+        cmd += ["-i", str(a)]
+    if not audio:
+        maps = ["-map", "0:v"]
+    elif len(audio) == 1:
+        maps = ["-map", "0:v", "-map", "1:a"]
     else:
-        cmd = [tool_cmd("ffmpeg"), "-y", "-hide_banner", "-loglevel", "error", "-i", str(cap.path),
-               "-c:a", "aac", "-b:a", "160k", str(dest)]
+        maps = ["-filter_complex", "[1:a][2:a]amix=inputs=2:duration=longest:normalize=0[a]", "-map", "0:v", "-map", "[a]"]
+    return cmd + maps + ["-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(dest)]
 
-    def _mix() -> subprocess.CompletedProcess:
-        return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
-    res = await run_in_threadpool(_mix)
-    if res.returncode != 0 or not dest.is_file():
-        raise HTTPException(status_code=500, detail="Не удалось свести запись: " + (res.stderr or "")[-300:])
-    cap.path.unlink(missing_ok=True)
-    if mic_path:
-        mic_path.unlink(missing_ok=True)
+def _part_target(part: Path, title: str) -> Path:
+    """Where a recording part is kept as a file of its own (".page_x.webm.part" -> ".webm")."""
+    name = part.name[:-5] if part.name.endswith(".part") else part.name
+    ext = Path(name).suffix or ".bin"
+    safe = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", title)[:100]
+    return _recording_folder() / f"{uuid.uuid4().hex[:8]}_{safe}{ext}"
 
+
+def _queue_file(title: str, dest: Path, has_video: Optional[bool]) -> Dict[str, Any]:
     settings = get_all_settings()
     m = create_meeting(
-        title=safe_stem,
-        filename=dest.name,
-        media_path=str(dest),
+        title=title[:300], filename=dest.name, media_path=str(dest),
         language=settings.get("language", "auto"),
         model_name=settings.get("whisper_model", "large-v3-turbo"),
         num_speakers_hint=int(settings.get("num_speakers", 0)),
+        source="recording", owns_media=True, title_is_default=True, has_video=has_video,
     )
+    from app.naming import rename_recording_file
+
+    rename_recording_file(m["id"])
     enqueue_meeting_job(m["id"])
-    return {"created": [m]}
-
-
-class UiLangPayload(BaseModel):
-    lang: str = "ru"
-
-
-@app.post("/api/ui/lang")
-def api_ui_lang(payload: UiLangPayload) -> Dict[str, Any]:
-    """Remembers the UI language for the launcher's splash screen (read by VerbaScribe.exe)."""
-    lang = "en" if payload.lang == "en" else "ru"
-    try:
-        (DATA_DIR / "ui-lang.txt").write_text(lang, encoding="utf-8")
-    except OSError:
-        pass
-    return {"lang": lang}
-
-
-# --- What the page is doing, for the tray icon (see app/app_status.py) ---
-class UiStatePayload(BaseModel):
-    recording: bool = False
-
-
-@app.post("/api/ui/state")
-def api_ui_state(payload: UiStatePayload) -> Dict[str, Any]:
-    from app.app_status import set_recording, snapshot
-
-    set_recording(payload.recording)
-    st = snapshot()
-    return {"state": st["state"], "text": st["text"]}
-
-
-# --- Live captions while recording (see app/live.py) ---
-class LiveStartPayload(BaseModel):
-    lang: Optional[str] = None
-    translate_to: Optional[str] = None
-    capture_id: Optional[str] = None  # system audio recorded by the app is mixed into the captions
-    speed: str = "quality"            # "quality": the configured model, "fast": a small installed one
-
-
-@app.post("/api/live/start")
-def api_live_start(payload: LiveStartPayload) -> Dict[str, Any]:
-    from app.live import start_session
-    from app.translation import TEXT_LANGUAGES
-
-    target = (payload.translate_to or "").strip().lower() or None
-    if target and target not in TEXT_LANGUAGES:
-        raise HTTPException(status_code=400, detail="Неподдерживаемый язык перевода")
-    return start_session(payload.lang, target, payload.capture_id, payload.speed).state()
-
-
-@app.post("/api/live/{session_id}/audio")
-async def api_live_audio(session_id: str, request: Request, since: int = 0) -> Dict[str, Any]:
-    """Body: 16 kHz mono 16-bit little-endian PCM. Returns new final lines, translations and the draft."""
-    from starlette.concurrency import run_in_threadpool
-
-    from app.live import get_session
-
-    s = get_session(session_id)
-    if not s:
-        raise HTTPException(status_code=404, detail="Сеанс субтитров не найден")
-    data = await request.body()
-    if len(data) > 4 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="Слишком большой фрагмент звука")
-    s.add_pcm16(data)
-    await run_in_threadpool(s.step)
-    return s.state(since)
-
-
-class LiveConfigPayload(BaseModel):
-    translate_to: Optional[str] = None
-    speed: Optional[str] = None
-    speech_lang: Optional[str] = None  # "auto" or a language code; None keeps the current one
-
-
-@app.post("/api/live/{session_id}/config")
-def api_live_config(session_id: str, payload: LiveConfigPayload) -> Dict[str, Any]:
-    """Changes the caption translation while recording (language, fast or quality model)."""
-    from app.live import get_session
-    from app.translation import TEXT_LANGUAGES
-
-    s = get_session(session_id)
-    if not s:
-        raise HTTPException(status_code=404, detail="Сеанс субтитров не найден")
-    target = (payload.translate_to or "").strip().lower() or None
-    if target and target not in TEXT_LANGUAGES:
-        raise HTTPException(status_code=400, detail="Неподдерживаемый язык перевода")
-    s.configure(target, payload.speed if payload.speed in ("quality", "fast") else None, payload.speech_lang)
-    return s.state(0)
-
-
-@app.get("/api/live/models")
-def api_live_models() -> Dict[str, Any]:
-    from app.live_translate import model_choices
-
-    return model_choices()
-
-
-@app.post("/api/live/{session_id}/stop")
-def api_live_stop(session_id: str) -> Dict[str, Any]:
-    from app.live import stop_session
-
-    stop_session(session_id)
-    return {"ok": True}
-
-
-class LibraryAskPayload(BaseModel):
-    question: str
-    lang: str = "ru"
-    model: Optional[str] = None
-
-
-@app.post("/api/library/ask")
-def api_library_ask(payload: LibraryAskPayload) -> Dict[str, Any]:
-    """Answers a question from the transcripts of all recordings (see app/library_qa.py)."""
-    from app.library_qa import ask_library
-
-    try:
-        return ask_library(payload.question, answer_lang=payload.lang, model_name=payload.model)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except RuntimeError as e:
-        raise HTTPException(status_code=503, detail=str(e))
-
-
-@app.get("/api/voice-profiles")
-def api_voice_profiles() -> Dict[str, Any]:
-    from app.voice_profiles import enabled, list_profiles
-
-    return {"enabled": enabled(), "profiles": list_profiles()}
-
-
-@app.delete("/api/voice-profiles/{profile_id}")
-def api_delete_voice_profile(profile_id: int) -> Dict[str, Any]:
-    from app.voice_profiles import delete_profile, enabled, list_profiles
-
-    if not delete_profile(profile_id):
-        raise HTTPException(status_code=404, detail="Голосовой профиль не найден")
-    return {"enabled": enabled(), "profiles": list_profiles()}
-
-
-class SegmentUpdatePayload(BaseModel):
-    text: Optional[str] = None
-    speaker: Optional[str] = None
-
-
-@app.patch("/api/meetings/{meeting_id}/segments/{segment_id}")
-def api_update_segment(
-    meeting_id: int, segment_id: int, payload: SegmentUpdatePayload
-) -> Dict[str, Any]:
-    m = get_meeting(meeting_id)
-    if not m:
-        raise HTTPException(status_code=404, detail="Встреча не найдена")
-
-    if payload.speaker is not None and payload.speaker not in (m.get("speakers") or {}):
-        raise HTTPException(status_code=400, detail="Неизвестный участник")
-
-    segments = m.get("segments") or []
-    found = False
-    for seg in segments:
-        if int(seg.get("id", -1)) == segment_id:
-            if payload.text is not None:
-                new_text = payload.text.strip()
-                if not new_text:
-                    raise HTTPException(status_code=400, detail="Текст реплики не может быть пустым")
-                if new_text != (seg.get("text") or "").strip():
-                    # The player renders words, so they must follow the edited text
-                    seg["words"] = realign_words(
-                        seg.get("words") or [],
-                        new_text,
-                        float(seg.get("start", 0.0)),
-                        float(seg.get("end", 0.0)),
-                    )
-                    seg["text"] = new_text
-            if payload.speaker is not None:
-                seg["speaker"] = payload.speaker
-            found = True
-            break
-
-    if not found:
-        raise HTTPException(status_code=404, detail="Реплика не найдена")
-
-    save_meeting_results(meeting_id, segments=segments)
-    return get_meeting(meeting_id)
-
-
-@app.post("/api/meetings/{meeting_id}/segments/{segment_id}/merge")
-def api_merge_segment(meeting_id: int, segment_id: int) -> Dict[str, Any]:
-    from app.database import merge_segment_with_previous
-
-    updated = merge_segment_with_previous(meeting_id, segment_id)
-    if not updated:
-        raise HTTPException(status_code=404, detail="Встреча не найдена")
-    return updated
-
-
-@app.post("/api/meetings/{meeting_id}/clean-fillers")
-def api_clean_fillers(meeting_id: int) -> Dict[str, Any]:
-    from app.transcriber import clean_meeting_transcript
-
-    try:
-        return clean_meeting_transcript(meeting_id)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
-
-@app.post("/api/meetings/{meeting_id}/restore-segments")
-def api_restore_segments(meeting_id: int) -> Dict[str, Any]:
-    """Undoes the last filler cleanup (automatic or manual) for this recording."""
-    from app.database import restore_segments_backup
-
-    if not get_meeting(meeting_id):
-        raise HTTPException(status_code=404, detail="Встреча не найдена")
-    if not restore_segments_backup(meeting_id):
-        raise HTTPException(status_code=400, detail="Нет сохранённой версии для восстановления")
-    return get_meeting(meeting_id)
-
-
-# --- AI Summary & Custom Q&A via Ollama ---
-class SummaryRequestPayload(BaseModel):
-    template: str = "protocol"
-    custom_prompt: str = ""
-    model: Optional[str] = None
-    lang: Optional[str] = None
-
-
-@app.post("/api/meetings/{meeting_id}/summary")
-def api_generate_summary(meeting_id: int, payload: SummaryRequestPayload) -> Dict[str, Any]:
-    from app.diarizer import unload_diarizer
-    from app.hardware import clear_vram
-
-    m = get_meeting(meeting_id)
-    if not m:
-        raise HTTPException(status_code=404, detail="Встреча не найдена")
-
-    segments = m.get("segments") or []
-    speakers = m.get("speakers") or {}
-    if not segments:
-        raise HTTPException(status_code=400, detail="Нет текста записи для анализа")
-
-    # Free any cached speech models from VRAM before invoking local LLM
-    unload_diarizer()
-    clear_vram()
-
-    try:
-        result_md = generate_meeting_summary(
-            segments=segments,
-            speakers=speakers,
-            template_key=payload.template,
-            custom_prompt=payload.custom_prompt,
-            model_name=payload.model,
-            answer_lang=payload.lang or m.get("language") or "ru",
-        )
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-    summaries = m.get("summaries") or {}
-    key = "custom" if payload.custom_prompt.strip() else payload.template
-    summaries[key] = result_md
-    summaries.pop("error", None)
-    save_meeting_results(meeting_id, summaries=summaries)
-    return {"key": key, "summary": result_md, "summaries": summaries}
-
-
-# --- Media Streaming for Interactive Player ---
-@app.get("/api/meetings/{meeting_id}/media")
-def api_stream_media(meeting_id: int) -> FileResponse:
-    m = get_meeting(meeting_id)
-    if not m:
-        raise HTTPException(status_code=404, detail="Встреча не найдена")
-
-    # An empty path is Path("."), the current folder: only real files count
-    candidates = [Path(p) for p in (m.get("media_path"), m.get("audio_path")) if p]
-    target = next((p for p in candidates if p.is_file()), None)
-    if target is None:
-        raise HTTPException(status_code=404, detail="Медиафайл не найден")
-
-    mime_type, _ = mimetypes.guess_type(str(target))
-    return FileResponse(
-        path=str(target),
-        media_type=mime_type or "application/octet-stream",
-        filename=target.name,
-    )
-
-
-# --- Translate & Dub (prototype) ---
-class DubRequestPayload(BaseModel):
-    target_lang: str
-    consent: bool = False
-
-
-@app.get("/api/dub/status")
-def api_dub_status() -> Dict[str, Any]:
-    from app.dubbing import dub_environment_status
-
-    return dub_environment_status()
-
-
-@app.get("/api/queue")
-def api_queue() -> List[Dict[str, Any]]:
-    """Processing queue: the running job first, then waiting jobs in order."""
-    from app.transcriber import queue_snapshot
-
-    return queue_snapshot()
-
-
-@app.post("/api/dub/setup")
-def api_dub_setup() -> Dict[str, Any]:
-    """Installs the optional dubbing environment (.venv-dub) after the user confirmed it in the UI."""
-    from app.dub_setup import start_setup
-
-    return start_setup()
-
-
-@app.post("/api/dub/setup/cancel")
-def api_dub_setup_cancel() -> Dict[str, Any]:
-    from app.dub_setup import cancel_setup
-
-    return cancel_setup()
-
-
-def _dub_job_running() -> bool:
-    from app.transcriber import running_job_kind
-
-    return running_job_kind() == "dub"
-
-
-@app.get("/api/dub/info")
-def api_dub_info() -> Dict[str, Any]:
-    """Everything the Settings section shows: environment, model weights, disk usage."""
-    from app.dub_models import disk_usage, weights_status
-    from app.dub_setup import DUB_READY_MARKER, DUB_VENV
-    from app.dubbing import DUBS_DIR, _ffmpeg_has_filter, dub_environment_status
-
-    env = dub_environment_status()
-    verified = ""
-    try:
-        if DUB_READY_MARKER.is_file():
-            verified = DUB_READY_MARKER.read_text(encoding="utf-8").strip()[:200]
-    except OSError:
-        pass
-    return {
-        **env,
-        "venv": str(DUB_VENV),
-        "venv_exists": DUB_VENV.is_dir(),
-        "verified": verified,
-        "weights": weights_status(),
-        "disk": disk_usage(DUB_VENV, DUBS_DIR),
-        "rubberband": _ffmpeg_has_filter("rubberband"),
-        "dub_running": _dub_job_running(),
-    }
-
-
-@app.post("/api/dub/verify")
-def api_dub_verify() -> Dict[str, Any]:
-    """Re-runs the import check of the dub environment (takes 10-30 s)."""
-    from app import dub_setup
-
-    if dub_setup.setup_status()["active"]:
-        raise HTTPException(status_code=409, detail="Идёт установка окружения")
-    ok = dub_setup._verify()
-    if not ok:
-        dub_setup.DUB_READY_MARKER.unlink(missing_ok=True)
-    return {"ok": ok, "setup": dub_setup.setup_status()}
-
-
-class DubWeightsPayload(BaseModel):
-    models: Optional[List[str]] = None
-
-
-@app.post("/api/dub/weights/download")
-def api_dub_weights_download(payload: DubWeightsPayload) -> Dict[str, Any]:
-    from app.dub_models import start_download
-
-    return start_download(payload.models, _dub_job_running())
-
-
-@app.post("/api/dub/weights/cancel")
-def api_dub_weights_cancel() -> Dict[str, Any]:
-    from app.dub_models import cancel_download
-
-    return cancel_download()
-
-
-@app.delete("/api/dub/weights/{model_id}")
-def api_dub_weights_delete(model_id: str) -> Dict[str, Any]:
-    from app.dub_models import delete_weights
-
-    try:
-        return delete_weights(model_id, _dub_job_running())
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
-
-# --- Models in VRAM (chips next to the GPU badge) ---
-@app.get("/api/vram")
-def api_vram() -> Dict[str, Any]:
-    from app.vram import vram_snapshot
-
-    return vram_snapshot()
-
-
-class VramActionPayload(BaseModel):
-    kind: str
-    name: str = ""
-
-
-@app.post("/api/vram/unload")
-def api_vram_unload(payload: VramActionPayload) -> Dict[str, Any]:
-    from app.vram import unload
-
-    try:
-        return unload(payload.kind, payload.name)
-    except (RuntimeError, ValueError, httpx.HTTPError) as e:
-        raise HTTPException(status_code=409, detail=str(e))
-
-
-@app.post("/api/vram/preload")
-def api_vram_preload(payload: VramActionPayload) -> Dict[str, Any]:
-    from app.vram import preload
-
-    try:
-        return preload(payload.kind, payload.name)
-    except (RuntimeError, ValueError, httpx.HTTPError) as e:
-        raise HTTPException(status_code=409, detail=str(e))
-
-
-# --- Updates from GitHub Releases (app/updater.py) ---
-@app.get("/api/update")
-def api_update_status(check: bool = False) -> Dict[str, Any]:
-    from app import updater
-
-    return updater.check(force=False) if check else updater.status()
-
-
-@app.post("/api/update/check")
-def api_update_check() -> Dict[str, Any]:
-    from app import updater
-
-    return updater.check(force=True)
-
-
-@app.post("/api/update/download")
-def api_update_download() -> Dict[str, Any]:
-    from app import updater
-
-    try:
-        return updater.start_download()
-    except RuntimeError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-
-
-@app.post("/api/update/install")
-def api_update_install() -> Dict[str, Any]:
-    from app import updater
-    from app.transcriber import running_job_kind
-
-    if running_job_kind():
-        raise HTTPException(status_code=409, detail="Дождитесь окончания текущей задачи")
-    try:
-        updater.launch_installer()
-    except RuntimeError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-    updater.quit_soon()
-    return {"ok": True}
-
-
-@app.post("/api/meetings/{meeting_id}/dub")
-def api_start_dub(meeting_id: int, payload: DubRequestPayload) -> Dict[str, Any]:
-    from app.dubbing import DUB_LANGUAGES, dub_environment_status
-
-    m = get_meeting(meeting_id)
-    if not m:
-        raise HTTPException(status_code=404, detail="Встреча не найдена")
-    if not payload.consent:
-        raise HTTPException(
-            status_code=400,
-            detail="Подтвердите, что у вас есть согласие участников на клонирование их голосов.",
-        )
-    if payload.target_lang not in DUB_LANGUAGES:
-        raise HTTPException(status_code=400, detail="Этот язык не поддерживается для дубляжа")
-    if m.get("status") != "completed" or not m.get("segments"):
-        raise HTTPException(status_code=409, detail="Дубляж доступен только для полностью обработанной записи")
-    if payload.target_lang == (m.get("language") or ""):
-        raise HTTPException(status_code=400, detail="Язык перевода совпадает с языком записи")
-    if not dub_environment_status()["installed"]:
-        raise HTTPException(status_code=409, detail="Окружение дубляжа не установлено. Установите его в окне «Дубляж».")
-    if not enqueue_dub_job(meeting_id, payload.target_lang):
-        raise HTTPException(status_code=409, detail="Запись уже обрабатывается")
-    return get_meeting(meeting_id)
-
-
-def _find_dub(meeting_id: int, lang: str) -> Dict[str, Any]:
-    m = get_meeting(meeting_id)
-    if not m:
-        raise HTTPException(status_code=404, detail="Встреча не найдена")
-    for d in m.get("dubs") or []:
-        if d.get("lang") == lang and Path(d.get("path") or "").exists():
-            return d
-    raise HTTPException(status_code=404, detail="Файл дубляжа не найден")
-
-
-@app.get("/api/meetings/{meeting_id}/dub/{lang}/file")
-def api_dub_file(meeting_id: int, lang: str) -> FileResponse:
-    d = _find_dub(meeting_id, lang)
-    target = Path(d["path"])
-    mime_type, _ = mimetypes.guess_type(str(target))
-    return FileResponse(path=str(target), media_type=mime_type or "application/octet-stream", filename=target.name)
-
-
-@app.post("/api/meetings/{meeting_id}/dub/{lang}/save/{kind}")
-def api_dub_save(meeting_id: int, lang: str, kind: str) -> Dict[str, Any]:
-    """Copies the dubbed file (kind=media) or its translated subtitles (kind=srt) to a folder the user picks."""
-    d = _find_dub(meeting_id, lang)
-    if kind == "media":
-        src = Path(d["path"])
-    elif kind == "srt":
-        src = Path(d.get("srt_path") or Path(d["path"]).with_suffix(".srt"))
-    else:
-        raise HTTPException(status_code=400, detail="Неизвестный тип файла")
-    if not src.is_file():
-        raise HTTPException(status_code=404, detail="Файл не найден")
-    fmt = src.suffix.lower().lstrip(".")
-    chosen = _pick_path_native("save", _default_export_dir(), src.name, fmt)
-    if not chosen:
-        return {"ok": False, "cancelled": True}
-    out_path = Path(chosen)
-    if out_path.suffix.lower() != src.suffix.lower():
-        out_path = out_path.with_name(out_path.name + src.suffix)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(src, out_path)
-    update_settings({"export_dir": str(out_path.parent)})
-    return {"ok": True, "path": str(out_path), "filename": out_path.name, "folder": str(out_path.parent)}
-
-
-@app.post("/api/meetings/{meeting_id}/dub/{lang}/reveal")
-def api_dub_reveal(meeting_id: int, lang: str) -> Dict[str, Any]:
-    import subprocess
-
-    d = _find_dub(meeting_id, lang)
-    subprocess.Popen(["explorer.exe", f"/select,{Path(d['path']).resolve()}"])
-    return {"ok": True}
-
-
-# --- Translate text ---
-class TranslateRequestPayload(BaseModel):
-    target_lang: str
-    model: Optional[str] = None
-    only_changed: bool = False  # translate only stale/missing segments
-
-
-@app.get("/api/translate/languages")
-def api_translate_languages() -> Dict[str, Any]:
-    from app.translation import TEXT_LANGUAGES
-
-    return {"languages": list(TEXT_LANGUAGES.keys())}
-
-
-@app.post("/api/meetings/{meeting_id}/translate")
-def api_start_translation(meeting_id: int, payload: TranslateRequestPayload) -> Dict[str, Any]:
-    from app.translation import TEXT_LANGUAGES
-
-    m = get_meeting(meeting_id)
-    if not m:
-        raise HTTPException(status_code=404, detail="Встреча не найдена")
-    if payload.target_lang not in TEXT_LANGUAGES:
-        raise HTTPException(status_code=400, detail="Этот язык не поддерживается")
-    if m.get("status") != "completed" or not m.get("segments"):
-        raise HTTPException(status_code=409, detail="Перевод доступен только для полностью обработанной записи")
-    if payload.target_lang == (m.get("language") or ""):
-        raise HTTPException(status_code=400, detail="Язык перевода совпадает с языком записи")
-    model = (payload.model or "").strip() or None
-    if not enqueue_translate_job(meeting_id, payload.target_lang, model, payload.only_changed):
-        raise HTTPException(status_code=409, detail="Запись уже обрабатывается")
-    return get_meeting(meeting_id)
-
-
-@app.delete("/api/meetings/{meeting_id}/translations/{lang}")
-def api_delete_translation(meeting_id: int, lang: str) -> Dict[str, Any]:
-    from app.database import save_meeting_translation
-
-    if not get_meeting(meeting_id):
-        raise HTTPException(status_code=404, detail="Встреча не найдена")
-    _ensure_not_processing(meeting_id)
-    save_meeting_translation(meeting_id, lang, None)
-    return get_meeting(meeting_id)
-
-
-class SubtitlesRequestPayload(BaseModel):
-    lang: Optional[str] = None  # None/"" = subtitles in the original language
-    variant: str = "translated"  # "translated" | "bilingual"
-    mode: str = "soft"  # "soft" (copy streams + subtitle track) | "burn" (re-encode, queue job)
-    ask_path: bool = False  # True: native Save dialog, otherwise DATA_DIR/exports
-
-
-@app.post("/api/meetings/{meeting_id}/subtitles")
-def api_video_subtitles(meeting_id: int, payload: SubtitlesRequestPayload) -> Dict[str, Any]:
-    """Makes a copy of the recording's video with subtitles; the original file is never touched."""
-    from app.translation import build_cues, cues_to_srt
-    from app.video_subtitles import (
-        check_output_path,
-        default_output_path,
-        mux_soft_subtitles,
-        output_extension,
-        probe_media,
-    )
-
-    m = get_meeting(meeting_id)
-    if not m:
-        raise HTTPException(status_code=404, detail="Встреча не найдена")
-    if payload.mode not in ("soft", "burn"):
-        raise HTTPException(status_code=400, detail="Неизвестный режим субтитров")
-    _ensure_not_processing(meeting_id)
-    lang = (payload.lang or "").strip()
-    variant = payload.variant if lang else "original"
-    if lang and variant not in _EXPORT_VARIANTS:
-        raise HTTPException(status_code=400, detail="Неизвестный вариант субтитров")
-    resolved = (m.get("translations") or {}).get(lang) if lang else None
-    if lang and not resolved:
-        raise HTTPException(status_code=404, detail=f"Перевода на язык {lang!r} нет")
-    media = Path(m.get("media_path") or "")
-    if not media.is_file():
-        raise HTTPException(status_code=404, detail="Исходный видеофайл не найден")
-    if not probe_media(media)["has_video"]:
-        raise HTTPException(status_code=400, detail="В исходном файле нет видеодорожки")
-
-    cues = build_cues(m.get("segments") or [], resolved, variant=variant, speakers=m.get("speakers"))
-    if not cues:
-        raise HTTPException(status_code=400, detail="Нет текста для субтитров")
-    srt_text = cues_to_srt(cues)
-    track_lang = lang or (m.get("language") or "")
-    out_path = default_output_path(m.get("title") or media.stem, media, track_lang or "orig", variant, payload.mode)
-    if payload.ask_path:
-        ext = output_extension(media)
-        chosen = _pick_path_native("save", _default_export_dir(), out_path.name, ext.lstrip("."))
-        if not chosen:
-            return {"ok": False, "cancelled": True}
-        out_path = Path(chosen)
-        if out_path.suffix.lower() != ext:
-            out_path = out_path.with_name(out_path.name + ext)
-        update_settings({"export_dir": str(out_path.parent)})
-    try:
-        check_output_path(media, out_path)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-    title = (
-        f"{track_lang.upper()} + {(m.get('language') or '').upper()} (AI translation)" if variant == "bilingual"
-        else f"{track_lang.upper()} (AI translation)" if lang else (track_lang.upper() or "Subtitles")
-    )
-    if payload.mode == "soft":
+    return get_meeting(m["id"]) or m
+
+
+def _salvage_parts(title: str, parts: List[Tuple[Path, Optional[bool]]], notes: str = "") -> Dict[str, Any]:
+    """The parts of a recording could not be joined: each one is kept as a recording of its own,
+    so nothing that was recorded is lost."""
+    created = []
+    for part, has_video in parts:
+        if not part.is_file() or part.stat().st_size == 0:
+            continue
+        dest = _part_target(part, title)
+        shutil.move(str(part), str(dest))
+        created.append(_queue_file(title, dest, has_video))
+        if notes.strip():
+            from app.database import update_meeting_fields
+
+            update_meeting_fields(created[-1]["id"], user_notes=notes[:50000])
+    if not created:
+        raise HTTPException(status_code=500, detail="Не удалось свести запись, и её части пусты")
+    return {"created": created, "salvaged": True}
+
+
+def _retention_loop() -> None:
+    """Privacy setting "keep the sound N days": checked at start and every six hours."""
+    import time as _time
+
+    from app.database import expired_media_ids, remove_media
+
+    while True:
         try:
-            mux_soft_subtitles(media, srt_text, track_lang, title, out_path)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e)[:600])
-        return {"ok": True, "queued": False, "path": str(out_path), "filename": out_path.name, "folder": str(out_path.parent)}
+            days = int(get_all_settings().get("media_retention_days") or 0)
+            for mid in expired_media_ids(days):
+                if not is_job_active(mid):
+                    remove_media(mid)
+        except Exception:
+            traceback.print_exc()
+        _time.sleep(6 * 3600)
 
-    if not enqueue_burn_subtitles_job(meeting_id, track_lang or "orig", srt_text, str(out_path)):
-        raise HTTPException(status_code=409, detail="Запись уже обрабатывается")
-    return {"ok": True, "queued": True, "path": str(out_path), "filename": out_path.name, "folder": str(out_path.parent)}
 
-
-@app.get("/api/meetings/{meeting_id}/peaks")
-def api_media_peaks(meeting_id: int, bars: int = 120) -> Dict[str, Any]:
-    """Real loudness envelope of the extracted 16 kHz WAV for the player waveform."""
-    import numpy as np
-    import soundfile as sf
-
-    m = get_meeting(meeting_id)
-    if not m:
-        raise HTTPException(status_code=404, detail="Встреча не найдена")
-    wav = Path(m.get("audio_path") or "")
-    if not wav.is_file():
-        return {"peaks": []}
-    bars = max(20, min(400, int(bars)))
+def recover_orphan_recordings() -> int:
+    """At start: parts of recordings that were never finished (the app closed or crashed while
+    recording) become recordings, instead of staying hidden in the folders."""
+    found: List[Tuple[Path, Optional[bool]]] = []
     try:
-        data, _sr = sf.read(str(wav), dtype="float32", always_2d=False)
-    except Exception:
-        return {"peaks": []}
-    if data.ndim > 1:
-        data = data.mean(axis=1)
-    if len(data) < bars:
-        return {"peaks": []}
-    usable = len(data) - (len(data) % bars)
-    rms = np.sqrt(np.mean(np.square(data[:usable].reshape(bars, -1)), axis=1))
-    top = float(np.percentile(rms, 98)) or 1.0
-    peaks = np.clip(rms / top, 0.0, 1.0)
-    return {"peaks": [round(float(v), 3) for v in peaks]}
+        rec = _recordings_dir()
+        found += [(p, None) for p in rec.glob(".page_*.webm.part")]
+        found += [(p, True) for p in rec.glob(".screen_*.mkv.part")]
+        found += [(p, False) for p in UPLOADS_DIR.glob("system_*.wav") if p.stat().st_size > 4096]
+    except OSError:
+        return 0
+    n = 0
+    for part, has_video in found:
+        if part.stat().st_size < 4096:
+            part.unlink(missing_ok=True)
+            continue
+        try:
+            _salvage_parts("Восстановленная запись", [(part, has_video)])
+            n += 1
+        except Exception:
+            traceback.print_exc()
+    if n:
+        print(f"[record] recovered {n} unfinished recording part(s)", flush=True)
+    return n
 
 
-# --- Multi-format Export ---
-_EXPORT_VARIANTS = {"translated", "bilingual"}
+def record_mix_command(ffmpeg: str, page: Optional[Path], system: Optional[Path], has_video: bool,
+                       has_mic: bool, dest: Path) -> Optional[List[str]]:
+    """The FFmpeg command that turns the parts of a recording into one file, or None when the page
+    recording can be used as it is."""
+    base = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error"]
+    if page and not system:
+        # Video from MediaRecorder has no index: a copy into a new file makes it seekable
+        return base + ["-i", str(page), "-c", "copy", str(dest)] if has_video else None
+    if system and not page:
+        return base + ["-i", str(system), "-c:a", "aac", "-b:a", "160k", str(dest)]
+    if has_video:
+        # The picture is copied as recorded; the sound is the system audio, mixed with the microphone
+        audio = (["-filter_complex", "[0:a][1:a]amix=inputs=2:duration=longest:normalize=0[a]", "-map", "0:v", "-map", "[a]"]
+                 if has_mic else ["-map", "0:v", "-map", "1:a"])
+        return base + ["-i", str(page), "-i", str(system), *audio, "-c:v", "copy", "-c:a", "libopus", "-b:a", "128k", str(dest)]
+    # normalize=0: each source keeps its level instead of both being halved
+    return base + ["-i", str(page), "-i", str(system), "-filter_complex",
+                   "[0:a][1:a]amix=inputs=2:duration=longest:normalize=0[a]", "-map", "[a]",
+                   "-c:a", "aac", "-b:a", "160k", str(dest)]
 
 
-def _export_source(m: Dict[str, Any], lang: Optional[str], variant: str) -> tuple[Dict[str, Any], str]:
-    """The meeting to export (translated copy if `lang` is given) and a file name suffix."""
-    if not lang:
-        return m, ""
-    from app.translation import meeting_for_export
+def _live_target(translate_to: Optional[str], pair: Optional[List[str]]) -> tuple:
+    """Validated (target, pair) of live captions; "auto" translates each line into the other
+    language of the pair."""
+    from app.translation import TEXT_LANGUAGES
 
-    if variant not in _EXPORT_VARIANTS:
-        raise HTTPException(status_code=400, detail="Неизвестный вариант экспорта перевода")
-    try:
-        src = meeting_for_export(m, lang, variant)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    return src, f".{lang}" if variant == "translated" else f".{lang}+orig"
-
-
-def _build_export_bytes(
-    m: Dict[str, Any], fmt: str, lang: Optional[str] = None, variant: str = "translated"
-) -> tuple[bytes, str, str]:
-    safe_title = (
-        "".join(c if c.isalnum() or c in " -_" else "_" for c in m.get("title", "meeting")).strip()
-        or "meeting"
-    )
-    fmt = fmt.lower()
-    if lang and fmt == "json":
-        raise HTTPException(status_code=400, detail="Перевод экспортируется в DOCX, MD, TXT или SRT")
-    if lang and variant == "bilingual" and fmt not in ("srt", "docx"):
-        raise HTTPException(status_code=400, detail="Двуязычный экспорт доступен в SRT и DOCX")
-    src, suffix = _export_source(m, lang, variant)
-    base = f"{safe_title}{suffix}"
-    if fmt == "md":
-        return export_markdown(src).encode("utf-8"), "text/markdown; charset=utf-8", f"{base}.md"
-    if fmt == "txt":
-        return export_txt(src).encode("utf-8"), "text/plain; charset=utf-8", f"{base}.txt"
-    if fmt == "srt":
-        if lang:
-            from app.translation import build_cues, cues_to_srt
-
-            cues = build_cues(
-                m.get("segments") or [], (m.get("translations") or {}).get(lang), variant=variant,
-                speakers=m.get("speakers"), with_speaker=False,
-            )
-            return cues_to_srt(cues).encode("utf-8"), "text/plain; charset=utf-8", f"{base}.srt"
-        return export_srt(src).encode("utf-8"), "text/plain; charset=utf-8", f"{base}.srt"
-    if fmt == "json":
-        return export_json(src).encode("utf-8"), "application/json; charset=utf-8", f"{base}.json"
-    if fmt == "docx":
-        return (
-            export_docx(src),
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            f"{base}.docx",
-        )
-    raise HTTPException(status_code=400, detail=f"Неизвестный формат экспорта: {fmt}")
+    target = (translate_to or "").strip().lower() or None
+    if target and target != "auto" and target not in TEXT_LANGUAGES:
+        raise HTTPException(status_code=400, detail="Неподдерживаемый язык перевода")
+    clean = [str(p).strip().lower() for p in (pair or []) if str(p).strip()][:2]
+    if clean and (len(clean) != 2 or clean[0] == clean[1] or any(p not in TEXT_LANGUAGES for p in clean)):
+        raise HTTPException(status_code=400, detail="Для автоперевода нужны два разных языка")
+    return target, clean or None
 
 
-@app.get("/api/meetings/{meeting_id}/export/{fmt}")
-def api_export_meeting(meeting_id: int, fmt: str, lang: Optional[str] = None, variant: str = "translated") -> Response:
-    m = get_meeting(meeting_id)
-    if not m:
-        raise HTTPException(status_code=404, detail="Встреча не найдена")
-
-    content, media_type, filename = _build_export_bytes(m, fmt, lang, variant)
-    encoded_filename = quote(filename)
-    headers = {
-        "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}",
-    }
-    return Response(content=content, media_type=media_type, headers=headers)
+_EXPORT_VARIANTS = EXPORT_VARIANTS
 
 
 _EXPORT_FILE_TYPES = {
     "md": ("Markdown (*.md)", "*.md", ".md"),
     "txt": ("Текстовый файл (*.txt)", "*.txt", ".txt"),
     "srt": ("Субтитры (*.srt)", "*.srt", ".srt"),
+    "vtt": ("Субтитры WebVTT (*.vtt)", "*.vtt", ".vtt"),
     "json": ("JSON (*.json)", "*.json", ".json"),
     "docx": ("Документ Word (*.docx)", "*.docx", ".docx"),
     "mp4": ("Видео MP4 (*.mp4)", "*.mp4", ".mp4"),
@@ -1532,12 +464,39 @@ _EXPORT_FILE_TYPES = {
 
 
 def _default_export_dir() -> Path:
-    """Returns the last used export folder, or the user's Documents folder."""
-    saved = (get_all_settings().get("export_dir") or "").strip()
-    if saved and Path(saved).is_dir():
-        return Path(saved)
-    docs = Path.home() / "Documents"
-    return docs if docs.is_dir() else Path.home()
+    return default_export_dir()
+
+
+def _remember_export(meeting_id: int, path: Path) -> None:
+    """The folder is offered next time; the file is listed with the recording (deleted with it on request)."""
+    from app.database import add_export_path
+
+    update_settings({"export_dir": str(_export_base(path.parent))})
+    add_export_path(meeting_id, str(path))
+
+
+def _export_base(folder: Path) -> Path:
+    from app.naming import without_date_folders
+
+    return without_date_folders(folder)
+
+
+def _pick_export_path(m: Optional[Dict[str, Any]], filename: str, fmt: str) -> Optional[str]:
+    """The Save dialog for an export, opened in the recording's date folder when that is on (a
+    date folder made just for this and left empty after a cancel is removed)."""
+    from app.naming import in_date_folder
+    from app.obsidian import meeting_datetime
+
+    base = _default_export_dir()
+    folder = in_date_folder(base, meeting_datetime(m)) if m else base
+    existed = folder == base or any(folder.iterdir())
+    chosen = _pick_path_native("save", folder, filename, fmt)
+    if not chosen and not existed:
+        try:
+            folder.rmdir()
+        except OSError:
+            pass
+    return chosen
 
 
 def _pick_path_native(mode: str, directory: Path, filename: str = "", fmt: str = "") -> Optional[str]:
@@ -1576,67 +535,9 @@ def _pick_path_native(mode: str, directory: Path, filename: str = "", fmt: str =
         return None
 
 
-@app.post("/api/meetings/{meeting_id}/save-export/{fmt}")
-def api_save_export_to_disk(
-    meeting_id: int, fmt: str, lang: Optional[str] = None, variant: str = "translated"
-) -> Dict[str, Any]:
-    """
-    Asks the user where to save the export via a native Save dialog,
-    writes the file there and remembers the chosen folder for next time.
-    """
-    m = get_meeting(meeting_id)
-    if not m:
-        raise HTTPException(status_code=404, detail="Встреча не найдена")
+# --- The endpoints, one router per part of the program, in the order they were written (the order of
+# routes matters: "/api/meetings/search" before "/api/meetings/{meeting_id}") ---
+from app.api import analysis, cloud, export, library, media, recording, system  # noqa: E402
 
-    content, _, filename = _build_export_bytes(m, fmt, lang, variant)
-    chosen = _pick_path_native("save", _default_export_dir(), filename, fmt.lower())
-    if not chosen:
-        return {"ok": False, "cancelled": True}
-
-    out_path = Path(chosen)
-    ext = _EXPORT_FILE_TYPES.get(fmt.lower(), ("", "", ""))[2]
-    if ext and out_path.suffix.lower() != ext.lower():
-        out_path = out_path.with_name(out_path.name + ext)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_bytes(content)
-    update_settings({"export_dir": str(out_path.parent)})
-
-    return {"ok": True, "path": str(out_path), "filename": out_path.name, "folder": str(out_path.parent)}
-
-
-@app.post("/api/export-dir/pick")
-def api_pick_export_dir() -> Dict[str, Any]:
-    """Lets the user choose the default export folder via a native folder dialog."""
-    chosen = _pick_path_native("folder", _default_export_dir())
-    if not chosen:
-        return {"ok": False, "cancelled": True}
-    update_settings({"export_dir": chosen})
-    return {"ok": True, "folder": chosen}
-
-
-@app.get("/api/export-dir")
-def api_get_export_dir() -> Dict[str, Any]:
-    return {"folder": str(_default_export_dir())}
-
-
-class RevealPayload(BaseModel):
-    path: str
-
-
-@app.post("/api/reveal")
-def api_reveal_path(payload: RevealPayload) -> Dict[str, Any]:
-    """Highlights a saved file (or opens a folder) in Windows Explorer."""
-    import subprocess
-
-    p = Path(payload.path)
-    if not p.exists():
-        raise HTTPException(status_code=404, detail="Файл не найден")
-    try:
-        if p.is_dir():
-            subprocess.Popen(["explorer.exe", str(p)])
-        else:
-            subprocess.Popen(["explorer.exe", f"/select,{p}"])
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    return {"ok": True}
-
+for _part in (system, library, recording, analysis, media, export, cloud):
+    app.include_router(_part.router)

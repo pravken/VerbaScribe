@@ -14,7 +14,9 @@ Update (on the user's click):
      models or Python environments), installs Python packages again if requirements.txt changed,
      and starts VerbaScribe.exe. On any failure the backup is restored.
 
-A program folder that is a git checkout is never overwritten: it is updated with git pull.
+Automatic updates (setting "update_auto", on by default): a newer release found by the check is
+downloaded in the background; it is installed when the user clicks "Restart", or when the app is
+closed (then it is not started again). The folder .git of a git checkout is never touched.
 """
 
 import hashlib
@@ -34,6 +36,8 @@ from typing import Any, Callable, Dict, List, Optional
 GITHUB_REPO = "pravken/VerbaScribe"
 LATEST_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 CHECK_INTERVAL_SEC = 6 * 3600
+# Files are only ever downloaded from this repository's releases
+DOWNLOAD_PREFIX = f"https://github.com/{GITHUB_REPO}/releases/download/"
 # Never replaced by an update: user data, models and the Python environments
 PROTECTED = {".venv", ".venv-dub", ".python", "models", "data", "node_modules", ".git"}
 
@@ -47,10 +51,21 @@ _lock = threading.Lock()
 
 
 # ------------------------------------------------------------------ versions
+_PRE_RANK = {"alpha": 0, "a": 0, "beta": 1, "b": 1, "rc": 2}
+
+
 def parse_version(text: str) -> tuple:
-    """'v1.10.2' -> (1, 10, 2); anything unparsable sorts lowest."""
-    nums = re.findall(r"\d+", str(text or ""))[:3]
-    return tuple(int(n) for n in nums) + (0,) * (3 - len(nums)) if nums else (0, 0, 0)
+    """'v1.10.2' -> (1, 10, 2, 1, 0, 0); '0.2.0-beta.1' -> (0, 2, 0, 0, 1, 1): a pre-release sorts
+    below its release (alpha < beta < rc), so a beta tester is offered the final version.
+    Anything unparsable sorts lowest."""
+    m = re.match(r"^\s*v?(\d+(?:\.\d+)*)(?:[-.]?(alpha|beta|rc|a|b)\.?(\d*))?", str(text or ""), re.IGNORECASE)
+    if not m:
+        return (0, 0, 0, 0, 0, 0)
+    nums = [int(n) for n in m.group(1).split(".")[:3]]
+    nums += [0] * (3 - len(nums))
+    if m.group(2):
+        return (*nums, 0, _PRE_RANK[m.group(2).lower()], int(m.group(3) or 0))
+    return (*nums, 1, 0, 0)
 
 
 def is_newer(latest: str, current: str) -> bool:
@@ -90,7 +105,10 @@ def check(force: bool = False) -> Dict[str, Any]:
             else:
                 r.raise_for_status()
                 rel = r.json()
-                assets = {a.get("name"): a.get("browser_download_url") for a in rel.get("assets") or []}
+                assets = {a.get("name"): a.get("browser_download_url") for a in rel.get("assets") or []
+                          if str(a.get("browser_download_url") or "").startswith(DOWNLOAD_PREFIX)}
+                # GitHub's own SHA-256 of each uploaded file ("sha256:<hex>"), independent of SHA256SUMS.txt
+                digests = {a.get("name"): str(a.get("digest") or "") for a in rel.get("assets") or []}
                 zip_name = next((n for n in assets if re.fullmatch(r"VerbaScribe-v[\w.\-]+\.zip", n or "")), None)
                 latest = {
                     "version": str(rel.get("tag_name") or "").lstrip("v"),
@@ -102,12 +120,15 @@ def check(force: bool = False) -> Dict[str, Any]:
                     "zip_url": assets.get(zip_name) if zip_name else None,
                     "zip_name": zip_name,
                     "sums_url": assets.get("SHA256SUMS.txt"),
+                    "zip_digest": digests.get(zip_name, "").removeprefix("sha256:").lower() if zip_name else "",
                 }
             with _lock:
                 _state.update(checked_at=time.time(), latest=latest, error="")
         except Exception as e:
             with _lock:
                 _state.update(checked_at=time.time(), error=str(e)[:200])
+    st = status()
+    _auto_download(st)
     return status()
 
 
@@ -126,8 +147,39 @@ def status() -> Dict[str, Any]:
             "git_checkout": is_git_checkout(),
             "download": dict(_state["download"]),
         }
-    out["can_install"] = out["available"] and not out["git_checkout"] and bool(latest and latest.get("zip_url"))
+    out["auto"] = auto_enabled()
+    out["can_install"] = out["available"] and bool(latest and latest.get("zip_url"))
     return out
+
+
+def auto_enabled() -> bool:
+    from app.database import get_all_settings
+
+    return get_all_settings().get("update_auto", "true").lower() == "true"
+
+
+def _auto_download(st: Dict[str, Any]) -> None:
+    """Starts downloading a found update when automatic updates are on."""
+    dl = st.get("download") or {}
+    if st.get("can_install") and st.get("auto") and not dl.get("active") and not dl.get("done"):
+        try:
+            start_download()
+        except RuntimeError:
+            pass
+
+
+def install_on_exit() -> bool:
+    """Called when the app closes: installs a downloaded update without starting the app again."""
+    try:
+        with _lock:
+            path = _state["download"].get("path") if _state["download"].get("done") else ""
+        if not path or not auto_enabled():
+            return False
+        launch_installer(restart=False)
+        return True
+    except Exception:
+        traceback.print_exc()
+        return False
 
 
 # ------------------------------------------------------------------ download
@@ -171,6 +223,8 @@ def _download(latest: Dict[str, Any]) -> None:
                         expected = parts[0].lower()
             if not expected:
                 raise RuntimeError("В релизе нет контрольной суммы архива (SHA256SUMS.txt)")
+            if latest.get("zip_digest") and latest["zip_digest"] != expected:
+                raise RuntimeError("Контрольные суммы релиза не совпадают между собой — обновление отменено")
             h = hashlib.sha256()
             with c.stream("GET", latest["zip_url"]) as r:
                 r.raise_for_status()
@@ -212,7 +266,7 @@ def quit_soon(delay: float = 0.8) -> None:
     threading.Thread(target=_quit, daemon=True, name="update_quit").start()
 
 
-def launch_installer() -> None:
+def launch_installer(restart: bool = True) -> None:
     """Starts the updater for the downloaded archive; the caller then quits the app."""
     from app.paths import APP_DIR, DATA_DIR
 
@@ -221,7 +275,7 @@ def launch_installer() -> None:
     if not path or not Path(path).is_file():
         raise RuntimeError("Архив обновления не скачан")
     cmd = [sys.executable, "-m", "app.updater", "apply", "--zip", path, "--app-dir", str(APP_DIR),
-           "--data-dir", str(DATA_DIR), "--pid", str(os.getpid())]
+           "--data-dir", str(DATA_DIR), "--pid", str(os.getpid())] + ([] if restart else ["--no-restart"])
     flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
     subprocess.Popen(cmd, cwd=str(APP_DIR), creationflags=flags, close_fds=True)
 
@@ -255,12 +309,32 @@ def _find_uv() -> Optional[str]:
     return None
 
 
+def _freeze(py: Path, uv: Optional[str]) -> str:
+    cmd = [uv, "pip", "freeze", "--python", str(py)] if uv else [str(py), "-m", "pip", "freeze"]
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                             creationflags=_NO_WINDOW, timeout=120)
+        return res.stdout if res.returncode == 0 else ""
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
+def _reinstall(py: Path, uv: Optional[str], frozen_file: Path, log_dir: Path) -> None:
+    torch_index = "https://download.pytorch.org/whl/cu124"
+    cmd = ([uv, "pip", "install", "--python", str(py), "-r", str(frozen_file),
+            "--index-strategy", "unsafe-best-match", "--extra-index-url", torch_index]
+           if uv else [str(py), "-m", "pip", "install", "-r", str(frozen_file), "--extra-index-url", torch_index])
+    with open(log_dir / "update.log", "a", encoding="utf-8") as lf:
+        subprocess.run(cmd, stdout=lf, stderr=subprocess.STDOUT, creationflags=_NO_WINDOW)
+
+
 def apply_update(zip_path: Path, app_dir: Path, data_dir: Path, report: Callable[[str], None]) -> None:
     log_dir = data_dir / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     backup = data_dir / "updates" / "backup.zip"
     old_req = _sha256(app_dir / "requirements.txt")
     replaced: List[str] = []
+    restore_packages: Optional[Callable[[], None]] = None
 
     with zipfile.ZipFile(zip_path) as z:
         names = [n for n in z.namelist() if not n.endswith("/")]
@@ -298,6 +372,12 @@ def apply_update(zip_path: Path, app_dir: Path, data_dir: Path, report: Callable
                 report("Установка библиотек Python (может занять несколько минут)…")
                 py = app_dir / ".venv" / "Scripts" / "python.exe"
                 uv = _find_uv()
+                # What is installed now: put back if the new libraries fail half way
+                frozen = _freeze(py, uv)
+                if frozen:
+                    frozen_file = data_dir / "updates" / "packages-before-update.txt"
+                    frozen_file.write_text(frozen, encoding="utf-8")
+                    restore_packages = (lambda: _reinstall(py, uv, frozen_file, log_dir))
                 torch_index = "https://download.pytorch.org/whl/cu124"
                 cmd = ([uv, "pip", "install", "--python", str(py), "-r", str(app_dir / "requirements.txt"),
                         "--require-hashes", "--index-strategy", "unsafe-best-match", "--extra-index-url", torch_index]
@@ -311,12 +391,24 @@ def apply_update(zip_path: Path, app_dir: Path, data_dir: Path, report: Callable
                     raise RuntimeError("Не удалось установить библиотеки (подробности в logs\\update.log)")
         except Exception:
             report("Ошибка — восстановление прежней версии…")
-            with zipfile.ZipFile(backup) as bz:
-                bz.extractall(app_dir)
-            kept = set(replaced)
-            for _n, rel in files:  # files the new version added
-                if rel not in kept:
-                    (app_dir / rel).unlink(missing_ok=True)
+            # Each step on its own: a failure here must not hide the original error
+            try:
+                with zipfile.ZipFile(backup) as bz:
+                    bz.extractall(app_dir)
+                kept = set(replaced)
+                for _n, rel in files:  # files the new version added
+                    if rel not in kept:
+                        (app_dir / rel).unlink(missing_ok=True)
+            except Exception:
+                with open(log_dir / "update.log", "a", encoding="utf-8") as lf:
+                    lf.write("restore of the program files failed:\n" + traceback.format_exc())
+            if restore_packages:
+                report("Восстановление прежних библиотек Python…")
+                try:
+                    restore_packages()
+                except Exception:
+                    with open(log_dir / "update.log", "a", encoding="utf-8") as lf:
+                        lf.write("restore of the Python packages failed:\n" + traceback.format_exc())
             raise
 
 
@@ -329,6 +421,7 @@ def _main(argv: List[str]) -> int:
     ap.add_argument("--app-dir", required=True)
     ap.add_argument("--data-dir", required=True)
     ap.add_argument("--pid", type=int, default=0)
+    ap.add_argument("--no-restart", action="store_true")  # installed on exit: the user closed the app
     a = ap.parse_args(argv)
     app_dir, data_dir = Path(a.app_dir), Path(a.data_dir)
 
@@ -342,14 +435,14 @@ def _main(argv: List[str]) -> int:
             if a.pid:
                 _wait_for_exit(a.pid)
             apply_update(Path(a.zip), app_dir, data_dir, ui.set)
-            ui.set("Готово. Запуск VerbaScribe…")
+            ui.set("Готово." if a.no_restart else "Готово. Запуск VerbaScribe…")
         except Exception as e:
             ok, message = False, str(e)
             with open(data_dir / "logs" / "update.log", "a", encoding="utf-8") as lf:
                 lf.write(traceback.format_exc())
         finally:
             launcher = app_dir / "VerbaScribe.exe"
-            if launcher.is_file():
+            if launcher.is_file() and not (a.no_restart and ok):
                 subprocess.Popen([str(launcher)], cwd=str(app_dir))
             ui.close(None if ok else f"Обновление не установлено: {message}\nПрежняя версия восстановлена.")
 

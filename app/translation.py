@@ -302,6 +302,12 @@ def build_cues(
         main = original if variant == "original" else (translated or original)
         if not main:
             continue
+        timed = _word_pieces(seg, max_chars) if (main is original and split_long) else None
+        if timed:
+            # The original has word timings: each piece shows exactly while its words are spoken
+            for k, (a, b, p) in enumerate(timed):
+                cues.append({"start": round(a, 3), "end": round(b, 3), "text": wrap_subtitle_line((prefix if k == 0 else "") + p)})
+            continue
         pieces = split_text_for_cues(main, max_chars) if split_long else [main]
         total = sum(len(p) for p in pieces) or 1
         t = start
@@ -310,6 +316,47 @@ def build_cues(
             cues.append({"start": round(t, 3), "end": round(t_end, 3), "text": wrap_subtitle_line((prefix if k == 0 else "") + p)})
             t = t_end
     return cues
+
+
+def _word_pieces(seg: Dict[str, Any], max_chars: int) -> Optional[List[tuple]]:
+    """(start, end, text) pieces of a segment cut at sentence ends or at max_chars, timed by its
+    words; None when the segment has no word timings or they no longer match its (edited) text."""
+    words = [w for w in seg.get("words") or [] if str(w.get("word") or "").strip()]
+    text = " ".join((seg.get("text") or "").split())
+    if not words or "".join(str(w["word"]).strip() for w in words).casefold() != "".join(text.split()).casefold():
+        return None
+    pieces, cur, size = [], [], 0
+    for w in words:
+        word = str(w["word"]).strip()
+        if cur and size + len(word) + 1 > max_chars:
+            pieces.append(cur)
+            cur, size = [], 0
+        cur.append(w)
+        size += len(word) + 1
+        if word.endswith((".", "!", "?", "…")) and size >= max_chars // 3:
+            pieces.append(cur)
+            cur, size = [], 0
+    if cur:
+        pieces.append(cur)
+    out = []
+    for k, p in enumerate(pieces):
+        a = float(p[0].get("start") or 0.0)
+        # A piece stays on screen until the next one starts (no flashing gaps inside a phrase)
+        b = float(pieces[k + 1][0].get("start") or 0.0) if k + 1 < len(pieces) else float(p[-1].get("end") or a)
+        out.append((a, max(b, a + 0.3), " ".join(str(w["word"]).strip() for w in p)))
+    return out
+
+
+def _format_vtt_time(seconds: float) -> str:
+    return _format_srt_time(seconds).replace(",", ".")
+
+
+def cues_to_vtt(cues: Iterable[Dict[str, Any]]) -> str:
+    """WebVTT for players and browsers (YouTube, VLC, <track>)."""
+    blocks = ["WEBVTT"]
+    for c in cues:
+        blocks.append(f"{_format_vtt_time(c['start'])} --> {_format_vtt_time(c['end'])}\n{c['text']}")
+    return "\n\n".join(blocks) + "\n"
 
 
 def cues_to_srt(cues: Iterable[Dict[str, Any]]) -> str:

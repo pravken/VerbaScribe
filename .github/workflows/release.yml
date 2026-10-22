@@ -6,7 +6,14 @@ on:
   push:
     tags:
       - "v*"
+  # Run by hand: without a tag only builds (artifacts to try out); with a tag, e.g. v0.2.0-beta.1,
+  # also creates that tag on the commit it ran for and publishes the release
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to create and publish (empty: build only)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -14,6 +21,9 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      PUBLISH: ${{ startsWith(github.ref, 'refs/tags/') || inputs.tag != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -23,14 +33,24 @@ jobs:
 
       # The app compares its own version with the latest release tag (app/updater.py)
       - name: Check that the tag matches app/__init__.py
-        if: startsWith(github.ref, 'refs/tags/')
+        if: env.PUBLISH == 'true'
         shell: pwsh
         run: |
           $v = python -c "import re; print(re.search(r'__version__ = \x22(.+?)\x22', open('app/__init__.py').read()).group(1))"
-          if ("v$v" -ne "${{ github.ref_name }}") { throw "Tag ${{ github.ref_name }} does not match __version__ $v" }
+          if ("v$v" -ne "$env:TAG") { throw "Tag $env:TAG does not match __version__ $v" }
+
+      # Without the app's packages most tests skip themselves; with them every test runs
+      - name: Install test dependencies
+        run: python -m pip install -r requirements-test.txt
 
       - name: Run unit tests
-        run: python -m unittest discover -s tests -t .
+        shell: pwsh
+        run: |
+          $out = python -m unittest discover -v -s tests -t . 2>&1 | Out-String
+          Write-Output $out
+          if ($LASTEXITCODE -ne 0) { throw "Unit tests failed" }
+          # A test may skip itself for a missing tool (FFmpeg), never for a missing Python package
+          if ($out -match "skipped '[^']*not installed") { throw "Tests were skipped: a package is missing from requirements-test.txt" }
 
       - name: Build launcher (csc.exe from .NET Framework)
         run: python build_exe.py
@@ -38,7 +58,7 @@ jobs:
       - name: Package release
         shell: pwsh
         run: |
-          $name = "VerbaScribe-${{ github.ref_name }}"
+          $name = "VerbaScribe-$($env:TAG -replace '[\\/]', '-')"
           git archive --format=zip --prefix="$name/" -o source.zip HEAD
           Expand-Archive source.zip -DestinationPath dist
           Copy-Item VerbaScribe.exe "dist/$name/"
@@ -58,11 +78,16 @@ jobs:
             SHA256SUMS.txt
 
       - name: Publish GitHub release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: env.PUBLISH == 'true'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.TAG }}
+          target_commitish: ${{ github.sha }}
           files: |
             VerbaScribe-*.zip
             VerbaScribe.exe
             SHA256SUMS.txt
           generate_release_notes: true
+          # v1.2.0-beta.1 and the like are pre-releases: releases/latest (the in-app update check)
+          # skips them, so only people who download them by hand get them
+          prerelease: ${{ contains(env.TAG, '-') }}

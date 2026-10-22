@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
+from app.database import get_all_settings
 from app.paths import APP_DIR
 
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
@@ -57,6 +58,7 @@ class _CaptionWorker:
         self.lock = threading.Lock()
         self.last_used = 0.0
         self.stderr_tail: List[str] = []
+        self.model_name = ""
         threading.Thread(target=self._reaper, daemon=True, name="live_worker_reaper").start()
 
     def _start(self) -> None:
@@ -69,7 +71,7 @@ class _CaptionWorker:
         line = self.proc.stdout.readline()
         if not line:
             raise RuntimeError("процесс распознавания не запустился: " + " | ".join(self.stderr_tail[-3:]))
-        json.loads(line)
+        self.model_name = json.loads(line).get("model") or ""
 
     def _drain(self, proc) -> None:
         for raw in proc.stderr:
@@ -122,8 +124,7 @@ class _CaptionWorker:
     def _reaper(self) -> None:
         while True:
             time.sleep(15)
-            with _sessions_lock:
-                active = bool(_sessions)
+            active = has_sessions()
             if self.proc is not None and not active and time.time() - self.last_used > WORKER_IDLE_SEC:
                 with self.lock:
                     self._kill()
@@ -143,14 +144,20 @@ def _caption_worker() -> _CaptionWorker:
 
 class LiveSession:
     def __init__(self, lang: Optional[str], translate_to: Optional[str], capture_id: Optional[str] = None,
-                 speed: str = "quality"):
+                 speed: str = "quality", pair: Optional[List[str]] = None):
         self.id = uuid.uuid4().hex
         self.capture_id = capture_id
         # The language chosen for speech (None: detected in every window, so a meeting may switch
         # between languages); self.lang is the language heard last, for translation and the UI
         self.speech_lang = lang if lang and lang != "auto" else None
         self.lang = self.speech_lang
+        settings = get_all_settings()
+        self.caption_choice = settings.get("live_whisper_model") or "auto"
+        self.onnx_model = caption_onnx_model(settings, self.speech_lang)
+        self.draft = False  # the page shows the draft line: translate it too
+        self.translate_model: Optional[str] = None  # chosen by hand in the studio
         self.translate_to = translate_to or None
+        self.pair = list(pair or ["ru", "en"])[:2]  # the two languages of translate_to="auto"
         self.audio = np.zeros(0, dtype=np.float32)
         self.offset = 0.0           # recording time (s) of self.audio[0]
         self.received = 0.0         # seconds of audio received in total
@@ -165,7 +172,7 @@ class LiveSession:
             from app.live_translate import LiveTranslator
 
             # Starts loading the translation model now, while the first phrase is being spoken
-            self.translator = LiveTranslator(lambda: self.lang, translate_to, speed)
+            self.translator = LiveTranslator(lambda: self.lang, translate_to, speed, self.pair)
         self._next_id = 1
 
     # -------------------------------------------------------------- audio in
@@ -185,6 +192,9 @@ class LiveSession:
         self.audio = np.concatenate([self.audio, chunk])
         self.received += chunk.size / SR
         self.touched = time.time()
+        from app import idle_unload
+
+        idle_unload.touch()
 
     # -------------------------------------------------------------- decoding
     def step(self) -> None:
@@ -205,7 +215,19 @@ class LiveSession:
         win_sec = window.size / SR
         if win_sec < 0.8:
             return
-        segs, language, prob = _caption_worker().transcribe(window, self.speech_lang)
+        onnx_id = self.onnx_model
+        if onnx_id:
+            from app import asr_onnx
+
+            segs = [_Seg(a, b, t) for a, b, t in asr_onnx.recognize_array(onnx_id, window)]
+            language = asr_onnx.guess_language(" ".join(x.text for x in segs)) if segs else None
+            prob = 1.0 if segs and not self.speech_lang else 0.0
+        else:
+            segs, language, prob = _caption_worker().transcribe(window, self.speech_lang)
+        # One caption line per sentence (a phrase without pauses can hold several)
+        from app.asr_onnx import _SENT_END, split_sentences_text
+
+        segs = [_Seg(a, b, t) for x in segs for a, b, t in split_sentences_text(x.start, x.end, x.text.strip())]
         if self.speech_lang:
             self.lang = self.speech_lang
         elif language and prob > 0.5:
@@ -214,8 +236,12 @@ class LiveSession:
         force = win_sec > LIVE_WINDOW_SEC
         final_until = 0.0
         new_lines = []
-        for s in segs:
-            if s.end <= win_sec - FINAL_MARGIN_SEC or (force and s.end <= win_sec - 0.3):
+        for i, s in enumerate(segs):
+            # With GigaAM / Parakeet a sentence the speaker has moved on from is final at once (its
+            # end is exact, from the word timings): the draft line then holds only the sentence
+            # still being spoken and never splits in two on the screen
+            moved_on = bool(onnx_id) and i + 1 < len(segs) and s.text.strip().endswith(_SENT_END)
+            if moved_on or s.end <= win_sec - FINAL_MARGIN_SEC or (force and s.end <= win_sec - 0.3):
                 new_lines.append({
                     "id": self._next_id, "text": s.text.strip(), "lang": self.lang,
                     "start": round(self.offset + s.start, 2), "end": round(self.offset + s.end, 2),
@@ -240,9 +266,16 @@ class LiveSession:
         if self.translator:
             if new_lines:
                 self.translator.add_lines(new_lines)
-            self.translator.set_draft(self.partial)
+                # The draft translation belonged to the phrase that is final now: the next draft
+                # must not be shown with it (the page keeps it on the final line until its own
+                # translation arrives)
+                self.translator.reset_draft()
+            # The draft (revised several times while spoken) is translated only when the page shows
+            # it; otherwise the model is left free for the final lines
+            self.translator.set_draft(self.partial if self.draft else "")
 
-    def configure(self, translate_to: Optional[str], speed: Optional[str], speech_lang: Optional[str] = None) -> None:
+    def configure(self, translate_to: Optional[str], speed: Optional[str], speech_lang: Optional[str] = None,
+                  pair: Optional[List[str]] = None) -> None:
         """Changes the translation (and the speech language) while recording; the last lines are
         translated again."""
         from app.live_translate import LiveTranslator
@@ -251,19 +284,22 @@ class LiveSession:
             self.speech_lang = None if speech_lang in ("", "auto") else speech_lang
             if self.speech_lang:
                 self.lang = self.speech_lang
+            self.onnx_model = caption_onnx_model(get_all_settings(), self.speech_lang)
         if not translate_to:
             if self.translator:
                 self.translator.stop()
             self.translator, self.translate_to = None, None
             return
-        changed = translate_to != self.translate_to
+        new_pair = list(pair)[:2] if pair else self.pair
+        changed = translate_to != self.translate_to or (translate_to == "auto" and new_pair != self.pair)
         self.translate_to = translate_to
+        self.pair = new_pair
         if self.translator is None:
-            self.translator = LiveTranslator(lambda: self.lang, translate_to, speed or "quality")
+            self.translator = LiveTranslator(lambda: self.lang, translate_to, speed or "quality", self.pair)
+            self.translator.set_model(self.translate_model)
             self.translator.add_lines([ln for ln in self.lines[-20:]])
         else:
-            self.translator.configure(translate_to, speed, retranslate=self.lines[-20:] if changed else None)
-        self.translator.set_draft(self.partial)
+            self.translator.configure(translate_to, speed, retranslate=self.lines[-20:] if changed else None, pair=self.pair)
 
     # -------------------------------------------------------------- out
     def state(self, since_id: int = 0) -> Dict[str, Any]:
@@ -271,24 +307,125 @@ class LiveSession:
             "session": self.id,
             "lang": self.lang,
             "speech_lang": self.speech_lang or "auto",
-            "lines": [ln for ln in self.lines if ln["id"] > since_id or ln["translation"] is None],
-            "translations": {ln["id"]: ln["translation"] for ln in self.lines if ln["translation"]},
+            # New lines, and recent ones still waiting for a translation (not the whole meeting:
+            # this answer goes out about once a second)
+            "lines": [ln for ln in self.lines[-200:] if ln["id"] > since_id or (self.translator and ln["translation"] is None)],
+            "translations": {ln["id"]: ln["translation"] for ln in self.lines[-60:] if ln["translation"]},
+            # The language each line went into (differs per line with translate_to="auto")
+            "targets": {ln["id"]: ln.get("target") for ln in self.lines if ln.get("target")},
+            "partial_target": self.translator.draft_target if self.translator else "",
             "partial": self.partial,
             "partial_translation": self.translator.draft_translation if self.translator else "",
             "translation_ready": bool(self.translator and self.translator.ready),
             "error": self.error or (self.translator.error if self.translator else ""),
+            "caption_model": self.caption_label(),
+            "caption_choice": self.caption_choice,
+            "translate_choice": self.translate_model or "",
+            "translate_model": self.translate_label(),
         }
+
+    def set_caption_model(self, value: str) -> None:
+        """The caption model chosen in the studio ("auto", GigaAM / Parakeet or a Whisper model); it is
+        the same setting as in Settings, so the next recording keeps it."""
+        from app.database import update_settings
+
+        update_settings({"live_whisper_model": value or "auto"})
+        self.caption_choice = value or "auto"
+        settings = get_all_settings()
+        self.onnx_model = caption_onnx_model(settings, self.speech_lang)
+        if self.onnx_model:
+            from app import asr_onnx
+
+            threading.Thread(target=asr_onnx.preload, args=(self.onnx_model,), daemon=True).start()
+        elif _worker is not None and _worker.proc is not None:
+            from app.hardware import get_hardware_info
+
+            if _worker.model_name != caption_model(settings, get_hardware_info()):
+                with _worker.lock:
+                    _worker._kill()  # started again with the new model on the next window
+
+    def set_translate_model(self, model: Optional[str]) -> None:
+        self.translate_model = model or None
+        if self.translator:
+            self.translator.set_model(self.translate_model)
+
+    def caption_label(self) -> str:
+        """The model writing the captions now, for the studio."""
+        if self.onnx_model:
+            from app.asr_onnx import ONNX_MODELS
+
+            return ONNX_MODELS[self.onnx_model]["name"]
+        from app.model_manager import format_whisper_model_name
+
+        name = _worker.model_name if _worker is not None and _worker.proc is not None else ""
+        return format_whisper_model_name(name) if name else "Whisper"
+
+    def translate_label(self) -> str:
+        model = getattr(self.translator, "_model", None) if self.translator else None
+        if not model:
+            return ""
+        from app.ollama_client import format_llm_model_name
+
+        return format_llm_model_name(model)
 
 
 def start_session(lang: Optional[str], translate_to: Optional[str], capture_id: Optional[str] = None,
-                  speed: str = "quality") -> LiveSession:
+                  speed: str = "quality", pair: Optional[List[str]] = None) -> LiveSession:
     _drop_idle()
-    s = LiveSession(lang, translate_to, capture_id, speed)
+    s = LiveSession(lang, translate_to, capture_id, speed, pair)
     with _sessions_lock:
         _sessions[s.id] = s
-    # Start the caption worker now, so the first captions do not wait for the model to load
-    threading.Thread(target=_caption_worker().preload, daemon=True).start()
+    # Load the caption model now, so the first captions do not wait for it
+    if s.onnx_model:
+        from app import asr_onnx
+
+        threading.Thread(target=asr_onnx.preload, args=(s.onnx_model,), daemon=True).start()
+    else:
+        threading.Thread(target=_caption_worker().preload, daemon=True).start()
     return s
+
+
+def active_session_count() -> int:
+    """Caption sessions that received audio recently (a closed window's session drops out)."""
+    _drop_idle()
+    with _sessions_lock:
+        return len(_sessions)
+
+
+def caption_onnx_model(settings: Dict[str, str], speech_lang: Optional[str]) -> Optional[str]:
+    """GigaAM / Parakeet for live captions, or None for Whisper. They run in this process on the CPU
+    (ONNX Runtime does not abort the process like CUDA can), so they leave the GPU to the queue.
+    "auto": GigaAM for Russian, Parakeet for its other languages and for "auto" speech (it is
+    multilingual), Whisper when neither fits or is downloaded."""
+    from app import asr_onnx
+
+    chosen = (settings.get("live_whisper_model") or "auto").strip()
+    lang = (speech_lang or "")[:2] or None
+    if asr_onnx.is_onnx_model(chosen):
+        return chosen if asr_onnx.is_installed(chosen) and asr_onnx.supports_language(chosen, lang) else None
+    if chosen != "auto":
+        return None
+    order = ["gigaam-v3", "parakeet-v3"] if lang == "ru" else ["parakeet-v3"]
+    return next((m for m in order if asr_onnx.is_installed(m) and asr_onnx.supports_language(m, lang)), None)
+
+
+def caption_model(settings: Dict[str, str], hw: Dict[str, Any]) -> str:
+    """The Whisper model for live captions. "auto": Turbo if downloaded (lighter and faster than Pro;
+    the saved file is transcribed again by the main model anyway), otherwise the main model."""
+    from app.model_manager import is_whisper_model_installed
+
+    main = settings.get("whisper_model") or "large-v3-turbo"
+    from app.asr_onnx import is_onnx_model
+
+    if is_onnx_model(main):
+        # Captions stay on Whisper (they are decoded in short windows by app/live_worker.py)
+        main = next((m for m in ("large-v3-turbo", "large-v3") if is_whisper_model_installed(m)), "large-v3-turbo")
+    chosen = (settings.get("live_whisper_model") or "auto").strip()
+    if is_onnx_model(chosen):
+        chosen = "auto"  # the Whisper fallback when GigaAM / Parakeet does not fit the language
+    if chosen != "auto":
+        return chosen if is_whisper_model_installed(chosen) else main
+    return "large-v3-turbo" if is_whisper_model_installed("large-v3-turbo") else main
 
 
 def get_session(session_id: str) -> Optional[LiveSession]:
@@ -304,7 +441,17 @@ def stop_session(session_id: str) -> None:
 
 
 def _drop_idle() -> None:
+    """Sessions whose page stopped sending audio (closed, reloaded, crashed) end, with their
+    translator thread."""
     now = time.time()
     with _sessions_lock:
-        for sid in [k for k, s in _sessions.items() if now - s.touched > SESSION_IDLE_SEC]:
-            _sessions.pop(sid, None)
+        dropped = [_sessions.pop(k) for k, s in list(_sessions.items()) if now - s.touched > SESSION_IDLE_SEC]
+    for s in dropped:
+        if s.translator:
+            s.translator.stop()
+
+
+def has_sessions() -> bool:
+    _drop_idle()
+    with _sessions_lock:
+        return bool(_sessions)

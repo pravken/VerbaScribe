@@ -1,4 +1,5 @@
 import json
+import re
 import os
 import shutil
 import subprocess
@@ -15,14 +16,44 @@ from app.database import get_all_settings, update_settings
 
 RECOMMENDED_LLM_MODELS: List[Dict[str, Any]] = [
     {
+        "id": "qwen3.5:4b",
+        "name": "Qwen3.5 4B",
+        "badge": "3.4 GB · Apache",
+        "size": "3.4 GB",
+        "vram": "4–6 GB / CPU",
+        "license": "Apache",
+        "desc_ru": "Рекомендуется: в сравнении на реальных записях не хуже моделей вдвое больше, а памяти нужно меньше всех; подходит и для ноутбуков",
+        "desc_en": "Recommended: on real recordings as good as models twice its size, with the least memory; fine for laptops too",
+    },
+    {
+        "id": "qwen3:8b",
+        "name": "Qwen3 8B",
+        "badge": "5.2 GB · Apache",
+        "size": "5.2 GB",
+        "vram": "10+ GB VRAM",
+        "license": "Apache",
+        "desc_ru": "Новое поколение Qwen: лучше русский, длинные тексты и точность, та же свободная лицензия",
+        "desc_en": "The new Qwen generation: better Russian, long texts and accuracy, same free license",
+    },
+    {
+        "id": "qwen3:14b",
+        "name": "Qwen3 14B",
+        "badge": "9.3 GB · Apache",
+        "size": "9.3 GB",
+        "vram": "12–24 GB VRAM",
+        "license": "Apache",
+        "desc_ru": "Самый глубокий анализ для видеокарт с 12 ГБ и больше",
+        "desc_en": "The deepest analysis for GPUs with 12 GB or more",
+    },
+    {
         "id": "qwen2.5:7b",
         "name": "Qwen 7B Standard",
         "badge": "4.7 GB · Apache",
         "size": "4.7 GB",
         "vram": "8+ GB VRAM",
         "license": "Apache",
-        "desc_ru": "Оптимальный выбор — отличный русский и английский, свободная коммерческая лицензия",
-        "desc_en": "Recommended — excellent RU & EN quality, free commercial license",
+        "desc_ru": "Прошлое поколение Qwen: хороший русский и английский, свободная коммерческая лицензия",
+        "desc_en": "The previous Qwen generation: good RU & EN quality, free commercial license",
     },
     {
         "id": "qwen2.5:14b",
@@ -57,6 +88,10 @@ RECOMMENDED_LLM_MODELS: List[Dict[str, Any]] = [
 ]
 
 _LLM_DISPLAY_NAMES: Dict[str, str] = {
+    "qwen3:8b": "Qwen3 8B",
+    "qwen3:14b": "Qwen3 14B",
+    "qwen3:4b": "Qwen3 4B",
+    "qwen3.5:4b": "Qwen3.5 4B",
     "qwen2.5:7b": "Qwen 7B Standard",
     "qwen2.5:14b": "Qwen 14B Pro",
     "mistral:7b": "Mistral 7B",
@@ -127,17 +162,36 @@ def find_ollama_executable() -> Optional[str]:
     return None
 
 
-def _is_ollama_port_open(host: str = "127.0.0.1", port: int = 11434) -> bool:
+def _ollama_address(base_url: Optional[str] = None) -> tuple:
+    """(host, port) of the Ollama address in Settings (default 127.0.0.1:11434)."""
+    from urllib.parse import urlparse
+
+    if not base_url:
+        base_url = get_all_settings().get("ollama_url") or "http://127.0.0.1:11434"
+    u = urlparse(base_url if "://" in base_url else "http://" + base_url)
+    host = (u.hostname or "127.0.0.1").replace("localhost", "127.0.0.1")
+    return host, u.port or (443 if u.scheme == "https" else 11434 if host == "127.0.0.1" else 80)
+
+
+def _is_ollama_port_open(host: Optional[str] = None, port: Optional[int] = None) -> bool:
     import socket
 
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.settimeout(0.15)
-        return s.connect_ex((host, port)) == 0
+    if host is None or port is None:
+        h, p = _ollama_address()
+        host, port = host or h, port or p
+    try:
+        with socket.create_connection((host, port), timeout=0.15 if host == "127.0.0.1" else 0.8):
+            return True
+    except OSError:
+        return False
 
 
 def ensure_ollama_running(base_url: str = "http://127.0.0.1:11434", auto_start: bool = True) -> bool:
-    if _is_ollama_port_open():
+    host, port = _ollama_address(base_url)
+    if _is_ollama_port_open(host, port):
         return True
+    if host != "127.0.0.1":
+        return False  # Ollama on another computer is not started from here
 
     if not auto_start:
         return False
@@ -151,13 +205,30 @@ def ensure_ollama_running(base_url: str = "http://127.0.0.1:11434", auto_start: 
                 stderr=subprocess.DEVNULL,
                 creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0,
             )
-            for _ in range(8):
+            for _ in range(80):  # a cold start (first run, slow disk) can take many seconds
                 time.sleep(0.25)
-                if _is_ollama_port_open():
+                if _is_ollama_port_open(host, port):
                     return True
         except Exception:
             pass
     return False
+
+
+def ollama_models_dir() -> str:
+    """Where Ollama keeps its models (OLLAMA_MODELS, or .ollama\\models in the user's folder)."""
+    custom = os.environ.get("OLLAMA_MODELS", "").strip()
+    return custom or str(Path.home() / ".ollama" / "models")
+
+
+def delete_ollama_model(name: str) -> None:
+    base = (get_all_settings().get("ollama_url") or "http://127.0.0.1:11434").replace("localhost", "127.0.0.1").rstrip("/")
+    if not _is_ollama_port_open(*_ollama_address(base)):
+        raise RuntimeError("Ollama не запущена — запустите её, чтобы удалить модель")
+    with httpx.Client(timeout=30.0) as client:
+        r = client.request("DELETE", f"{base}/api/delete", json={"model": name})
+    if r.status_code == 404:
+        raise RuntimeError("Модель не найдена в Ollama")
+    r.raise_for_status()
 
 
 def get_ollama_status(base_url: Optional[str] = None) -> Dict[str, Any]:
@@ -170,7 +241,7 @@ def get_ollama_status(base_url: Optional[str] = None) -> Dict[str, Any]:
     exe = find_ollama_executable()
     # Status polling never starts background processes: Ollama is only launched after an
     # explicit user action (model download or AI summary request).
-    running = _is_ollama_port_open()
+    running = _is_ollama_port_open(*_ollama_address(base_url))
     models: List[str] = []
     if running:
         try:
@@ -211,6 +282,7 @@ def get_ollama_status(base_url: Optional[str] = None) -> Dict[str, Any]:
     return {
         "installed": exe is not None or running,
         "running": running,
+        "models_dir": ollama_models_dir(),
         "base_url": base_url,
         "active_model": active_model,
         "models": models,
@@ -383,6 +455,45 @@ def start_model_pull(
     return dict(_pull_state)
 
 
+# A long segment (one speaker talking for a minute) gets a time stamp for every phrase inside it,
+# so the analysis can point to the moment, not only to where the speaker started
+LINE_SPLIT_SEC = 6.0
+LINE_MAX_SEC = 15.0
+_SENTENCE_END = (".", "!", "?", "…", ";")
+
+
+def _segment_parts(seg: Dict[str, Any]) -> List[tuple]:
+    """(start, text) pieces of a segment: at sentence ends after LINE_SPLIT_SEC, at the latest after
+    LINE_MAX_SEC. Segments without word timings or short ones stay whole."""
+    words = [w for w in seg.get("words") or [] if str(w.get("word") or "").strip()]
+    start = float(seg.get("start", 0.0) or 0.0)
+    end = float(seg.get("end", start) or start)
+    text = (seg.get("text") or "").strip()
+    if not words or end - start <= LINE_SPLIT_SEC:
+        return [(start, text)]
+    parts, cur, cur_start = [], [], None
+    for w in words:
+        if cur_start is None:
+            cur_start = float(w.get("start", start) or start)
+        cur.append(str(w.get("word")))
+        span = float(w.get("end", cur_start) or cur_start) - cur_start
+        word = str(w.get("word")).strip()
+        if (span >= LINE_SPLIT_SEC and word.endswith(_SENTENCE_END)) or span >= LINE_MAX_SEC:
+            parts.append((cur_start, "".join(cur).strip()))
+            cur, cur_start = [], None
+    if cur:
+        parts.append((cur_start if cur_start is not None else start, "".join(cur).strip()))
+    # Word timings follow the original recognition: after an edit the words may no longer match
+    joined = " ".join(p[1] for p in parts)
+    if _normalize(joined) != _normalize(text):
+        return [(start, text)]
+    return parts
+
+
+def _normalize(text: str) -> str:
+    return re.sub(r"\W+", "", (text or "").casefold())
+
+
 def build_transcript_lines(
     segments: List[Dict[str, Any]],
     speakers: Dict[str, Dict[str, Any]],
@@ -391,8 +502,10 @@ def build_transcript_lines(
     for seg in segments:
         spk_id = seg.get("speaker", "SPEAKER_00")
         spk_name = speakers.get(spk_id, {}).get("name", spk_id)
-        ts = format_timestamp(seg.get("start", 0.0))
-        lines.append(f"[{ts}] {spk_name}: {seg.get('text', '').strip()}")
+        for i, (start, text) in enumerate(_segment_parts(seg)):
+            ts = format_timestamp(start)
+            # The speaker is named once per segment; its continuation lines only carry the time
+            lines.append(f"[{ts}] {spk_name}: {text}" if i == 0 else f"[{ts}] {text}")
     return lines
 
 
@@ -446,7 +559,9 @@ SYSTEM_GROUNDING_PROMPT = (
     "2. Не выдумывай имена людей, встречи, проекты, решения или задачи, которых нет в исходном тексте.\n"
     "3. Запись может быть любого жанра: интервью, монолог, обзор, лекция, подкаст, бытовой разговор, видеоролик или беседа. "
     "Описывай ровно то, о чём реально говорят спикеры.\n"
-    "4. Не повторяй одну и ту же фразу несколько раз. Пиши грамотно {lang} в формате Markdown без эмодзи."
+    "4. Не повторяй одну и ту же фразу несколько раз. Пиши грамотно {lang} в формате Markdown без эмодзи.\n"
+    "5. Не оформляй цитаты и ответы блоками кода (```): цитируй обычным текстом или через «>». "
+    "Таймкоды пиши в квадратных скобках: [ММ:СС] или диапазоном [ММ:СС–ММ:СС]."
 )
 
 SUMMARY_TEMPLATES: Dict[str, str] = {
@@ -473,6 +588,21 @@ SUMMARY_TEMPLATES: Dict[str, str] = {
         "- **О чём запись**: 1–2 предложения.\n"
         "- **Ключевые моменты**: 2–5 коротких пунктов с таймкодами `[ММ:СС]` о том, что именно было сказано."
     ),
+    # The user's own notes from the meeting, each one expanded from the transcript (Granola-style)
+    "notes": (
+        "Ниже есть заметки, которые пользователь сам делал во время встречи. Разверни их {lang} в итоговый "
+        "конспект в формате Markdown (без эмодзи): сохрани порядок и формулировки пользователя как заголовки "
+        "или пункты, а под каждым кратко допиши по расшифровке, что именно было сказано, кем, с таймкодами `[ММ:СС]`. "
+        "Если заметка не находит подтверждения в расшифровке, оставь её как есть и пометь «(в записи не найдено)». "
+        "В конце добавь «## Что ещё обсуждали» — важное из записи, чего нет в заметках."
+    ),
+    # A follow-up email to the participants (opened in the mail app by the page)
+    "followup": (
+        "Напиши {lang} короткое деловое письмо участникам по итогам этой встречи, от лица пользователя. "
+        "Структура: одна строка «Тема: …», пустая строка, приветствие, 1–2 предложения о встрече, «Договорились:» — "
+        "решения списком, «Задачи:» — кто, что и к какому сроку, следующий шаг или дата следующей встречи, если прозвучала. "
+        "Обычный текст без Markdown-заголовков, таймкодов и эмодзи, не длиннее 200 слов. Только то, что было сказано."
+    ),
     # Parsed by the app into a clickable table of contents: keep the line format strict
     "chapters": (
         "Раздели запись на смысловые главы по порядку: от 3 до 12 глав, по одной на каждую смену темы. "
@@ -485,28 +615,35 @@ SUMMARY_TEMPLATES: Dict[str, str] = {
 
 
 def _ollama_chat(base_url: str, model: str, system: str, user: str) -> str:
+    from app import idle_unload
+
+    idle_unload.touch(model)
+    payload: Dict[str, Any] = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "stream": False,
+        "options": {
+            "temperature": 0.1,
+            "top_p": 0.85,
+            "repeat_penalty": 1.15,
+            "num_ctx": LLM_NUM_CTX,
+        },
+    }
+    keep_alive = idle_unload.ollama_keep_alive()
+    if keep_alive:
+        payload["keep_alive"] = keep_alive  # Ollama frees the model after the same idle time
+    from app.llm_text import strip_think, thinking_off
+
+    payload.update(thinking_off(model))
     with httpx.Client(timeout=600.0) as client:
-        resp = client.post(
-            f"{base_url}/api/chat",
-            json={
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-                "stream": False,
-                "options": {
-                    "temperature": 0.1,
-                    "top_p": 0.85,
-                    "repeat_penalty": 1.15,
-                    "num_ctx": LLM_NUM_CTX,
-                },
-            },
-        )
+        resp = client.post(f"{base_url}/api/chat", json=payload)
         resp.raise_for_status()
         data = resp.json()
         msg = data.get("message") or {}
-        return str(msg.get("content") or data.get("response") or "").strip()
+        return strip_think(str(msg.get("content") or data.get("response") or ""))
 
 
 def generate_meeting_summary(
@@ -517,30 +654,16 @@ def generate_meeting_summary(
     model_name: Optional[str] = None,
     base_url: Optional[str] = None,
     answer_lang: Optional[str] = "ru",
+    local_only: bool = False,
+    user_notes: str = "",
+    template_prompt: str = "",
 ) -> str:
-    settings = get_all_settings()
-    base_url = (base_url or settings.get("ollama_url") or "http://127.0.0.1:11434").replace("localhost", "127.0.0.1").rstrip("/")
-    model_name = model_name or settings.get("ollama_model") or "qwen2.5:7b"
+    """template_prompt: the instruction of a template the user made (Settings → Analysis);
+    user_notes: what the user wrote during the meeting, taken into account by every summary."""
+    from app.llm import target
 
-    # Generating a summary is an explicit user action, so starting an installed Ollama is fine here
-    ensure_ollama_running(base_url)
-    status = get_ollama_status(base_url)
-    if not status["running"]:
-        raise RuntimeError(
-            "Локальный сервер Ollama не установлен или не запущен. Откройте «Настройки», выберите модель LLM и нажмите «Скачать»."
-        )
-
-    available_models = status["models"]
-    if not available_models:
-        raise RuntimeError(
-            f"В Ollama пока не скачана ни одна модель. Откройте «Настройки» и нажмите кнопку «Скачать» напротив {model_name}."
-        )
-
-    selected_model = model_name
-    if selected_model not in available_models:
-        matches = [m for m in available_models if m.startswith(selected_model.split(":")[0])]
-        selected_model = matches[0] if matches else available_models[0]
-
+    # Ollama, or the cloud model chosen in Settings → Analysis ("cloud" asks for it explicitly)
+    llm = target(model_name, local_only=local_only)
     lines = build_transcript_lines(segments, speakers)
     transcript_text = "\n".join(lines)
     if not transcript_text.strip():
@@ -556,13 +679,27 @@ def generate_meeting_summary(
             f"где это уместно. Отвечай {lang} в формате Markdown без эмодзи.\n\n"
             f"Вопрос / задание пользователя: {custom_prompt.strip()}"
         )
+    elif template_prompt.strip():
+        instruction = (
+            f"{template_prompt.strip()}\n\nОтвечай {lang} в формате Markdown без эмодзи, строго по расшифровке, "
+            "с таймкодами `[ММ:СС]` там, где это уместно."
+        )
     else:
         instruction = SUMMARY_TEMPLATES.get(template_key, SUMMARY_TEMPLATES["protocol"]).format(lang=lang)
+    notes = (user_notes or "").strip()[:6000]
+    if notes:
+        instruction += (
+            "\n\nЗаметки, которые пользователь сделал во время встречи (что для него главное), — учти их в первую "
+            f"очередь и не теряй ни одной:\n```text\n{notes}\n```"
+        )
+    elif template_key == "notes" and not custom_prompt.strip():
+        raise RuntimeError("У записи нет ваших заметок: напишите их во вкладке «Мои заметки» или во время записи в студии")
 
     source_label = "Вот точная расшифровка аудио/видеозаписи"
-    if len(transcript_text) > SINGLE_PASS_MAX_CHARS:
+    single_pass_max = SINGLE_PASS_MAX_CHARS if not llm.is_cloud else llm.max_chars
+    if len(transcript_text) > single_pass_max:
         # Map step: condense each part of a long recording into detailed timestamped notes
-        chunks = _chunk_lines(lines, CHUNK_MAX_CHARS)
+        chunks = _chunk_lines(lines, CHUNK_MAX_CHARS if not llm.is_cloud else llm.max_chars // 2)
         focus = (
             f"Особенно подробно выпиши всё, что относится к вопросу: {custom_prompt.strip()}\n"
             if custom_prompt.strip()
@@ -571,9 +708,7 @@ def generate_meeting_summary(
         notes: List[str] = []
         for idx, chunk in enumerate(chunks, start=1):
             notes.append(
-                _ollama_chat(
-                    base_url,
-                    selected_model,
+                llm.chat(
                     system_prompt,
                     f"Это фрагмент {idx} из {len(chunks)} расшифровки длинной записи:\n```text\n{chunk}\n```\n\n"
                     f"Составь {lang} подробный конспект этого фрагмента списком: кто что сказал, факты, мнения, "
@@ -594,4 +729,68 @@ def generate_meeting_summary(
         "Напоминание: пиши ТОЛЬКО о том, что реально сказано в записи. "
         "Не выдумывай посторонних людей, встреч или проектов."
     )
-    return _ollama_chat(base_url, selected_model, system_prompt, user_message)
+    return llm.chat(system_prompt, user_message)
+
+
+# --- A title for a recording, from its content ---
+_GENERIC_TITLE_WORDS = {
+    "запись", "записи", "аудио", "видео", "звук", "встреча", "созвон", "голосовая", "заметка", "компьютера",
+    "новая", "новый", "без", "названия", "микрофон", "экран",
+    "recording", "record", "rec", "audio", "video", "vid", "voice", "note", "memo", "meeting", "call", "zoom",
+    "teams", "screen", "screencast", "capture", "computer", "new", "untitled", "track", "mic", "system",
+    "img", "mov", "dsc", "gmt", "file", "clip", "output", "export", "final", "copy", "копия",
+}
+
+
+def is_generic_title(title: str) -> bool:
+    """True for titles that say nothing about the content: 'Запись 14-05', 'zoom_0', 'VID_20240512_1302',
+    'Recording (3)'. Such titles may be replaced by one made from the transcript."""
+    words = re.findall(r"[^\W\d_]+", (title or "").casefold())
+    return all(w in _GENERIC_TITLE_WORDS or len(w) <= 1 for w in words)
+
+
+def generate_meeting_title(
+    segments: List[Dict[str, Any]],
+    speakers: Dict[str, Dict[str, Any]],
+    answer_lang: Optional[str] = "ru",
+    model_name: Optional[str] = None,
+    local_only: bool = False,
+) -> str:
+    """A short title (3-8 words) for the recording from the beginning of its transcript."""
+    from app.llm import target
+
+    llm = target(model_name, start_ollama=False, local_only=local_only)
+    text = "\n".join(build_transcript_lines(segments, speakers))[:7000]
+    if not text.strip():
+        raise RuntimeError("Транскрипт пуст")
+    lang = _lang_phrase(answer_lang)
+    system = (
+        "Ты придумываешь короткие точные названия для расшифровок встреч, звонков и записей. "
+        f"Отвечай {lang}. Выведи только название: 3–8 слов, без кавычек, без точки в конце, без даты, "
+        "без слов «Встреча», «Запись», «Обсуждение» в начале, если можно обойтись без них."
+    )
+    raw = llm.chat(system, f"Расшифровка:\n{text}\n\nНазвание:")
+    title = clean_title(raw, answer_lang)
+    if len(title) < 3:
+        raise RuntimeError("Модель не дала названия")
+    return title
+
+
+# Chinese, Japanese and Korean characters: Qwen sometimes slips a Chinese word into an answer in
+# another language, and the title becomes the file name
+_CJK_RE = re.compile(r"[\u2e80-\u2fff\u3000-\u30ff\u3100-\u31ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]+")
+
+
+def clean_title(raw: str, answer_lang: Optional[str] = None) -> str:
+    from app.llm_text import strip_think
+
+    raw = strip_think(raw or "")
+    if (answer_lang or "")[:2] not in ("zh", "ja", "ko"):
+        raw = _CJK_RE.sub(" ", raw)
+    line = next((" ".join(ln.split()) for ln in raw.splitlines() if ln.strip()), "")
+    line = re.sub(r"^(название|title)\s*[:：-]\s*", "", line, flags=re.IGNORECASE)
+    prev = None
+    while line != prev:  # «Title». or "Title." in any order
+        prev = line
+        line = re.sub(r"[.。]+$", "", line.strip().strip("\"'«»“”`*#")).strip()
+    return line[:120]

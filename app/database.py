@@ -1,7 +1,9 @@
 import json
 import re
+import os
 import sqlite3
 import threading
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -28,6 +30,12 @@ def get_connection() -> sqlite3.Connection:
 
 
 def init_db() -> None:
+    try:
+        from app import backup
+
+        backup.apply_pending()  # a backup restored in Settings takes the place of this database
+    except Exception as e:
+        print(f"[backup] restore failed: {e}", flush=True)
     hw = get_hardware_info()
     with _db_lock:
         conn = get_connection()
@@ -69,6 +77,28 @@ def init_db() -> None:
             cur.execute("ALTER TABLE meetings ADD COLUMN dubs_json TEXT DEFAULT '[]'")
         if "translations_json" not in existing_cols:
             cur.execute("ALTER TABLE meetings ADD COLUMN translations_json TEXT DEFAULT '{}'")
+        # Library folders, where a recording came from and who owns its file (see _MEETING_EXTRA_COLUMNS)
+        for col, ddl in _MEETING_EXTRA_COLUMNS.items():
+            if col not in existing_cols:
+                cur.execute(f"ALTER TABLE meetings ADD COLUMN {col} {ddl}")
+
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS folders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                parent_id INTEGER DEFAULT NULL,
+                system_key TEXT DEFAULT NULL,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        folder_cols = {r["name"] for r in cur.execute("PRAGMA table_info(folders)").fetchall()}
+        if "local_only" not in folder_cols:
+            cur.execute("ALTER TABLE folders ADD COLUMN local_only INTEGER DEFAULT 0")
+        _ensure_system_folders(cur)
+        if "folder_id" not in existing_cols:
+            _sort_existing_meetings(cur)
 
         cur.execute(
             """
@@ -108,8 +138,45 @@ def init_db() -> None:
             "record_mic_device": "",
             "batched_inference": "true",  # faster-whisper BatchedInferencePipeline on GPU
             "keep_model_loaded": "true",  # reuse Whisper between queued recordings if VRAM allows
+            "onnx_gpu": "true",  # GigaAM / Parakeet jobs on the NVIDIA GPU, its ONNX Runtime fetched once (app/onnx_gpu.py)
+            "onnx_gpu_batch": "32",  # phrases per batch on the GPU (app/asr_onnx.gpu_tuning)
+            "onnx_gpu_vad": "false",  # the VAD on the GPU too
             "voice_profiles": "true",  # name known voices automatically (app/voice_profiles.py)
             "update_check": "true",  # look for a new release on GitHub at start (app/updater.py)
+            "idle_unload_minutes": "10",  # free models from memory after this long unused; 0 = never
+            "recordings_dir": "",  # where recordings made in the app are saved; "" = <data>/recordings
+            "live_whisper_model": "auto",
+            "record_hotkey": "Ctrl+Alt+R",
+            "dictation_hotkey": "Ctrl+Alt+D",  # dictation into any program (app/dictation.py); empty: off
+            "dictation_language": "auto",
+            "quiet_mode": "false",  # no tray notifications (run.py TrayController)
+            "call_auto_record": "false",  # record calls by themselves (app/call_watch.py)
+            "call_apps": "zoom,teams,telegram",
+            "call_preset": "call",  # system-wide start/stop of a recording (app/tray.py); "" = off
+            "semantic_search": "false",  # search by meaning with a local embedding model (app/semantic.py)
+            "semantic_model": "bge-m3",  # captions while recording (app/live.py caption_model)
+            "auto_title": "true",  # name recordings by their content (LLM) when the title is generic
+            "obsidian_auto": "false",  # save a note to the Obsidian vault after processing
+            "obsidian_vault": "",
+            "obsidian_subfolder": "VerbaScribe",
+            "obsidian_filename": "{date} {title}",
+            "file_name_template": "{date} {title}",  # recordings and exports (app/naming.py)
+            "date_folders": "off",  # off | day | month | year_month: folders by date (app/naming.py)
+            "summary_templates": "[]",  # the user's own summary templates, JSON (summary_templates())
+            "summary_grounding": "true",  # summaries checked against the transcript (app/grounding.py)
+            "auto_commitments": "true",  # promises found after the automatic summary (app/commitments.py)
+            "delete_media_after": "false",  # the sound deleted once a recording is transcribed (privacy)
+            "media_retention_days": "0",  # the sound of older recordings deleted; 0: kept
+            "update_auto": "true",  # download updates by themselves, install on exit (app/updater.py)
+            "calendar_ics": "",  # an .ics file or link: titles and participants of recordings (app/calendar_ics.py)
+            "obsidian_summary": "true",
+            "obsidian_tasks": "true",
+            "obsidian_chapters": "true",
+            "obsidian_transcript": "true",
+            "obsidian_generate": "true",  # make the overview and tasks for the note if they are missing
+            "llm_provider": "ollama",  # analysis: "ollama" (local) or "cloud" (app/llm.py)
+            "llm_cloud_provider": "openai",
+            "llm_cloud_consent": "false",  # the user agreed that transcripts are sent to the cloud service
         }
 
         for k, v in default_settings.items():
@@ -119,6 +186,25 @@ def init_db() -> None:
         if not cur.execute("SELECT 1 FROM settings WHERE key = 'record_default_v2'").fetchone():
             cur.execute("UPDATE settings SET value = 'both' WHERE key = 'record_source_mode' AND value = 'mic'")
             cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('record_default_v2', '1')")
+
+        # Search by meaning (app/semantic.py): transcript chunks with their embedding vectors, and
+        # which recordings are indexed with which model. A changed transcript drops its meta row.
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS semantic_chunks (
+                meeting_id INTEGER NOT NULL,
+                chunk INTEGER NOT NULL,
+                start REAL NOT NULL,
+                speaker TEXT DEFAULT '',
+                text TEXT NOT NULL,
+                vec BLOB NOT NULL,
+                PRIMARY KEY (meeting_id, chunk)
+            )
+            """
+        )
+        cur.execute(
+            "CREATE TABLE IF NOT EXISTS semantic_meta (meeting_id INTEGER PRIMARY KEY, model TEXT NOT NULL, updated_at TEXT NOT NULL)"
+        )
 
         # Full-text index of transcript segments for the global search (SQLite FTS5).
         # Only `text` is indexed; the other columns are stored to build results without JSON parsing.
@@ -147,6 +233,71 @@ def init_db() -> None:
 
 _FTS_SCHEMA_VERSION = 1
 
+# Columns added after the first release, with their SQL type and default
+_MEETING_EXTRA_COLUMNS = {
+    "folder_id": "INTEGER DEFAULT NULL",
+    "source": "TEXT DEFAULT 'import'",  # 'recording' (made in the app), 'import' (copied in), 'local' (used in place)
+    "owns_media": "INTEGER DEFAULT 0",  # 1: the media file was created by the app and is deleted with the recording
+    "recorded_at": "TEXT DEFAULT ''",  # when the meeting took place (file date for imports)
+    "title_is_default": "INTEGER DEFAULT 0",  # 1: the title came from a file name and may be replaced
+    "obsidian_path": "TEXT DEFAULT ''",
+    "obsidian_hash": "TEXT DEFAULT ''",  # sha256 of the part of the note VerbaScribe wrote last
+    "pending_exports_json": "TEXT DEFAULT '[]'",
+    "exports_json": "TEXT DEFAULT '[]'",  # files saved by exports (Save as), deleted with the recording on request
+    "user_notes": "TEXT DEFAULT ''",  # the user's own notes of the meeting (studio or "My notes" tab)
+    "media_removed": "INTEGER DEFAULT 0",  # 1: the sound was deleted for privacy, the transcript kept
+    "transcript_verified": "INTEGER DEFAULT 0",  # 1: the user checked and corrected it: a reference for app/bench.py
+    "has_video": "INTEGER DEFAULT NULL",  # NULL: told from the file extension (see is_video)
+    "local_only": "INTEGER DEFAULT 0",  # 1: never sent to a cloud model (see is_local_only)
+    "media_size": "INTEGER DEFAULT NULL",  # bytes of the media file; NULL: not measured yet
+    "series_id": "INTEGER DEFAULT NULL",  # a series of recurring meetings (app/series.py)
+}
+
+SYSTEM_FOLDERS = {"recordings": "Записи", "imports": "Импорт"}
+_VIDEO_EXTS = {".mp4", ".mkv", ".mov", ".avi", ".m4v", ".webm", ".wmv", ".flv", ".mpg", ".mpeg", ".ts", ".mts", ".3gp"}
+
+
+def _ensure_system_folders(cur: sqlite3.Cursor) -> None:
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    for key, name in SYSTEM_FOLDERS.items():
+        if not cur.execute("SELECT 1 FROM folders WHERE system_key = ?", (key,)).fetchone():
+            cur.execute("INSERT INTO folders (name, parent_id, system_key, created_at) VALUES (?, NULL, ?, ?)", (name, key, now))
+
+
+def _sort_existing_meetings(cur: sqlite3.Cursor) -> None:
+    """First start with folders: recordings made in the app go to "Recordings", everything else to
+    "Imports". Older versions did not store the origin, so it is told from the file."""
+    rec_id = cur.execute("SELECT id FROM folders WHERE system_key = 'recordings'").fetchone()[0]
+    imp_id = cur.execute("SELECT id FROM folders WHERE system_key = 'imports'").fetchone()[0]
+    uploads = str(UPLOADS_DIR.resolve()).casefold()
+    for row in cur.execute("SELECT id, media_path, filename, created_at FROM meetings").fetchall():
+        media = str(row[1] or "")
+        in_uploads = media.casefold().startswith(uploads)
+        name = Path(media).name
+        # Recordings: the app's own mix ("<8 hex>_<title>.m4a") or the page's microphone file (.webm)
+        recorded = in_uploads and (
+            (name.lower().endswith(".m4a") and re.match(r"^[0-9a-f]{8}_", name))
+            or (name.lower().endswith(".webm") and (row[2] or "").lower().endswith(".webm")
+                and re.match(r"^[0-9a-f]{8}_(запись|recording)", name, re.IGNORECASE))
+        )
+        cur.execute(
+            "UPDATE meetings SET folder_id = ?, source = ?, owns_media = ?, recorded_at = ? WHERE id = ?",
+            (rec_id if recorded else imp_id, "recording" if recorded else ("import" if in_uploads else "local"),
+             1 if in_uploads else 0, row[3] or "", row[0]),
+        )
+
+
+def is_video_path(path: str) -> bool:
+    return Path(path or "").suffix.lower() in _VIDEO_EXTS
+
+
+def is_video(row: Dict[str, Any]) -> bool:
+    """A recording with a picture. Recordings made in the app are audio unless they captured the
+    screen; for other files the extension decides (a .webm may be either, it is shown as video)."""
+    if row.get("has_video") is not None:
+        return bool(row["has_video"])
+    return row.get("source") != "recording" and is_video_path(row.get("media_path") or "")
+
 
 def _loads_list(raw: Optional[str]) -> List[Dict[str, Any]]:
     try:
@@ -159,6 +310,8 @@ def _loads_list(raw: Optional[str]) -> List[Dict[str, Any]]:
 def _reindex_segments(conn: sqlite3.Connection, meeting_id: int, segments: List[Dict[str, Any]]) -> None:
     """Replaces the search index rows of one recording. Call inside the caller's transaction."""
     conn.execute("DELETE FROM segments_fts WHERE meeting_id = ?", (meeting_id,))
+    # The meaning index of this recording is out of date: app/semantic.py indexes it again
+    conn.execute("DELETE FROM semantic_meta WHERE meeting_id = ?", (meeting_id,))
     conn.executemany(
         "INSERT INTO segments_fts (text, meeting_id, segment_id, start, speaker) VALUES (?, ?, ?, ?, ?)",
         [
@@ -248,6 +401,14 @@ def delete_dictionary_term(term_id: int) -> None:
         conn.close()
 
 
+def clear_dictionary() -> None:
+    with _db_lock:
+        conn = get_connection()
+        conn.execute("DELETE FROM dictionary")
+        conn.commit()
+        conn.close()
+
+
 def get_dictionary_hotwords() -> str:
     """Active vocabulary terms joined for faster-whisper's `hotwords` (applied to every 30s window)."""
     terms = [item["term"] for item in list_dictionary(active_only=True)]
@@ -255,6 +416,13 @@ def get_dictionary_hotwords() -> str:
 
 
 # Meetings helpers
+def _file_size(path: str) -> Optional[int]:
+    try:
+        return os.path.getsize(path) if path else None
+    except OSError:
+        return None
+
+
 def create_meeting(
     title: str,
     filename: str,
@@ -262,19 +430,33 @@ def create_meeting(
     language: str = "auto",
     model_name: str = "large-v3-turbo",
     num_speakers_hint: int = 0,
+    source: str = "import",
+    folder_id: Optional[int] = None,
+    owns_media: bool = False,
+    recorded_at: str = "",
+    title_is_default: bool = False,
+    has_video: Optional[bool] = None,
 ) -> Dict[str, Any]:
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with _db_lock:
         conn = get_connection()
         cur = conn.cursor()
+        if folder_id is None or not cur.execute("SELECT 1 FROM folders WHERE id = ?", (folder_id,)).fetchone():
+            # New recordings land in the system folder of their kind
+            key = "recordings" if source == "recording" else "imports"
+            row = cur.execute("SELECT id FROM folders WHERE system_key = ?", (key,)).fetchone()
+            folder_id = row[0] if row else None
         cur.execute(
             """
             INSERT INTO meetings (
                 title, filename, media_path, status, progress, stage_text,
-                language, model_name, num_speakers_hint, created_at
-            ) VALUES (?, ?, ?, 'queued', 0, 'В очереди на обработку...', ?, ?, ?, ?)
+                language, model_name, num_speakers_hint, created_at,
+                folder_id, source, owns_media, recorded_at, title_is_default, has_video, media_size
+            ) VALUES (?, ?, ?, 'queued', 0, 'В очереди на обработку...', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (title, filename, media_path, language, model_name, num_speakers_hint, now),
+            (title, filename, media_path, language, model_name, num_speakers_hint, now,
+             folder_id, source, 1 if owns_media else 0, recorded_at or now, 1 if title_is_default else 0,
+             None if has_video is None else int(bool(has_video)), _file_size(media_path)),
         )
         meeting_id = cur.lastrowid
         conn.commit()
@@ -346,7 +528,9 @@ def save_meeting_results(
     segments: Optional[List[Dict[str, Any]]] = None,
     summaries: Optional[Dict[str, Any]] = None,
     language: Optional[str] = None,
+    reindex: bool = True,
 ) -> None:
+    """reindex=False: a partial transcript shown while recognizing (search is indexed at the end)."""
     fields = []
     values = []
     if speakers is not None:
@@ -369,10 +553,52 @@ def save_meeting_results(
     with _db_lock:
         conn = get_connection()
         conn.execute(f"UPDATE meetings SET {', '.join(fields)} WHERE id = ?", tuple(values))
-        if segments is not None:
+        if segments is not None and reindex:
             _reindex_segments(conn, meeting_id, segments)
         conn.commit()
         conn.close()
+
+
+def summary_templates() -> List[Dict[str, Any]]:
+    """Summary templates the user made: [{id, name, prompt}] (Settings → Analysis)."""
+    try:
+        items = json.loads(get_all_settings().get("summary_templates") or "[]")
+    except ValueError:
+        return []
+    return [t for t in items if isinstance(t, dict) and t.get("id") and t.get("name") and t.get("prompt")]
+
+
+def save_summary_templates(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    import re as _re
+
+    clean = []
+    for t in items[:30]:
+        name, prompt = str(t.get("name") or "").strip()[:60], str(t.get("prompt") or "").strip()[:4000]
+        tid = _re.sub(r"[^a-z0-9_-]", "", str(t.get("id") or "").lower())[:24]
+        if name and prompt:
+            clean.append({"id": tid or uuid.uuid4().hex[:8], "name": name, "prompt": prompt})
+    update_settings({"summary_templates": json.dumps(clean, ensure_ascii=False)})
+    return clean
+
+
+def merge_summaries(meeting_id: int, updates: Dict[str, Any], remove: tuple = ()) -> Dict[str, Any]:
+    """Sets some summaries of a recording, keeping the others: two analyses running at once (each
+    takes minutes) must not overwrite each other's result. Returns all summaries."""
+    with _db_lock:
+        conn = get_connection()
+        row = conn.execute("SELECT summaries_json FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+        if row is None:
+            conn.close()
+            return {}
+        current = _loads_dict(row[0])
+        current.update(updates)
+        for k in remove:
+            current.pop(k, None)
+        conn.execute("UPDATE meetings SET summaries_json = ? WHERE id = ?",
+                     (json.dumps(current, ensure_ascii=False), meeting_id))
+        conn.commit()
+        conn.close()
+    return current
 
 
 def save_segments_backup(meeting_id: int, segments: List[Dict[str, Any]]) -> None:
@@ -381,10 +607,37 @@ def save_segments_backup(meeting_id: int, segments: List[Dict[str, Any]]) -> Non
         conn = get_connection()
         conn.execute(
             "UPDATE meetings SET segments_backup_json = ? WHERE id = ?",
-            (json.dumps(segments, ensure_ascii=False), meeting_id),
+            (json.dumps(segments, ensure_ascii=False) if segments else "", meeting_id),
         )
         conn.commit()
         conn.close()
+
+
+def filler_stats(meeting_id: int) -> Dict[str, Any]:
+    """What the last cleanup removed, compared with the copy kept before it: how many words and
+    how long they took to say. {"cleaned": False} when there is no such copy."""
+    with _db_lock:
+        conn = get_connection()
+        row = conn.execute("SELECT segments_json, segments_backup_json FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+        conn.close()
+    if not row or not row["segments_backup_json"]:
+        return {"cleaned": False, "words": 0, "seconds": 0.0}
+
+    def words(segs: List[Dict[str, Any]]) -> Dict[tuple, float]:
+        out = {}
+        for s in segs:
+            for w in s.get("words") or []:
+                key = (round(float(w.get("start") or 0), 2), str(w.get("word") or "").strip().casefold().strip(".,!?…"))
+                out[key] = max(0.0, float(w.get("end") or 0) - float(w.get("start") or 0))
+        return out
+
+    before, after = words(_loads_list(row["segments_backup_json"])), words(_loads_list(row["segments_json"]))
+    gone = [d for k, d in before.items() if k not in after]
+    if not before:  # no word timings: count words of the text
+        n_before = sum(len((s.get("text") or "").split()) for s in _loads_list(row["segments_backup_json"]))
+        n_after = sum(len((s.get("text") or "").split()) for s in _loads_list(row["segments_json"]))
+        return {"cleaned": True, "words": max(0, n_before - n_after), "seconds": 0.0}
+    return {"cleaned": True, "words": len(gone), "seconds": round(sum(gone), 1)}
 
 
 def restore_segments_backup(meeting_id: int) -> bool:
@@ -407,7 +660,9 @@ def restore_segments_backup(meeting_id: int) -> bool:
 
 
 def update_meeting_fields(meeting_id: int, **fields: Any) -> None:
-    allowed = {"title", "model_name", "language", "num_speakers_hint"}
+    allowed = {"title", "model_name", "language", "num_speakers_hint", "folder_id", "title_is_default", "obsidian_path", "obsidian_hash", "user_notes",
+               "transcript_verified",
+               "local_only", "series_id"}
     items = [(k, v) for k, v in fields.items() if k in allowed]
     if not items:
         return
@@ -472,6 +727,35 @@ def save_meeting_dub(meeting_id: int, entry: Dict[str, Any]) -> None:
                     pass
 
 
+def delete_meeting_dub(meeting_id: int, lang: str) -> bool:
+    """Removes one dub of a recording and its files (only the ones the app made, in the data folder)."""
+    with _db_lock:
+        conn = get_connection()
+        row = conn.execute("SELECT dubs_json FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+        if row is None:
+            conn.close()
+            return False
+        try:
+            dubs = json.loads(row["dubs_json"] or "[]")
+        except Exception:
+            dubs = []
+        gone = [_dub_paths_from_storage(d) for d in dubs if d.get("lang") == lang]
+        conn.execute("UPDATE meetings SET dubs_json = ? WHERE id = ?",
+                     (json.dumps([d for d in dubs if d.get("lang") != lang], ensure_ascii=False), meeting_id))
+        conn.commit()
+        conn.close()
+    for old in gone:
+        for key in _DUB_PATH_KEYS:
+            p = Path(old.get(key) or "")
+            if p.name and p.exists() and DATA_DIR in p.resolve().parents:
+                try:
+                    p.unlink()
+                except OSError:
+                    pass
+    events.publish({"type": "list"})
+    return bool(gone)
+
+
 def get_meeting_translations_raw(meeting_id: int) -> Dict[str, Any]:
     """Stored translations as saved ({lang: entry}), see app/translation.py."""
     with _db_lock:
@@ -520,49 +804,207 @@ def get_meeting(meeting_id: int) -> Optional[Dict[str, Any]]:
         return _deserialize_meeting(dict(row))
 
 
-def list_meetings() -> List[Dict[str, Any]]:
+_LIST_COLUMNS = """id, title, filename, media_path, duration, status, progress, stage_text,
+    error_message, language, model_name, num_speakers_hint,
+    speakers_json, created_at, completed_at, folder_id, source, recorded_at, has_video, local_only, media_size, series_id,
+    transcript_verified,
+    obsidian_path, exports_json,
+    segments_json NOT IN ('', '[]') AS has_transcript,
+    summaries_json NOT IN ('', '{}') AS has_summary"""
+
+# What a recording has been through, for the badges in the library: the languages of its
+# translations and dubs (read inside SQLite, so the large JSON is not loaded for every row)
+_LIST_LANGS_SQL = """,
+    (SELECT group_concat(key) FROM json_each(CASE WHEN json_valid(translations_json) THEN translations_json ELSE '{}' END)) AS tr_langs,
+    (SELECT group_concat(json_extract(value, '$.lang')) FROM json_each(CASE WHEN json_valid(dubs_json) THEN dubs_json ELSE '[]' END)) AS dub_langs"""
+
+
+def meeting_briefs(ids: List[int]) -> Dict[int, Dict[str, Any]]:
+    """Title and progress of a few recordings (the queue, polled often): no full library scan."""
+    if not ids:
+        return {}
     with _db_lock:
         conn = get_connection()
         rows = conn.execute(
-            """
-            SELECT id, title, filename, duration, status, progress, stage_text,
-                   error_message, language, model_name, num_speakers_hint,
-                   speakers_json, created_at, completed_at
-            FROM meetings
-            ORDER BY id DESC
-            """
-        ).fetchall()
+            f"SELECT id, title, status, progress, stage_text FROM meetings WHERE id IN ({','.join('?' * len(ids))})",
+            [int(i) for i in ids]).fetchall()
+        conn.close()
+    return {r["id"]: dict(r) for r in rows}
+
+
+def list_meetings() -> List[Dict[str, Any]]:
+    with _db_lock:
+        conn = get_connection()
+        try:
+            rows = conn.execute(f"SELECT {_LIST_COLUMNS}{_LIST_LANGS_SQL} FROM meetings ORDER BY id DESC").fetchall()
+        except sqlite3.OperationalError:  # SQLite without JSON functions
+            rows = conn.execute(f"SELECT {_LIST_COLUMNS}, translations_json, dubs_json FROM meetings ORDER BY id DESC").fetchall()
         conn.close()
         result = []
+        unmeasured = []
         for r in rows:
             d = dict(r)
+            if "translations_json" in d:
+                d["tr_langs"] = ",".join(_loads_dict(d.pop("translations_json")))
+                try:
+                    d["dub_langs"] = ",".join(str(x.get("lang")) for x in json.loads(d.pop("dubs_json") or "[]"))
+                except Exception:
+                    d["dub_langs"] = ""
+            d["translations_langs"] = [x for x in (d.pop("tr_langs") or "").split(",") if x]
+            d["dub_langs"] = [x for x in (d.pop("dub_langs") or "").split(",") if x and x != "None"]
+            d["has_transcript"] = bool(d["has_transcript"])
+            d["local_only"] = bool(d.get("local_only"))
+            d["has_summary"] = bool(d["has_summary"])
             try:
                 d["speakers"] = json.loads(d.pop("speakers_json", "{}") or "{}")
             except Exception:
                 d["speakers"] = {}
+            d["is_video"] = is_video(d)
+            d["exports"] = [p for p in _loads_list(d.pop("exports_json", None)) if isinstance(p, str)]
+            # Measured once and kept: the list must not touch every file (a network drive is slow)
+            if d.get("media_size") is None:
+                d["media_size"] = _file_size(d.get("media_path") or "")
+                if d["media_size"] is not None:
+                    unmeasured.append((d["media_size"], d["id"]))
+            d["size_bytes"] = d.pop("media_size") or 0
+            d.pop("media_path", None)
             result.append(d)
-        return result
+    if unmeasured:
+        with _db_lock:
+            conn = get_connection()
+            conn.executemany("UPDATE meetings SET media_size = ? WHERE id = ?", unmeasured)
+            conn.commit()
+            conn.close()
+    return result
 
 
-def delete_meeting(meeting_id: int) -> bool:
+def remove_media(meeting_id: int) -> bool:
+    """Deletes the sound of a recording and keeps its transcript and analysis (privacy settings, or
+    by hand). Only files the app made or copied in; a file used in place is the user's and stays."""
+    m = get_meeting(meeting_id)
+    if not m or m.get("media_removed"):
+        return False
+    paths = [m.get("audio_path")]
+    if m.get("owns_media"):
+        paths.append(m.get("media_path"))
+    for p_str in paths:
+        if p_str:
+            try:
+                Path(p_str).unlink(missing_ok=True)
+            except OSError as e:
+                print(f"[privacy] {p_str}: {e}", flush=True)
+    with _db_lock:
+        conn = get_connection()
+        if m.get("owns_media"):
+            conn.execute("UPDATE meetings SET media_path = '', audio_path = '', media_removed = 1, media_size = 0 WHERE id = ?", (meeting_id,))
+        else:
+            conn.execute("UPDATE meetings SET audio_path = '' WHERE id = ?", (meeting_id,))
+        conn.commit()
+        conn.close()
+    (DATA_DIR / "thumbs" / f"{meeting_id}.jpg").unlink(missing_ok=True)
+    events.publish({"type": "list"})
+    return bool(m.get("owns_media"))
+
+
+def expired_media_ids(days: int) -> List[int]:
+    """Completed recordings older than `days` that still keep their sound (retention setting)."""
+    if days <= 0:
+        return []
+    from datetime import datetime, timedelta
+
+    cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    with _db_lock:
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT id FROM meetings WHERE status = 'completed' AND owns_media = 1 AND COALESCE(media_removed, 0) = 0 "
+            "AND media_path != '' AND COALESCE(NULLIF(recorded_at, ''), created_at) < ?", (cutoff,)).fetchall()
+        conn.close()
+    return [int(r["id"]) for r in rows]
+
+
+def add_export_path(meeting_id: int, path: str) -> None:
+    with _db_lock:
+        conn = get_connection()
+        row = conn.execute("SELECT exports_json FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+        if row is not None:
+            items = [p for p in _loads_list(row[0]) if p != path] + [path]
+            conn.execute("UPDATE meetings SET exports_json = ? WHERE id = ?",
+                         (json.dumps(items[-200:], ensure_ascii=False), meeting_id))
+            conn.commit()
+        conn.close()
+
+
+def delete_meeting(meeting_id: int, with_source: bool = False, with_exports: bool = False,
+                   with_note: bool = False) -> bool:
+    """with_source: the media file used in place (added by its path) is deleted too; with_exports: the
+    files its exports saved; with_note: its Obsidian note."""
     meeting = get_meeting(meeting_id)
     if not meeting:
         return False
+    extra = (meeting.get("exports") or []) if with_exports else []
+    if with_note and meeting.get("obsidian_path"):
+        extra.append(meeting["obsidian_path"])
+    for p_str in extra:
+        try:
+            Path(p_str).unlink(missing_ok=True)
+        except OSError as e:
+            print(f"[delete] {p_str}: {e}", flush=True)
+    if with_source and meeting.get("source") == "local" and meeting.get("media_path"):
+        try:
+            Path(meeting["media_path"]).unlink(missing_ok=True)
+        except OSError as e:
+            print(f"[delete] source file of meeting {meeting_id}: {e}", flush=True)
 
     dub_paths = [d.get(k) for d in meeting.get("dubs") or [] for k in ("path", "srt_path")]
+    owned = [meeting.get("media_path")] if meeting.get("owns_media") else []
     for p_str in [meeting.get("media_path"), meeting.get("audio_path"), *dub_paths]:
         if p_str:
             p = Path(p_str)
-            if p.exists() and DATA_DIR in p.resolve().parents:
+            # Files in the data folder, and the app's own recordings wherever the recordings folder is;
+            # a file used in place (added by its path) is never touched
+            if p.exists() and (DATA_DIR in p.resolve().parents or p_str in owned):
                 try:
                     p.unlink()
                 except Exception:
                     pass
+    thumb = DATA_DIR / "thumbs" / f"{meeting_id}.jpg"
+    thumb.unlink(missing_ok=True)
 
     with _db_lock:
         conn = get_connection()
         conn.execute("DELETE FROM meetings WHERE id = ?", (meeting_id,))
         conn.execute("DELETE FROM segments_fts WHERE meeting_id = ?", (meeting_id,))
+        conn.execute("DELETE FROM semantic_chunks WHERE meeting_id = ?", (meeting_id,))
+        conn.execute("DELETE FROM semantic_meta WHERE meeting_id = ?", (meeting_id,))
+        try:
+            conn.execute("DELETE FROM commitments WHERE meeting_id = ?", (meeting_id,))
+        except sqlite3.OperationalError:
+            pass  # no commitments table yet (app/commitments.py creates it on first use)
+        conn.commit()
+        conn.close()
+    events.publish({"type": "list"})
+    return True
+
+
+def clear_results(meeting_id: int) -> bool:
+    """Everything the processing made (transcript, speakers, summaries, translations, promises,
+    search index) is deleted; the sound, the title and the user's notes stay. Status "cleared": the
+    recording waits for Retry."""
+    if not get_meeting(meeting_id):
+        return False
+    with _db_lock:
+        conn = get_connection()
+        conn.execute(
+            "UPDATE meetings SET segments_json = '[]', speakers_json = '{}', summaries_json = '{}', translations_json = '{}', "
+            "segments_backup_json = '', status = 'cleared', progress = 0, stage_text = '', error_message = '', transcript_verified = 0 WHERE id = ?",
+            (meeting_id,))
+        conn.execute("DELETE FROM segments_fts WHERE meeting_id = ?", (meeting_id,))
+        conn.execute("DELETE FROM semantic_chunks WHERE meeting_id = ?", (meeting_id,))
+        conn.execute("DELETE FROM semantic_meta WHERE meeting_id = ?", (meeting_id,))
+        try:
+            conn.execute("DELETE FROM commitments WHERE meeting_id = ?", (meeting_id,))
+        except sqlite3.OperationalError:
+            pass
         conn.commit()
         conn.close()
     events.publish({"type": "list"})
@@ -571,6 +1013,10 @@ def delete_meeting(meeting_id: int) -> bool:
 
 def _deserialize_meeting(d: Dict[str, Any]) -> Dict[str, Any]:
     d["has_segments_backup"] = bool(d.pop("segments_backup_json", ""))
+    d["pending_exports"] = _loads_list(d.pop("pending_exports_json", None))
+    d["exports"] = [p for p in _loads_list(d.pop("exports_json", None)) if isinstance(p, str)]
+    d["is_video"] = is_video(d)
+    d["local_only"] = bool(d.get("local_only"))
     for key, target in (
         ("speakers_json", "speakers"),
         ("segments_json", "segments"),
@@ -725,3 +1171,178 @@ def merge_segment_with_previous(meeting_id: int, segment_id: int) -> Optional[Di
     save_meeting_results(meeting_id, segments=segments)
     return get_meeting(meeting_id)
 
+
+
+# --- Library folders ---
+def list_folders() -> List[Dict[str, Any]]:
+    with _db_lock:
+        conn = get_connection()
+        rows = conn.execute("SELECT id, name, parent_id, system_key, local_only FROM folders ORDER BY id").fetchall()
+        conn.close()
+    return [{**dict(r), "local_only": bool(r["local_only"])} for r in rows]
+
+
+def get_folder(folder_id: int) -> Optional[Dict[str, Any]]:
+    return next((f for f in list_folders() if f["id"] == folder_id), None)
+
+
+def system_folder_id(key: str) -> Optional[int]:
+    return next((f["id"] for f in list_folders() if f.get("system_key") == key), None)
+
+
+def is_local_only(meeting: Optional[Dict[str, Any]]) -> bool:
+    """A recording that must not be sent to a cloud model: marked itself, or in a folder (at any
+    depth) that is marked."""
+    if not meeting:
+        return False
+    if meeting.get("local_only"):
+        return True
+    folders = {f["id"]: f for f in list_folders()}
+    fid, seen = meeting.get("folder_id"), set()
+    while fid is not None and fid in folders and fid not in seen:
+        seen.add(fid)
+        if folders[fid].get("local_only"):
+            return True
+        fid = folders[fid].get("parent_id")
+    return False
+
+
+def local_only_ids() -> set:
+    """Ids of every recording that must not go to a cloud model (see is_local_only)."""
+    folders = {f["id"]: f for f in list_folders()}
+
+    def marked(fid: Any) -> bool:
+        seen = set()
+        while fid is not None and fid in folders and fid not in seen:
+            seen.add(fid)
+            if folders[fid].get("local_only"):
+                return True
+            fid = folders[fid].get("parent_id")
+        return False
+
+    with _db_lock:
+        conn = get_connection()
+        rows = conn.execute("SELECT id, folder_id, local_only FROM meetings").fetchall()
+        conn.close()
+    return {int(r["id"]) for r in rows if r["local_only"] or marked(r["folder_id"])}
+
+
+def folder_subtree_ids(folder_id: int) -> List[int]:
+    """The folder and every folder inside it."""
+    folders = list_folders()
+    out = [folder_id]
+    i = 0
+    while i < len(out):
+        out.extend(f["id"] for f in folders if f["parent_id"] == out[i] and f["id"] not in out)
+        i += 1
+    return out
+
+
+def create_folder(name: str, parent_id: Optional[int] = None) -> Dict[str, Any]:
+    name = (name or "").strip()[:120]
+    if not name:
+        raise ValueError("Название папки не может быть пустым")
+    if parent_id is not None and not get_folder(parent_id):
+        raise ValueError("Родительская папка не найдена")
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with _db_lock:
+        conn = get_connection()
+        cur = conn.execute(
+            "INSERT INTO folders (name, parent_id, system_key, created_at) VALUES (?, ?, NULL, ?)", (name, parent_id, now)
+        )
+        folder_id = cur.lastrowid
+        conn.commit()
+        conn.close()
+    events.publish({"type": "list"})
+    return get_folder(folder_id) or {}
+
+
+_UNSET = object()
+
+
+def update_folder(folder_id: int, name: Optional[str] = None, parent_id: Any = _UNSET,
+                  local_only: Optional[bool] = None) -> Dict[str, Any]:
+    folder = get_folder(folder_id)
+    if not folder:
+        raise LookupError("Папка не найдена")
+    fields: Dict[str, Any] = {}
+    if local_only is not None:
+        fields["local_only"] = 1 if local_only else 0
+    if name is not None:
+        name = name.strip()[:120]
+        if not name:
+            raise ValueError("Название папки не может быть пустым")
+        fields["name"] = name
+    if parent_id is not _UNSET:
+        if folder.get("system_key") and parent_id is not None:
+            raise ValueError("Системную папку нельзя вложить в другую")
+        if parent_id is not None:
+            if not get_folder(parent_id):
+                raise ValueError("Папка назначения не найдена")
+            if parent_id in folder_subtree_ids(folder_id):
+                raise ValueError("Папку нельзя переместить внутрь неё самой")
+        fields["parent_id"] = parent_id
+    if fields:
+        with _db_lock:
+            conn = get_connection()
+            conn.execute(
+                f"UPDATE folders SET {', '.join(f'{k} = ?' for k in fields)} WHERE id = ?",
+                (*fields.values(), folder_id),
+            )
+            conn.commit()
+            conn.close()
+        events.publish({"type": "list"})
+    return get_folder(folder_id) or {}
+
+
+def delete_folder(folder_id: int) -> None:
+    """Removes a folder; what it contained (recordings and folders) moves up one level."""
+    folder = get_folder(folder_id)
+    if not folder:
+        raise LookupError("Папка не найдена")
+    if folder.get("system_key"):
+        raise ValueError("Системную папку удалить нельзя")
+    with _db_lock:
+        conn = get_connection()
+        conn.execute("UPDATE folders SET parent_id = ? WHERE parent_id = ?", (folder["parent_id"], folder_id))
+        conn.execute("UPDATE meetings SET folder_id = ? WHERE folder_id = ?", (folder["parent_id"], folder_id))
+        conn.execute("DELETE FROM folders WHERE id = ?", (folder_id,))
+        conn.commit()
+        conn.close()
+    events.publish({"type": "list"})
+
+
+def set_meeting_folder(meeting_id: int, folder_id: Optional[int]) -> None:
+    if folder_id is not None and not get_folder(folder_id):
+        raise ValueError("Папка не найдена")
+    update_meeting_fields(meeting_id, folder_id=folder_id)
+
+
+def meeting_ids_in_folder(folder_id: int) -> List[int]:
+    ids = folder_subtree_ids(folder_id)
+    with _db_lock:
+        conn = get_connection()
+        rows = conn.execute(
+            f"SELECT id FROM meetings WHERE folder_id IN ({','.join('?' * len(ids))}) ORDER BY id DESC", ids
+        ).fetchall()
+        conn.close()
+    return [int(r[0]) for r in rows]
+
+
+# --- Exports waiting for a job (a translation, a dub) to finish ---
+def get_pending_exports(meeting_id: int) -> List[Dict[str, Any]]:
+    with _db_lock:
+        conn = get_connection()
+        row = conn.execute("SELECT pending_exports_json FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+        conn.close()
+    return _loads_list(row[0] if row else None)
+
+
+def set_pending_exports(meeting_id: int, items: List[Dict[str, Any]]) -> None:
+    with _db_lock:
+        conn = get_connection()
+        conn.execute(
+            "UPDATE meetings SET pending_exports_json = ? WHERE id = ?", (json.dumps(items, ensure_ascii=False), meeting_id)
+        )
+        conn.commit()
+        conn.close()

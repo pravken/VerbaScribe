@@ -1,5 +1,5 @@
 // Audio thread of live captions: collects the recorded signal (mixed to mono) and hands it to the
-// page in blocks of about 0.25 s. Resampling to 16 kHz and sending happen on the page (app.js).
+// page in blocks of about 0.25 s. Resampling to 16 kHz and sending happen on the page (static/js/studio.js).
 class PcmCapture extends AudioWorkletProcessor {
   constructor() {
     super();

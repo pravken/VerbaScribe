@@ -30,27 +30,28 @@ WHISPER_CATALOG: List[Dict[str, Any]] = [
         "desc_ru": "Максимальная точность для сложного звука, акцентов и сленга",
         "desc_en": "Maximum accuracy for noisy audio, accents, and technical jargon",
     },
-    {
-        "id": "medium",
-        "repo_id": "Systran/faster-whisper-medium",
-        "name": "Whisper Medium",
-        "badge": "1.4 GB · MIT",
-        "size": "1.4 GB",
-        "vram": "4+ GB / CPU",
-        "desc_ru": "Сбалансированная модель для средних видеокарт и ноутбуков",
-        "desc_en": "Balanced model for mid-range GPUs and laptops",
-    },
-    {
-        "id": "small",
-        "repo_id": "Systran/faster-whisper-small",
-        "name": "Whisper Light",
-        "badge": "465 MB · MIT",
-        "size": "465 MB",
-        "vram": "2+ GB / CPU",
-        "desc_ru": "Лёгкая модель для быстрой работы на процессоре (CPU)",
-        "desc_en": "Lightweight model for fast CPU transcription",
-    },
 ]
+
+# Removed Whisper models (Turbo is as large as Medium and more accurate; GigaAM / Parakeet replace
+# Light on the CPU): what a setting or a recording that still names one now uses
+WHISPER_REPLACED = {"medium": "large-v3-turbo", "small": "large-v3-turbo"}
+
+
+def remove_retired_models() -> None:
+    """Moves settings off removed models (Whisper and ONNX) and deletes their files."""
+    from app import asr_onnx
+
+    replaced = {**WHISPER_REPLACED, **asr_onnx.REPLACED}
+    settings = get_all_settings()
+    changes = {k: replaced[v] for k in ("whisper_model", "live_whisper_model") if (v := settings.get(k)) in replaced}
+    if changes:
+        update_settings(changes)
+    for old in WHISPER_REPLACED:
+        delete_whisper_model(old)
+    for old in asr_onnx.REPLACED:
+        if asr_onnx.model_dir(old).is_dir():
+            shutil.rmtree(asr_onnx.model_dir(old), ignore_errors=True)
+
 
 _WHISPER_DISPLAY_NAMES: Dict[str, str] = {
     "large-v3-turbo": "Whisper Turbo",
@@ -64,6 +65,10 @@ def format_whisper_model_name(model_id: str) -> str:
     raw = (model_id or "").strip()
     if not raw:
         return "Whisper"
+    from app.asr_onnx import ONNX_MODELS
+
+    if raw in ONNX_MODELS:
+        return ONNX_MODELS[raw]["name"]
     return _WHISPER_DISPLAY_NAMES.get(raw.lower(), f"Whisper {raw.replace('-', ' ').title()}")
 
 
@@ -91,24 +96,48 @@ def _log(msg: str) -> None:
     _setup_state["status"] = msg
 
 
+# Every Whisper model id the app knows, with its repository (removed ones too, to delete them)
+_WHISPER_REPOS: Dict[str, str] = {**{m["id"]: m["repo_id"] for m in WHISPER_CATALOG},
+                                  "medium": "Systran/faster-whisper-medium", "small": "Systran/faster-whisper-small"}
+
+
 def _whisper_model_dir(model_id: str) -> Path:
+    if model_id not in _WHISPER_REPOS:
+        raise ValueError(f"Неизвестная модель Whisper: {model_id!r}")
     return MODELS_DIR / "whisper" / model_id
 
 
-def is_whisper_model_installed(model_id: str) -> bool:
-    # Check our clean direct directory first
-    direct_dir = _whisper_model_dir(model_id)
-    if (direct_dir / "model.bin").exists():
-        return True
+def _hf_cache_dir(model_id: str) -> Optional[Path]:
+    """The Hugging Face cache folder of exactly this model ("models--Systran--faster-whisper-large-v3"
+    must not match ...-large-v3-turbo)."""
+    repo = _WHISPER_REPOS.get(model_id)
+    return MODELS_DIR / "whisper" / ("models--" + repo.replace("/", "--")) if repo else None
 
-    # Also check standard HuggingFace hub cache inside models/whisper
-    hf_cache = MODELS_DIR / "whisper"
-    if hf_cache.exists():
-        slug = model_id.replace("/", "--")
-        for p in hf_cache.glob(f"*{slug}*/snapshots/*/model.bin"):
-            if p.exists():
-                return True
-    return False
+
+def dir_size_mb(d: Path) -> int:
+    try:
+        return int(sum(f.stat().st_size for f in d.rglob("*") if f.is_file()) / 2**20)
+    except OSError:
+        return 0
+
+
+def whisper_model_location(model_id: str) -> Optional[Path]:
+    """The folder a downloaded Whisper model is in (our own layout or the Hugging Face cache)."""
+    if model_id not in _WHISPER_REPOS:
+        return None
+    if (_whisper_model_dir(model_id) / "model.bin").exists():
+        return _whisper_model_dir(model_id)
+    cache = _hf_cache_dir(model_id)
+    return cache if cache and any(cache.glob("snapshots/*/model.bin")) else None
+
+
+def is_whisper_model_installed(model_id: str) -> bool:
+    if model_id not in _WHISPER_REPOS:
+        return False
+    if (_whisper_model_dir(model_id) / "model.bin").exists():
+        return True
+    cache = _hf_cache_dir(model_id)  # the Hugging Face cache layout
+    return bool(cache and any(cache.glob("snapshots/*/model.bin")))
 
 
 def get_whisper_model_path(model_id: str) -> str:
@@ -116,9 +145,8 @@ def get_whisper_model_path(model_id: str) -> str:
     Returns local folder path if model was downloaded via our manager,
     otherwise returns model_id so faster-whisper can resolve it.
     """
-    direct_dir = _whisper_model_dir(model_id)
-    if (direct_dir / "model.bin").exists():
-        return str(direct_dir)
+    if model_id in _WHISPER_REPOS and (_whisper_model_dir(model_id) / "model.bin").exists():
+        return str(_whisper_model_dir(model_id))
     return model_id
 
 
@@ -139,12 +167,26 @@ def get_models_status() -> Dict[str, Any]:
         inst = is_whisper_model_installed(item["id"])
         if inst:
             any_whisper_installed = True
-        whisper_list.append({**item, "installed": inst})
+        where = whisper_model_location(item["id"]) if inst else None
+        whisper_list.append({**item, "installed": inst, "path": str(where) if where else "",
+                             "disk_mb": dir_size_mb(where) if where else 0})
+    # GigaAM and Parakeet (app/asr_onnx.py) are chosen in the same list
+    from app.asr_onnx import catalog as onnx_catalog
+
+    for item in onnx_catalog():
+        mb = item["size_mb"]
+        size = f"{round(mb / 1024, 1)} GB" if mb >= 1000 else f"{mb} MB"
+        from app.asr_onnx import model_dir
+
+        where = model_dir(item["id"]) if item["installed"] else None
+        whisper_list.append({**item, "size": size, "badge": f"{size} · {item['license']}", "vram": "CPU",
+                             "path": str(where) if where else "", "disk_mb": dir_size_mb(where) if where else 0})
 
     diarizer_ready = is_diarizer_installed()
+    any_speech_model = any_whisper_installed or any(i.get("installed") for i in whisper_list if i.get("engine") == "onnx")
 
     return {
-        "needs_first_run_setup": not any_whisper_installed,
+        "needs_first_run_setup": not any_speech_model,
         "any_whisper_installed": any_whisper_installed,
         "active_whisper": active_whisper,
         "diarizer_installed": diarizer_ready,
@@ -301,17 +343,12 @@ def start_models_setup(
 
 
 def delete_whisper_model(model_id: str) -> bool:
-    direct_dir = _whisper_model_dir(model_id)
+    """Deletes exactly this model (only known ids: never a path from outside)."""
+    if model_id not in _WHISPER_REPOS:
+        raise ValueError(f"Неизвестная модель Whisper: {model_id!r}")
     deleted = False
-    if direct_dir.exists():
-        shutil.rmtree(direct_dir, ignore_errors=True)
-        deleted = True
-
-    hf_cache = MODELS_DIR / "whisper"
-    if hf_cache.exists():
-        slug = model_id.replace("/", "--")
-        for p in hf_cache.glob(f"*{slug}*"):
-            if p.is_dir():
-                shutil.rmtree(p, ignore_errors=True)
-                deleted = True
+    for d in (_whisper_model_dir(model_id), _hf_cache_dir(model_id)):
+        if d and d.is_dir():
+            shutil.rmtree(d, ignore_errors=True)
+            deleted = True
     return deleted

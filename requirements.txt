@@ -717,6 +717,10 @@ nvidia-cudnn-cu12==9.25.0.15 \
     --hash=sha256:4ea1ba443fa28ac6cf04b7a44a107dfd54cf355c2324938102ddb21778ab10ce \
     --hash=sha256:7987acb3cc5b793151e64c05a12a3625f5a8d4cfabe87eea3a65f0676ef2da67
     # via -r requirements.in
+onnx-asr==0.12.0 \
+    --hash=sha256:5e7ceca454609819ea7833f61e2302e0c8f6ece4f8a78b66c5daba53cb51de4a \
+    --hash=sha256:c1fcacddbced392f9f769ed5c6223f4ce739a6e4549346de33b9b520d4ead713
+    # via -r requirements.in
 onnxruntime==1.23.2 \
     --hash=sha256:0be6a37a45e6719db5120e9986fcd30ea205ac8103fd1fb74b6c33348327a0cc \
     --hash=sha256:0f9b4ae77f8e3c9bee50c27bc1beede83f786fe1d52e99ac85aa8d65a01e9b77 \

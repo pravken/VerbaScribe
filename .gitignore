@@ -30,3 +30,4 @@ node_modules/
 
 # Launcher is built by GitHub Actions (see .github/workflows/release.yml) or locally via build_exe.py
 VerbaScribe.exe
+bench-report/data/

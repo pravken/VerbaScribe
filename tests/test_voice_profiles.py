@@ -34,6 +34,13 @@ class VoiceProfilesTest(unittest.TestCase):
         self.assertEqual(speakers["SPEAKER_00"]["name"], "Максим")
         self.assertEqual(speakers["SPEAKER_01"]["name"], "Участник 2")
 
+    def test_close_voice_is_only_suggested(self):
+        voice_profiles.learn("Ольга", _voice(5))
+        speakers = {"SPEAKER_00": {"name": "Участник 1", "embedding": _voice(11, noise=1.2, base=5)}}
+        self.assertEqual(voice_profiles.apply_to_speakers(speakers), 0)
+        self.assertEqual(speakers["SPEAKER_00"]["name"], "Участник 1")
+        self.assertEqual(speakers["SPEAKER_00"]["voice_suggest"]["name"], "Ольга")
+
     def test_one_profile_names_one_speaker(self):
         voice_profiles.learn("Анна", _voice(3))
         speakers = {

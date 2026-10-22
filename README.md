@@ -2,6 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D6.svg)](#requirements)
+[![Support on Ko-fi](https://img.shields.io/badge/Ko--fi-Support-FF5E5B.svg?logo=ko-fi&logoColor=white)](https://ko-fi.com/pravken)
 
 [English](#english) | [Русский](#русский)
 
@@ -12,28 +13,39 @@
 
 **VerbaScribe** is a Windows desktop app for transcribing audio and video on your own computer. It recognizes speech, splits it by speaker, and can optionally summarize the transcript or answer questions about it with a local language model through [Ollama](https://ollama.com).
 
-Recordings and transcripts are processed and stored locally (NVIDIA GPU via CUDA, or CPU). The app needs no account or API key. Network access is described [below](#network-access).
+Recordings and transcripts are processed and stored locally (NVIDIA GPU via CUDA, or CPU). The app needs no account or API key. If you want, analysis can use a cloud model instead (OpenAI, Anthropic Claude, Google Gemini or an OpenAI-compatible service) with your own API key; it is off by default. Network access is described [below](#network-access).
 
 ### Features
 
-- **Speech recognition** with [faster-whisper](https://github.com/SYSTRAN/faster-whisper) and Silero VAD. Models: `large-v3-turbo`, `large-v3`, `medium`, `small`. Compute precision (`float16`, `int8_float16`, `int8`) is chosen from available VRAM, with fallback to CPU.
+- **Speech recognition** with [faster-whisper](https://github.com/SYSTRAN/faster-whisper) and Silero VAD. Models: `large-v3-turbo`, `large-v3`; GigaAM v3 and Parakeet TDT v3 on ONNX Runtime; recordings that mix languages are recognized phrase by phrase. Compute precision (`float16`, `int8_float16`, `int8`) is chosen from available VRAM, with fallback to CPU.
 - **Speaker separation** by clustering SpeechBrain ECAPA-TDNN voice embeddings. Works without tokens. Accuracy drops with overlapping speech, very short replies, or similar voices, so check the result and fix speakers where needed.
 - **Optional audio cleanup** before recognition: FFmpeg filters for noise reduction, click removal and loudness leveling. A simple voice filter is also available in the player.
 - **Filler-word removal** ("uh", "um", "э-э", "ммм"…). The original text is kept and can be restored.
-- **Local summaries and Q&A** via Ollama (default models: Qwen 2.5 and Mistral 7B). Language models can make mistakes; treat summaries as a draft, not a source of truth. Long recordings are summarized in parts.
+- **Local summaries and Q&A** via Ollama (by default Qwen3.5 4B, or Qwen3 8B on GPUs with 10 GB and more), or optionally a **cloud model over its API** (OpenAI, Claude, Gemini, OpenAI-compatible) with your key; long recordings then fit in one request. Language models can make mistakes; treat summaries as a draft, not a source of truth. Long recordings are summarized in parts.
 - **Transcript editor and player**: click a word to jump to it, edit segments, merge them, rename speakers, waveform, playback speed.
 - **Recording** from a microphone, system audio, or both, with saved presets for one-click starts. System audio is captured directly (WASAPI loopback), without a screen-share prompt.
-- **Recording studio**: a full-screen view for recording with live captions and real-time translation; the speech language is detected automatically.
+- **Three parts of the app**: the **Library** (recordings, transcripts, analysis), the **Studio** (recording with live captions and real-time translation that is typed in without flicker; can fill the whole window) and **Ask** (questions about one recording, a folder or the whole library).
 - **Live captions** during recording, optionally translated as you speak.
-- **Chapters** with titles generated for long recordings, and **Q&A across the whole library**.
+- **Chapters** with titles generated for long recordings, and **Q&A across a folder or the whole library**: a small folder is read in full, a large one is searched; answers cite moments of the recordings.
+- **Folders in the library**: recordings made in the app go to *Recordings*, imported files to *Imported*; create nested folders and sort by dragging. Videos show a thumbnail; the **Details** tab shows where the file is, its format, dates and processing state.
+- **Names from the content**: a recording with a generic title ("Recording 14-05", "zoom_0") gets one from its transcript after processing.
 - **Voice profiles**: once you name a speaker, their voice is recognised in new recordings (stored only in the local database).
 - **Tray icon** that shows what the app is doing and starts or stops a recording from its menu.
-- **Automatic update check** with one-click install from GitHub Releases; the download is verified against the release checksums, and your data, models and settings stay untouched.
+- **Automatic updates** from GitHub Releases: a new version downloads in the background and installs when you close the app (or by hand, if you turn that off); the download is verified against the release checksums, and your data, models and settings stay untouched.
 - **Search** across all recordings.
+- **Memory and load**: CPU, RAM and VRAM meters in the sidebar; models are unloaded after a configurable time without use (Settings → General).
+- **Recordings folder** of your choice (Settings → Recording); imported copies and files added by their path are kept apart.
 - **Convenience**: drag files onto the window to import them, keyboard shortcuts (press `?` for the list), and a "Subtitles" player layout with the current phrase under the video.
 - **Custom vocabulary** (names, terms) passed to Whisper as hotwords.
-- **Export** to Word (`.docx`), Markdown, plain text, SRT subtitles and JSON.
+- **Export** to Word (`.docx`), Markdown, plain text, SRT subtitles, JSON and video with subtitles, all from one menu. A translated or dubbed export that does not exist yet is made first and then saved to the export folder by itself.
+- **Obsidian**: a note per meeting (properties, summary, overview, tasks as a checklist, transcript) named `{date} {title}`, saved by hand or automatically after processing (Settings → Export).
 - **Translate & dub (prototype, optional)**: translates a finished recording with Ollama and re-voices it in each speaker's cloned voice over the original background. See [Translate & dub](#translate-dub).
+- **Model comparison** (Settings → Comparison): every downloaded speech model recognizes a fragment of a recording you have corrected, and you see its error rate (WER), speed and memory; language models write the same protocol and you see how many points the transcript does not support.
+- **Checked summaries**: each point of an overview gets the time it comes from, and points the transcript does not support are marked `[?]`. **My notes** taken during the meeting go into every summary; your own summary templates.
+- **Promises across meetings**: who promised what to whom and by when, collected after each summary, shown before the next meeting of the series, exported to Obsidian, Todoist (CSV) or Markdown, and a follow-up email draft.
+- **Calendar** (an `.ics` file or link, read only): a recording made during a meeting gets its title and participants; the Studio lists the next meetings with a brief.
+- **Dictation into any program**: `Ctrl+Alt+D` records the microphone and types the text where the cursor is.
+- **Import by link** (YouTube and other sites, via yt-dlp installed on first use); **noise cleanup** export; **privacy** options: delete the sound after transcription or after N days, and a log of everything sent to a cloud model.
 - **Translate text**: machine translation of a transcript with your local Ollama model, shown under or instead of the original, exported as translated or bilingual files and as video subtitles. See [Translate text](#translate-text).
 
 ### Requirements
@@ -61,6 +73,8 @@ start.bat
 On first launch `setup.bat` creates a Python virtual environment (`.venv`) and installs the exact package versions from `requirements.txt` (a lock file with SHA-256 hashes, generated from `requirements.in`). The app then opens a setup screen where you choose which Whisper model to download. To build the launcher yourself, run `python build_exe.py`; it uses the C# compiler bundled with the .NET Framework.
 
 In a folder cloned with git the app still reports new versions but never installs them itself: update it with `git pull` (and run `setup.bat` again if `requirements.txt` changed).
+
+**"This app is partially blocked" (Smart App Control).** Windows 11 with Smart App Control on blocks program files without a digital signature, and Python libraries often have none. `setup.bat` notices it and builds the environment on the signed Python from python.org (installing Python 3.10 with winget if needed), but some library files may still be blocked. If the app does not start or a feature fails, turn Smart App Control off: **Windows Security → App & browser control → Smart App Control settings → Off** (it cannot be turned back on without reinstalling Windows; Defender keeps protecting the PC). An environment made by an older `setup.bat` uses an unsigned Python: delete the `.venv` folder and run `setup.bat` again.
 
 <a name="translate-text"></a>
 ### Translate text
@@ -117,6 +131,8 @@ VerbaScribe has no telemetry. It connects to the internet only for these actions
 | :--- | :--- |
 | First-time setup (`setup.bat`) | PyPI and download.pytorch.org (Python packages); winget, if `uv` is missing |
 | You download a Whisper or speaker model | Hugging Face (`huggingface.co`) |
+| You import by link | The site of the link, and PyPI the first time (yt-dlp) |
+| You set a calendar link (Settings → General) | That link, at most every 15 minutes, to read the calendar |
 | You download an Ollama model | Ollama's model registry, via your local Ollama |
 | You confirm installing Ollama | winget (package `Ollama.Ollama`) |
 | You install the dubbing environment (optional) | PyPI and download.pytorch.org |
@@ -124,6 +140,7 @@ VerbaScribe has no telemetry. It connects to the internet only for these actions
 | You click **Download FFmpeg** in Settings | github.com (release `9.0.2` of `GyanD/codexffmpeg`) |
 | App start, at most every 6 hours (can be turned off in Settings → General) | api.github.com: the number of the latest VerbaScribe release, nothing about you or your computer |
 | You click **Install** for an update | github.com: the release archive and `SHA256SUMS.txt`; PyPI and download.pytorch.org if the new version needs other Python packages |
+| Only if you turned on a cloud model in Settings → Analysis: an overview, a question, a title or an Obsidian note is made | The chosen service (`api.openai.com`, `api.anthropic.com`, `generativelanguage.googleapis.com` or your Base URL): the transcript text of that recording, or the fragments found for a library question. Audio and video are never sent. The API key is stored encrypted with Windows DPAPI |
 
 The user interface, fonts and scripts are served locally. The built-in server listens only on `127.0.0.1`. Every launch creates a random session token, so other websites open in your browser cannot read or control the app.
 
@@ -139,11 +156,15 @@ VerbaScribe's own code is released under the [MIT License](LICENSE). Models and 
 | :--- | :--- |
 | Whisper models (OpenAI) / faster-whisper | MIT |
 | Silero VAD | MIT |
+| GigaAM v3 (Sber, ONNX export by istupakov) / onnx-asr | MIT |
+| NVIDIA Parakeet TDT 0.6B v3 (ONNX export by istupakov) | CC-BY-4.0: credit "Parakeet TDT 0.6B v3 by NVIDIA" |
+| BGE-M3 embeddings (BAAI) | MIT |
 | SpeechBrain ECAPA-TDNN (`spkrec-ecapa-voxceleb`) | Apache 2.0 |
-| Qwen 2.5 1.5B / 7B / 14B, Mistral 7B | Apache 2.0 |
+| Qwen3.5 4B, Qwen3 8B / 14B, Qwen 2.5 1.5B / 7B / 14B, Mistral 7B | Apache 2.0 |
 | Ollama, FastAPI, pywebview | MIT / BSD-3 |
 | PyTorch, torchaudio | BSD-3 |
 | SoundCard (system audio recording) | BSD-3 |
+| yt-dlp (installed when you first import by link) | Unlicense |
 | FFmpeg (optional download, Gyan.dev essentials build) | GPL v3 |
 | Chatterbox Multilingual TTS (optional dubbing) | MIT |
 | Demucs `htdemucs` (optional dubbing) | MIT |
@@ -151,13 +172,17 @@ VerbaScribe's own code is released under the [MIT License](LICENSE). Models and 
 
 Not every Qwen 2.5 size is Apache 2.0 (the 3B and 72B models use a different license). If you download other models through Ollama, check their terms.
 
+### Support
+
+VerbaScribe is free. If it saves you time, you can support its development on [Ko-fi](https://ko-fi.com/pravken).
+
 ### Development
 
 ```bash
 .venv\Scripts\python.exe -m unittest discover -s tests -t .
 ```
 
-Front-end libraries (Tailwind CSS, marked, DOMPurify, fonts) are pinned in `package.json`, and their built copies are committed to `static/vendor/`. The UI is `static/index.html` (markup), `static/app.js` (logic), `static/i18n.js` (Russian and English strings) and `static/styles.css`. You only need Node.js if you change Tailwind classes in `index.html` or `app.js`. In that case, rebuild with:
+Front-end libraries (Tailwind CSS, marked, DOMPurify, fonts) are pinned in `package.json`, and their built copies are committed to `static/vendor/`. The UI is `static/index.html` (markup), `static/js/*.js` (logic, in parts loaded in order: core, menus, settings, library, workspace, player, studio, video, app), `static/i18n.js` (Russian and English strings) and `static/styles.css`. You only need Node.js if you change Tailwind classes in `index.html` or `static/js`. In that case, rebuild with:
 
 ```bash
 npm install
@@ -173,28 +198,39 @@ To update Python dependencies, edit `requirements.in` and regenerate the lock (c
 
 **VerbaScribe** — настольное приложение для Windows, которое расшифровывает аудио и видео на вашем компьютере. Оно распознаёт речь, разделяет её по спикерам и, если нужно, составляет краткое содержание или отвечает на вопросы по тексту с помощью локальной языковой модели через [Ollama](https://ollama.com).
 
-Записи и расшифровки обрабатываются и хранятся локально (видеокарта NVIDIA через CUDA или процессор). Аккаунт и API-ключи не нужны. Какие сетевые подключения бывают, описано [ниже](#сеть).
+Записи и расшифровки обрабатываются и хранятся локально (видеокарта NVIDIA через CUDA или процессор). Аккаунт и API-ключи не нужны. По желанию анализ можно выполнять облачной моделью (OpenAI, Anthropic Claude, Google Gemini или OpenAI-совместимый сервис) с вашим API-ключом; по умолчанию это выключено. Какие сетевые подключения бывают, описано [ниже](#сеть).
 
 ### Возможности
 
-- **Распознавание речи**: [faster-whisper](https://github.com/SYSTRAN/faster-whisper) и Silero VAD. Модели `large-v3-turbo`, `large-v3`, `medium`, `small`. Точность вычислений (`float16`, `int8_float16`, `int8`) подбирается под объём видеопамяти, при необходимости работа переходит на CPU.
+- **Распознавание речи**: [faster-whisper](https://github.com/SYSTRAN/faster-whisper) и Silero VAD. Модели `large-v3-turbo`, `large-v3`, а также GigaAM v3 и Parakeet TDT v3 на ONNX Runtime; записи на нескольких языках распознаются пофразово. Точность вычислений (`float16`, `int8_float16`, `int8`) подбирается под объём видеопамяти, при необходимости работа переходит на CPU.
 - **Разделение по спикерам**: кластеризация голосовых эмбеддингов SpeechBrain ECAPA-TDNN, без токенов. Точность снижается при перебиваниях, очень коротких репликах и похожих голосах, поэтому результат стоит проверять и при необходимости поправлять спикеров вручную.
 - **Очистка звука перед распознаванием** (по желанию): фильтры FFmpeg для шумоподавления, удаления щелчков и выравнивания громкости. В плеере также есть простой голосовой фильтр.
 - **Удаление слов-паразитов** («э-э», «ммм», «uh», «um»…). Исходный текст сохраняется, его можно вернуть.
-- **Локальные саммари и ответы на вопросы** через Ollama (модели по умолчанию — Qwen 2.5 и Mistral 7B). Языковые модели могут ошибаться, поэтому считайте саммари черновиком, а не источником истины. Длинные записи обрабатываются по частям.
+- **Локальные саммари и ответы на вопросы** через Ollama (по умолчанию Qwen3.5 4B, на видеокартах от 10 ГБ — Qwen3 8B) или, по желанию, **облачной моделью по API** (OpenAI, Claude, Gemini, OpenAI-совместимые) с вашим ключом; длинные записи тогда обрабатываются одним запросом. Языковые модели могут ошибаться, поэтому считайте саммари черновиком, а не источником истины. Длинные записи обрабатываются по частям.
 - **Редактор расшифровки и плеер**: клик по слову перематывает к нему, реплики можно править и склеивать, спикеров — переименовывать; есть звуковая дорожка и выбор скорости.
 - **Запись** с микрофона, системного звука или обоих источников, с пресетами для запуска в один клик. Системный звук захватывается напрямую (WASAPI loopback), без запроса на показ экрана.
-- **Студия записи**: полноэкранный режим с живыми субтитрами и переводом в реальном времени; язык речи определяется автоматически.
+- **Три раздела программы**: **Медиатека** (записи, расшифровки, анализ), **Студия** (запись с живыми субтитрами и переводом в реальном времени, текст печатается без мерцания; можно развернуть на всё окно) и **Вопросы** (к одной записи, к папке или ко всей медиатеке).
 - **Живые субтитры** во время записи, по желанию — сразу с переводом.
-- **Главы** с заголовками для длинных записей и **вопросы по всей библиотеке** записей.
+- **Главы** с заголовками для длинных записей и **вопросы к папке или ко всей медиатеке**: небольшая папка читается целиком, большая — через поиск; в ответе есть ссылки на моменты записей.
+- **Папки в медиатеке**: записи из программы попадают в «Записи», импортированные файлы — в «Импорт»; можно создавать вложенные папки и раскладывать записи перетаскиванием. У видео есть превью, а на вкладке **«Сведения»** видно, где лежит файл, его формат, даты и состояние обработки.
+- **Названия по содержанию**: запись с безликим названием («Запись 14-05», «zoom_0») после обработки получает название по тексту.
 - **Профили голосов**: стоит один раз назвать участника по имени, и в новых записях его голос узнаётся автоматически (хранится только в локальной базе).
 - **Значок в трее** показывает, чем занято приложение, и запускает или останавливает запись из меню.
-- **Проверка обновлений** и установка в один клик из GitHub Releases; архив сверяется с контрольными суммами релиза, ваши данные, модели и настройки не затрагиваются.
+- **Автообновление** из GitHub Releases: новая версия скачивается в фоне и ставится при закрытии программы (или вручную, если это отключить); архив сверяется с контрольными суммами релиза, ваши данные, модели и настройки не затрагиваются.
 - **Поиск** по всем записям.
+- **Память и нагрузка**: индикаторы CPU, RAM и VRAM в боковой панели; модели выгружаются из памяти через заданное время простоя (Настройки → Общие).
+- **Папка для записей** на ваш выбор (Настройки → Запись); импортированные копии и файлы, добавленные по пути, хранятся отдельно.
 - **Удобство**: файлы можно перетащить в окно, есть горячие клавиши (список — по клавише `?`) и вид плеера «Субтитры» с текущей фразой под видео.
 - **Словарь** имён и терминов, который передаётся в Whisper как hotwords.
-- **Экспорт** в Word (`.docx`), Markdown, текст, субтитры SRT и JSON.
+- **Экспорт** в Word (`.docx`), Markdown, текст, субтитры SRT, JSON и видео с субтитрами — всё в одном меню. Если нужного перевода или дубляжа ещё нет, он сначала выполняется, а файл затем сам сохраняется в папку экспорта.
+- **Obsidian**: заметка на каждую встречу (свойства, резюме, обзор, задачи чек-листом, расшифровка) с именем `{дата} {название}` — вручную или автоматически после обработки (Настройки → Экспорт).
 - **Перевод и дубляж (прототип, по желанию)**: готовая запись переводится через Ollama и озвучивается клонами голосов участников поверх исходного фона. Подробнее — в разделе [Перевод и дубляж](#дубляж).
+- **Сравнение моделей** («Настройки → Сравнение»): каждая скачанная модель распознавания расшифровывает фрагмент исправленной вами записи — видно долю ошибок (WER), скорость и память; языковые модели пишут один и тот же протокол — видно, сколько пунктов не подтверждает расшифровка.
+- **Проверенные саммари**: у каждого пункта обзора есть время, откуда он взят, а пункты, которых нет в расшифровке, помечены `[?]`. **Мои заметки** во время встречи учитываются в каждом саммари; свои шаблоны саммари.
+- **Обещания между встречами**: кто, что, кому и к какому сроку пообещал — собирается после саммари, показывается перед следующей встречей серии, выгружается в Obsidian, Todoist (CSV) или Markdown; черновик письма по итогам.
+- **Календарь** (файл или ссылка `.ics`, только чтение): запись во время встречи получает её название и участников; в Студии видны ближайшие встречи со справкой.
+- **Диктовка в любую программу**: `Ctrl+Alt+D` записывает микрофон и печатает текст там, где стоит курсор.
+- **Импорт по ссылке** (YouTube и другие сайты, через yt-dlp, который ставится при первом использовании); экспорт **с очисткой шума**; **приватность**: удаление звука после расшифровки или через N дней и журнал всего, что отправлялось облачной модели.
 - **Перевод текста**: машинный перевод расшифровки локальной моделью Ollama — под оригиналом или вместо него, экспорт переведённых и двуязычных файлов, субтитры для видео. Подробнее — в разделе [Перевод текста](#перевод-текста).
 
 ### Требования
@@ -222,6 +258,8 @@ start.bat
 При первом запуске `setup.bat` создаёт виртуальное окружение Python (`.venv`) и ставит точные версии пакетов из `requirements.txt` (lock-файл с хешами SHA-256, собирается из `requirements.in`). Затем открывается экран настройки, где вы выбираете модель Whisper для скачивания. Чтобы собрать лаунчер самостоятельно, выполните `python build_exe.py`; он использует компилятор C# из комплекта .NET Framework.
 
 В папке, склонированной через git, приложение сообщает о новых версиях, но само их не устанавливает: обновляйте её командой `git pull` (и снова запустите `setup.bat`, если изменился `requirements.txt`).
+
+**«Это приложение частично заблокировано» (интеллектуальное управление приложениями).** В Windows 11 с включённым Smart App Control блокируются файлы программ без цифровой подписи, а у библиотек Python её часто нет. `setup.bat` это замечает и собирает окружение на подписанном Python с python.org (при необходимости ставит Python 3.10 через winget), но отдельные файлы библиотек всё равно могут блокироваться. Если приложение не запускается или какая-то функция не работает, выключите эту защиту: **Безопасность Windows → Управление приложениями/браузером → Параметры интеллектуального управления приложениями → Выкл.** (обратно её включить можно только переустановкой Windows; Defender продолжает защищать компьютер). Окружение, созданное старым `setup.bat`, использует неподписанный Python: удалите папку `.venv` и снова запустите `setup.bat`.
 
 <a name="дубляж"></a>
 <a name="перевод-текста"></a>
@@ -277,6 +315,8 @@ start.bat
 | :--- | :--- |
 | Первичная установка (`setup.bat`) | PyPI и download.pytorch.org (пакеты Python); winget, если нет `uv` |
 | Вы скачиваете модель Whisper или модель спикеров | Hugging Face (`huggingface.co`) |
+| Вы импортируете запись по ссылке | Сайт ссылки, а в первый раз — PyPI (yt-dlp) |
+| Вы указали ссылку на календарь («Настройки → Общие») | Эта ссылка, не чаще раза в 15 минут, чтобы прочитать календарь |
 | Вы скачиваете модель Ollama | Реестр моделей Ollama, через вашу локальную Ollama |
 | Вы подтверждаете установку Ollama | winget (пакет `Ollama.Ollama`) |
 | Вы устанавливаете окружение дубляжа (по желанию) | PyPI и download.pytorch.org |
@@ -284,6 +324,7 @@ start.bat
 | Вы нажимаете **Скачать FFmpeg** в настройках | github.com (релиз `9.0.2` репозитория `GyanD/codexffmpeg`) |
 | Запуск приложения, не чаще раза в 6 часов (отключается в «Настройки → Общие») | api.github.com: номер последней версии VerbaScribe, без каких-либо данных о вас или компьютере |
 | Вы нажимаете **Установить** для обновления | github.com: архив релиза и `SHA256SUMS.txt`; PyPI и download.pytorch.org, если новой версии нужны другие пакеты Python |
+| Только если в «Настройки → Анализ» включена облачная модель: создаётся обзор, ответ на вопрос, название или заметка Obsidian | Выбранный сервис (`api.openai.com`, `api.anthropic.com`, `generativelanguage.googleapis.com` или ваш Base URL): текст расшифровки этой записи, а для вопросов по медиатеке — найденные фрагменты. Аудио и видео не отправляются. API-ключ хранится зашифрованным (Windows DPAPI) |
 
 Интерфейс, шрифты и скрипты загружаются локально. Встроенный сервер слушает только `127.0.0.1`. При каждом запуске создаётся случайный токен сессии, поэтому другие сайты, открытые в браузере, не могут читать данные приложения или управлять им.
 
@@ -295,8 +336,12 @@ start.bat
 
 Код VerbaScribe распространяется по [лицензии MIT](LICENSE). У моделей и библиотек свои лицензии; перед коммерческим использованием проверьте их самостоятельно (таблица выше, в английском разделе). Не все размеры Qwen 2.5 выпущены под Apache 2.0: у моделей 3B и 72B другая лицензия. Если скачиваете через Ollama другие модели, проверьте и их условия.
 
+### Поддержать проект
+
+VerbaScribe бесплатна. Если она экономит вам время, можно поддержать разработку на [Ko-fi](https://ko-fi.com/pravken).
+
 ### Разработка
 
 Тесты: `.venv\Scripts\python.exe -m unittest discover -s tests -t .`
 
-Фронтенд-библиотеки (Tailwind CSS, marked, DOMPurify, шрифты) закреплены по версиям в `package.json`, а их собранные копии лежат в `static/vendor/`. Интерфейс: `static/index.html` (разметка), `static/app.js` (логика), `static/i18n.js` (строки на русском и английском), `static/styles.css`. Node.js нужен, только если вы меняете классы Tailwind в `index.html` или `app.js`. После этого пересоберите библиотеки командами `npm install` и `npm run vendor`.
+Фронтенд-библиотеки (Tailwind CSS, marked, DOMPurify, шрифты) закреплены по версиям в `package.json`, а их собранные копии лежат в `static/vendor/`. Интерфейс: `static/index.html` (разметка), `static/js/*.js` (логика, по частям, которые загружаются по порядку: core, menus, settings, library, workspace, player, studio, video, app), `static/i18n.js` (строки на русском и английском), `static/styles.css`. Node.js нужен, только если вы меняете классы Tailwind в `index.html` или `static/js`. После этого пересоберите библиотеки командами `npm install` и `npm run vendor`.

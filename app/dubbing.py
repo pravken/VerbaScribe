@@ -74,6 +74,13 @@ ProgressFn = Callable[[int, str], None]
 CancelFn = Callable[[], None]
 
 
+
+def _tool(name: str) -> str:
+    """FFmpeg as the rest of the app finds it (the copy the app downloaded is not on PATH)."""
+    from app.ffmpeg_manager import tool_cmd
+
+    return tool_cmd(name)
+
 def dub_environment_status() -> Dict[str, Any]:
     from app.dub_setup import is_installed, setup_status
 
@@ -87,6 +94,8 @@ def dub_environment_status() -> Dict[str, Any]:
 
 # ---------------------------------------------------------------- 2. translation (Ollama)
 def _ollama_chat(base_url: str, model: str, system: str, user: str, keep_alive: str = "5m") -> str:
+    from app.llm_text import strip_think, thinking_off
+
     with httpx.Client(timeout=600.0) as client:
         resp = client.post(
             f"{base_url}/api/chat",
@@ -96,10 +105,11 @@ def _ollama_chat(base_url: str, model: str, system: str, user: str, keep_alive: 
                 "stream": False,
                 "keep_alive": keep_alive,
                 "options": {"temperature": 0.2, "top_p": 0.9, "num_ctx": 8192},
+                **thinking_off(model),
             },
         )
         resp.raise_for_status()
-        return str((resp.json().get("message") or {}).get("content") or "").strip()
+        return strip_think(str((resp.json().get("message") or {}).get("content") or ""))
 
 
 def _unload_ollama(base_url: str, model: str, wait: bool = False) -> None:
@@ -520,7 +530,7 @@ class TtsPool:
 # ---------------------------------------------------------------- audio helpers
 def _ffmpeg(args: List[str]) -> None:
     proc = subprocess.run(
-        ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", *args],
+        [_tool("ffmpeg"), "-y", "-hide_banner", "-loglevel", "error", *args],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         encoding="utf-8", errors="replace", creationflags=_NO_WINDOW,
     )
@@ -530,7 +540,7 @@ def _ffmpeg(args: List[str]) -> None:
 
 def _has_video(path: Path) -> bool:
     proc = subprocess.run(
-        ["ffprobe", "-v", "error", "-select_streams", "v", "-show_entries", "stream=codec_type,disposition=attached_pic",
+        [_tool("ffprobe"), "-v", "error", "-select_streams", "v", "-show_entries", "stream=codec_type,disposition=attached_pic",
          "-of", "json", str(path)],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
         creationflags=_NO_WINDOW,
@@ -616,7 +626,7 @@ def _stretch_clip(src: Path, dst: Path, tempo: float, use_rubberband: bool) -> N
 
 def _ffmpeg_has_filter(name: str) -> bool:
     try:
-        proc = subprocess.run(["ffmpeg", "-hide_banner", "-filters"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        proc = subprocess.run([_tool("ffmpeg"), "-hide_banner", "-filters"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                               text=True, encoding="utf-8", errors="replace", creationflags=_NO_WINDOW)
         return f" {name} " in proc.stdout
     except Exception:

@@ -71,6 +71,45 @@ def register_cuda_dlls() -> None:
 register_cuda_dlls()
 
 
+_gpu_cache: Dict[str, Any] = {"at": 0.0, "value": None}
+
+
+def _gpu_probe():
+    """(name, total GB, free GB) of GPU 0, or None. The NVIDIA driver (NVML) is asked first: it
+    needs no torch, which would slow the start and keep a CUDA context with VRAM in this process.
+    Cached for a few seconds (the page asks often)."""
+    import time
+
+    if time.time() - _gpu_cache["at"] < 5.0:
+        return _gpu_cache["value"]
+    value = None
+    try:
+        from app.vram import nvml_device
+
+        dev = nvml_device()
+        if dev:
+            name, used, total = dev
+            value = (name, round(total / 2**30, 1), round((total - used) / 2**30, 1))
+    except Exception:
+        value = None
+    if value is None:
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                props = torch.cuda.get_device_properties(0)
+                total = props.total_memory
+                try:
+                    free, _ = torch.cuda.mem_get_info(0)
+                except Exception:
+                    free = total
+                value = (props.name, round(total / 2**30, 1), round(free / 2**30, 1))
+        except Exception:
+            value = None
+    _gpu_cache.update(at=time.time(), value=value)
+    return value
+
+
 def get_hardware_info() -> Dict[str, Any]:
     """
     Detects available GPU/CPU resources and recommends optimal Whisper model and compute_type
@@ -83,26 +122,18 @@ def get_hardware_info() -> Dict[str, Any]:
         "vram_free_gb": 0.0,
         "recommended_device": "cpu",
         "recommended_compute_type": "int8",
-        "recommended_whisper_model": "small",
-        "recommended_ollama_model": "qwen2.5:1.5b",
+        "recommended_whisper_model": "large-v3-turbo",
+        "recommended_ollama_model": "qwen3.5:4b",
         "tier": "cpu",
-        "tier_description": "Работа на процессоре (рекомендуются модели small / medium / large-v3-turbo в режиме int8)",
+        "tier_description": "Работа на процессоре: быстрее всего GigaAM v3 (русский) и Parakeet; Whisper Turbo — в режиме int8",
     }
 
     try:
-        import torch
-
-        if torch.cuda.is_available():
-            props = torch.cuda.get_device_properties(0)
-            total_gb = round(props.total_memory / (1024**3), 1)
-            try:
-                free_mem, _ = torch.cuda.mem_get_info(0)
-                free_gb = round(free_mem / (1024**3), 1)
-            except Exception:
-                free_gb = total_gb
-
+        gpu = _gpu_probe()
+        if gpu:
+            name, total_gb, free_gb = gpu
             info["cuda_available"] = True
-            info["device_name"] = props.name
+            info["device_name"] = name
             info["vram_total_gb"] = total_gb
             info["vram_free_gb"] = free_gb
             info["recommended_device"] = "cuda"
@@ -110,28 +141,28 @@ def get_hardware_info() -> Dict[str, Any]:
             if total_gb >= 10.0:
                 info["tier"] = "high_vram"
                 info["recommended_compute_type"] = "float16"
-                info["recommended_whisper_model"] = "large-v3-turbo"
-                info["recommended_ollama_model"] = "qwen2.5:7b"
+                info["recommended_whisper_model"] = "large-v3"
+                info["recommended_ollama_model"] = "qwen3:8b"
                 info["tier_description"] = (
-                    f"Максимальная производительность ({props.name}, {total_gb} ГБ VRAM). "
+                    f"Максимальная производительность ({name}, {total_gb} ГБ VRAM). "
                     "Доступны самые точные модели large-v3 и large-v3-turbo в режиме float16."
                 )
             elif total_gb >= 5.5:
                 info["tier"] = "mid_vram"
                 info["recommended_compute_type"] = "int8_float16"
                 info["recommended_whisper_model"] = "large-v3-turbo"
-                info["recommended_ollama_model"] = "qwen2.5:7b"
+                info["recommended_ollama_model"] = "qwen3.5:4b"
                 info["tier_description"] = (
-                    f"Средний объём видеопамяти ({props.name}, {total_gb} ГБ VRAM). "
+                    f"Средний объём видеопамяти ({name}, {total_gb} ГБ VRAM). "
                     "Рекомендуется модель large-v3-turbo в гибридном режиме int8_float16."
                 )
             else:
                 info["tier"] = "low_vram"
                 info["recommended_compute_type"] = "int8"
-                info["recommended_whisper_model"] = "medium"
-                info["recommended_ollama_model"] = "qwen2.5:1.5b"
+                info["recommended_whisper_model"] = "large-v3-turbo"
+                info["recommended_ollama_model"] = "qwen3.5:4b"
                 info["tier_description"] = (
-                    f"Компактный режим видеопамяти ({props.name}, {total_gb} ГБ VRAM). "
+                    f"Компактный режим видеопамяти ({name}, {total_gb} ГБ VRAM). "
                     "Модели загружаются по очереди в сжатом формате int8."
                 )
     except Exception as e:

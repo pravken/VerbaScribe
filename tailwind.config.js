@@ -1,6 +1,6 @@
 /** Build-time Tailwind config (previously inlined for the CDN runtime). Run `npm run vendor`. */
 module.exports = {
-  content: ['./static/index.html', './static/app.js'],
+  content: ['./static/index.html', './static/parts/*.html', './static/js/*.js'],
   darkMode: 'class',
   theme: {
     extend: {
@@ -22,7 +22,7 @@ module.exports = {
           amber: '#FF9F0A',
           label: '#F5F5F7',
           secondary: '#98989D',
-          tertiary: '#636366',
+          tertiary: '#8A8A90',  // readable small text on the dark cards (was #636366, 2.6:1)
         },
       },
     },

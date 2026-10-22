@@ -26,17 +26,19 @@ def main() -> None:
 
     from app.database import get_all_settings
     from app.hardware import get_hardware_info
+    from app.live import caption_model
     from app.transcriber import _load_whisper_with_fallback
 
     settings = get_all_settings()
     hw = get_hardware_info()
     device = settings.get("device") or hw["recommended_device"]
+    name = caption_model(settings, hw)
     model = _load_whisper_with_fallback(
-        settings.get("whisper_model") or "large-v3-turbo",
+        name,
         device,
         settings.get("compute_type") or hw["recommended_compute_type"],
     )
-    proto.write(json.dumps({"ok": True, "event": "ready", "device": device}) + "\n")
+    proto.write(json.dumps({"ok": True, "event": "ready", "device": device, "model": name}) + "\n")
 
     stdin = sys.stdin.buffer
     while True:

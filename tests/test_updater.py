@@ -21,6 +21,14 @@ class VersionTest(unittest.TestCase):
         self.assertFalse(updater.is_newer("v1.0.0", "1.0.0"))
         self.assertFalse(updater.is_newer("garbage", "0.1.0"))
 
+    def test_pre_releases_sort_below_their_release(self):
+        self.assertTrue(updater.is_newer("0.2.0-beta.1", "0.1.0"))
+        self.assertTrue(updater.is_newer("v0.2.0", "0.2.0-beta.1"))  # beta testers get the final version
+        self.assertTrue(updater.is_newer("0.2.0-beta.2", "0.2.0-beta.1"))
+        self.assertTrue(updater.is_newer("0.2.0-rc.1", "0.2.0-beta.3"))
+        self.assertFalse(updater.is_newer("0.1.0", "0.2.0-beta.1"))  # no downgrade from a beta
+        self.assertEqual(updater.parse_version("v1.10.2"), (1, 10, 2, 1, 0, 0))
+
 
 class ApplyUpdateTest(unittest.TestCase):
     def setUp(self):
@@ -64,3 +72,37 @@ class ApplyUpdateTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AutoUpdateTest(unittest.TestCase):
+    def test_found_update_downloads_and_installs_on_exit(self):
+        from unittest import mock
+        from app import updater
+
+        st = {"can_install": True, "auto": True, "download": {"active": False, "done": False}}
+        with mock.patch.object(updater, "start_download") as dl:
+            updater._auto_download(st)
+            dl.assert_called_once()
+            updater._auto_download({**st, "auto": False})
+            dl.assert_called_once()
+        with mock.patch.object(updater, "auto_enabled", return_value=True), \
+             mock.patch.object(updater, "launch_installer") as li, \
+             mock.patch.dict(updater._state, {"download": {"done": True, "path": "x.zip"}}):
+            self.assertTrue(updater.install_on_exit())
+            li.assert_called_once_with(restart=False)
+        with mock.patch.object(updater, "launch_installer") as li, \
+             mock.patch.dict(updater._state, {"download": {"done": False, "path": ""}}):
+            self.assertFalse(updater.install_on_exit())
+            li.assert_not_called()
+
+
+class LauncherTitleTest(unittest.TestCase):
+    def test_splash_waits_for_the_app_window_title(self):
+        import re
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        run_title = re.search(r'^WINDOW_TITLE = "(.+?)"', (root / "run.py").read_text(encoding="utf-8"), re.M).group(1)
+        exe_src = (root / "build_exe.py").read_text(encoding="utf-8")
+        self.assertIn(f'const string WindowTitle = "{run_title}";', exe_src)
+        self.assertNotIn(f'splash.Text = "{run_title}";', exe_src)
