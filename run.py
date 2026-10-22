@@ -177,6 +177,12 @@ def read_session_token(timeout: float = 5.0) -> str:
         time.sleep(0.1)
 
 
+def window_url(host: str, port: int) -> str:
+    """The window's address: no token in it (it would stay in WebView2's history); the page signs
+    in through WindowApi.session_token."""
+    return f"http://{host}:{port}/"
+
+
 def app_url(host: str, port: int) -> str:
     token = read_session_token()
     return f"http://{host}:{port}/?token={token}" if token else f"http://{host}:{port}/"
@@ -251,7 +257,7 @@ def open_app_when_ready(window, host: str, port: int, log_path: str) -> None:
 
     while not SERVER_STATE["error"]:
         if is_port_in_use(host, port):
-            window.load_url(app_url(host, port))
+            window.load_url(window_url(host, port))
             return
         time.sleep(0.3)
     err = SERVER_STATE["error"]
@@ -272,9 +278,9 @@ class WindowApi:
         self._fullscreen = False
         self._host, self._port = host, port
 
-    def app_url(self) -> str:
-        """A fresh address with the session token: the "locked" page reloads itself with it."""
-        return app_url(self._host, self._port)
+    def session_token(self) -> str:
+        """The session token for the "locked" page, which signs in with it (POST /api/session)."""
+        return read_session_token()
 
     def toggle_fullscreen(self) -> bool:
         """WebView2 inside pywebview ignores the Fullscreen API, so the native window is toggled."""
@@ -840,7 +846,7 @@ def main() -> None:
             # The app's page once the server answers; until then a loading screen (see open_app_when_ready)
             window = webview.create_window(
                 title=WINDOW_TITLE,
-                url=app_url(args.host, args.port) if already_running else None,
+                url=window_url(args.host, args.port) if already_running else None,
                 html=None if already_running else LOADING_HTML,
                 width=1460,
                 height=900,

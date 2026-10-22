@@ -92,22 +92,31 @@ _ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]"} | {
 }
 _PUBLIC_PREFIXES = ("/static/",)
 
-_LOCKED_PAGE = """<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>VerbaScribe</title></head>
+_LOCKED_PAGE = """<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>VerbaScribe</title>
+<style>#msg{animation:show 0s 1.5s forwards;visibility:hidden}@keyframes show{to{visibility:visible}}</style></head>
 <body style="font-family:Segoe UI,sans-serif;background:#141416;color:#f5f5f7;padding:48px">
-<h2>VerbaScribe</h2>
+<div id="msg"><h2>VerbaScribe</h2>
 <p>Откройте программу через VerbaScribe.exe или start.bat — эта страница доступна только из окна приложения.</p>
-<p style="color:#98989d">Open the app via VerbaScribe.exe or start.bat — this page is only available from the app window.</p>
+<p style="color:#98989d">Open the app via VerbaScribe.exe or start.bat — this page is only available from the app window.</p></div>
 <script>
-// Inside the app window this means the window opened with an outdated session token (the server
-// was still starting): ask the window for a fresh address and reload. Only once: if that address
-// is refused too (the server belongs to another Windows user), reloading would never end.
-window.addEventListener('pywebviewready', async () => {
+// In the app window: the window hands over the session token, which is sent in a request body
+// (an address with the token would stay in the window's history). The message above shows only if
+// that does not work within a moment. One try per window session: a server that refuses the token
+// (another Windows user's) must not make the page reload forever.
+let tried = false;
+async function signIn() {
+  if (tried) return;
+  tried = true;
   try {
     if (sessionStorage.getItem('vs_relocked')) return;
-    const url = await window.pywebview.api.app_url();
-    if (url && url.indexOf('token=') > 0) { sessionStorage.setItem('vs_relocked', '1'); location.replace(url); }
+    const token = await window.pywebview.api.session_token();
+    if (!token) return;
+    const res = await fetch('/api/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) });
+    if (res.ok) { sessionStorage.setItem('vs_relocked', '1'); location.replace('/'); }
   } catch (e) {}
-});
+}
+window.addEventListener('pywebviewready', signIn);
+if (window.pywebview && window.pywebview.api) signIn();
 </script>
 </body></html>"""
 
@@ -239,6 +248,17 @@ async def local_session_guard(request: Request, call_next):
     path = request.url.path
     if not path.startswith(_PUBLIC_PREFIXES) and _foreign_page(request):
         return Response('{"detail":"Forbidden origin"}', status_code=403, media_type="application/json")
+    if path == "/api/session" and request.method == "POST":
+        # The app window signs in without the token in an address (see _LOCKED_PAGE)
+        try:
+            token = (await request.json()).get("token")
+        except Exception:
+            token = None
+        if not isinstance(token, str) or not _token_valid(token):
+            return Response('{"detail":"Unauthorized"}', status_code=401, media_type="application/json")
+        resp = Response(status_code=204)
+        resp.set_cookie(_cookie_name(request), SESSION_TOKEN, httponly=True, samesite="strict", path="/")
+        return resp
     if path == "/":
         query_token = request.query_params.get("token")
         if _token_valid(query_token):

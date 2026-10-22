@@ -211,10 +211,9 @@ window.fetch = async (...args) => {
 
 async function onSessionLost() {
   showToast(t('sessionLost'));
-  try {
-    const url = window.pywebview && window.pywebview.api && await window.pywebview.api.app_url();
-    if (url && url.indexOf('token=') > 0) setTimeout(() => location.replace(url), 1500);
-  } catch (e) { /* in a browser: the toast says what to do */ }
+  // In the app window the page reloads and signs in again (app/main.py _LOCKED_PAGE)
+  if (window.pywebview && window.pywebview.api) setTimeout(() => location.replace('/'), 1500);
+  /* in a browser: the toast says what to do */
 }
 
 // The JSON of a response; a non-JSON answer (a server error page) becomes {detail: "..."} instead of

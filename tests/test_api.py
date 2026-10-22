@@ -25,6 +25,18 @@ class SessionAndSearchApiTest(unittest.TestCase):
             other.cookies.set("vs_session_8790", main.SESSION_TOKEN)
             self.assertEqual(other.get("/api/meetings").status_code, 401)
 
+    def test_window_signs_in_without_the_token_in_an_address(self):
+        with self._client(8790) as c:
+            self.assertEqual(c.post("/api/session", json={"token": "wrong"}).status_code, 401)
+            self.assertEqual(c.post("/api/session", content=b"not json").status_code, 401)
+            self.assertEqual(c.post("/api/session", json={"token": main.SESSION_TOKEN},
+                                    headers={"Sec-Fetch-Site": "cross-site"}).status_code, 403)
+            self.assertEqual(c.get("/api/meetings").status_code, 401)
+            r = c.post("/api/session", json={"token": main.SESSION_TOKEN}, headers={"Sec-Fetch-Site": "same-origin"})
+            self.assertEqual(r.status_code, 204)
+            self.assertIn("vs_session_8790=", r.headers["set-cookie"])
+            self.assertEqual(c.get("/api/meetings").status_code, 200)
+
     def test_requests_of_other_pages_are_refused(self):
         """Another local program's page gets the cookie sent along (same site): it is told by its headers."""
         with self._client(8790) as c:
