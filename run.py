@@ -7,6 +7,7 @@ import threading
 import time
 import webbrowser
 from pathlib import Path
+from typing import Optional
 
 BASE_DIR = Path(__file__).resolve().parent
 ICO_PATH = BASE_DIR / "assets" / "icon.ico"
@@ -60,7 +61,7 @@ def apply_native_window_icon_and_hide_console() -> None:
                 )
 
                 for _ in range(25):
-                    hwnd = user32.FindWindowW(None, WINDOW_TITLE)
+                    hwnd = find_app_window(os.getpid())
                     if hwnd:
                         if hicon_big:
                             user32.SendMessageW(hwnd, WM_SETICON, ICON_BIG, hicon_big)
@@ -70,6 +71,40 @@ def apply_native_window_icon_and_hide_console() -> None:
                     time.sleep(0.1)
             except Exception:
                 pass
+
+
+# Windows of other programs that can carry the title too: Explorer showing the program's folder
+# (named VerbaScribe) is the usual one
+_FOREIGN_WINDOW_CLASSES = {"CabinetWClass", "ExploreWClass"}
+
+
+def find_app_window(pid: Optional[int] = None) -> int:
+    """The window titled VerbaScribe (of process `pid` when given), never an Explorer window of a
+    folder with that name; 0 when there is none."""
+    if sys.platform != "win32":
+        return 0
+    from ctypes import wintypes
+
+    user32 = ctypes.WinDLL("user32")
+    user32.FindWindowExW.argtypes = [wintypes.HWND, wintypes.HWND, wintypes.LPCWSTR, wintypes.LPCWSTR]
+    user32.FindWindowExW.restype = wintypes.HWND
+    user32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+    hwnd = None
+    name = ctypes.create_unicode_buffer(256)
+    owner = wintypes.DWORD()
+    while True:
+        hwnd = user32.FindWindowExW(None, hwnd, None, WINDOW_TITLE)
+        if not hwnd:
+            return 0
+        user32.GetClassNameW(hwnd, name, 256)
+        if name.value in _FOREIGN_WINDOW_CLASSES:
+            continue
+        if pid is not None:
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+            if owner.value != pid:
+                continue
+        return int(hwnd)
 
 
 def is_port_in_use(host: str, port: int) -> bool:
@@ -311,7 +346,7 @@ def activate_existing_window(timeout: float = 30.0) -> bool:
     SW_RESTORE = 9
     deadline = time.time() + timeout
     while time.time() < deadline:
-        hwnd = user32.FindWindowW(None, WINDOW_TITLE)
+        hwnd = find_app_window()
         if hwnd:
             if user32.IsIconic(hwnd) or not user32.IsWindowVisible(hwnd):  # minimized or in the tray
                 user32.ShowWindow(hwnd, SW_RESTORE)
@@ -430,7 +465,7 @@ class TrayController:
 
     def _window_in_front(self) -> bool:
         user32 = ctypes.windll.user32
-        hwnd = user32.FindWindowW(None, WINDOW_TITLE)
+        hwnd = find_app_window(os.getpid())
         return bool(hwnd) and user32.GetForegroundWindow() == hwnd and bool(user32.IsWindowVisible(hwnd))
 
     # ---- menu

@@ -121,6 +121,12 @@ class LauncherTitleTest(unittest.TestCase):
         exe_src = (root / "build_exe.py").read_text(encoding="utf-8")
         self.assertIn(f'const string WindowTitle = "{run_title}";', exe_src)
         self.assertNotIn(f'splash.Text = "{run_title}";', exe_src)
+        # Explorer showing the program folder carries the same title: neither side may take it for the app
+        run_src = (root / "run.py").read_text(encoding="utf-8")
+        self.assertIn('"CabinetWClass"', exe_src)
+        self.assertIn('"CabinetWClass"', run_src)
+        self.assertNotIn("FindWindowW(None, WINDOW_TITLE)", run_src)
+        self.assertNotIn("FindWindow(null, WindowTitle)", exe_src)
 
 
 class StartupFailureTest(unittest.TestCase):
