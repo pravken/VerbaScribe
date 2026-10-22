@@ -38,6 +38,9 @@ from app.pyenv import ensure_pip, find_uv
 
 GITHUB_REPO = "pravken/VerbaScribe"
 LATEST_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+# With "Get beta versions" on: the newest of the recent releases, pre-releases (v0.5.0-beta.1) too;
+# releases/latest never names a pre-release
+RELEASES_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases?per_page=30"
 CHECK_INTERVAL_SEC = 6 * 3600
 # Files are only ever downloaded from this repository's releases
 DOWNLOAD_PREFIX = f"https://github.com/{GITHUB_REPO}/releases/download/"
@@ -98,20 +101,28 @@ def check(force: bool = False) -> Dict[str, Any]:
 
     from app.database import get_all_settings
 
-    enabled = get_all_settings().get("update_check", "true").lower() == "true"
+    settings = get_all_settings()
+    enabled = settings.get("update_check", "true").lower() == "true"
+    beta = settings.get("update_beta", "false").lower() == "true"
     with _lock:
-        fresh = time.time() - _state["checked_at"] < CHECK_INTERVAL_SEC
+        # switching the beta channel asks again at once
+        fresh = time.time() - _state["checked_at"] < CHECK_INTERVAL_SEC and _state.get("beta") == beta
     if (enabled or force) and (force or not fresh):
         try:
             with httpx.Client(timeout=8.0, follow_redirects=True,
                               headers={"Accept": "application/vnd.github+json",
                                        "User-Agent": f"VerbaScribe/{current_version()}"}) as c:
-                r = c.get(LATEST_URL)
-            if r.status_code == 404:  # no release published yet
-                latest = None
-            else:
+                r = c.get(RELEASES_URL if beta else LATEST_URL)
+            rel = None
+            if r.status_code != 404:  # 404: no release published yet
                 r.raise_for_status()
                 rel = r.json()
+                if beta:
+                    rel = max((x for x in rel if isinstance(x, dict) and not x.get("draft")),
+                              key=lambda x: parse_version(x.get("tag_name") or ""), default=None)
+            if rel is None:
+                latest = None
+            else:
                 assets = {a.get("name"): a.get("browser_download_url") for a in rel.get("assets") or []
                           if str(a.get("browser_download_url") or "").startswith(DOWNLOAD_PREFIX)}
                 # GitHub's own SHA-256 of each uploaded file ("sha256:<hex>"), independent of SHA256SUMS.txt
@@ -131,10 +142,10 @@ def check(force: bool = False) -> Dict[str, Any]:
                     "zip_digest": digests.get(zip_name, "").removeprefix("sha256:").lower() if zip_name else "",
                 }
             with _lock:
-                _state.update(checked_at=time.time(), latest=latest, error="")
+                _state.update(checked_at=time.time(), latest=latest, error="", beta=beta)
         except Exception as e:
             with _lock:
-                _state.update(checked_at=time.time(), error=str(e)[:200])
+                _state.update(checked_at=time.time(), error=str(e)[:200], beta=beta)
     st = status()
     _auto_download(st)
     return status()

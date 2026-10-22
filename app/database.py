@@ -179,6 +179,7 @@ def init_db() -> None:
             "delete_media_after": "false",  # the sound deleted once a recording is transcribed (privacy)
             "media_retention_days": "0",  # the sound of older recordings deleted; 0: kept
             "update_auto": "true",  # download updates by themselves, install on exit (app/updater.py)
+            "update_beta": "false",  # offer beta versions (pre-releases) too: for testing before a release
             "calendar_ics": "",  # an .ics file or link: titles and participants of recordings (app/calendar_ics.py)
             "obsidian_summary": "true",
             "obsidian_tasks": "true",

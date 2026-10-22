@@ -30,6 +30,49 @@ class VersionTest(unittest.TestCase):
         self.assertEqual(updater.parse_version("v1.10.2"), (1, 10, 2, 1, 0, 0))
 
 
+class BetaChannelTest(unittest.TestCase):
+    """"Get beta versions": the newest of the recent releases, pre-releases too; off: releases/latest."""
+
+    def _check(self, beta):
+        import httpx
+
+        from app import database
+
+        database.init_db()
+        database.update_settings({"update_beta": "true" if beta else "false", "update_check": "true", "update_auto": "false"})
+        self.addCleanup(database.update_settings, {"update_beta": "false"})
+        asked = []
+
+        def answer(req):
+            asked.append(str(req.url))
+            if req.url.path.endswith("/latest"):
+                return httpx.Response(200, json={"tag_name": "v0.5.0", "assets": []})
+            return httpx.Response(200, json=[
+                {"tag_name": "v0.5.0", "assets": []},
+                {"tag_name": "v0.6.0-beta.2", "prerelease": True, "assets": []},
+                {"tag_name": "v0.6.0-beta.3", "draft": True, "assets": []},  # not published yet
+                {"tag_name": "v0.6.0-beta.1", "prerelease": True, "assets": []},
+            ])
+
+        real = httpx.Client
+        with mock.patch("httpx.Client", side_effect=lambda **kw: real(transport=httpx.MockTransport(answer), **kw)):
+            latest = updater.check(force=True)["latest"]
+        return latest["version"], asked
+
+    def test_beta_takes_the_newest_published_pre_release(self):
+        version, asked = self._check(beta=True)
+        self.assertEqual(version, "0.6.0-beta.2")
+        self.assertIn("/releases?per_page=30", asked[0])
+
+    def test_without_beta_only_the_latest_release(self):
+        version, asked = self._check(beta=False)
+        self.assertEqual(version, "0.5.0")
+        self.assertTrue(asked[0].endswith("/releases/latest"))
+
+    def test_a_beta_tester_is_offered_the_final_release(self):
+        self.assertTrue(updater.is_newer("0.6.0", "0.6.0-beta.2"))
+
+
 class ApplyUpdateTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

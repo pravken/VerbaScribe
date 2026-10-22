@@ -79,6 +79,7 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     document.getElementById('set-delete-media-after').checked = s.delete_media_after === 'true';
     document.getElementById('set-media-retention').value = s.media_retention_days || '0';
     document.getElementById('set-update-auto').checked = s.update_auto !== 'false';
+    document.getElementById('set-update-beta').checked = s.update_beta === 'true';
     document.getElementById('set-vad').checked = s.vad_filter !== 'false';
     if (document.getElementById('set-audio-enhance')) {
       document.getElementById('set-audio-enhance').checked = s.audio_enhance !== 'false';
@@ -1527,6 +1528,7 @@ async function saveAllSettings() {
       delete_media_after: String(document.getElementById('set-delete-media-after').checked),
       media_retention_days: document.getElementById('set-media-retention').value || '0',
       update_auto: String(document.getElementById('set-update-auto').checked),
+      update_beta: String(document.getElementById('set-update-beta').checked),
       quiet_mode: String(document.getElementById('set-quiet-mode').checked),
       vad_filter: String(document.getElementById('set-vad').checked),
       audio_enhance: String(document.getElementById('set-audio-enhance')?.checked !== false),
