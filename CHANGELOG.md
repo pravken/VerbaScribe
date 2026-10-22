@@ -21,9 +21,17 @@
 - Боковая панель: CPU, RAM и GPU с иконками подряд, модели — в отдельной рамке, разделённой на
   «Модели на видеокарте» и «Модели на процессоре», с числом загруженных.
 
+### Безопасность
+- **torch 2.11** (CUDA 12.6) вместо 2.6: закрыта уязвимость `torch.load` (PYSEC-2026-2286). Обновление
+  один раз скачает около 2,5 ГБ. Скорость распознавания та же или выше, точность та же.
+- Модели Hugging Face скачиваются с закреплённых коммитов, а не с `main`; окружение дубляжа ставится
+  из lock-файла с хешами.
+
 ### Исправлено
 - Диктовка с переводом (и анализ, перевод, дубляж) больше не берёт модель поиска по смыслу (bge-m3)
-  вместо модели для текста — Ollama отвечала на неё «400 Bad Request». Ошибки Ollama показываются её словами.
+  вместо модели для текста — Ollama отвечала на неё «400 Bad Request». Если она была выбрана моделью
+  анализа, её место один раз занимает модель для текста. Ошибки Ollama показываются её словами.
+- Волна звука на плеере снова видна у обработанных записей (была ровная линия).
 
 ## 0.5.1 — English
 
@@ -39,9 +47,15 @@
   selected row ("View → Badges → All, always" for the old list).
 - Sidebar: CPU, RAM, GPU with icons, the models framed apart, on the video card and on the processor.
 
+### Security
+- **torch 2.11** (CUDA 12.6) instead of 2.6 (PYSEC-2026-2286); the update downloads about 2.5 GB once.
+- Hugging Face models from fixed commits; the dubbing environment from a lock with hashes.
+
 ### Fixed
 - Dictation with translation (and analysis, translation, dubbing) no longer picks the embedding model
-  (bge-m3) as the text model, which Ollama refused with "400 Bad Request"; Ollama errors keep its words.
+  (bge-m3) as the text model, which Ollama refused with "400 Bad Request"; such a setting is replaced
+  once; Ollama errors keep its words.
+- The player waveform is back for processed recordings.
 
 ---
 
