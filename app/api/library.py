@@ -12,6 +12,7 @@ from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from app import __version__
 from app.paths import UPLOADS_DIR
+from app.settings_schema import as_int
 from app.database import create_meeting, delete_meeting, edit_meeting, get_all_settings, get_meeting, is_local_only, list_meetings, update_meeting_fields, update_meeting_progress, update_settings
 from app.transcriber import enqueue_meeting_job, is_job_active, request_cancel
 
@@ -286,7 +287,7 @@ async def api_upload_meetings(
     settings = get_all_settings()
     chosen_model = model_name.strip() or settings.get("whisper_model", "large-v3-turbo")
     chosen_lang = language.strip() or settings.get("language", "auto")
-    chosen_speakers = num_speakers if num_speakers > 0 else int(settings.get("num_speakers", 0))
+    chosen_speakers = num_speakers if num_speakers > 0 else as_int(settings.get("num_speakers"), 0)
     is_recording = source == "recording"
     target_dir = _recordings_dir() if is_recording else UPLOADS_DIR
 
@@ -368,9 +369,7 @@ def api_add_local_path(payload: LocalPathPayload) -> Dict[str, Any]:
     settings = get_all_settings()
     chosen_model = payload.model_name.strip() or settings.get("whisper_model", "large-v3-turbo")
     chosen_lang = payload.language.strip() or settings.get("language", "auto")
-    chosen_speakers = (
-        payload.num_speakers if payload.num_speakers > 0 else int(settings.get("num_speakers", 0))
-    )
+    chosen_speakers = payload.num_speakers if payload.num_speakers > 0 else as_int(settings.get("num_speakers"), 0)
 
     media_files: List[Path] = []
     if target.is_file():

@@ -106,7 +106,13 @@ def api_update_settings(payload: SettingsUpdatePayload) -> Dict[str, Any]:
     if payload.settings.get("llm_provider") == "cloud" and get_all_settings().get("llm_cloud_consent") != "true" \
             and str(payload.settings.get("llm_cloud_consent")) != "true":
         raise HTTPException(status_code=400, detail="Подтвердите отправку текста в облачный сервис в «Настройки → Анализ»")
-    updated = update_settings({k: v for k, v in payload.settings.items() if not str(k).startswith("llm_key_")})
+    from app.settings_schema import clean_all
+
+    try:
+        values = clean_all({k: v for k, v in payload.settings.items() if not str(k).startswith("llm_key_")})
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    updated = update_settings(values)
     if "semantic_search" in payload.settings or "semantic_model" in payload.settings:
         from app import semantic
 

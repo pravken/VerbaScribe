@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
 from app.database import _db_lock, get_all_settings, get_connection
+from app.settings_schema import as_int
 
 POLL_SEC = 15.0
 STABLE_SEC = 20.0
@@ -115,7 +116,7 @@ def _add_file(p: Path) -> None:
     m = create_meeting(
         title=p.stem, filename=p.name, media_path=str(p.resolve()),
         language=settings.get("language", "auto"), model_name=settings.get("whisper_model", "large-v3-turbo"),
-        num_speakers_hint=int(settings.get("num_speakers", 0) or 0), source="local",
+        num_speakers_hint=as_int(settings.get("num_speakers"), 0), source="local",
         recorded_at=_file_time(p), title_is_default=True,
     )
     enqueue_meeting_job(m["id"])

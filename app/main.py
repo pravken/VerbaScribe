@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app import __version__
 from app.paths import APP_DIR as BASE_DIR, SESSION_TOKEN_FILE, UPLOADS_DIR, recordings_dir
+from app.settings_schema import as_int
 from app.database import (
     create_meeting,
     get_all_settings,
@@ -340,7 +341,7 @@ def _queue_file(title: str, dest: Path, has_video: Optional[bool]) -> Dict[str, 
         title=title[:300], filename=dest.name, media_path=str(dest),
         language=settings.get("language", "auto"),
         model_name=settings.get("whisper_model", "large-v3-turbo"),
-        num_speakers_hint=int(settings.get("num_speakers", 0)),
+        num_speakers_hint=as_int(settings.get("num_speakers"), 0),
         source="recording", owns_media=True, title_is_default=True, has_video=has_video,
     )
     from app.naming import rename_recording_file

@@ -91,8 +91,9 @@ def cloud_base_url(provider: str, settings: Optional[Dict[str, str]] = None) -> 
 
 
 def uses_cloud(settings: Optional[Dict[str, str]] = None) -> bool:
+    """The cloud is used only with the consent given in Settings → Analysis, whatever else is stored."""
     settings = settings or _settings()
-    return (settings.get("llm_provider") or "ollama") == "cloud"
+    return (settings.get("llm_provider") or "ollama") == "cloud" and settings.get("llm_cloud_consent") == "true"
 
 
 @dataclass
