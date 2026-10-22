@@ -306,5 +306,96 @@ class PidFileTest(unittest.TestCase):
                 self.assertFalse(pid_file.exists())
 
 
+
+class ReleaseSignatureTest(unittest.TestCase):
+    """With the author's key in the program, an update installs only with its signature for that release."""
+
+    def setUp(self):
+        from app import release_sign
+
+        self.rs = release_sign
+        self.seed, self.kid = release_sign.new_key()
+        self.pub = release_sign.public_key_text(self.seed, self.kid)
+        self.sums = b"aa11  VerbaScribe-v9.0.0.zip\n"
+
+    def _sig(self, data=None, tag="v9.0.0", seed=None, kid=None):
+        return self.rs.sign_file(seed or self.seed, kid or self.kid, data or self.sums, f"tag:{tag} file:SHA256SUMS.txt")
+
+    def test_only_this_release_signed_by_this_key_passes(self):
+        updater.check_signature(self.sums, self._sig(), "v9.0.0", key=self.pub)
+        other_seed, other_kid = self.rs.new_key()
+        for sig, tag, why in ((self._sig(), "v9.0.1", "another release"),
+                              ("", "v9.0.0", "unsigned"),
+                              (self._sig(data=b"bb22  VerbaScribe-v9.0.0.zip\n"), "v9.0.0", "other checksums"),
+                              (self._sig(seed=other_seed, kid=other_kid), "v9.0.0", "another key"),
+                              (self._sig().replace("tag:v9.0.0", "tag:v9.0.1"), "v9.0.1", "edited comment")):
+            with self.assertRaises(RuntimeError, msg=why):
+                updater.check_signature(self.sums, sig, tag, key=self.pub)
+
+    def test_download_refuses_an_unsigned_release_once_the_key_is_set(self):
+        import hashlib
+
+        body = b"PK fake archive"
+        sums = f"{hashlib.sha256(body).hexdigest()}  VerbaScribe-v9.0.0.zip\n".encode()
+        latest = {"tag": "v9.0.0", "zip_name": "VerbaScribe-v9.0.0.zip", "zip_url": "z", "sums_url": "s", "sig_url": "g"}
+        sig = self.rs.sign_file(self.seed, self.kid, sums, "tag:v9.0.0 file:SHA256SUMS.txt")
+
+        class Resp:
+            def __init__(self, data):
+                self.content, self.text, self.headers = data, data.decode(), {"content-length": str(len(data))}
+
+            def raise_for_status(self):
+                pass
+
+            def iter_bytes(self, n):
+                yield self.content
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        def client(served):
+            c = mock.MagicMock()
+            c.__enter__.return_value.get.side_effect = lambda url: Resp(served[url])
+            c.__enter__.return_value.stream.side_effect = lambda method, url: Resp(served[url])
+            return c
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(updater, "_updates_dir", return_value=Path(tmp)), \
+                mock.patch.object(updater, "RELEASE_PUBLIC_KEY", self.pub):
+            for served, ok in (({"s": sums, "g": b"", "z": body}, False),
+                               ({"s": sums, "g": sig.encode(), "z": body}, True)):
+                with mock.patch("httpx.Client", return_value=client(served)):
+                    updater._download(latest if ok else {**latest, "sig_url": None})
+                st = updater._state["download"]
+                self.assertEqual(st["done"], ok, st)
+                self.assertEqual((Path(tmp) / "VerbaScribe-v9.0.0.zip").exists(), ok)
+                if not ok:
+                    self.assertIn("не подписан", st["error"])
+
+    def test_release_key_tool_makes_signatures_the_updater_accepts(self):
+        import os
+        import subprocess
+        import sys
+
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            key = Path(tmp) / "release.key"
+            out = subprocess.run([sys.executable, str(root / "tools" / "release_key.py"), "generate", "--out", str(key)],
+                                 capture_output=True, text=True, check=True)
+            pub = out.stdout.strip().splitlines()[-1]
+            sums = Path(tmp) / "SHA256SUMS.txt"
+            sums.write_bytes(self.sums)
+            env = {**os.environ, "RELEASE_SIGNING_KEY": key.read_text().strip()}
+            res = subprocess.run([sys.executable, str(root / "tools" / "release_key.py"), "sign", str(sums), "--tag", "v9.0.0"],
+                                 capture_output=True, text=True, env=env)
+            self.assertEqual(res.returncode, 0, res.stderr)
+            updater.check_signature(self.sums, (Path(tmp) / "SHA256SUMS.txt.minisig").read_text(), "v9.0.0", key=pub)
+            again = subprocess.run([sys.executable, str(root / "tools" / "release_key.py"), "generate", "--out", str(key)],
+                                   capture_output=True, text=True)
+            self.assertNotEqual(again.returncode, 0)  # a key is never overwritten
+
+
 if __name__ == "__main__":
     unittest.main()

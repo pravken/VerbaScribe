@@ -41,6 +41,10 @@ LATEST_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 CHECK_INTERVAL_SEC = 6 * 3600
 # Files are only ever downloaded from this repository's releases
 DOWNLOAD_PREFIX = f"https://github.com/{GITHUB_REPO}/releases/download/"
+# The author's release key (minisign format, app/release_sign.py, docs/release-signing.md). Set: an
+# update installs only with SHA256SUMS.txt.minisig signed by it for that very release. Empty: the
+# checksum alone is checked, as before the key existed.
+RELEASE_PUBLIC_KEY = ""
 # Never replaced by an update: user data, models and the Python environments
 PROTECTED = {".venv", ".venv-dub", ".python", "models", "data", "node_modules", ".git"}
 
@@ -123,6 +127,7 @@ def check(force: bool = False) -> Dict[str, Any]:
                     "zip_url": assets.get(zip_name) if zip_name else None,
                     "zip_name": zip_name,
                     "sums_url": assets.get("SHA256SUMS.txt"),
+                    "sig_url": assets.get("SHA256SUMS.txt.minisig"),
                     "zip_digest": digests.get(zip_name, "").removeprefix("sha256:").lower() if zip_name else "",
                 }
             with _lock:
@@ -207,6 +212,22 @@ def start_download() -> Dict[str, Any]:
     return status()
 
 
+def check_signature(sums: bytes, sig_text: str, tag: str, key: Optional[str] = None) -> None:
+    """RuntimeError unless `sig_text` is the release key's signature of `sums` for release `tag`."""
+    from app import release_sign
+
+    if not sig_text.strip():
+        raise RuntimeError("Релиз не подписан ключом автора — обновление отменено")
+    try:
+        comment = release_sign.verify_file(key or RELEASE_PUBLIC_KEY, sums, sig_text)
+    except release_sign.SignatureError as e:
+        print(f"[update] signature: {e}", flush=True)
+        raise RuntimeError("Подпись релиза не прошла проверку — обновление отменено")
+    if f"tag:{tag}" not in comment.split():  # a signature of another release, put next to this one
+        print(f"[update] signature is for another release: {comment}", flush=True)
+        raise RuntimeError("Подпись релиза не прошла проверку — обновление отменено")
+
+
 def _download(latest: Dict[str, Any]) -> None:
     import httpx
 
@@ -221,7 +242,10 @@ def _download(latest: Dict[str, Any]) -> None:
                           headers={"User-Agent": f"VerbaScribe/{current_version()}"}) as c:
             expected = None
             if latest.get("sums_url"):
-                for line in c.get(latest["sums_url"]).text.splitlines():
+                sums = c.get(latest["sums_url"]).content
+                if RELEASE_PUBLIC_KEY:
+                    check_signature(sums, c.get(latest["sig_url"]).text if latest.get("sig_url") else "", latest.get("tag") or "")
+                for line in sums.decode("utf-8", "replace").splitlines():
                     parts = line.split()
                     if len(parts) == 2 and parts[1].lstrip("*") == latest["zip_name"]:
                         expected = parts[0].lower()

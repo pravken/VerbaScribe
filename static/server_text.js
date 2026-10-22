@@ -215,6 +215,8 @@ const SERVER_TEXT_EN = {
   "это прямая трансляция: она не кончается, скачать её целиком нельзя": "it is a live stream: it never ends, it cannot be downloaded whole",
   "Неверное сочетание клавиш": "Not a valid key combination",
   "Сочетание уже занято другой программой": "Another program already uses this combination",
+  "Релиз не подписан ключом автора — обновление отменено": "The release is not signed with the author's key: the update is cancelled",
+  "Подпись релиза не прошла проверку — обновление отменено": "The signature of the release did not check out: the update is cancelled",
 };
 
 // Messages with values in them: {} in the Russian text, {0} {1} … in the English one

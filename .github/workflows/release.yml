@@ -68,6 +68,28 @@ jobs:
             Set-Content -Encoding utf8 SHA256SUMS.txt
           Get-Content SHA256SUMS.txt
 
+      # SHA256SUMS.txt signed with the author's release key (docs/release-signing.md). Once its public
+      # key is in app/updater.py, installed apps take only signed releases: then a missing secret stops
+      # the release instead of publishing one nobody could install.
+      - name: Sign checksums
+        shell: pwsh
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          $hasKey = Select-String -Path app/updater.py -Pattern '^RELEASE_PUBLIC_KEY = ".+"' -Quiet
+          if ($env:RELEASE_SIGNING_KEY) {
+            python tools/release_key.py sign SHA256SUMS.txt --tag $env:TAG
+            if ($LASTEXITCODE -ne 0) { throw "Signing failed" }
+            if ($hasKey) {
+              python tools/release_key.py verify SHA256SUMS.txt --tag $env:TAG
+              if ($LASTEXITCODE -ne 0) { throw "The signature does not check out with the key in app/updater.py" }
+            }
+          } elseif ($hasKey -and $env:PUBLISH -eq 'true') {
+            throw "app/updater.py has a release key but the RELEASE_SIGNING_KEY secret is missing: installed apps would refuse this release"
+          } else {
+            Write-Output "No release key yet: SHA256SUMS.txt is not signed"
+          }
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
@@ -76,6 +98,7 @@ jobs:
             VerbaScribe-*.zip
             VerbaScribe.exe
             SHA256SUMS.txt
+            SHA256SUMS.txt.minisig
 
       # With the gh tool of the runner: no third-party action gets the token that writes releases.
       # v1.2.0-beta.1 and the like are pre-releases: releases/latest (the in-app update check) skips
@@ -87,6 +110,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $files = @(Get-ChildItem VerbaScribe-*.zip | ForEach-Object Name) + @('VerbaScribe.exe', 'SHA256SUMS.txt')
+          if (Test-Path SHA256SUMS.txt.minisig) { $files += 'SHA256SUMS.txt.minisig' }
           $pre = if ($env:TAG.Contains('-')) { @('--prerelease') } else { @() }
           gh release view $env:TAG *> $null
           if ($LASTEXITCODE -eq 0) { gh release upload $env:TAG @files --clobber }
