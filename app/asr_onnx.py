@@ -1,5 +1,5 @@
 """
-Speech recognition with GigaAM v2 (Sber, MIT licence) and NVIDIA Parakeet TDT 0.6B v3 (CC-BY-4.0),
+Speech recognition with GigaAM v3 (Sber, MIT licence) and NVIDIA Parakeet TDT 0.6B v3 (CC-BY-4.0),
 both free for commercial use, run on ONNX Runtime through onnx-asr (MIT).
 
 GigaAM is the most accurate model for Russian; Parakeet is several times faster than Whisper and
@@ -27,8 +27,8 @@ ONNX_MODELS: Dict[str, Dict[str, Any]] = {
         "license": "MIT",
         "vram_gb": 1.5,  # on the GPU (app/onnx_gpu.py)
         "languages": ["ru"],
-        "desc_ru": "Новая модель Сбера для русского языка: сразу пишет со знаками препинания и заглавными буквами, числа цифрами. Только русский, работает на процессоре.",
-        "desc_en": "Sber's new model for Russian: writes with punctuation and capital letters, numbers as digits. Russian only, runs on the CPU.",
+        "desc_ru": "Новая модель Сбера для русского языка: сразу пишет со знаками препинания и заглавными буквами, числа цифрами. Только русский; на видеокарте NVIDIA, без неё — на процессоре.",
+        "desc_en": "Sber's new model for Russian: writes with punctuation and capital letters, numbers as digits. Russian only; on an NVIDIA video card, otherwise on the CPU.",
     },
     "parakeet-v3": {
         "onnx_name": "nemo-parakeet-tdt-0.6b-v3",

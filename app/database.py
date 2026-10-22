@@ -162,7 +162,7 @@ def init_db() -> None:
             "call_apps": "zoom,teams,telegram",
             "call_preset": "call",  # system-wide start/stop of a recording (app/tray.py); "" = off
             "semantic_search": "false",  # search by meaning with a local embedding model (app/semantic.py)
-            "semantic_model": "bge-m3",  # captions while recording (app/live.py caption_model)
+            "semantic_model": "bge-m3",  # the embedding model of search by meaning (Ollama)
             "auto_title": "true",  # name recordings by their content (LLM) when the title is generic
             "obsidian_auto": "false",  # save a note to the Obsidian vault after processing
             "obsidian_vault": "",
