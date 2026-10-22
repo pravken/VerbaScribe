@@ -1103,9 +1103,7 @@ function closeLibViewMenu() {
 document.addEventListener('click', closeLibViewMenu);
 
 function formatSize(bytes) {
-  if (!bytes) return '';
-  const mb = bytes / 1048576;
-  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} ${t('unitGb')}` : `${mb >= 10 ? Math.round(mb) : mb.toFixed(1)} ${t('unitMb')}`;
+  return bytes ? formatBytes(bytes) : '';
 }
 
 // What the row shows on its right: the sorted-by value when it is not the date

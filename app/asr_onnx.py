@@ -78,10 +78,9 @@ def supports_language(model_id: str, lang: Optional[str]) -> bool:
 
 def _dir_mb(d: Path) -> float:
     """Size of a folder, including the partial files Hugging Face writes while downloading."""
-    try:
-        return sum(f.stat().st_size for f in d.rglob("*") if f.is_file()) / (1024 * 1024)
-    except OSError:
-        return 0.0
+    from app.paths import dir_size
+
+    return dir_size(d) / 2**20
 
 
 def download_progress(model_id: str) -> int:

@@ -21,6 +21,8 @@ from copy import deepcopy
 from datetime import datetime
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
+from app.audio_utils import srt_time as _format_srt_time
+
 # code -> English name used in LLM prompts. Superset of the dub languages; the quality of rarer
 # languages depends entirely on the chosen Ollama model.
 TEXT_LANGUAGES: Dict[str, str] = {
@@ -171,12 +173,6 @@ def merge_translated_items(
 
 
 # ------------------------------------------------------------------ subtitles
-def _format_srt_time(seconds: float) -> str:
-    ms = int(round(max(0.0, float(seconds)) * 1000))
-    h, ms = divmod(ms, 3_600_000)
-    m, ms = divmod(ms, 60_000)
-    s, ms = divmod(ms, 1000)
-    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 
 def wrap_subtitle_line(text: str, width: int = 42) -> str:

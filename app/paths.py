@@ -261,3 +261,22 @@ def recordings_dir(configured: str = "") -> Path:
             pass
     DEFAULT_RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
     return DEFAULT_RECORDINGS_DIR
+
+
+def dir_size(path: Path) -> int:
+    """Bytes in a folder. File links are followed and every file is counted once: a Hugging Face
+    snapshot folder holds links to its blobs, the cache folder holds both."""
+    seen = set()
+    total = 0
+    for root, _dirs, files in os.walk(path, followlinks=False):
+        for name in files:
+            try:
+                st = os.stat(os.path.join(root, name))
+            except OSError:
+                continue  # a broken link, a file removed meanwhile
+            key = (st.st_dev, st.st_ino)
+            if st.st_ino and key in seen:
+                continue
+            seen.add(key)
+            total += st.st_size
+    return total

@@ -291,11 +291,13 @@ async function pollDubSetup() {
 }
 
 // --- Settings → Speech synthesis (dub): environment, weights, disk usage, options ---
+// File sizes in the units Windows Explorer uses (1 KB = 1024 bytes), so the numbers match it
 function formatBytes(n) {
   if (n == null) return '…';
-  if (n >= 1e9) return `${(n / 1e9).toFixed(1)} ${t('unitGB')}`;
-  if (n >= 1e6) return `${Math.round(n / 1e6)} ${t('unitMB')}`;
-  return `${Math.round(n / 1e3)} ${t('unitKB')}`;
+  if (n >= 2 ** 30) return `${(n / 2 ** 30).toFixed(1)} ${t('unitGB')}`;
+  if (n >= 10 * 2 ** 20) return `${Math.round(n / 2 ** 20)} ${t('unitMB')}`;
+  if (n >= 2 ** 20) return `${(n / 2 ** 20).toFixed(1)} ${t('unitMB')}`;
+  return `${Math.round(n / 1024)} ${t('unitKB')}`;
 }
 
 async function loadDubInfo() {

@@ -2,7 +2,7 @@ import shutil
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import httpx
 import huggingface_hub
@@ -115,10 +115,9 @@ def _hf_cache_dir(model_id: str) -> Optional[Path]:
 
 
 def dir_size_mb(d: Path) -> int:
-    try:
-        return int(sum(f.stat().st_size for f in d.rglob("*") if f.is_file()) / 2**20)
-    except OSError:
-        return 0
+    from app.paths import dir_size
+
+    return int(dir_size(d) / 2**20)
 
 
 COMPLETE_MARK = ".complete"  # written once every file of a model is downloaded

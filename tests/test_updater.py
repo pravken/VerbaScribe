@@ -132,9 +132,6 @@ class ApplyUpdateTest(unittest.TestCase):
             self.assertTrue(dub_setup.is_installed())
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class AutoUpdateTest(unittest.TestCase):
     def test_found_update_downloads_and_installs_on_exit(self):
@@ -307,3 +304,7 @@ class PidFileTest(unittest.TestCase):
                 self.assertTrue(pid_file.read_text().startswith(f"{run.os.getpid()}\n"))
                 run.remove_pid_file()
                 self.assertFalse(pid_file.exists())
+
+
+if __name__ == "__main__":
+    unittest.main()

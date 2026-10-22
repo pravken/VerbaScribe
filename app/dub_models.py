@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from app.paths import MODELS_DIR
+from app.paths import MODELS_DIR, dir_size
 
 DUB_MODELS_DIR = MODELS_DIR / "dub"
 HF_HUB_DIR = DUB_MODELS_DIR / "hf" / "hub"
@@ -44,18 +44,6 @@ _BY_ID = {w["id"]: w for w in DUB_WEIGHTS}
 
 def _repo_dir(repo: str) -> Path:
     return HF_HUB_DIR / ("models--" + repo.replace("/", "--"))
-
-
-def dir_size(path: Path) -> int:
-    """Bytes under `path` without following links."""
-    total = 0
-    for root, _dirs, files in os.walk(path, followlinks=False):
-        for name in files:
-            try:
-                total += os.lstat(os.path.join(root, name)).st_size
-            except OSError:
-                continue
-    return total
 
 
 def _linked_blobs(repo_dir: Path) -> Dict[str, int]:
