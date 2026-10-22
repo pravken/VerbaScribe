@@ -3,6 +3,30 @@
 Описание каждой версии берётся отсюда в страницу релиза (раздел с её номером). Бета-версии
 (`vX.Y.Z-beta.N`) показывают раздел своей будущей версии.
 
+## 0.5.1
+
+### Новое
+- **Диктовки в медиатеке:** каждая диктовка сохраняется записью в системной папке «Диктовки» — звук,
+  текст и перевод. Папка только для локального анализа. Отключается в настройках диктовки.
+- **Переименование участников из текста:** правый щелчок по кружку участника («Переименовать…»,
+  «Прослушать», «Показать только его реплики») и пункт «Переименовать…» в списке имени у реплики.
+
+### Исправлено
+- Диктовка с переводом (и анализ, перевод, дубляж) больше не берёт модель поиска по смыслу (bge-m3)
+  вместо модели для текста — Ollama отвечала на неё «400 Bad Request». Ошибки Ollama показываются её словами.
+
+## 0.5.1 — English
+
+### New
+- **Dictations in the library**, in a system folder "Dictations" (sound, text, translation; local analysis only).
+- **Rename a speaker from the text:** right click on their circle, or "Rename…" in a line's speaker list.
+
+### Fixed
+- Dictation with translation (and analysis, translation, dubbing) no longer picks the embedding model
+  (bge-m3) as the text model, which Ollama refused with "400 Bad Request"; Ollama errors keep its words.
+
+---
+
 ## 0.5.0
 
 ### Новое
