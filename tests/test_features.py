@@ -1,5 +1,8 @@
 import tests  # noqa: F401 - keeps the real user data out of reach (see tests/__init__.py)
+import threading
 import unittest
+
+import numpy as np
 
 from app.translation import build_cues, cues_to_srt, cues_to_vtt
 
@@ -397,3 +400,54 @@ class SideJobStatusTest(unittest.TestCase):
             self.assertTrue(transcriber.enqueue_cut_job(m["id"], "denoise", [(0.0, 1.0)], False, "/nonexistent/out.wav"))
             transcriber._executor.submit(lambda: None).result(timeout=30)
             self.assertEqual(meeting_status(m["id"]), status)
+
+
+class LiveCaptionFailureTest(unittest.TestCase):
+    """Captions whose recognizer fails: the buffer stays small and the worker is not restarted every second."""
+
+    def test_buffer_stays_bounded(self):
+        from unittest import mock
+
+        from app import live
+        from app.database import init_db
+
+        init_db()
+
+        class Broken:
+            calls = 0
+
+            def transcribe(self, audio, lang):
+                Broken.calls += 1
+                raise RuntimeError("Субтитры остановлены: нет модели")
+
+        s = live.LiveSession("ru", None)
+        s.onnx_model = None
+        second = (np.zeros(live.SR, dtype="<i2")).tobytes()
+        with mock.patch.object(live, "_caption_worker", lambda: Broken()):
+            for _ in range(600):  # ten minutes, a second at a time, as the page sends it
+                s.add_pcm16(second)
+                s.step()
+        self.assertLessEqual(s.audio.size, 2 * live.LIVE_WINDOW_SEC * live.SR)
+        self.assertIn("нет модели", s.error)
+        self.assertAlmostEqual(s.offset + s.audio.size / live.SR, 600.0, places=3)  # times stay right
+
+    def test_worker_start_backs_off(self):
+        from unittest import mock
+
+        from app import live
+
+        w = live._CaptionWorker.__new__(live._CaptionWorker)  # without the reaper thread
+        w.proc, w.lock, w.last_used, w.stderr_tail, w.model_name = None, threading.Lock(), 0.0, [], ""
+        w.failures, w.retry_at, w.last_error = 0, 0.0, ""
+        starts = []
+
+        def popen(*a, **k):
+            starts.append(1)
+            raise OSError("нет такого файла")
+
+        with mock.patch.object(live.subprocess, "Popen", popen):
+            for _ in range(50):
+                with self.assertRaises(RuntimeError):
+                    w.transcribe(np.zeros(16000, dtype=np.float32), "ru")
+        self.assertEqual(len(starts), 1)  # the next try waits WORKER_RETRY_SEC
+        self.assertGreater(w.retry_at, 0)

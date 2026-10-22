@@ -13,6 +13,7 @@ for following along, so they favour speed (greedy decoding, short window) over a
 
 import json
 import os
+import queue
 import subprocess
 import sys
 import threading
@@ -35,6 +36,9 @@ FINAL_MARGIN_SEC = 1.6    # a phrase ending this long before the window end is f
 SESSION_IDLE_SEC = 120.0  # sessions without audio for this long are dropped
 
 WORKER_IDLE_SEC = 120.0   # the caption worker is closed (VRAM freed) after this long unused
+WORKER_START_SEC = 900.0  # the worker loads (and on first use downloads) its model before it answers
+WORKER_ANSWER_SEC = 60.0  # a window not answered in this time: the worker hangs and is replaced
+WORKER_RETRY_SEC = (5.0, 15.0, 30.0, 60.0)  # waits before starting a worker again after failures
 
 _sessions: Dict[str, "LiveSession"] = {}
 _sessions_lock = threading.Lock()
@@ -59,19 +63,50 @@ class _CaptionWorker:
         self.last_used = 0.0
         self.stderr_tail: List[str] = []
         self.model_name = ""
+        self._out: "queue.Queue[bytes]" = queue.Queue()
+        # A worker that cannot start (no model, no memory, broken CUDA) is not started again on every
+        # window of audio: after each failure the next try waits longer (WORKER_RETRY_SEC)
+        self.failures = 0
+        self.retry_at = 0.0
+        self.last_error = ""
         threading.Thread(target=self._reaper, daemon=True, name="live_worker_reaper").start()
 
     def _start(self) -> None:
+        if time.time() < self.retry_at:
+            raise RuntimeError(self.last_error or "процесс распознавания не запустился")
         cmd = [sys.executable, "-m", "app.live_worker"]
-        self.proc = subprocess.Popen(
-            cmd, cwd=str(APP_DIR), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            creationflags=_NO_WINDOW, env={**os.environ, "PYTHONIOENCODING": "utf-8"},
-        )
-        threading.Thread(target=self._drain, args=(self.proc,), daemon=True).start()
-        line = self.proc.stdout.readline()
-        if not line:
-            raise RuntimeError("процесс распознавания не запустился: " + " | ".join(self.stderr_tail[-3:]))
-        self.model_name = json.loads(line).get("model") or ""
+        try:
+            self.proc = subprocess.Popen(
+                cmd, cwd=str(APP_DIR), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                creationflags=_NO_WINDOW, env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+            )
+            self._out = queue.Queue()
+            threading.Thread(target=self._drain, args=(self.proc,), daemon=True).start()
+            threading.Thread(target=self._read, args=(self.proc, self._out), daemon=True).start()
+            line = self._readline(WORKER_START_SEC)
+            if not line:
+                raise RuntimeError("процесс распознавания не запустился: " + " | ".join(self.stderr_tail[-3:]))
+            self.model_name = json.loads(line).get("model") or ""
+        except Exception as e:
+            self._kill()
+            self.last_error = str(e)[:300]
+            self.retry_at = time.time() + WORKER_RETRY_SEC[min(self.failures, len(WORKER_RETRY_SEC) - 1)]
+            self.failures += 1
+            raise
+        self.failures = 0
+        self.retry_at = 0.0
+
+    @staticmethod
+    def _read(proc, out: "queue.Queue[bytes]") -> None:
+        for line in proc.stdout:
+            out.put(line)
+        out.put(b"")  # the process ended
+
+    def _readline(self, timeout: float) -> bytes:
+        try:
+            return self._out.get(timeout=timeout)
+        except queue.Empty:
+            raise RuntimeError("процесс распознавания не отвечает")
 
     def _drain(self, proc) -> None:
         for raw in proc.stderr:
@@ -88,7 +123,7 @@ class _CaptionWorker:
                     self.proc.stdin.write((json.dumps({"lang": lang, "bytes": len(pcm)}) + "\n").encode())
                     self.proc.stdin.write(pcm)
                     self.proc.stdin.flush()
-                    line = self.proc.stdout.readline()
+                    line = self._readline(WORKER_ANSWER_SEC)
                     if not line:
                         raise RuntimeError("процесс распознавания завершился")
                     res = json.loads(line)
@@ -99,7 +134,7 @@ class _CaptionWorker:
                     return segs, res.get("language"), float(res.get("prob") or 0.0)
                 except (OSError, ValueError, RuntimeError) as e:
                     self._kill()
-                    if attempt:
+                    if attempt or time.time() < self.retry_at:
                         raise RuntimeError(f"Субтитры остановлены: {e}") from e
         return [], None, 0.0
 
@@ -191,6 +226,13 @@ class LiveSession:
                 chunk[: sys_part.size] += sys_part
         self.audio = np.concatenate([self.audio, chunk])
         self.received += chunk.size / SR
+        # Nothing decoded for long (steps fail or one hangs): only the last part is kept. Not while a
+        # step runs: it cuts the buffer from its start when it ends
+        if self.audio.size > 2 * LIVE_WINDOW_SEC * SR and self._busy.acquire(blocking=False):
+            try:
+                self._drop_to(LIVE_WINDOW_SEC / 2)
+            finally:
+                self._busy.release()
         self.touched = time.time()
         from app import idle_unload
 
@@ -205,10 +247,20 @@ class LiveSession:
             self.last_run_at = self.received
             self._transcribe_window()
         except Exception as e:  # a failed step must not end the recording
-            traceback.print_exc()
+            if str(e)[:200] != self.error:
+                traceback.print_exc()
             self.error = str(e)[:200]
+            # The audio of a failed window is not kept for later: the buffer would grow for the whole
+            # recording (the saved file has everything; captions follow the speech as it goes)
+            if self.audio.size > LIVE_WINDOW_SEC * SR:
+                self._drop_to(LIVE_WINDOW_SEC / 2)
         finally:
             self._busy.release()
+
+    def _drop_to(self, keep_sec: float) -> None:
+        cut = max(0, self.audio.size - int(keep_sec * SR))
+        self.audio = self.audio[cut:]
+        self.offset += cut / SR
 
     def _transcribe_window(self) -> None:
         window = self.audio
