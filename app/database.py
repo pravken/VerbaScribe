@@ -213,6 +213,9 @@ def init_db() -> None:
         cur.execute(
             "CREATE TABLE IF NOT EXISTS semantic_meta (meeting_id INTEGER PRIMARY KEY, model TEXT NOT NULL, updated_at TEXT NOT NULL)"
         )
+        if "stale" not in {r["name"] for r in cur.execute("PRAGMA table_info(semantic_meta)").fetchall()}:
+            # 1: the transcript changed since it was indexed (its chunks still answer until it is redone)
+            cur.execute("ALTER TABLE semantic_meta ADD COLUMN stale INTEGER DEFAULT 0")
 
         # Full-text index of transcript segments for the global search (SQLite FTS5).
         # Only `text` is indexed; the other columns are stored to build results without JSON parsing.
@@ -341,8 +344,10 @@ def _loads_list(raw: Optional[str]) -> List[Dict[str, Any]]:
 def _reindex_segments(conn: sqlite3.Connection, meeting_id: int, segments: List[Dict[str, Any]]) -> None:
     """Replaces the search index rows of one recording. Call inside the caller's transaction."""
     conn.execute("DELETE FROM segments_fts WHERE meeting_id = ?", (meeting_id,))
-    # The meaning index of this recording is out of date: app/semantic.py indexes it again
-    conn.execute("DELETE FROM semantic_meta WHERE meeting_id = ?", (meeting_id,))
+    # The meaning index of this recording is out of date: app/semantic.py indexes it again a while
+    # after the last edit, embedding only the chunks whose text changed
+    conn.execute("UPDATE semantic_meta SET stale = 1, updated_at = datetime('now', 'localtime') WHERE meeting_id = ?",
+                 (meeting_id,))
     conn.executemany(
         "INSERT INTO segments_fts (text, meeting_id, segment_id, start, speaker) VALUES (?, ?, ?, ?, ?)",
         [
