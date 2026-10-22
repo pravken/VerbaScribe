@@ -106,12 +106,12 @@ function renderAudioTrackSwitch() {
   box.innerHTML = `
     <label class="ui-btn ${onDub ? 'ui-btn-active' : 'ui-btn-subtle'} pr-1 cursor-pointer" title="${escapeHtml(t('tipAudioTrack'))}">
       <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z"/></svg>
-      <select onchange="setAudioTrack(this.value)" class="bg-transparent focus:outline-none cursor-pointer text-[11.5px]">
+      <select data-change="setAudioTrack" data-change-args='[{"$": "value"}]' class="bg-transparent focus:outline-none cursor-pointer text-[11.5px]">
         ${option('orig', t('trackOriginal'))}
         ${dubs.map(d => option(d.lang, `${t('trackDub')} ${d.lang.toUpperCase()}`)).join('')}
       </select>
     </label>${onDub ? `
-    <button onclick="deleteActiveDub()" class="ui-btn ui-btn-subtle px-2" title="${escapeHtml(t('dubDelete'))}">✕</button>` : ''}`;
+    <button data-click="deleteActiveDub" class="ui-btn ui-btn-subtle px-2" title="${escapeHtml(t('dubDelete'))}">✕</button>` : ''}`;
   renderDubExportMenu();
 }
 
@@ -300,6 +300,11 @@ function formatBytes(n) {
   return `${Math.round(n / 1024)} ${t('unitKB')}`;
 }
 
+// One weight file of the dub models, from its row
+function downloadDubWeight(id) {
+  downloadDubWeights([id]);
+}
+
 async function loadDubInfo() {
   try {
     const res = await fetch('/api/dub/info');
@@ -340,10 +345,10 @@ function renderDubInfo(info) {
       action = `<span class="ui-btn bg-apple-blue/20 text-apple-blue font-mono animate-pulse">${dl.progress || 1}%</span>`;
     } else if (item.installed) {
       action = `<span class="ui-btn bg-apple-green/20 text-apple-green">${SVG_ICONS.check}<span>${escapeHtml(t('sdubWeightsReady'))}</span></span>
-        <button data-id="${escapeHtml(item.id)}" onclick="deleteDubWeights(this.dataset.id)" ${busy ? 'disabled style="opacity:.4"' : ''}
+        <button data-id="${escapeHtml(item.id)}" data-click="deleteDubWeights" data-click-args='[{"$": "data", "k": "id"}]' ${busy ? 'disabled style="opacity:.4"' : ''}
           title="${escapeHtml(t('tipDeleteModel'))}" class="ui-btn ui-btn-subtle px-2 hover:text-apple-red">${SVG_ICONS.trash}</button>`;
     } else {
-      action = `<button data-id="${escapeHtml(item.id)}" onclick="downloadDubWeights([this.dataset.id])" ${busy || !info.installed ? 'disabled style="opacity:.4"' : ''}
+      action = `<button data-id="${escapeHtml(item.id)}" data-click="downloadDubWeight" data-click-args='[{"$": "data", "k": "id"}]' ${busy || !info.installed ? 'disabled style="opacity:.4"' : ''}
           title="${escapeHtml(info.installed ? t('tipDownloadModel') : t('sdubNeedEnv'))}" class="ui-btn ui-btn-primary">${SVG_ICONS.download}<span>${escapeHtml(t('downloadBtn'))} (${escapeHtml(formatBytes(item.expected_bytes))})</span></button>`;
     }
     const size = item.size_bytes ? formatBytes(item.size_bytes) : t('sdubNotDownloaded');
@@ -500,7 +505,7 @@ function renderDubResults() {
           <div class="text-[10.5px] text-apple-secondary truncate" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
           <div class="text-[10.5px] text-apple-tertiary">${escapeHtml(meta)}</div>
         </div>
-        <button onclick="revealDub(${jsArg(lang)})" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px] shrink-0">${escapeHtml(t('dubReveal'))}</button>
+        <button data-click="revealDub" data-click-args='[${jsArg(lang)}]' class="ui-btn ui-btn-subtle h-6 px-2 text-[11px] shrink-0">${escapeHtml(t('dubReveal'))}</button>
       </div>
       ${isVideo
         ? `<video controls preload="none" class="w-full rounded-md bg-black max-h-56" src="${src}"></video>`
@@ -670,10 +675,10 @@ function renderTranslateResults() {
           ${outdated ? `<div class="text-[10.5px] text-apple-amber">${escapeHtml(t('translateOutdated').replace('{stale}', () => r.stale || 0).replace('{missing}', () => r.missing || 0))}</div>` : ''}
         </div>
         <div class="flex items-center gap-1.5 shrink-0">
-          <button onclick="showTranslation(${jsArg(lang)})" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]">${escapeHtml(t('translateShow'))}</button>
-          ${outdated ? `<button onclick="startTranslation(true, ${jsArg(lang)})" class="ui-btn ui-btn-primary h-6 px-2 text-[11px]" title="${escapeHtml(t('tipTranslateUpdate'))}">${escapeHtml(t('translateUpdate'))}</button>` : ''}
-          <button onclick="startTranslation(false, ${jsArg(lang)})" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]" title="${escapeHtml(t('tipTranslateRedo'))}">${escapeHtml(t('translateRedo'))}</button>
-          <button onclick="deleteTranslation(${jsArg(lang)})" class="ui-btn ui-btn-subtle h-6 px-1.5 text-[11px] hover:text-apple-red" title="${escapeHtml(t('tipTranslateDelete'))}">${SVG_ICONS.trash}</button>
+          <button data-click="showTranslation" data-click-args='[${jsArg(lang)}]' class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]">${escapeHtml(t('translateShow'))}</button>
+          ${outdated ? `<button data-click="startTranslation" data-click-args='[true, ${jsArg(lang)}]' class="ui-btn ui-btn-primary h-6 px-2 text-[11px]" title="${escapeHtml(t('tipTranslateUpdate'))}">${escapeHtml(t('translateUpdate'))}</button>` : ''}
+          <button data-click="startTranslation" data-click-args='[false, ${jsArg(lang)}]' class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]" title="${escapeHtml(t('tipTranslateRedo'))}">${escapeHtml(t('translateRedo'))}</button>
+          <button data-click="deleteTranslation" data-click-args='[${jsArg(lang)}]' class="ui-btn ui-btn-subtle h-6 px-1.5 text-[11px] hover:text-apple-red" title="${escapeHtml(t('tipTranslateDelete'))}">${SVG_ICONS.trash}</button>
         </div>
       </div>
     </div>`;
@@ -827,7 +832,7 @@ function renderTxQuickLangs() {
   box.innerHTML = quickLangs().filter(c => c !== src).map(c => {
     const ready = !!have[c];
     const on = ready && showing === c;
-    return `<button onclick="${on ? "setTranscriptView('orig')" : `quickTranslate(${jsArg(c)})`}"
+    return `<button ${on ? pageCall('click', 'setTranscriptView', ['orig']) : pageCall('click', 'quickTranslate', [c])}
       title="${escapeHtml(on ? t('subsLangOriginal') : ready ? t('translateQuickShow').replace('{lang}', () => langName(c)) : t('translateQuickMake').replace('{lang}', () => langName(c)))}"
       class="quick-lang ${on ? 'on' : ''}">${ready && !on ? '✓ ' : ''}${escapeHtml(langCode(c))}</button>`;
   }).join('');
@@ -849,20 +854,20 @@ function renderTranslationControls() {
     view === 'tr' ? tr : view === 'both' ? `${src || t('txViewOrig')} + ${tr}` : t('txViewOrig');
   document.getElementById('tx-view-btn').className = `ui-btn ${view === 'orig' ? 'ui-btn-subtle' : 'ui-btn-active'}`;
 
-  const item = (onclick, mark, label) =>
-    `<button onclick="${onclick}" class="macos-menu-item gap-2" style="justify-content:flex-start">`
+  const item = (args, mark, label) =>
+    `<button ${pageCall('click', args[0], args.slice(1))} class="macos-menu-item gap-2" style="justify-content:flex-start">`
     + `<span class="w-3 shrink-0 text-center">${mark}</span><span class="truncate">${escapeHtml(label)}</span></button>`;
   const sep = '<div class="h-px bg-white/10 my-1"></div>';
-  let html = item("setTxViewChoice('orig')", view === 'orig' ? '✓' : '', src ? `${t('txViewOrig')} (${src})` : t('txViewOrig'));
+  let html = item(['setTxViewChoice', 'orig'], view === 'orig' ? '✓' : '', src ? `${t('txViewOrig')} (${src})` : t('txViewOrig'));
   for (const c of langs) {
     const on = c === state.txLang;
     html += sep;
-    html += item(`setTxViewChoice('tr', ${jsArg(c)})`, view === 'tr' && on ? '✓' : '', `${t('txViewTr')}: ${langName(c)}`);
-    html += item(`setTxViewChoice('both', ${jsArg(c)})`, view === 'both' && on ? '✓' : '', `${t('txViewBothWith')} ${langName(c)}`);
+    html += item(['setTxViewChoice', 'tr', c], view === 'tr' && on ? '✓' : '', `${t('txViewTr')}: ${langName(c)}`);
+    html += item(['setTxViewChoice', 'both', c], view === 'both' && on ? '✓' : '', `${t('txViewBothWith')} ${langName(c)}`);
   }
-  if (canTranslate) html += sep + item("setTxViewChoice('__new')", '＋', t('txTranslateNew').replace(/^＋\s*/, ''));
+  if (canTranslate) html += sep + item(['setTxViewChoice', '__new'], '＋', t('txTranslateNew').replace(/^＋\s*/, ''));
   // Clearing: one translation, or everything the processing made
-  if (langs.length) html += sep + langs.map(c => item(`deleteTranslationFromMenu(${jsArg(c)})`, '✕', `${t('txDeleteTr')}: ${langName(c)}`)).join('');
+  if (langs.length) html += sep + langs.map(c => item(['deleteTranslationFromMenu', c], '✕', `${t('txDeleteTr')}: ${langName(c)}`)).join('');
   document.getElementById('tx-view-menu').innerHTML = html;
   document.getElementById('tx-clear-btn')?.classList.toggle('hidden', !(m && m.status === 'completed'));
   renderVerifiedButton();
@@ -988,14 +993,14 @@ function renderSpeakerPillsBar() {
   // Compact: a speaker icon for "everyone" and a numbered circle in each speaker's colour; the
   // name is in the tooltip, right-click plays a sample of the voice
   const allActive = !state.speakerFilter;
-  let html = `<button onclick="filterBySpeaker(null)" title="${escapeHtml(t('tipFilterAllSpeakers'))}"
+  let html = `<button data-click="filterBySpeaker" data-click-args='[null]' title="${escapeHtml(t('tipFilterAllSpeakers'))}"
       class="spk-chip ${allActive ? 'spk-chip-on' : ''}">${ICON_SPEAKERS}</button>`;
   html += keys.map((spkId, i) => {
     const s = speakers[spkId];
     const active = state.speakerFilter === spkId;
     const named = !/^(Участник|Speaker|SPEAKER)[ _]?\d+$/i.test(s.name || '');
     const label = named ? (s.name || '?').trim().slice(0, 1).toUpperCase() : String(i + 1);
-    return `<button onclick="filterBySpeaker(${jsArg(spkId)})" oncontextmenu="event.preventDefault(); previewSpeakerVoice(${Number(s.sample_start) || 0}, ${Number(s.sample_end) || 5})"
+    return `<button data-click="filterBySpeaker" data-click-args='[${jsArg(spkId)}]' data-contextmenu="preventThen" data-contextmenu-args='[{"$": "event"}, "previewSpeakerVoice", ${Number(s.sample_start) || 0}, ${Number(s.sample_end) || 5}]'
       title="${escapeHtml(`${s.name}\n${t('tipFilterSpeaker')} · ${t('tipSpeakerChipVoice')}`)}"
       class="spk-chip ${active ? 'spk-chip-on' : ''}" style="--spk:${s.color}">${escapeHtml(label)}</button>`;
   }).join('');
@@ -1024,7 +1029,7 @@ async function renderTalkAnalytics() {
         ].filter(Boolean).join(' · '))}</div></div>`).join('')}
     </div>
     ${a.longest_monologues.length ? `<div class="text-[11px] text-apple-secondary">${escapeHtml(t('analyticsMonologues'))}: ${a.longest_monologues.map(x =>
-      `<button onclick="seekPlayer(${Number(x.start) || 0})" class="text-apple-blue hover:underline font-mono">${formatTime(x.start)}</button> ${escapeHtml(x.name)} (${min(x.seconds)})`).join(' · ')}</div>` : ''}`;
+      `<button data-click="seekPlayer" data-click-args='[${Number(x.start) || 0}]' class="text-apple-blue hover:underline font-mono">${formatTime(x.start)}</button> ${escapeHtml(x.name)} (${min(x.seconds)})`).join(' · ')}</div>` : ''}`;
 }
 
 function renderSpeakersPanel() {
@@ -1046,26 +1051,26 @@ function renderSpeakersPanel() {
       <div class="px-4 py-3 flex items-center gap-3">
         <input type="color" value="${escapeHtml(s.color || '#0A84FF')}"
           title="${escapeHtml(t('tipSpeakerColor'))}"
-          onchange="updateSpeaker(${jsArg(spkId)}, null, this.value)"
+          data-change="updateSpeaker" data-change-args='[${jsArg(spkId)}, null, {"$": "value"}]'
           class="w-4 h-4 rounded-full cursor-pointer bg-transparent border-0 shrink-0" />
 
         <input type="text" value="${escapeHtml(s.name)}"
           title="${escapeHtml(t('tipSpeakerNameInput'))}"
-          onblur="updateSpeaker(${jsArg(spkId)}, this.value, null)"
-          onkeydown="if(event.key==='Enter') this.blur()"
+          data-blur="updateSpeaker" data-blur-args='[${jsArg(spkId)}, {"$": "value"}, null]'
+          data-keydown="blurOnEnter" data-keydown-args='[{"$": "event"}, {"$": "el"}]'
           class="flex-1 bg-transparent hover:bg-white/5 focus:bg-apple-card focus:outline-none px-2.5 py-1 rounded-md text-xs font-medium text-white" />
 
         ${s.voice_profile ? `<span class="text-[10.5px] px-1.5 py-0.5 rounded bg-apple-blue/15 text-apple-blue shrink-0"
           title="${escapeHtml(t('tipVoiceRecognised'))}">${escapeHtml(t('voiceRecognisedBadge'))}</span>` : ''}
         ${s.voice_suggest ? `<span class="flex items-center gap-1 shrink-0 text-[11px] px-1.5 py-0.5 rounded bg-apple-amber/15 text-apple-amber"
             title="${escapeHtml(t('tipVoiceSuggest'))}">${escapeHtml(t('voiceSuggest').replace('{name}', () => s.voice_suggest.name))}
-            <button data-spk="${escapeHtml(spkId)}" data-name="${escapeHtml(s.voice_suggest.name)}" onclick="updateSpeaker(this.dataset.spk, this.dataset.name, null)"
+            <button data-spk="${escapeHtml(spkId)}" data-name="${escapeHtml(s.voice_suggest.name)}" data-click="updateSpeaker" data-click-args='[{"$": "data", "k": "spk"}, {"$": "data", "k": "name"}, null]'
               class="px-1.5 rounded bg-apple-amber/25 hover:bg-apple-amber/40 text-white">${escapeHtml(t('voiceSuggestYes'))}</button>
-            <button data-spk="${escapeHtml(spkId)}" onclick="dismissVoiceSuggestion(this.dataset.spk)" class="px-1 hover:text-white">${escapeHtml(t('voiceSuggestNo'))}</button>
+            <button data-spk="${escapeHtml(spkId)}" data-click="dismissVoiceSuggestion" data-click-args='[{"$": "data", "k": "spk"}]' class="px-1 hover:text-white">${escapeHtml(t('voiceSuggestNo'))}</button>
           </span>` : ''}
         <span class="text-[11px] text-apple-secondary font-mono">${turnCount} ${t('turns')}</span>
 
-        <button onclick="previewSpeakerVoice(${Number(s.sample_start) || 0}, ${Number(s.sample_end) || 5})"
+        <button data-click="previewSpeakerVoice" data-click-args='[${Number(s.sample_start) || 0}, ${Number(s.sample_end) || 5}]'
           title="${escapeHtml(t('tipPlayVoiceSample'))}"
           class="ui-btn ui-btn-subtle text-apple-label">
           ${SVG_ICONS.playMini}
@@ -1246,16 +1251,16 @@ function transcriptSegmentHtml(seg, idx) {
   } else {
     if (words.length > 0 && !query) {
       bodyHtml = words.map(w =>
-        `<span class="word-token cursor-pointer" data-start="${Number(w.start) || 0}" data-end="${Number(w.end) || 0}" onclick="seekPlayer(${Number(w.start) || 0})">${escapeHtml(w.word)}</span>`
+        `<span class="word-token cursor-pointer" data-start="${Number(w.start) || 0}" data-end="${Number(w.end) || 0}" data-click="seekPlayer" data-click-args='[${Number(w.start) || 0}]'>${escapeHtml(w.word)}</span>`
       ).join('');
     } else {
-      bodyHtml = `<span class="cursor-pointer" onclick="seekPlayer(${Number(seg.start) || 0})">${highlightSearch(escapeHtml(seg.text), query)}</span>`;
+      bodyHtml = `<span class="cursor-pointer" data-click="seekPlayer" data-click-args='[${Number(seg.start) || 0}]'>${highlightSearch(escapeHtml(seg.text), query)}</span>`;
     }
     if (tr) bodyHtml += translationHtml(seg, tr, query, true);
   }
 
   const mergeBtnHtml = idx > 0 ? `
-    <button onclick="mergeSegmentWithPrevious(${seg.id})"
+    <button data-click="mergeSegmentWithPrevious" data-click-args='[${seg.id}]'
       title="${escapeHtml(t('tipMergeSegment'))}"
       class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 inline-flex items-center gap-1 text-[11px] text-apple-tertiary hover:text-apple-blue transition">
       ${SVG_ICONS.mergeUp}
@@ -1266,7 +1271,7 @@ function transcriptSegmentHtml(seg, idx) {
   return `
     <div id="seg-${seg.id}" data-start="${seg.start}" data-end="${seg.end}"
       class="segment-row group px-3.5 py-2.5 flex items-baseline gap-4 hover:bg-white/[0.02]">
-      <button onclick="seekPlayer(${Number(seg.start) || 0})"
+      <button data-click="seekPlayer" data-click-args='[${Number(seg.start) || 0}]'
         title="${escapeHtml(t('tipSeekTimestamp'))}"
         class="text-[11px] font-mono text-apple-tertiary hover:text-apple-blue shrink-0 w-12 text-right transition">
         ${formatTime(seg.start)}
@@ -1274,7 +1279,7 @@ function transcriptSegmentHtml(seg, idx) {
 
       <div class="flex-1 min-w-0">
         <div class="flex items-center justify-between mb-0.5">
-          <select onchange="changeSegmentSpeaker(${seg.id}, this.value)"
+          <select data-change="changeSegmentSpeaker" data-change-args='[${seg.id}, {"$": "value"}]'
             title="${escapeHtml(t('tipChangeSegSpeaker'))}"
             style="color: ${spk.color}"
             class="bg-transparent text-xs font-semibold focus:outline-none cursor-pointer">
@@ -1284,7 +1289,7 @@ function transcriptSegmentHtml(seg, idx) {
             ? `<span class="ml-2 mr-auto text-[10px] font-mono px-1 rounded bg-white/10 text-apple-secondary" title="${escapeHtml(t('tipSegLang'))}">${escapeHtml(String(seg.lang).toUpperCase())}</span>` : ''}
           <div class="flex items-center gap-2.5">
             ${mergeBtnHtml}
-            <button onclick="openInlineSegmentEditor(${seg.id})"
+            <button data-click="openInlineSegmentEditor" data-click-args='[${seg.id}]'
               title="${escapeHtml(t('tipEditSegment'))}"
               class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 text-[11px] text-apple-tertiary hover:text-white transition">
               ${t('editBtn')}
@@ -1348,7 +1353,7 @@ function translationWordsHtml(seg, text) {
   return parts.map(w => {
     if (!w.trim()) return w;
     const t0 = Math.round(times[i++] * 100) / 100;
-    return `<span class="tr-word" data-start="${Number(t0) || 0}" onclick="event.stopPropagation(); seekPlayer(${Number(t0) || 0})">${escapeHtml(w)}</span>`;
+    return `<span class="tr-word" data-start="${Number(t0) || 0}" data-click="stopThen" data-click-args='[{"$": "event"}, "seekPlayer", ${Number(t0) || 0}]'>${escapeHtml(w)}</span>`;
   }).join('');
 }
 
@@ -1363,7 +1368,7 @@ function translationHtml(seg, tr, query, secondary) {
       ? highlightSearch(escapeHtml(tr.text), query)
       : translationWordsHtml(seg, tr.text);
   const cls = secondary ? 'block mt-1 text-[13px] text-apple-secondary' : '';
-  return `<span class="tr-text cursor-pointer ${cls} ${tr.stale ? 'opacity-70' : ''}" onclick="seekPlayer(${Number(seg.start) || 0})">${body}${staleBadge}</span>`;
+  return `<span class="tr-text cursor-pointer ${cls} ${tr.stale ? 'opacity-70' : ''}" data-click="seekPlayer" data-click-args='[${Number(seg.start) || 0}]'>${body}${staleBadge}</span>`;
 }
 
 // Sorted segment list for O(log n) lookup of the playing segment; words are looked up inside it.
@@ -1528,8 +1533,8 @@ function openInlineSegmentEditor(segId) {
     <textarea id="seg-edit-area-${segId}" rows="2"
       class="w-full bg-apple-sidebar border border-apple-blue rounded-lg p-2 text-xs text-white focus:outline-none mt-1">${escapeHtml(seg.text)}</textarea>
     <div class="flex justify-end gap-2 mt-1.5">
-      <button onclick="renderTranscript()" title="${escapeHtml(t('tipCancelBtn'))}" class="ui-btn ui-btn-subtle">${t('cancel')}</button>
-      <button onclick="saveSegmentEdit(${segId})" title="${escapeHtml(t('tipSaveSettingsBtn'))}" class="ui-btn ui-btn-primary">${t('save')}</button>
+      <button data-click="renderTranscript" title="${escapeHtml(t('tipCancelBtn'))}" class="ui-btn ui-btn-subtle">${t('cancel')}</button>
+      <button data-click="saveSegmentEdit" data-click-args='[${segId}]' title="${escapeHtml(t('tipSaveSettingsBtn'))}" class="ui-btn ui-btn-primary">${t('save')}</button>
     </div>
   `;
 }

@@ -35,12 +35,12 @@ function renderExportMenu() {
   const header = (label, extra = '') =>
     `<div class="px-2.5 pt-2 pb-1 flex items-center justify-between gap-2"><span class="text-[10px] font-semibold uppercase tracking-wider text-apple-secondary">${escapeHtml(label)}</span>${extra}</div>`;
   const item = (payload, label, tag, hint) =>
-    `<button onclick="runExport(${jsArg(payload)})" class="macos-menu-item gap-3" ${hint ? `title="${escapeHtml(hint)}"` : ''}>`
+    `<button data-click="runExport" data-click-args='[${jsArg(payload)}]' class="macos-menu-item gap-3" ${hint ? `title="${escapeHtml(hint)}"` : ''}>`
     + `<span class="truncate">${escapeHtml(label)}</span><span class="text-[10.5px] opacity-80 shrink-0">${escapeHtml(tag)}</span></button>`;
   const note = (text, cls = 'text-apple-tertiary') => `<div class="px-2.5 pb-1 text-[10.5px] leading-snug ${cls}">${escapeHtml(text)}</div>`;
   const sep = '<div class="my-1 border-t border-white/10"></div>';
-  const langSelect = (id, onchange, options) =>
-    `<select id="${id}" onchange="${onchange}" onclick="event.stopPropagation()" class="h-6 max-w-[150px] bg-apple-sidebar border apple-border rounded-md px-1.5 text-[11px] text-white focus:outline-none">${options}</select>`;
+  const langSelect = (id, fn, options) =>
+    `<select id="${id}" ${pageCall('change', fn, [{ $: 'value' }])} ${pageCall('click', 'stopEvent', [{ $: 'event' }])} class="h-6 max-w-[150px] bg-apple-sidebar border apple-border rounded-md px-1.5 text-[11px] text-white focus:outline-none">${options}</select>`;
 
   let html = '';
   if (busy) html += note(t('exportWhileProcessing'), 'text-apple-amber');
@@ -57,7 +57,7 @@ function renderExportMenu() {
 
   const trOptions = (have.length ? `<optgroup label="${escapeHtml(t('exportLangReady'))}">${have.map(c => `<option value="${c}" ${c === trLang ? 'selected' : ''}>✓ ${escapeHtml(langName(c))}</option>`).join('')}</optgroup>` : '')
     + `<optgroup label="${escapeHtml(t('exportLangNew'))}">${others.map(o => `<option value="${o.c}" ${o.c === trLang ? 'selected' : ''}>${escapeHtml(o.n)}</option>`).join('')}</optgroup>`;
-  html += sep + header(t('exportGroupTr'), langSelect('export-tr-lang', 'setExportLang(this.value)', trOptions));
+  html += sep + header(t('exportGroupTr'), langSelect('export-tr-lang', 'setExportLang', trOptions));
   if (!trReady) html += note(t('exportTrWillRun').replace('{lang}', () => langName(trLang)));
   const tr = (fmt, variant, label, tag) => item({ kind: 'doc', fmt, lang: trLang, variant }, label, tag);
   html += tr('docx', 'translated', 'Word', 'DOCX') + tr('md', 'translated', 'Markdown', 'MD') + tr('txt', 'translated', t('exportPlainText'), 'TXT')
@@ -70,7 +70,7 @@ function renderExportMenu() {
   }
 
   const dubOptions = dubLangs.map(c => `<option value="${c}" ${c === dubLang ? 'selected' : ''}>${dubs.includes(c) ? '✓ ' : ''}${escapeHtml(dubLangName(c))}</option>`).join('');
-  html += sep + header(t('exportGroupDub'), langSelect('export-dub-lang', 'setExportDubLang(this.value)', dubOptions));
+  html += sep + header(t('exportGroupDub'), langSelect('export-dub-lang', 'setExportDubLang', dubOptions));
   if (!dubReady) html += note(t('exportDubWillRun'));
   const dubExt = dubReady ? String((availableDubs(m).find(d => d.lang === dubLang) || {}).path || '').split('.').pop().toUpperCase() : (isVideo ? 'MP4' : 'M4A');
   html += item({ kind: 'dub_media', lang: dubLang }, isVideo ? t('exportDubVideo') : t('exportDubAudio'), dubExt)
@@ -88,7 +88,7 @@ function renderExportMenu() {
   html += item({ kind: 'obsidian' }, t('exportObsidian'), 'MD', settings.obsidian_vault ? settings.obsidian_vault : t('exportObsidianNoVault'));
   if (m.obsidian_path) html += note(t('exportObsidianSaved').replace('{name}', () => String(m.obsidian_path).split(/[\\/]/).pop()));
 
-  html += sep + `<button onclick="hideExportMenu(); openExportDir()" class="macos-menu-item"><span>${escapeHtml(t('exportOpenFolder'))}</span></button>`;
+  html += sep + `<button data-click="runAll" data-click-args='[["hideExportMenu"], ["openExportDir"]]' class="macos-menu-item"><span>${escapeHtml(t('exportOpenFolder'))}</span></button>`;
   menu.innerHTML = html;
 }
 
@@ -220,6 +220,11 @@ function onExportedEvent(ev) {
 }
 
 // --- Right-Click Context Menu on Sidebar Recording Items ---
+// The ••• button of the recording header: the menu of the recording that is open
+function openActiveRecordingMenu(e) {
+  if (state.activeMeeting) openRecordingContextMenu(e, state.activeMeeting.id);
+}
+
 function openRecordingContextMenu(e, meetingId) {
   e.preventDefault();
   e.stopPropagation();

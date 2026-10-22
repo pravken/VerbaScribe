@@ -6,6 +6,84 @@ const DONE_STATUSES = ['completed', 'failed', 'cancelled', 'cleared'];
 // The page opened, so the locked page (app/main.py) may again try one fresh address next time
 try { sessionStorage.removeItem('vs_relocked'); } catch (e) { /* storage off */ }
 
+// --- Events without inline handlers ---
+// The page's Content-Security-Policy runs no inline script, so markup does not say onclick="…".
+// An element names a page function in data-<event> and its arguments, as a JSON list, in
+// data-<event>-args: <button data-click="openModal" data-click-args='["settings"]'>. In templates the
+// values go in with jsArg() (or Number()), as before. Placeholders in the list: {"$":"event"},
+// {"$":"el"} (the element), {"$":"value"}, {"$":"checked"}, {"$":"files"} and {"$":"data","k":"x"}
+// (el.dataset.x). A text from a recording can never become a placeholder: jsArg makes it a string.
+const PAGE_EVENTS = ['click', 'change', 'input', 'keydown', 'contextmenu', 'dragstart', 'dragover', 'dragleave', 'drop'];
+const PAGE_OWN_EVENTS = { focusin: 'focus', focusout: 'blur', error: 'error' };  // of the element itself
+
+function pageArg(a, el, ev) {
+  if (!a || typeof a !== 'object' || Array.isArray(a) || typeof a.$ !== 'string') return a;
+  switch (a.$) {
+    case 'event': return ev;
+    case 'el': return el;
+    case 'value': return el.value;
+    case 'checked': return el.checked;
+    case 'files': return el.files;
+    case 'data': return el.dataset[a.k];
+    default: return a;
+  }
+}
+
+function runPageHandler(el, type, ev) {
+  const name = el.getAttribute('data-' + type);
+  const fn = /^[A-Za-z_$][\w$]*$/.test(name || '') ? window[name] : null;
+  if (typeof fn !== 'function') { console.error(`data-${type}: no page function "${name}"`); return; }
+  let args = [];
+  const raw = el.getAttribute(`data-${type}-args`);
+  if (raw) {
+    try { args = JSON.parse(raw); } catch (e) { console.error(`data-${type}-args: not JSON`, raw); return; }
+  }
+  fn.apply(el, args.map(a => pageArg(a, el, ev)));
+}
+
+for (const type of PAGE_EVENTS) {
+  // Registered before every other listener of the page: the handlers run first, as inline ones did
+  document.addEventListener(type, ev => {
+    // From the element up, like bubbling; stopPropagation() in a handler ends it, and also keeps
+    // the page's own document listeners (closing menus) from seeing the event, as before
+    for (const el of ev.composedPath()) {
+      if (el === document || !(el instanceof Element)) break;
+      if (el.hasAttribute('data-' + type)) {
+        runPageHandler(el, type, ev);
+        if (ev.cancelBubble) { ev.stopImmediatePropagation(); break; }
+      }
+    }
+  });
+}
+for (const [native, type] of Object.entries(PAGE_OWN_EVENTS)) {
+  document.addEventListener(native, ev => {
+    const el = ev.target;
+    if (el instanceof Element && el.hasAttribute('data-' + type)) runPageHandler(el, type, ev);
+  }, true);  // focus and a failed image do not bubble: seen on the way down
+}
+
+// Both attributes for a template: pageCall('click', 'quickTranslate', [lang]) gives
+// data-click="quickTranslate" data-click-args='["en"]'. Any value is safe in the list.
+function pageCall(type, fn, args = []) {
+  return `data-${type}="${fn}"` + (args.length ? ` data-${type}-args='${escapeHtml(JSON.stringify(args))}'` : '');
+}
+
+// Small steps the markup used to write inline. `name`: a page function, called with the rest
+function stopEvent(ev) { ev.stopPropagation(); }
+function preventEvent(ev) { ev.preventDefault(); }
+function stopThen(ev, name, ...args) { ev.stopPropagation(); window[name](...args); }
+function preventThen(ev, name, ...args) { ev.preventDefault(); window[name](...args); }
+function onEnter(ev, name, ...args) { if (ev.key === 'Enter') window[name](...args); }
+function blurOnEnter(ev, el) { if (ev.key === 'Enter') el.blur(); }
+function selectOnFocus(el) { el.select(); }
+function clearField(id) { document.getElementById(id).value = ''; }
+function clickElement(id) { document.getElementById(id).click(); }
+function showFixed2(el, id) { document.getElementById(id).textContent = Number(el.value).toFixed(2); }
+function removeElement(el) { el.remove(); }
+function openSupport() { openExternal(SUPPORT_URL); }
+// Several calls in turn: runAll(["hideTranslateMenu"], ["openTranslateModal"])
+function runAll(...calls) { for (const [name, ...args] of calls) window[name](...args); }
+
 let state = {
   uiLang: localStorage.getItem('whisper_ui_lang') || 'ru',
   meetings: [],
@@ -358,7 +436,7 @@ function renderVoiceProfiles(data) {
     <div class="flex items-center justify-between gap-2 text-xs">
       <span class="text-apple-label truncate">${escapeHtml(p.name)}
         <span class="text-apple-tertiary">· ${escapeHtml(t('voiceProfileSamples').replace('{n}', () => p.samples))}</span></span>
-      <button onclick="deleteVoiceProfile(${Number(p.id)}, this.dataset.name)" data-name="${escapeHtml(p.name)}"
+      <button data-click="deleteVoiceProfile" data-click-args='[${Number(p.id)}, {"$": "data", "k": "name"}]' data-name="${escapeHtml(p.name)}"
         class="ui-btn ui-btn-subtle h-6 px-2 text-[11px] text-apple-red" title="${escapeHtml(t('tipVoiceProfileDelete'))}">${escapeHtml(t('voiceProfileDelete'))}</button>
     </div>`).join('');
 }

@@ -296,7 +296,7 @@ def index() -> HTMLResponse:
             "Cache-Control": "no-store, no-cache, must-revalidate",
             # Everything is served locally; the page may only talk to this server.
             "Content-Security-Policy": (
-                "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+                "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
                 "img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; "
                 "connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
             ),

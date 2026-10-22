@@ -10,8 +10,8 @@
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body class="h-screen overflow-hidden flex select-none"
-      ondragover="onWindowDragOver(event)"
-      ondrop="handleGlobalDrop(event)">
+      data-dragover="onWindowDragOver" data-dragover-args='[{"$": "event"}]'
+      data-drop="handleGlobalDrop" data-drop-args='[{"$": "event"}]'>
 
   <!-- Shown while files are dragged over the window (see onWindowDragEnter) -->
   <div id="drop-overlay" class="drop-overlay hidden" aria-hidden="true">

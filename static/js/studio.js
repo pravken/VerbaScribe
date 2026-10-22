@@ -406,17 +406,17 @@ function toggleRecordPresetMenu(e) {
   e.stopPropagation();
   const menu = document.getElementById('record-preset-menu');
   const def = defaultRecordPresetId();
-  const item = (onclick, mark, label, hint) =>
-    `<button onclick="${onclick}" class="macos-menu-item gap-2" style="justify-content:flex-start">`
+  const item = (calls, mark, label, hint) =>
+    `<button ${pageCall('click', 'runAll', calls)} class="macos-menu-item gap-2" style="justify-content:flex-start">`
     + `<span class="w-3 shrink-0 text-center text-apple-amber">${mark}</span>`
     + `<span class="min-w-0"><span class="block truncate">${escapeHtml(label)}</span>`
     + (hint ? `<span class="block text-[10.5px] text-apple-tertiary truncate">${escapeHtml(hint)}</span>` : '') + `</span></button>`;
   const sourceName = { mic: t('sourceMic'), system: t('sourceSystem'), both: t('sourceBoth') };
   menu.innerHTML = recordPresets().map(p => item(
-    `hideRecordPresetMenu(); quickRecord(${jsArg(p.id)})`, p.id === def ? '★' : '', presetLabel(p),
+    [['hideRecordPresetMenu'], ['quickRecord', p.id]], p.id === def ? '★' : '', presetLabel(p),
     sourceName[p.source] + (p.live ? ` · ${t('presetWithCaptions')}` : ''))).join('')
     + '<div class="h-px bg-white/10 my-1"></div>'
-    + item('hideRecordPresetMenu(); openRecordModal()', '', t('presetOpenSettings'), '');
+    + item([['hideRecordPresetMenu'], ['openRecordModal']], '', t('presetOpenSettings'), '');
   menu.classList.toggle('hidden');
 }
 
@@ -626,12 +626,12 @@ function renderUpcomingMeetings() {
     const live = start <= now && now < end;
     const people = e.attendees.length ? `<div class="text-[11px] text-apple-tertiary truncate">${escapeHtml(e.attendees.slice(0, 6).join(', '))}${e.attendees.length > 6 ? ` +${e.attendees.length - 6}` : ''}</div>` : '';
     const brief = e.series_id || e.person
-      ? `<button onclick="upcomingBrief(${i})" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" title="${escapeHtml(t('tipUpcomingBrief'))}">${escapeHtml(t('briefBtn'))}</button>` : '';
+      ? `<button data-click="upcomingBrief" data-click-args='[${i}]' class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" title="${escapeHtml(t('tipUpcomingBrief'))}">${escapeHtml(t('briefBtn'))}</button>` : '';
     return `<div class="flex items-center gap-3 px-3 py-2 rounded-lg ${live ? 'bg-apple-red/10' : 'hover:bg-white/5'}">
       <div class="w-32 shrink-0 text-[11px] font-mono whitespace-nowrap ${live ? 'text-apple-red' : 'text-apple-secondary'}">${escapeHtml(day + time)}</div>
       <div class="flex-1 min-w-0"><div class="text-[13px] text-white truncate">${escapeHtml(e.title || '—')}</div>${people}</div>
       ${brief}
-      <button onclick="upcomingUseTitle(${i})" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" title="${escapeHtml(t('tipUpcomingTitle'))}">${escapeHtml(t('upcomingUseTitle'))}</button>
+      <button data-click="upcomingUseTitle" data-click-args='[${i}]' class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" title="${escapeHtml(t('tipUpcomingTitle'))}">${escapeHtml(t('upcomingUseTitle'))}</button>
     </div>`;
   }).join('');
   box.innerHTML = `<div class="text-[11px] uppercase tracking-wider text-apple-tertiary mb-1.5 px-3">${escapeHtml(t('upcomingTitle'))}</div>${rows}`;
@@ -704,6 +704,9 @@ function renderStudioModels(target) {
     fetch('/api/live/models').then(r => r.json()).then(d => { studio.llmModels = d.installed || []; syncStudioCaptions(); }).catch(() => {});
   }
 }
+
+function studioSetCaptionModel(value) { return studioSetModels({ caption_model: value }); }
+function studioSetTranslateModel(value) { return studioSetModels({ translate_model: value }); }
 
 async function studioSetModels(change) {
   if (!liveCap.session) return;
@@ -797,7 +800,7 @@ function renderQuickLangs() {
   const current = document.getElementById('live-translate-select').value;
   const [a, b] = quickLangs();
   const btn = (value, label, title, menuIndex) =>
-    `<button onclick="setQuickTranslate(${jsArg(value)})" ${menuIndex != null ? `oncontextmenu="openQuickLangMenu(event, ${menuIndex})"` : ''}
+    `<button data-click="setQuickTranslate" data-click-args='[${jsArg(value)}]' ${menuIndex != null ? `data-contextmenu="openQuickLangMenu" data-contextmenu-args='[{"$": "event"}, ${Number(menuIndex) || 0}]'` : ''}
       class="quick-lang ${current === value ? 'on' : ''}" title="${escapeHtml(title)}">${escapeHtml(label)}</button>`;
   box.innerHTML = btn(a, langCode(a), t('tipQuickLang').replace('{lang}', () => langName(a)), 0)
     + btn(b, langCode(b), t('tipQuickLang').replace('{lang}', () => langName(b)), 1)

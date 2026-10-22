@@ -225,7 +225,7 @@ async function loadSummaryTemplates() {
 function renderTemplateTabs() {
   const box = document.getElementById('sumtab-user-templates');
   if (!box) return;
-  box.innerHTML = (state.summaryTemplates || []).map(tpl => `<button onclick="selectSummaryTab(this.dataset.tab)" id="sumtab-tpl-${escapeHtml(tpl.id)}"
+  box.innerHTML = (state.summaryTemplates || []).map(tpl => `<button data-click="selectSummaryTab" data-click-args='[{"$": "data", "k": "tab"}]' id="sumtab-tpl-${escapeHtml(tpl.id)}"
       data-tab="tpl:${escapeHtml(tpl.id)}" title="${escapeHtml(tpl.prompt)}"
       class="apple-segment-btn text-apple-secondary hover:text-white">${escapeHtml(tpl.name)}</button>`).join('');
   selectSummaryTab(state.activeSummaryTab);
@@ -271,7 +271,7 @@ function renderChaptersBar() {
   const bar = document.getElementById('chapters-bar');
   bar.classList.toggle('hidden', _chapters.length < 2);
   document.getElementById('chapters-list').innerHTML = _chapters.map((c, i) =>
-    `<button onclick="seekPlayer(${Number(c.start) || 0})" id="chapter-${i}" title="${escapeHtml(c.desc || c.title)}"
+    `<button data-click="seekPlayer" data-click-args='[${Number(c.start) || 0}]' id="chapter-${i}" title="${escapeHtml(c.desc || c.title)}"
       class="chapter-chip"><span class="font-mono text-apple-tertiary">${formatTime(c.start)}</span> ${escapeHtml(c.title)}</button>`
   ).join('');
 }
@@ -416,10 +416,10 @@ function openTemplatesEditor() {
 // --- Commitments (app/commitments.py): who promised what to whom, by when ---
 function commitmentRowHtml(c, withMeeting) {
   const who = escapeHtml(c.who || '—') + (c.to_whom ? ` <span class="text-apple-tertiary">→ ${escapeHtml(c.to_whom)}</span>` : '');
-  const ts = c.at != null ? ` <button data-mid="${c.meeting_id}" data-at="${c.at}" onclick="openCommitmentPlace(this)" class="font-mono text-[11px] text-apple-blue hover:underline">[${formatTime(c.at)}]</button>` : '';
+  const ts = c.at != null ? ` <button data-mid="${c.meeting_id}" data-at="${c.at}" data-click="openCommitmentPlace" data-click-args='[{"$": "el"}]' class="font-mono text-[11px] text-apple-blue hover:underline">[${formatTime(c.at)}]</button>` : '';
   const where = withMeeting ? `<div class="text-[10.5px] text-apple-tertiary mt-0.5">${escapeHtml(c.meeting_title || '')} · ${escapeHtml(c.meeting_date || '')}</div>` : '';
   return `<label class="flex items-start gap-2.5 py-2 border-b border-white/5 cursor-pointer ${c.status === 'done' ? 'opacity-50' : ''}">
-      <input type="checkbox" ${c.status === 'done' ? 'checked' : ''} data-cid="${c.id}" onchange="toggleCommitment(this)" class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+      <input type="checkbox" ${c.status === 'done' ? 'checked' : ''} data-cid="${c.id}" data-change="toggleCommitment" data-change-args='[{"$": "el"}]' class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
       <span class="min-w-0 text-[13px] text-apple-label leading-snug"><span class="font-medium text-white">${who}</span>: ${escapeHtml(c.what)}${c.due ? ` <span class="text-apple-amber text-[11.5px]">(${escapeHtml(c.due)})</span>` : ''}${ts}${where}</span>
     </label>`;
 }
@@ -456,7 +456,7 @@ async function extractCommitments() {
 
 // Promises as tasks for another app: Markdown (Obsidian, Notion), Todoist's CSV, a table
 function commitmentExportBar(meetingId) {
-  const b = (fmt, label) => `<button onclick="exportCommitments(${jsArg(fmt)}, ${jsArg(meetingId)})" class="ui-btn ui-btn-subtle h-7 text-[11px]">${escapeHtml(label)}</button>`;
+  const b = (fmt, label) => `<button data-click="exportCommitments" data-click-args='[${jsArg(fmt)}, ${jsArg(meetingId)}]' class="ui-btn ui-btn-subtle h-7 text-[11px]">${escapeHtml(label)}</button>`;
   return `<div class="flex flex-wrap items-center gap-1.5 pt-3">
       <span class="text-[11px] text-apple-tertiary mr-1">${escapeHtml(t('commitmentsExport'))}</span>
       ${b('md', 'Markdown')}${b('todoist', 'Todoist')}${b('csv', t('commitmentsTable'))}
@@ -524,8 +524,8 @@ function renderNoModelCard(box) {
       <div class="text-sm font-semibold text-white">${escapeHtml(t('noAiTitle'))}</div>
       <p class="text-[12px] text-apple-secondary leading-relaxed">${escapeHtml(t('noAiText'))}</p>
       <div class="flex justify-center gap-2 pt-1">
-        <button onclick="pullOllamaModel(firstRunPicks(state.system || {}, state.uiLang).llm, true)" class="ui-btn ui-btn-primary">${escapeHtml(t('noAiLocal'))}</button>
-        <button onclick="openModal('settings', 'analysis')" class="ui-btn ui-btn-subtle">${escapeHtml(t('noAiCloud'))}</button>
+        <button data-click="pullFirstRunLlm" class="ui-btn ui-btn-primary">${escapeHtml(t('noAiLocal'))}</button>
+        <button data-click="openModal" data-click-args='["settings", "analysis"]' class="ui-btn ui-btn-subtle">${escapeHtml(t('noAiCloud'))}</button>
       </div>
     </div>`;
 }
@@ -1039,6 +1039,11 @@ function openExportDir() {
   if (el && el.textContent) revealPath(el.textContent);
 }
 
+// The language model the first-run wizard picks, downloaded from its card
+function pullFirstRunLlm() {
+  pullOllamaModel(firstRunPicks(state.system || {}, state.uiLang).llm, true);
+}
+
 function escapeHtml(str) {
   return String(str || '')
     .replace(/&/g, '&amp;')
@@ -1048,8 +1053,8 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
-// A value as a JavaScript literal for an inline handler: onclick="f(${jsArg(name)})". Any text is
-// safe there (quotes included); a value never goes into a handler without it, or Number() for numbers.
+// A value as JSON for the arguments of an event (core.js PAGE_EVENTS): data-click="f" data-click-args='[${jsArg(name)}]'.
+// Any text is safe there (quotes included); a value never goes in without it, or Number() for numbers.
 function jsArg(value) {
   return escapeHtml(JSON.stringify(value ?? null));
 }
@@ -1103,8 +1108,8 @@ function renderMeetingInfo(info) {
       <div class="divide-y divide-white/5">${rows}</div>
     </div>` : '';
   const pathActions = (p) => p ? `
-    <button onclick="revealPath(this.dataset.p)" data-p="${escapeHtml(p)}" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]">${escapeHtml(t('showInFolder'))}</button>
-    <button onclick="copyText(this.dataset.p)" data-p="${escapeHtml(p)}" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]">${escapeHtml(t('copyPath'))}</button>` : '';
+    <button data-click="revealPath" data-click-args='[{"$": "data", "k": "p"}]' data-p="${escapeHtml(p)}" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]">${escapeHtml(t('showInFolder'))}</button>
+    <button data-click="copyText" data-click-args='[{"$": "data", "k": "p"}]' data-p="${escapeHtml(p)}" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]">${escapeHtml(t('copyPath'))}</button>` : '';
 
   const media = info.media || {};
   const probe = info.probe || {};
@@ -1156,7 +1161,7 @@ function renderMeetingInfo(info) {
   if ((info.pending_exports || []).length) {
     html += `<div class="rounded-xl border border-apple-amber/40 bg-apple-amber/10 px-4 py-3 text-xs text-apple-amber flex items-center justify-between gap-3">
       <span>${escapeHtml(t('infoPendingExports').replace('{n}', () => info.pending_exports.length))}</span>
-      <button onclick="cancelPendingExports(${info.id})" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]">${escapeHtml(t('cancel'))}</button>
+      <button data-click="cancelPendingExports" data-click-args='[${info.id}]' class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]">${escapeHtml(t('cancel'))}</button>
     </div>`;
   }
   box.innerHTML = html;

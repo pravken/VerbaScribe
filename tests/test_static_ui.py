@@ -114,16 +114,77 @@ class StaticUiTest(unittest.TestCase):
         head = (ROOT / "static" / "vendor" / "marked.min.js").read_text(encoding="utf-8")[:200]
         self.assertIn(f"marked v{deps['marked']} ", head)
 
-    def test_no_text_in_inline_handlers(self):
-        """Data in an onclick="..." goes through jsArg() (or Number()): a quote in a name must not end the code."""
-        bad = []
-        for f in sorted((ROOT / "static" / "js").glob("*.js")):
-            for n, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
-                # a quoted ${...} in a handler, or a handler in single quotes (JSON.stringify keeps ' as is)
-                if re.search(r"""\bon[a-z]+='|\bon[a-z]+="[^"]*'\$\{|\(`[^`]*'\$\{[^}]*\}'""", line):
-                    bad.append(f"{f.name}:{n}: {line.strip()[:120]}")
+    def test_no_inline_handlers(self):
+        """The page's CSP runs no inline script: events are data-<event> (see PAGE_EVENTS in core.js)."""
+        sources = {f.name: f.read_text(encoding="utf-8") for f in (ROOT / "static" / "js").glob("*.js")}
+        bad = [m.group(0) for m in re.finditer(r'<[^>]*\son[a-z]+\s*=', _no_comments(HTML))]
+        for name, text in sources.items():
+            for n, line in enumerate(text.splitlines(), 1):
+                if not line.lstrip().startswith("//") and re.search(r"""[\s`'"]on[a-z]+=["'`$]""", line):
+                    bad.append(f"{name}:{n}: {line.strip()[:120]}")
         self.assertEqual(bad, [])
 
+    def test_data_handlers_name_page_functions(self):
+        """Each data-<event>="name", and each name runAll / stopThen / preventThen / onEnter call on,
+        is a function of the page: a typo would leave a button that silently does nothing."""
+        import html
+        import json
+
+        js = "\n".join(f.read_text(encoding="utf-8") for f in (ROOT / "static" / "js").glob("*.js"))
+        js = re.sub(r"^\s*//.*$", "", js, flags=re.M)  # examples in comments are not handlers
+        defined = set(re.findall(r"^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(", js, re.M))
+        text = _no_comments(HTML) + js
+        events = "click|change|input|keydown|contextmenu|dragstart|dragover|dragleave|drop|focus|blur|error"
+        names = set()
+        def args_after(pos: int) -> str:
+            """The text of a data-*-args='...' value from pos, ${...} (which may hold quotes) included."""
+            out, depth, i = "", 0, pos
+            while i < len(text) and (depth or text[i] != "'"):
+                if text.startswith("${", i):
+                    depth += 1
+                    out += "$"
+                    i += 1
+                elif text[i] == "{" and depth:
+                    depth += 1
+                elif text[i] == "}" and depth:
+                    depth -= 1
+                out += text[i]
+                i += 1
+            return out
+
+        def no_interpolations(value: str) -> str:
+            out, depth, i = "", 0, 0
+            while i < len(value):
+                if value.startswith("${", i):
+                    depth += 1
+                    i += 2
+                    continue
+                if depth:
+                    depth += {"{": 1, "}": -1}.get(value[i], 0)
+                    if not depth:
+                        out += "0"
+                else:
+                    out += value[i]
+                i += 1
+            return out
+
+        for m in re.finditer(rf"""data-({events})="([^"]*)"(\s+data-\1-args=')?""", text):
+            fn, raw = m.group(2), args_after(m.end()) if m.group(3) else None
+            names |= set(re.findall(r"[?:]\s*'(\w+)'", fn)) if fn.startswith("${") else {fn}
+            if not raw:
+                continue
+            try:  # interpolated values are numbers or jsArg() texts: any value will do here
+                args = json.loads(html.unescape(no_interpolations(raw)))
+            except ValueError:
+                self.fail(f"data-{m.group(1)}-args is not JSON: {raw[:80]}")
+            if fn == "runAll":
+                names |= {call[0] for call in args}
+            elif fn in ("stopThen", "preventThen", "onEnter"):
+                names.add(args[1])
+        names |= set(re.findall(r"pageCall\('[a-z]+',\s*'(\w+)'", js))
+        # menus built in code: item([['hideRecordPresetMenu'], ['quickRecord', id]]) / item(['setTxViewChoice', 'tr', c])
+        names |= set(re.findall(r"item\(\[\[?'(\w+)'", js)) | set(re.findall(r"\],\s*\['(\w+)'\]\]", js))
+        self.assertEqual(sorted(n for n in names if n not in defined), [])
 
 if __name__ == "__main__":
     unittest.main()

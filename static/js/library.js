@@ -172,14 +172,14 @@ function renderQueuePanel() {
       : running ? serverText(m.stage_text || q.stage_text || '') : t('queueWaiting').replace('{n}', () => q.position);
     const timing = running && !q.cancelling ? formatTiming(jobTiming(q, pct)) : '';
     return `
-      <div onclick="openMeeting(${q.id}, true)" tabindex="0" role="button" title="${escapeHtml(detail)}"
+      <div data-click="openMeeting" data-click-args='[${q.id}, true]' tabindex="0" role="button" title="${escapeHtml(detail)}"
         class="group px-2 py-1.5 rounded-md cursor-pointer hover:bg-white/5 ${running ? 'bg-apple-blue/10' : ''}">
         <div class="flex items-center justify-between gap-2">
           <span class="flex items-center gap-1.5 min-w-0">
             ${running && !q.cancelling ? '<span class="live-dot"></span>' : ''}
             <span class="text-[12px] font-medium text-white truncate">${escapeHtml(q.title)}</span>
           </span>
-          <button onclick="event.stopPropagation(); cancelProcessing(${q.id})" title="${escapeHtml(t('tipQueueCancel'))}"
+          <button data-click="stopThen" data-click-args='[{"$": "event"}, "cancelProcessing", ${Number(q.id) || 0}]' title="${escapeHtml(t('tipQueueCancel'))}"
             class="shrink-0 text-apple-tertiary hover:text-apple-red opacity-80 group-hover:opacity-100 transition ${q.cancelling ? 'hidden' : ''}">${SVG_ICONS.closeX}</button>
         </div>
         <div class="flex items-center justify-between gap-2 text-[10.5px] mt-0.5">
@@ -373,7 +373,7 @@ function renderAskScope() {
   const sc = state.askScope;
   const item = (scope, label, count, depth, icon) => {
     const on = scope.type === sc.type && scope.id === sc.id;
-    return `<button onclick="setAskScope(${jsArg(scope)})"
+    return `<button data-click="setAskScope" data-click-args='[${jsArg(scope)}]'
       class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[12px] transition ${on ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'}"
       style="padding-left:${8 + depth * 14}px">
       <span class="shrink-0 ${on ? 'text-white' : 'text-apple-tertiary'}">${icon}</span>
@@ -423,7 +423,7 @@ function renderSeriesScope() {
   const sc = state.askScope;
   document.getElementById('ask-series-list').innerHTML = list.map(s => {
     const on = sc.type === 'series' && sc.id === s.id;
-    return `<button onclick="setAskScope(${jsArg({ type: 'series', id: s.id })})"
+    return `<button data-click="setAskScope" data-click-args='[${jsArg({ type: 'series', id: s.id })}]'
       class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[12px] transition ${on ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'}">
       <span class="shrink-0 ${on ? 'text-white' : 'text-apple-tertiary'}">↻</span><span class="truncate flex-1">${escapeHtml(s.name)}</span>
       <span class="text-[10.5px] font-mono ${on ? 'text-white/80' : 'text-apple-tertiary'}">${s.count}</span></button>`;
@@ -441,7 +441,7 @@ function renderPeople() {
     const on = sc.type === 'person' && sc.name.toLowerCase() === p.name.toLowerCase();
     const tip = t('tipPerson').replace('{n}', () => p.recordings.length).replace('{time}', () => formatSpeakingTime(p.total_seconds))
       + '\n' + p.recordings.slice(0, 12).map(r => `${r.date} · ${r.title} · ${formatSpeakingTime(r.seconds)}`).join('\n');
-    return `<button onclick="setAskScope(${jsArg({ type: 'person', name: p.name })})" title="${escapeHtml(tip)}"
+    return `<button data-click="setAskScope" data-click-args='[${jsArg({ type: 'person', name: p.name })}]' title="${escapeHtml(tip)}"
       class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[12px] transition ${on ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'}">
       <span class="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold ${on ? 'bg-white/25' : 'bg-white/10 text-apple-secondary'}">${escapeHtml(p.name.slice(0, 1).toUpperCase())}</span>
       <span class="truncate flex-1">${escapeHtml(p.name)}${p.profile ? ` <span class="${on ? 'text-white/70' : 'text-apple-tertiary'}" title="${escapeHtml(t('tipPersonVoice'))}">◉</span>` : ''}</span>
@@ -637,7 +637,7 @@ function renderLibraryAnswer(body, item) {
   const cited = new Set([...(data.answer || '').matchAll(/\[(\d{1,3})\]/g)].map(x => Number(x[1])));
   const shown = (data.sources || []).filter(s => !cited.size || cited.has(s.n)).slice(0, 20);
   const sources = shown.map(s => `
-    <button onclick="openLibrarySource(${item.id}, ${s.n})" class="w-full text-left px-2.5 py-1.5 rounded-md hover:bg-white/5 transition">
+    <button data-click="openLibrarySource" data-click-args='[${item.id}, ${s.n}]' class="w-full text-left px-2.5 py-1.5 rounded-md hover:bg-white/5 transition">
       <div class="flex items-center gap-2 text-[11px] min-w-0">
         <span class="lib-cite">${s.n}</span>
         <span class="text-white truncate">${escapeHtml(s.title)}</span>
@@ -918,15 +918,15 @@ function meetingRowHtml(m, depth) {
   const isBusy = !DONE_STATUSES.includes(m.status);
   const spkCount = Object.keys(m.speakers || {}).length;
   const thumb = m.is_video
-    ? `<img src="/api/meetings/${m.id}/thumb" loading="lazy" alt="" draggable="false" onerror="this.remove()"
+    ? `<img src="/api/meetings/${m.id}/thumb" loading="lazy" alt="" draggable="false" data-error="removeElement" data-error-args='[{"$": "el"}]'
         class="w-12 h-[27px] rounded object-cover bg-black/60 shrink-0 border border-white/10" />`
     : '';
   const status = m.status === 'failed' ? t('statusFailed') : m.status === 'cancelled' ? t('statusCancelled') : m.status === 'cleared' ? t('statusClearedShort')
     : `${spkCount || 1} ${t('spkShort')} · ${(m.language || 'ru').toUpperCase()}`;
   return `
-    <div onclick="libRowClick(event, ${m.id})" data-mid="${m.id}" tabindex="0" role="button"
-         oncontextmenu="openRecordingContextMenu(event, ${m.id})"
-         draggable="true" ondragstart="libraryDragStart(event, 'm', ${m.id})"
+    <div data-click="libRowClick" data-click-args='[{"$": "event"}, ${m.id}]' data-mid="${m.id}" tabindex="0" role="button"
+         data-contextmenu="openRecordingContextMenu" data-contextmenu-args='[{"$": "event"}, ${m.id}]'
+         draggable="true" data-dragstart="libraryDragStart" data-dragstart-args='[{"$": "event"}, "m", ${m.id}]'
          class="group cursor-pointer pr-2 py-1.5 rounded-lg transition relative flex items-center gap-2 ${
            isSelected ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'
          }" style="padding-left:${10 + depth * 14}px">
@@ -934,7 +934,7 @@ function meetingRowHtml(m, depth) {
       <div class="min-w-0 flex-1">
         <div class="flex items-center justify-between gap-2">
           <span title="${escapeHtml(libTitle(m))}" class="text-[12.5px] font-medium leading-snug line-clamp-2 break-words min-w-0">${escapeHtml(libTitle(m))}</span>
-          <button onclick="openRecordingContextMenu(event, ${m.id})" title="${escapeHtml(t('tipItemMenu'))}"
+          <button data-click="openRecordingContextMenu" data-click-args='[{"$": "event"}, ${m.id}]' title="${escapeHtml(t('tipItemMenu'))}"
             class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 px-1 rounded hover:bg-black/20 text-xs shrink-0 transition">•••</button>
         </div>
         <div class="flex items-center justify-between gap-2 text-[11px] mt-0.5 ${isSelected ? 'text-white/80' : 'text-apple-secondary'}">
@@ -1019,7 +1019,7 @@ function toggleDateCollapsed(key) {
 
 function dateRowHtml(id, label, count, depth, open) {
   return `
-    <div onclick="toggleDateCollapsed(this.dataset.id)" data-id="${escapeHtml(id)}" tabindex="0" role="button"
+    <div data-click="toggleDateCollapsed" data-click-args='[{"$": "data", "k": "id"}]' data-id="${escapeHtml(id)}" tabindex="0" role="button"
          class="flex items-center gap-1.5 pr-2 py-1 rounded-lg cursor-pointer text-apple-secondary hover:bg-white/5 transition"
          style="padding-left:${6 + depth * 14}px" title="${escapeHtml(label)}">
       <span class="shrink-0 text-apple-tertiary transition-transform ${open ? 'rotate-90' : ''}">${ICON_CHEVRON}</span>
@@ -1168,10 +1168,10 @@ function renderLibSelectionBar() {
     list.parentNode.insertBefore(bar, list);
   }
   bar.innerHTML = `<span class="flex-1 min-w-0 truncate">${escapeHtml(t('libSelected').replace('{n}', () => n))}</span>
-    <button onclick="bulkRename()" class="ui-btn ui-btn-subtle h-6 !px-2 text-[11px]" title="${escapeHtml(t('tipBulkRename'))}">${escapeHtml(t('bulkRename'))}</button>
-    <button onclick="bulkAutoTitles()" class="ui-btn ui-btn-subtle h-6 !px-2 text-[11px]" title="${escapeHtml(t('tipBulkAutoTitle'))}">${escapeHtml(t('bulkAutoTitle'))}</button>
-    <button onclick="bulkDelete()" class="ui-btn h-6 !px-2 text-[11px] bg-apple-red/80 text-white hover:bg-apple-red">${escapeHtml(t('ctxDelete'))}</button>
-    <button onclick="clearLibSelection()" class="ui-btn ui-btn-subtle h-6 !px-1.5 text-[11px]" title="${escapeHtml(t('cancel'))} (Esc)">✕</button>`;
+    <button data-click="bulkRename" class="ui-btn ui-btn-subtle h-6 !px-2 text-[11px]" title="${escapeHtml(t('tipBulkRename'))}">${escapeHtml(t('bulkRename'))}</button>
+    <button data-click="bulkAutoTitles" class="ui-btn ui-btn-subtle h-6 !px-2 text-[11px]" title="${escapeHtml(t('tipBulkAutoTitle'))}">${escapeHtml(t('bulkAutoTitle'))}</button>
+    <button data-click="bulkDelete" class="ui-btn h-6 !px-2 text-[11px] bg-apple-red/80 text-white hover:bg-apple-red">${escapeHtml(t('ctxDelete'))}</button>
+    <button data-click="clearLibSelection" class="ui-btn ui-btn-subtle h-6 !px-1.5 text-[11px]" title="${escapeHtml(t('cancel'))} (Esc)">✕</button>`;
 }
 
 function libSelectedInOrder() {
@@ -1274,7 +1274,7 @@ document.addEventListener('keydown', e => {
 
 // "•••" on a row: the same menu as a right click (shown on hover and on keyboard focus)
 function rowMoreButton(m) {
-  return `<button onclick="event.stopPropagation(); openRecordingContextMenu(event, ${m.id})" tabindex="-1" aria-label="${escapeHtml(t('tipRecordingMore'))}"
+  return `<button data-click="stopThen" data-click-args='[{"$": "event"}, "openRecordingContextMenu", {"$": "event"}, ${Number(m.id) || 0}]' tabindex="-1" aria-label="${escapeHtml(t('tipRecordingMore'))}"
     title="${escapeHtml(t('tipRecordingMore'))}" class="row-more opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 px-1 rounded hover:bg-black/20 text-[11px] shrink-0 transition">•••</button>`;
 }
 
@@ -1282,8 +1282,8 @@ function meetingCompactRowHtml(m, depth) {
   const isSelected = libIsSelected(m);
   const isBusy = !DONE_STATUSES.includes(m.status);
   return `
-    <div onclick="libRowClick(event, ${m.id})" data-mid="${m.id}" tabindex="0" role="button" oncontextmenu="openRecordingContextMenu(event, ${m.id})"
-         draggable="true" ondragstart="libraryDragStart(event, 'm', ${m.id})" title="${escapeHtml(m.title)}"
+    <div data-click="libRowClick" data-click-args='[{"$": "event"}, ${m.id}]' data-mid="${m.id}" tabindex="0" role="button" data-contextmenu="openRecordingContextMenu" data-contextmenu-args='[{"$": "event"}, ${m.id}]'
+         draggable="true" data-dragstart="libraryDragStart" data-dragstart-args='[{"$": "event"}, "m", ${m.id}]' title="${escapeHtml(m.title)}"
          class="group cursor-pointer pr-2 py-1 rounded-md transition flex items-center gap-2 text-[12px] ${
            isSelected ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'
          }" style="padding-left:${10 + depth * 14}px">
@@ -1299,11 +1299,11 @@ function meetingTileHtml(m) {
   const isSelected = libIsSelected(m);
   const isBusy = !DONE_STATUSES.includes(m.status);
   const cover = m.is_video
-    ? `<img src="/api/meetings/${m.id}/thumb" loading="lazy" alt="" draggable="false" onerror="this.replaceWith(Object.assign(document.createElement('span'), {className: 'lib-tile-icon', innerHTML: ICON_FILE_VIDEO}))" class="w-full h-full object-cover" />`
+    ? `<img src="/api/meetings/${m.id}/thumb" loading="lazy" alt="" draggable="false" data-error="tileIconFallback" data-error-args='[{"$": "el"}]' class="w-full h-full object-cover" />`
     : `<span class="lib-tile-icon">${ICON_FILE_AUDIO}</span>`;
   return `
-    <div onclick="libRowClick(event, ${m.id})" data-mid="${m.id}" tabindex="0" role="button" oncontextmenu="openRecordingContextMenu(event, ${m.id})"
-         draggable="true" ondragstart="libraryDragStart(event, 'm', ${m.id})" title="${escapeHtml(m.title)}"
+    <div data-click="libRowClick" data-click-args='[{"$": "event"}, ${m.id}]' data-mid="${m.id}" tabindex="0" role="button" data-contextmenu="openRecordingContextMenu" data-contextmenu-args='[{"$": "event"}, ${m.id}]'
+         draggable="true" data-dragstart="libraryDragStart" data-dragstart-args='[{"$": "event"}, "m", ${m.id}]' title="${escapeHtml(m.title)}"
          class="lib-tile group ${isSelected ? 'lib-tile-on' : ''}">
       <div class="lib-tile-cover">
         ${cover}
@@ -1327,16 +1327,16 @@ function folderRowHtml(f, depth, collapsed) {
   const count = meetingsInFolderTree(f.id).length;
   const open = !collapsed.has(f.id);
   return `
-    <div onclick="toggleFolderCollapsed(${f.id})" tabindex="0" role="button" oncontextmenu="openFolderMenu(event, ${f.id})"
-         ${f.system_key ? '' : `draggable="true" ondragstart="libraryDragStart(event, 'f', ${f.id})"`}
-         ondragover="libraryDragOver(event, ${f.id})" ondragleave="libraryDragLeave(event)" ondrop="libraryDrop(event, ${f.id})"
+    <div data-click="toggleFolderCollapsed" data-click-args='[${f.id}]' tabindex="0" role="button" data-contextmenu="openFolderMenu" data-contextmenu-args='[{"$": "event"}, ${f.id}]'
+         ${f.system_key ? '' : `draggable="true" data-dragstart="libraryDragStart" data-dragstart-args='[{"$": "event"}, "f", ${f.id}]'`}
+         data-dragover="libraryDragOver" data-dragover-args='[{"$": "event"}, ${f.id}]' data-dragleave="libraryDragLeave" data-dragleave-args='[{"$": "event"}]' data-drop="libraryDrop" data-drop-args='[{"$": "event"}, ${f.id}]'
          class="folder-row group flex items-center gap-1.5 pr-2 py-1.5 rounded-lg cursor-pointer text-apple-label hover:bg-white/5 transition"
          style="padding-left:${6 + depth * 14}px" title="${escapeHtml(folderName(f))}">
       <span class="shrink-0 text-apple-tertiary transition-transform ${open ? 'rotate-90' : ''}">${ICON_CHEVRON}</span>
       <span class="shrink-0 ${f.system_key ? 'text-apple-blue' : 'text-apple-secondary'}">${folderIcon(f)}</span>
       <span class="text-[12px] font-semibold truncate flex-1">${escapeHtml(folderName(f))}</span>
       <span class="text-[10.5px] font-mono text-apple-tertiary">${count}</span>
-      <button onclick="openFolderMenu(event, ${f.id})" title="${escapeHtml(t('tipFolderMenu'))}"
+      <button data-click="openFolderMenu" data-click-args='[{"$": "event"}, ${f.id}]' title="${escapeHtml(t('tipFolderMenu'))}"
         class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 px-1 rounded hover:bg-black/20 text-xs shrink-0 transition">•••</button>
     </div>`;
 }
@@ -1346,7 +1346,7 @@ function renderMeetingsSidebar() {
 
   if (state.globalSearchQuery && state.globalSearchResults) {
     const askHtml = `
-      <button onclick="openLibraryAsk(state.globalSearchQuery, {type: 'all'})" title="${escapeHtml(t('tipLibraryAsk'))}"
+      <button data-click="askLibraryAboutSearch" title="${escapeHtml(t('tipLibraryAsk'))}"
         class="w-full mb-1.5 px-2.5 py-2 rounded-lg border border-apple-blue/30 bg-apple-blue/10 hover:bg-apple-blue/20 text-left text-[11.5px] text-white transition flex items-center gap-2">
         ${SVG_SPARK}<span class="truncate">${escapeHtml(t('libraryAskFromSearch'))}</span>
       </button>`;
@@ -1358,13 +1358,13 @@ function renderMeetingsSidebar() {
     listEl._keyed = false;
     listEl.innerHTML = askHtml + state.globalSearchResults.map(item => `
       <div class="rounded-lg bg-white/[0.03] border apple-border p-2.5 space-y-1.5 mb-1.5">
-        <div onclick="openMeeting(${item.meeting_id}, true)" tabindex="0" role="button"
+        <div data-click="openMeeting" data-click-args='[${item.meeting_id}, true]' tabindex="0" role="button"
              title="${escapeHtml(item.title)}"
              class="text-xs font-semibold text-white hover:text-apple-blue cursor-pointer truncate">
           ${escapeHtml(item.title)}
         </div>
         ${(item.hits || []).map(h => `
-          <div onclick="switchAppView('library'); selectMeetingAndSeek(${item.meeting_id}, ${Number(h.start) || 0})" tabindex="0" role="button"
+          <div data-click="openLibraryHit" data-click-args='[${Number(item.meeting_id) || 0}, ${Number(h.start) || 0}]' tabindex="0" role="button"
                title="${escapeHtml(t('tipSeekTimestamp'))}"
                class="px-2 py-1 rounded bg-black/30 hover:bg-apple-blue/20 cursor-pointer text-[11px] transition">
             <div class="flex items-center justify-between text-[10px] text-apple-blue font-mono">
@@ -1694,3 +1694,19 @@ function setSidebarWidth(w, save) {
     handle.addEventListener('pointerup', up);
   });
 })();
+
+// A thumbnail that could not be read gives way to the video icon
+function tileIconFallback(el) {
+  el.replaceWith(Object.assign(document.createElement('span'), { className: 'lib-tile-icon', innerHTML: ICON_FILE_VIDEO }));
+}
+
+// "Ask the assistant" from the search results: about everything found
+function askLibraryAboutSearch() {
+  openLibraryAsk(state.globalSearchQuery, { type: 'all' });
+}
+
+// A search hit: the library, the recording, the moment
+function openLibraryHit(meetingId, sec) {
+  switchAppView('library');
+  selectMeetingAndSeek(meetingId, sec);
+}

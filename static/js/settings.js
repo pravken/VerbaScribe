@@ -245,7 +245,7 @@ function renderVram(data) {
     const icon = c.loaded
       ? (actionable ? '<span class="opacity-60 group-hover:opacity-100">×</span>' : '')
       : (actionable ? '<span class="opacity-70 group-hover:opacity-100">↑</span>' : '');
-    return `<button data-i="${i}" onclick="vramChipClick(this.dataset.i)" ${actionable || c.kind === 'dub' ? '' : 'disabled'}
+    return `<button data-i="${i}" data-click="vramChipClick" data-click-args='[{"$": "data", "k": "i"}]' ${actionable || c.kind === 'dub' ? '' : 'disabled'}
       title="${escapeHtml(vramChipTitle(c))}"
       class="group max-w-full inline-flex items-center gap-1 px-1.5 h-5 rounded-full border text-[10px] font-medium transition ${cls} ${actionable ? 'hover:bg-white/10' : 'cursor-default'}">
       <span class="w-1.5 h-1.5 rounded-full shrink-0 ${c.loaded || c.loading ? 'bg-current' : 'border border-current'}"></span>
@@ -442,24 +442,24 @@ function updateWhisperModelsUI(models) {
         actionHtml = `
           <div class="flex items-center gap-1.5">
             <span class="ui-btn bg-apple-green/20 text-apple-green">${SVG_ICONS.check}<span>${t('uiActive')}</span></span>
-            <button data-id="${escapeHtml(item.id)}" onclick="${item.engine === 'onnx' ? 'deleteOnnxModel' : 'deleteWhisperModel'}(this.dataset.id)" title="${escapeHtml(t('tipDeleteModel'))}"
+            <button data-id="${escapeHtml(item.id)}" data-click="${item.engine === 'onnx' ? 'deleteOnnxModel' : 'deleteWhisperModel'}" data-click-args='[{"$": "data", "k": "id"}]' title="${escapeHtml(t('tipDeleteModel'))}"
               class="ui-btn ui-btn-subtle px-2 hover:text-apple-red">${SVG_ICONS.trash}</button>
           </div>
         `;
       } else if (item.installed) {
         actionHtml = `
           <div class="flex items-center gap-1.5">
-            <button data-id="${escapeHtml(item.id)}" onclick="selectActiveWhisperModel(this.dataset.id)" title="${escapeHtml(t('tipSelectModel'))}"
+            <button data-id="${escapeHtml(item.id)}" data-click="selectActiveWhisperModel" data-click-args='[{"$": "data", "k": "id"}]' title="${escapeHtml(t('tipSelectModel'))}"
               class="ui-btn ui-btn-subtle text-white hover:bg-apple-blue">
               ${t('uiSelect')}
             </button>
-            <button data-id="${escapeHtml(item.id)}" onclick="${item.engine === 'onnx' ? 'deleteOnnxModel' : 'deleteWhisperModel'}(this.dataset.id)" title="${escapeHtml(t('tipDeleteModel'))}"
+            <button data-id="${escapeHtml(item.id)}" data-click="${item.engine === 'onnx' ? 'deleteOnnxModel' : 'deleteWhisperModel'}" data-click-args='[{"$": "data", "k": "id"}]' title="${escapeHtml(t('tipDeleteModel'))}"
               class="ui-btn ui-btn-subtle px-2 hover:text-apple-red">${SVG_ICONS.trash}</button>
           </div>
         `;
       } else {
         actionHtml = `
-          <button data-id="${escapeHtml(item.id)}" onclick="${item.engine === 'onnx' ? 'startOnnxModelDownload' : 'startWhisperModelDownload'}(this.dataset.id)" title="${escapeHtml(item.error || t('tipDownloadModel'))}"
+          <button data-id="${escapeHtml(item.id)}" data-click="${item.engine === 'onnx' ? 'startOnnxModelDownload' : 'startWhisperModelDownload'}" data-click-args='[{"$": "data", "k": "id"}]' title="${escapeHtml(item.error || t('tipDownloadModel'))}"
             class="ui-btn ui-btn-primary">
             ${SVG_ICONS.download}
             <span>${t('uiDownload')} (${escapeHtml(sizeLabel)})</span>
@@ -613,7 +613,7 @@ function modelLocationHtml(path, mb, label) {
   return `<div class="mt-1.5 flex items-center gap-1.5 min-w-0 text-[10.5px] text-apple-tertiary">
       <span class="shrink-0">${escapeHtml(label || t('modelLocation'))}${size}:</span>
       <span class="font-mono truncate" title="${escapeHtml(path)}">${escapeHtml(path)}</span>
-      <button data-path="${escapeHtml(path)}" onclick="revealPath(this.dataset.path)" class="shrink-0 text-apple-blue hover:underline">${escapeHtml(t('modelReveal'))}</button>
+      <button data-path="${escapeHtml(path)}" data-click="revealPath" data-click-args='[{"$": "data", "k": "path"}]' class="shrink-0 text-apple-blue hover:underline">${escapeHtml(t('modelReveal'))}</button>
     </div>`;
 }
 
@@ -732,18 +732,18 @@ function updateOllamaUI(ollama) {
       if (isPullingThis) {
         actionHtml = `<span class="ui-btn bg-apple-blue/20 text-apple-blue font-mono animate-pulse">${ps.progress || 1}%</span>`;
       } else if (item.installed) {
-        const del = `<button data-id="${escapeHtml(item.id)}" onclick="deleteOllamaModel(this.dataset.id)" title="${escapeHtml(t('tipDeleteModel'))}"
+        const del = `<button data-id="${escapeHtml(item.id)}" data-click="deleteOllamaModel" data-click-args='[{"$": "data", "k": "id"}]' title="${escapeHtml(t('tipDeleteModel'))}"
               class="ui-btn ui-btn-subtle px-2 hover:text-apple-red">${SVG_ICONS.trash}</button>`;
         actionHtml = isSelected
           ? `<div class="flex items-center gap-1.5"><span class="ui-btn bg-apple-green/20 text-apple-green">${SVG_ICONS.check}<span>${t('uiActive')}</span></span>${del}</div>`
           : `<div class="flex items-center gap-1.5">
-          <button data-id="${escapeHtml(item.id)}" onclick="selectActiveOllamaModel(this.dataset.id)" title="${escapeHtml(t('tipSelectModel'))}"
+          <button data-id="${escapeHtml(item.id)}" data-click="selectActiveOllamaModel" data-click-args='[{"$": "data", "k": "id"}]' title="${escapeHtml(t('tipSelectModel'))}"
             class="ui-btn ui-btn-subtle text-white hover:bg-apple-blue">
             ${t('uiSelect')}
           </button>${del}</div>`;
       } else {
         actionHtml = `
-          <button data-id="${escapeHtml(item.id)}" onclick="pullOllamaModel(this.dataset.id)" title="${escapeHtml(t('tipDownloadModel'))}"
+          <button data-id="${escapeHtml(item.id)}" data-click="pullOllamaModel" data-click-args='[{"$": "data", "k": "id"}]' title="${escapeHtml(t('tipDownloadModel'))}"
             class="ui-btn ui-btn-primary">
             ${SVG_ICONS.download}
             <span>${t('uiDownload')} (${escapeHtml(item.size)})</span>
@@ -1123,10 +1123,10 @@ function renderSemanticModelCard() {
   const action = pulling
     ? `<span class="ui-btn bg-apple-blue/20 text-apple-blue font-mono animate-pulse">${ps.progress || 1}%</span>`
     : installed
-      ? `<div class="flex items-center gap-1.5"><button onclick="buildSemanticIndex()" class="ui-btn ui-btn-subtle text-white hover:bg-apple-blue">${escapeHtml(t('semanticBuild'))}</button>
-          <button data-id="${escapeHtml((ollama.models || []).find(n => n === model || n.startsWith(model + ':')) || model)}" onclick="deleteOllamaModel(this.dataset.id)" title="${escapeHtml(t('tipDeleteModel'))}"
+      ? `<div class="flex items-center gap-1.5"><button data-click="buildSemanticIndex" class="ui-btn ui-btn-subtle text-white hover:bg-apple-blue">${escapeHtml(t('semanticBuild'))}</button>
+          <button data-id="${escapeHtml((ollama.models || []).find(n => n === model || n.startsWith(model + ':')) || model)}" data-click="deleteOllamaModel" data-click-args='[{"$": "data", "k": "id"}]' title="${escapeHtml(t('tipDeleteModel'))}"
             class="ui-btn ui-btn-subtle px-2 hover:text-apple-red">${SVG_ICONS.trash}</button></div>`
-      : `<button onclick="pullSemanticModel()" class="ui-btn ui-btn-primary">${SVG_ICONS.download}<span>${escapeHtml(t('semanticDownload'))} (1.2 GB)</span></button>`;
+      : `<button data-click="pullSemanticModel" class="ui-btn ui-btn-primary">${SVG_ICONS.download}<span>${escapeHtml(t('semanticDownload'))} (1.2 GB)</span></button>`;
   box.innerHTML = `<div class="p-3 rounded-xl border transition flex items-center justify-between gap-3 ${installed ? 'bg-apple-blue/10 border-apple-blue/50' : 'bg-apple-sidebar border-white/10'}">
     <div class="min-w-0 flex-1">
       <div class="flex items-center flex-wrap gap-2">
@@ -1640,12 +1640,12 @@ async function loadDictionary() {
     <div class="flex items-center justify-between px-3.5 py-2 text-xs">
       <div class="flex items-center gap-2.5">
         <input type="checkbox" ${item.active ? 'checked' : ''}
-          onchange="toggleDictItem(${item.id}, this.checked)"
+          data-change="toggleDictItem" data-change-args='[${item.id}, {"$": "checked"}]'
           class="rounded bg-apple-bg border-white/20 text-apple-blue" />
         <span class="${item.active ? 'text-white' : 'text-apple-tertiary line-through'}">${escapeHtml(item.term)}</span>
         <span class="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-apple-secondary">${escapeHtml(item.category)}</span>
       </div>
-      <button onclick="deleteDictItem(${item.id})" title="${escapeHtml(t('tipDeleteDictTerm'))}" class="text-apple-tertiary hover:text-apple-red transition p-1">${SVG_ICONS.closeX}</button>
+      <button data-click="deleteDictItem" data-click-args='[${item.id}]' title="${escapeHtml(t('tipDeleteDictTerm'))}" class="text-apple-tertiary hover:text-apple-red transition p-1">${SVG_ICONS.closeX}</button>
     </div>
   `).join('');
 }
@@ -1728,7 +1728,7 @@ function renderBench() {
   const box = document.getElementById('bench-models');
   box.innerHTML = models.length
     ? models.map(m => `<label class="flex items-center gap-1.5 cursor-pointer text-xs text-apple-label">
-        <input type="checkbox" ${picked.has(m.id) ? 'checked' : ''} ${d.running ? 'disabled' : ''} onchange="benchPick(${jsArg(m.id)}, this.checked)"
+        <input type="checkbox" ${picked.has(m.id) ? 'checked' : ''} ${d.running ? 'disabled' : ''} data-change="benchPick" data-change-args='[${jsArg(m.id)}, {"$": "checked"}]'
           class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
         <span>${escapeHtml(m.name || m.id)}</span>${m.engine === 'onnx' ? '<span class="text-[10px] text-apple-tertiary">CPU</span>' : ''}</label>`).join('')
     : `<span class="text-[11px] text-apple-tertiary">${escapeHtml(t(bench.kind === 'asr' ? 'benchNoAsr' : 'benchNoLlm'))}</span>`;
@@ -1745,7 +1745,7 @@ function renderBench() {
   const hist = (d.history || []).filter(h => h.kind === bench.kind);
   document.getElementById('bench-history').innerHTML = hist.length
     ? `<div class="flex items-center justify-between pt-2"><span class="text-[11px] uppercase tracking-wider text-apple-tertiary">${escapeHtml(t('benchHistory'))}</span>
-         <button onclick="clearBenchHistory()" class="text-[11px] text-apple-tertiary hover:text-white">${escapeHtml(t('benchClear'))}</button></div>`
+         <button data-click="clearBenchHistory" class="text-[11px] text-apple-tertiary hover:text-white">${escapeHtml(t('benchClear'))}</button></div>`
       + hist.map((h, i) => `<details class="rounded-lg border apple-border px-3 py-1.5" ${i === 0 && !live ? 'open' : ''}>
           <summary class="cursor-pointer text-[12px] text-apple-label">${escapeHtml(h.at)} · ${h.verified ? '✓ ' : ''}${escapeHtml(h.title)}${h.kind === 'asr' && !h.verified ? ` · <span class="text-apple-amber">${escapeHtml(t('benchNotVerified'))}</span>` : ''}${h.clip_sec ? ` · ${formatDurationShort(h.clip_sec)}` : ''}${h.ref_words ? ` · ${h.ref_words} ${escapeHtml(t('benchWords'))}` : ''}</summary>
           <div class="pt-2">${benchTable(h)}</div></details>`).join('')
@@ -1770,7 +1770,7 @@ function benchTable(run) {
   // The work, and under it the loading of the model (timed apart, each model from an empty memory)
   const timeCell = (r, isBest) => `<td class="px-2 py-1 text-right font-mono ${isBest ? 'text-apple-green' : ''}">${r.sec} s${r.load_sec != null
     ? `<div class="text-[10px] text-apple-tertiary font-sans">${escapeHtml(t('benchLoad'))} ${r.load_sec} s</div>` : ''}</td>`;
-  const useBtn = r => r.error ? '' : `<button onclick="benchUse(${jsArg(run.kind)}, ${jsArg(r.model)})" class="text-[11px] text-apple-blue hover:underline">${escapeHtml(t('benchUse'))}</button>`;
+  const useBtn = r => r.error ? '' : `<button data-click="benchUse" data-click-args='[${jsArg(run.kind)}, ${jsArg(r.model)}]' class="text-[11px] text-apple-blue hover:underline">${escapeHtml(t('benchUse'))}</button>`;
   const mem = r => [r.vram_mb ? `${(r.vram_mb / 1024).toFixed(1)} GB VRAM` : '', r.ram_mb ? `${(r.ram_mb / 1024).toFixed(1)} GB RAM` : ''].filter(Boolean).join(' · ') || '—';
   const text = r => r.text ? `<details><summary class="cursor-pointer text-[11px] text-apple-tertiary">${escapeHtml(t('benchShowText'))}</summary>
       <div class="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap text-[11.5px] text-apple-secondary">${escapeHtml(r.text)}</div></details>` : '';
