@@ -13,7 +13,10 @@ from app.database import MODELS_DIR, get_all_settings, update_settings
 WHISPER_CATALOG: List[Dict[str, Any]] = [
     {
         "id": "large-v3-turbo",
+        # Moved to dropbox-dash/faster-whisper-large-v3-turbo; the old name redirects there. Kept for
+        # the folder name of earlier downloads (models--mobiuslabsgmbh--...)
         "repo_id": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
+        "revision": "0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf",
         "name": "Whisper Turbo",
         "badge": "1.5 GB · MIT",
         "size": "1.5 GB",
@@ -24,6 +27,7 @@ WHISPER_CATALOG: List[Dict[str, Any]] = [
     {
         "id": "large-v3",
         "repo_id": "Systran/faster-whisper-large-v3",
+        "revision": "edaa852ec7e145841d8ffdb056a99866b5f0a478",
         "name": "Whisper Pro",
         "badge": "2.9 GB · MIT",
         "size": "2.9 GB",
@@ -208,8 +212,15 @@ def get_models_status() -> Dict[str, Any]:
     }
 
 
+# Models are downloaded from a fixed commit, not from main: a rewritten or replaced repository does not
+# reach anyone until the commit here is changed (and its license checked again)
+ECAPA_REPO = "speechbrain/spkrec-ecapa-voxceleb"
+ECAPA_REVISION = "0f99f2d0ebe89ac095bcc5903c4dd8f72b367286"
+
+
 def _download_hf_repo_with_progress(
     repo_id: str,
+    revision: str,
     target_dir: Path,
     label: str,
     base_pct: int,
@@ -224,7 +235,7 @@ def _download_hf_repo_with_progress(
     target_dir.mkdir(parents=True, exist_ok=True)
     api = huggingface_hub.HfApi()
     _log(f"Получение списка файлов репозитория {repo_id}...")
-    info = api.repo_info(repo_id=repo_id, files_metadata=True)
+    info = api.repo_info(repo_id=repo_id, revision=revision, files_metadata=True)
 
     siblings = info.siblings or []
     files_to_get = []
@@ -258,7 +269,7 @@ def _download_hf_repo_with_progress(
                 downloaded_bytes += fsize
                 continue
 
-            url = huggingface_hub.hf_hub_url(repo_id=repo_id, filename=fname)
+            url = huggingface_hub.hf_hub_url(repo_id=repo_id, filename=fname, revision=revision)
             _log(f"Загрузка {label}: {fname}...")
 
             tmp_file = dest_file.with_suffix(dest_file.suffix + ".part")
@@ -322,6 +333,7 @@ def start_models_setup(
             target_dir = _whisper_model_dir(whisper_model_id)
             _download_hf_repo_with_progress(
                 repo_id=item["repo_id"],
+                revision=item["revision"],
                 target_dir=target_dir,
                 label=item["name"],
                 base_pct=2,
@@ -335,7 +347,8 @@ def start_models_setup(
                 _log("Загрузка модели разделения участников (ECAPA-TDNN)...")
                 ecapa_dir = MODELS_DIR / "spkrec-ecapa-voxceleb"
                 _download_hf_repo_with_progress(
-                    repo_id="speechbrain/spkrec-ecapa-voxceleb",
+                    repo_id=ECAPA_REPO,
+                    revision=ECAPA_REVISION,
                     target_dir=ecapa_dir,
                     label="Модель разделения участников ECAPA-TDNN",
                     base_pct=85,
@@ -387,7 +400,7 @@ def ensure_whisper_model(model_id: str, on_progress: Optional[Callable[[float, f
             return
     try:
         _log(f"Скачивание модели {item['name']} для обработки записи")
-        _download_hf_repo_with_progress(repo_id=item["repo_id"], target_dir=_whisper_model_dir(model_id), label=item["name"],
+        _download_hf_repo_with_progress(repo_id=item["repo_id"], revision=item["revision"], target_dir=_whisper_model_dir(model_id), label=item["name"],
                                         base_pct=2, span_pct=97, on_progress=on_progress)
         _log(f"Модель {item['name']} скачана")
         _setup_state.update({"active": False, "progress": 100})

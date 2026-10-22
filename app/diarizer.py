@@ -65,8 +65,15 @@ def _get_ecapa_encoder(device: str = "cpu"):
     save_dir = MODELS_DIR / "spkrec-ecapa-voxceleb"
     save_dir.mkdir(parents=True, exist_ok=True)
 
+    from huggingface_hub import snapshot_download
+
+    from app.model_manager import ECAPA_REPO, ECAPA_REVISION
+
+    # from_hparams has no revision: the fixed commit is fetched into the folder (nothing is downloaded
+    # when it is already there) and the model is loaded from the folder
+    snapshot_download(ECAPA_REPO, revision=ECAPA_REVISION, local_dir=str(save_dir))
     _ecapa_model = EncoderClassifier.from_hparams(
-        source="speechbrain/spkrec-ecapa-voxceleb",
+        source=str(save_dir),
         savedir=str(save_dir),
         run_opts={"device": target_device},
         local_strategy=LocalStrategy.COPY,

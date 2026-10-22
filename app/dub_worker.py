@@ -167,7 +167,12 @@ def _ensure_tts():
         _patch_alignment_analyzer()
 
         t0 = time.time()
-        _tts_model = ChatterboxMultilingualTTS.from_pretrained(device=dev)
+        # from_pretrained would fetch revision "main": the weights come from the fixed commit instead
+        from huggingface_hub import snapshot_download
+
+        ckpt = snapshot_download(repo_id="ResembleAI/chatterbox", repo_type="model", revision=CHATTERBOX_REVISION,
+                                 allow_patterns=_CHATTERBOX_FILES, token=os.getenv("HF_TOKEN"))
+        _tts_model = ChatterboxMultilingualTTS.from_local(ckpt, dev)
         print(f"[dub_worker] Chatterbox loaded in {time.time() - t0:.1f}s on {dev}", file=sys.stderr)
     return _tts_model
 
@@ -226,7 +231,8 @@ def cmd_tts(req):
     return {"ok": True, "results": results, "sr": model.sr, "peak_vram_gb": round(vram, 2)}
 
 
-# Same file list as ChatterboxMultilingualTTS.from_pretrained (0.1.7)
+# Same file list as ChatterboxMultilingualTTS.from_pretrained (0.1.7), from a fixed commit
+CHATTERBOX_REVISION = "5bb1f6ee58e50c3b8d408bc82a6d3740c2db6e18"
 _CHATTERBOX_FILES = ["ve.pt", "t3_mtl23ls_v2.safetensors", "s3gen.pt", "grapheme_mtl_merged_expanded_v1.json",
                      "conds.pt", "Cangjie5_TC.json"]
 
@@ -237,7 +243,7 @@ def cmd_download(req):
     done = []
     for name in req.get("models") or []:
         if name == "chatterbox":
-            snapshot_download(repo_id="ResembleAI/chatterbox", repo_type="model", revision="main",
+            snapshot_download(repo_id="ResembleAI/chatterbox", repo_type="model", revision=CHATTERBOX_REVISION,
                               allow_patterns=_CHATTERBOX_FILES, token=os.getenv("HF_TOKEN"))
         elif name == "demucs":
             import yaml
