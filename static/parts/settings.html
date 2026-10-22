@@ -139,6 +139,11 @@
             <button onclick="restoreBackup()" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px]" data-i18n="backupRestore">Восстановить из копии…</button>
             <span id="backup-status" class="text-[11px] text-apple-tertiary"></span>
           </div>
+          <!-- Left by a crash, a failed delete or an older version (app/database.orphan_files) -->
+          <div id="orphans-row" class="hidden flex items-center gap-2 flex-wrap text-[11px] text-apple-secondary">
+            <span id="orphans-text"></span>
+            <button onclick="deleteOrphans()" id="orphans-btn" class="ui-btn ui-btn-subtle h-7 px-3 text-[11px]" data-i18n="orphansDelete">Освободить место</button>
+          </div>
         </div>
 
         <!-- Memory (app/idle_unload.py) and notifications -->

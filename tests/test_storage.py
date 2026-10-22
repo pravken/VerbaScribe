@@ -278,6 +278,43 @@ class ShutdownTest(unittest.TestCase):
                 self.assertIn("Резервная копия", app_status.snapshot()["text"])
 
 
+class OrphanFilesTest(unittest.TestCase):
+    def test_only_old_files_of_no_recording_are_found(self):
+        import os
+        import time
+
+        from app.paths import DATA_DIR
+
+        database.init_db()
+        m = database.create_meeting(title="Живая", filename="a.wav", media_path=str(DATA_DIR / "uploads" / "kept.wav"))
+        old = time.time() - 3 * 86400
+
+        def put(rel, age=old):
+            p = DATA_DIR / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(b"x" * 100)
+            os.utime(p, (age, age))
+            return p
+
+        kept = [put("uploads/kept.wav"), put(f"thumbs/{m['id']}.jpg"), put(f"audio/meeting_{m['id']}.peaks.json"),
+                put("uploads/system_123.wav"), put("uploads/fresh.wav", age=time.time())]
+        orphans = [put("uploads/lost.mp4"), put("thumbs/999999.jpg"), put("audio/meeting_999999.wav"),
+                   put("dubs/work_meeting_999999_en/clip_1.wav")]
+        self.addCleanup(lambda: [p.unlink(missing_ok=True) for p in kept])
+        found = set(database.orphan_files())
+        for p in orphans:
+            self.assertIn(p, found)
+        for p in kept:
+            self.assertNotIn(p, found)
+
+        res = database.delete_orphan_files()
+        self.assertGreaterEqual(res["files"], len(orphans))
+        self.assertGreaterEqual(res["bytes"], 400)
+        self.assertTrue(all(p.exists() for p in kept))
+        self.assertFalse(any(p.exists() for p in orphans))
+        self.assertFalse((DATA_DIR / "dubs" / "work_meeting_999999_en").exists())  # its folder too
+
+
 class ClearResultsTest(unittest.TestCase):
     def test_dubs_and_waiting_exports_go_with_the_results(self):
         from app.paths import DATA_DIR

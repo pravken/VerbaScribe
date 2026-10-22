@@ -109,6 +109,7 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     loadCalendarSource();
     document.getElementById('set-onnx-gpu').checked = s.onnx_gpu !== 'false';
     loadBackupInfo();
+    loadOrphans();
     loadOnnxGpu();
     document.getElementById('calendar-status').textContent = '';
     fillCallSettings(s);
@@ -838,6 +839,35 @@ async function loadBackupInfo() {
   const st = await fetch('/api/backup').then(r => r.json()).catch(() => null);
   const el = document.getElementById('backup-media-size');
   if (st && el) el.textContent = st.media_files ? `(${st.media_files} · ${st.media_mb} MB)` : '';
+}
+
+// Files in the data folder that no recording uses any more: shown with their size, removed on request
+async function loadOrphans() {
+  const st = await fetch('/api/storage/orphans').then(r => r.json()).catch(() => null);
+  const row = document.getElementById('orphans-row');
+  if (!row) return;
+  row.classList.toggle('hidden', !st || !st.files);
+  if (st && st.files) {
+    document.getElementById('orphans-text').textContent =
+      t('orphansFound').replace('{n}', () => st.files).replace('{size}', () => formatBytes(st.bytes));
+  }
+}
+
+async function deleteOrphans() {
+  if (!(await askConfirm(t('orphansConfirm'), true))) return;
+  const btn = document.getElementById('orphans-btn');
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/storage/orphans/delete', { method: 'POST' });
+    const data = await readJson(res);
+    if (!res.ok) throw new Error(data.detail || 'Error');
+    showToast(t('orphansDeleted').replace('{n}', () => data.files).replace('{size}', () => formatBytes(data.bytes)));
+  } catch (e) {
+    showToast(e.message);
+  } finally {
+    btn.disabled = false;
+    loadOrphans();
+  }
 }
 
 async function makeBackup() {

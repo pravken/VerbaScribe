@@ -120,6 +120,29 @@ def _backup_dialog(mode: str, filename: str = "") -> Optional[str]:
          "--title", "Сохранить резервную копию" if mode == "save" else "Восстановить из резервной копии"],
         timeout=600)
 
+# --- Files of the data folder that no recording refers to (app/database.orphan_files) ---
+@router.get("/api/storage/orphans")
+def api_storage_orphans() -> Dict[str, Any]:
+    from app.database import orphan_files
+
+    files = orphan_files()
+    total = 0
+    for p in files:
+        try:
+            total += p.stat().st_size
+        except OSError:
+            pass
+    return {"files": len(files), "bytes": total}
+
+@router.post("/api/storage/orphans/delete")
+def api_storage_orphans_delete() -> Dict[str, Any]:
+    from app import app_status
+    from app.database import delete_orphan_files
+
+    if app_status.snapshot()["state"] != "idle":  # a job or a recording may be writing a file just now
+        raise HTTPException(status_code=409, detail="Дождитесь окончания текущей задачи")
+    return delete_orphan_files()
+
 @router.get("/api/backup")
 def api_backup_estimate() -> Dict[str, Any]:
     from app import backup

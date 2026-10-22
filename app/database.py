@@ -1050,6 +1050,86 @@ def add_export_path(meeting_id: int, path: str) -> None:
         conn.close()
 
 
+# Work folders of the data folder whose files belong to recordings (exports and recordings are the
+# user's files and are never scanned)
+ORPHAN_DIRS = ("uploads", "audio", "dubs", "thumbs")
+ORPHAN_MIN_AGE_SEC = 24 * 3600  # younger files may belong to work in progress (an upload, a dub)
+_ID_NAME = re.compile(r"^(?:meeting_|work_meeting_)?(\d+)(?=[._]|$)")
+
+
+def orphan_files() -> List[Path]:
+    """Files in the work folders that no recording refers to: left by a crash, a failed delete or an
+    older version. A file named after a recording that exists (thumbs/12.jpg, audio/meeting_12.wav)
+    or changed within a day is kept; system_*.wav belongs to the start-up recovery of recordings."""
+    import time
+
+    with _db_lock:
+        conn = get_connection()
+        rows = conn.execute("SELECT id, media_path, audio_path, dubs_json FROM meetings").fetchall()
+        conn.close()
+    ids = {int(r["id"]) for r in rows}
+    used = set()
+    for r in rows:
+        paths = [r["media_path"], r["audio_path"]]
+        try:
+            for d in json.loads(r["dubs_json"] or "[]"):
+                d = _dub_paths_from_storage(d)
+                paths += [d.get("path"), d.get("srt_path")]
+        except (ValueError, TypeError):
+            pass
+        for p in paths:
+            if p:
+                try:
+                    used.add(os.path.normcase(str(Path(p).resolve())))
+                except OSError:
+                    pass
+    now = time.time()
+    out: List[Path] = []
+    for folder in ORPHAN_DIRS:
+        base = DATA_DIR / folder
+        if not base.is_dir():
+            continue
+        for p in base.rglob("*"):
+            try:
+                if not p.is_file() or p.is_symlink() or now - p.stat().st_mtime < ORPHAN_MIN_AGE_SEC:
+                    continue
+            except OSError:
+                continue
+            if folder == "uploads" and p.name.startswith("system_"):
+                continue
+            if os.path.normcase(str(p.resolve())) in used:
+                continue
+            # A file (or a dub's work folder) named after a recording that still exists
+            m = _ID_NAME.match(p.relative_to(base).parts[0])
+            if m and int(m.group(1)) in ids:
+                continue
+            out.append(p)
+    return out
+
+
+def delete_orphan_files() -> Dict[str, int]:
+    """Deletes what orphan_files() finds; {"files": n, "bytes": freed}."""
+    files, freed = 0, 0
+    for p in orphan_files():
+        try:
+            size = p.stat().st_size
+        except OSError:
+            continue
+        if delete_file(str(p)):
+            files += 1
+            freed += size
+    for folder in ORPHAN_DIRS:  # the work folders of dubs emptied above, deepest first
+        base = DATA_DIR / folder
+        if not base.is_dir():
+            continue
+        for d in sorted((x for x in base.rglob("*") if x.is_dir()), key=lambda x: len(x.parts), reverse=True):
+            try:
+                d.rmdir()  # only an empty folder goes
+            except OSError:
+                pass
+    return {"files": files, "bytes": freed}
+
+
 def delete_meeting(meeting_id: int, with_source: bool = False, with_exports: bool = False,
                    with_note: bool = False) -> bool:
     """with_source: the media file used in place (added by its path) is deleted too; with_exports: the
