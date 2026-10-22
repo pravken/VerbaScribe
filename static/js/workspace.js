@@ -19,10 +19,11 @@ async function selectMeeting(id, reloadPlayer = true) {
 
   document.getElementById('meeting-title-input').value = m.title;
   document.getElementById('meeting-meta-badge').textContent =
-    `${formatTime(m.duration)} · ${(m.language || 'ru').toUpperCase()} · ${formatModelName(m.model_name)}${m.media_removed ? ' · ' + t('mediaRemovedBadge') : ''}`;
+    `${formatTime(m.duration)} · ${(m.language || 'ru').toUpperCase()} · ${formatModelName(m.transcript_model || m.model_name)}${m.media_removed ? ' · ' + t('mediaRemovedBadge') : ''}`;
   document.getElementById('meeting-meta-badge').title = document.getElementById('meeting-meta-badge').textContent;
 
   updateProcessingBanner(m);
+  renderTxModelBar();
   renderAudioTrackSwitch();
   renderFillerButton();
   renderSeriesUi();
@@ -48,6 +49,91 @@ async function selectMeeting(id, reloadPlayer = true) {
   renderMeetingsSidebar();
   if (state.activeWorkspaceTab === 'info' && (prevId !== m.id || reloadPlayer)) loadMeetingInfo();
   if (state.appView === 'ask') renderAskScope();
+}
+
+// --- The model of the transcript (the row above the transcript tools). Each model's transcript is
+// kept (app/database.py transcript_versions): picking a model that made one shows it, another one
+// offers Transcribe; the status says which model the text below comes from ---
+function txModelChoices(m) {
+  const done = new Set([m.transcript_model, ...(m.transcript_versions || []).map(v => v.model)].filter(Boolean));
+  const list = (state.whisperCatalog || []).map(i => ({ id: i.id, installed: i.installed, size: modelSizeLabel(i), languages: i.languages }));
+  for (const id of done) if (!list.some(i => i.id === id)) list.push({ id, installed: true, size: '' });  // a removed model
+  return { list, done };
+}
+
+function renderTxModelBar() {
+  const m = state.activeMeeting;
+  const bar = document.getElementById('tx-model-bar');
+  if (!bar) return;
+  bar.classList.toggle('hidden', !m);
+  if (!m) return;
+  if (state.txModelFor !== m.id) { state.txModelFor = m.id; state.txModelPick = null; }
+  const { list, done } = txModelChoices(m);
+  const shown = (m.segments || []).length ? (m.transcript_model || '') : '';
+  const pick = state.txModelPick || shown || m.model_name || (list[0] && list[0].id) || '';
+  const lang = String(m.language || '').slice(0, 2);
+  const sel = document.getElementById('tx-model-select');
+  sel.innerHTML = list.map(i => {
+    // GigaAM knows Russian only: not offered for a recording in another language
+    const fits = !i.languages || !lang || i.languages.includes(lang) || done.has(i.id);
+    return `<option value="${escapeHtml(i.id)}" ${fits ? '' : 'disabled'}>${escapeHtml(formatModelName(i.id))}${done.has(i.id) ? '  ✓' : ''}${
+      i.installed ? '' : `  ↓ ${escapeHtml(i.size)}`}${fits ? '' : ` (${escapeHtml(t('txModelOtherLang'))})`}</option>`;
+  }).join('');
+  sel.value = pick;
+  const busy = !DONE_STATUSES.includes(m.status);
+  sel.disabled = busy;
+  const btn = document.getElementById('tx-transcribe-btn');
+  btn.disabled = busy || !!m.media_removed;  // without the sound there is nothing to transcribe
+  btn.classList.toggle('opacity-40', btn.disabled);
+  document.getElementById('tx-transcribe-label').textContent = t(pick && pick === shown ? 'txTranscribeAgain' : 'txTranscribe');
+  const status = document.getElementById('tx-model-status');
+  let text, cls;
+  if (busy) [text, cls] = [t('txModelBusy').replace('{model}', () => formatModelName(m.model_name)), 'text-apple-secondary'];
+  else if (pick && pick === shown) [text, cls] = [`✓ ${t('txModelDone')}${m.transcript_at ? ' · ' + formatDateTime(m.transcript_at) : ''}`, 'text-apple-green'];
+  else if (!shown) [text, cls] = [t('txModelNone'), 'text-apple-secondary'];
+  else [text, cls] = [t('txModelNotYet').replace('{model}', () => formatModelName(shown)), 'text-apple-amber'];
+  status.textContent = text;
+  status.title = text;
+  status.className = `text-[11px] truncate min-w-0 ${cls}`;
+}
+
+async function pickTxModel(sel) {
+  const m = state.activeMeeting;
+  if (!m) return;
+  const id = sel.value;
+  state.txModelPick = id;
+  if (id !== m.transcript_model && (m.transcript_versions || []).some(v => v.model === id)) {
+    const res = await fetch(`/api/meetings/${m.id}/transcript-version`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: id }),
+    });
+    const data = await readJson(res);
+    state.txModelPick = null;
+    if (!res.ok) { showToast(errorText(data, res)); renderTxModelBar(); return; }
+    await selectMeeting(m.id, false);
+    loadMeetingsList();
+    return;
+  }
+  renderTxModelBar();
+}
+
+async function transcribeWithPickedModel() {
+  const m = state.activeMeeting;
+  if (!m) return;
+  const model = document.getElementById('tx-model-select').value;
+  if (!model) return;
+  if (model === m.transcript_model && (m.segments || []).length
+      && !(await confirmDialog(t('txTranscribeAgainTitle'), t('txTranscribeAgainText').replace('{model}', () => formatModelName(model)),
+        t('txTranscribeAgain'), false))) return;
+  const res = await fetch(`/api/meetings/${m.id}/reconfigure`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model_name: model, language: m.language || 'auto', num_speakers_hint: Number(m.num_speakers_hint || 0) }),
+  });
+  const data = await readJson(res);
+  if (!res.ok) { showToast(errorText(data, res)); return; }
+  state.txModelPick = null;
+  await loadMeetingsList();
+  await selectMeeting(m.id, false);
+  showToast(t('txTranscribeStarted').replace('{model}', () => formatModelName(model)));
 }
 
 function updateProcessingBanner(m) {

@@ -370,6 +370,88 @@ class SegmentsTableTest(unittest.TestCase):
         self.assertEqual(self._raw("SELECT COUNT(*) FROM segments WHERE meeting_id = ?", m["id"])[0][0], 0)
 
 
+class TranscriptVersionsTest(unittest.TestCase):
+    """Each model's transcript of a recording is kept; the dropdown above the text switches to one."""
+
+    def setUp(self):
+        database.init_db()
+        m = database.create_meeting(title="Версии", filename="v.wav", media_path="v.wav")
+        self.mid = m["id"]
+        self.addCleanup(database.delete_meeting, self.mid)
+
+    def _transcribe(self, model, text):
+        # what the job does at its end (app/transcriber.py)
+        database.stash_transcript_for(self.mid, model)
+        database.save_meeting_results(self.mid, speakers={"SPEAKER_00": {"name": model, "color": "#0A84FF"}},
+                                      segments=[{"id": 0, "start": 0, "end": 1, "speaker": "SPEAKER_00", "text": text}],
+                                      language="ru", transcript_model=model)
+
+    def _texts(self):
+        return [s["text"] for s in database.get_meeting(self.mid)["segments"]]
+
+    def test_another_model_keeps_the_first_transcript_with_its_edits(self):
+        self._transcribe("large-v3", "текст whisper")
+        database.edit_meeting(self.mid, lambda m: (m["segments"][0].update(text="правка whisper"), ["segments"])[1])
+        database.save_meeting_results(self.mid, summaries={})
+        with database._db_lock:
+            conn = database.get_connection()
+            conn.execute("UPDATE meetings SET translations_json = '{\"en\": {}}', transcript_verified = 1 WHERE id = ?", (self.mid,))
+            conn.commit()
+            conn.close()
+        self._transcribe("gigaam-v3", "текст gigaam")
+        m = database.get_meeting(self.mid)
+        self.assertEqual(m["transcript_model"], "gigaam-v3")
+        self.assertEqual(self._texts(), ["текст gigaam"])
+        self.assertFalse(m["transcript_verified"])  # the check was of the other text
+        self.assertEqual([v["model"] for v in m["transcript_versions"]], ["large-v3"])
+
+        self.assertTrue(database.switch_transcript_version(self.mid, "large-v3"))
+        m = database.get_meeting(self.mid)
+        self.assertEqual(self._texts(), ["правка whisper"])
+        self.assertEqual(m["speakers"]["SPEAKER_00"]["name"], "large-v3")
+        self.assertTrue(m["transcript_verified"])
+        self.assertEqual(m["model_name"], "large-v3")  # the next Transcribe uses it too
+        self.assertEqual([v["model"] for v in m["transcript_versions"]], ["gigaam-v3"])
+        # the search finds the text shown, not the one put aside
+        hits = database.search_all_meetings("правка")
+        self.assertTrue(any(h["meeting_id"] == self.mid for h in hits))
+        self.assertFalse(any(h["meeting_id"] == self.mid for h in database.search_all_meetings("gigaam")))
+
+    def test_the_same_model_again_replaces_its_transcript(self):
+        self._transcribe("large-v3", "первый")
+        self._transcribe("large-v3", "второй")
+        m = database.get_meeting(self.mid)
+        self.assertEqual(self._texts(), ["второй"])
+        self.assertEqual(m["transcript_versions"], [])
+
+    def test_a_model_done_again_replaces_its_stored_version(self):
+        self._transcribe("large-v3", "whisper 1")
+        self._transcribe("gigaam-v3", "gigaam")
+        database.switch_transcript_version(self.mid, "large-v3")
+        self._transcribe("gigaam-v3", "gigaam 2")
+        m = database.get_meeting(self.mid)
+        self.assertEqual(self._texts(), ["gigaam 2"])
+        self.assertEqual([v["model"] for v in m["transcript_versions"]], ["large-v3"])
+
+    def test_unknown_version_and_clearing(self):
+        self._transcribe("large-v3", "whisper")
+        self._transcribe("gigaam-v3", "gigaam")
+        self.assertFalse(database.switch_transcript_version(self.mid, "parakeet-v3"))
+        database.clear_results(self.mid)
+        m = database.get_meeting(self.mid)
+        self.assertEqual((m["segments"], m["transcript_versions"], m["transcript_model"]), ([], [], ""))
+
+    def test_a_transcript_made_before_the_versions_is_filed_under_its_model(self):
+        database.save_meeting_results(self.mid, segments=[{"id": 0, "start": 0, "end": 1, "text": "старая"}])
+        with database._db_lock:
+            conn = database.get_connection()
+            conn.execute("UPDATE meetings SET transcript_model = '', model_name = 'large-v3' WHERE id = ?", (self.mid,))
+            conn.commit()
+            conn.close()
+        database.init_db()
+        self.assertEqual(database.get_meeting(self.mid)["transcript_model"], "large-v3")
+
+
 class OrphanFilesTest(unittest.TestCase):
     def test_only_old_files_of_no_recording_are_found(self):
         import os

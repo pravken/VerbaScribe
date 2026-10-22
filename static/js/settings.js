@@ -426,6 +426,7 @@ function updateWhisperModelsUI(models) {
   state.whisperCatalog = whisperList;
   fillRecognitionSelects(whisperList, activeModel);
   renderLiveModelSelect();
+  renderTxModelBar();
 
   if (catalogBox && whisperList.length > 0) {
     catalogBox.innerHTML = whisperList.map(item => {

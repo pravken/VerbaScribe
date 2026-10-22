@@ -27,6 +27,7 @@ from app.database import (
     save_meeting_results,
     merge_summaries,
     save_segments_backup,
+    stash_transcript_for,
     update_meeting_progress,
 )
 from app.ollama_client import generate_meeting_summary
@@ -1046,6 +1047,8 @@ def _process_meeting_job(meeting_id: int) -> None:
             traceback.print_exc()
 
         _check_cancel(meeting_id)
+        # The transcript of another model stays among the versions (the dropdown above the text)
+        stash_transcript_for(meeting_id, model_name)
         save_segments_backup(meeting_id, [])  # a backup of the previous run does not belong to this one
         if settings.get("clean_fillers", "true").lower() == "true":
             cleaned_segments, removed = clean_filler_words_in_segments(merged_segments)
@@ -1066,6 +1069,7 @@ def _process_meeting_job(meeting_id: int) -> None:
             speakers=speakers_meta,
             segments=merged_segments,
             language=detected_lang,
+            transcript_model=model_name,
         )
 
         clear_vram()

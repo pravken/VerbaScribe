@@ -445,6 +445,20 @@
 
         <!-- Contextual Transcript Sub-Toolbar: Speaker Pills on Left + Transcript Action Buttons & Search on Right -->
         <div class="border-b apple-border bg-apple-bg/95 px-6 py-2 shrink-0">
+          <!-- The model the text was made with: each model's transcript is kept, picking one shows it
+               (renderTxModelBar in static/js/workspace.js) -->
+          <div id="tx-model-bar" class="hidden max-w-6xl mx-auto flex items-center gap-2 mb-2 min-w-0">
+            <label for="tx-model-select" class="text-[11px] text-apple-tertiary shrink-0" data-i18n="txModelLabel">Модель</label>
+            <select id="tx-model-select" data-change="pickTxModel" data-change-args='[{"$": "el"}]'
+              data-i18n-title="tipTxModel" title="Модель распознавания. Текст каждой модели хранится отдельно: выберите модель, чтобы увидеть её расшифровку"
+              class="h-7 max-w-[15rem] bg-apple-sidebar border apple-border rounded-[7px] px-2 text-xs text-white focus:outline-none shrink-0"></select>
+            <button data-click="transcribeWithPickedModel" id="tx-transcribe-btn" class="ui-btn ui-btn-subtle shrink-0"
+              data-i18n-title="tipTxTranscribe" title="Расшифровать запись выбранной моделью. Тексты других моделей остаются">
+              <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>
+              <span id="tx-transcribe-label" data-i18n="txTranscribe">Расшифровать</span>
+            </button>
+            <span id="tx-model-status" class="text-[11px] truncate min-w-0"></span>
+          </div>
           <div class="tx-toolbar max-w-6xl mx-auto flex items-center justify-between gap-3">
             <!-- Left: Speaker Filter Pills (they wrap within their part; the tools stay on one line) -->
             <div class="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap min-h-[28px]" id="speaker-pills-container">

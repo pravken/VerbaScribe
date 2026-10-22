@@ -527,6 +527,23 @@ def api_reconfigure_meeting(meeting_id: int, payload: MeetingReconfigurePayload)
     enqueue_meeting_job(meeting_id)
     return get_meeting(meeting_id)
 
+class TranscriptVersionPayload(BaseModel):
+    model: str
+
+
+@router.post("/api/meetings/{meeting_id}/transcript-version")
+def api_switch_transcript_version(meeting_id: int, payload: TranscriptVersionPayload) -> Dict[str, Any]:
+    """Shows the transcript another model made (the dropdown above the text); the one shown is kept."""
+    from app.database import switch_transcript_version
+
+    if not get_meeting(meeting_id):
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    _ensure_not_processing(meeting_id)
+    if not switch_transcript_version(meeting_id, payload.model.strip()):
+        raise HTTPException(status_code=404, detail="Этой моделью запись ещё не расшифрована")
+    return get_meeting(meeting_id)
+
+
 @router.post("/api/meetings/{meeting_id}/cancel")
 def api_cancel_meeting(meeting_id: int) -> Dict[str, Any]:
     m = get_meeting(meeting_id)

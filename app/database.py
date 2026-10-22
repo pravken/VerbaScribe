@@ -236,6 +236,7 @@ def init_db() -> None:
         )
         # The transcript: one row per line (see _write_segments), not one JSON in the recording's row
         cur.execute(_SEGMENTS_DDL)
+        cur.execute(_VERSIONS_DDL)
         cur.execute("DROP TRIGGER IF EXISTS meetings_flags_segments")  # has_transcript is set by _write_segments
         for ddl in _FLAG_TRIGGERS:
             cur.execute(ddl)
@@ -246,6 +247,9 @@ def init_db() -> None:
                         f"has_summary = {_HAS_SUMMARY.format(row='meetings')}")
             cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('meeting_flags_v1', '1')")
         moved = _move_segments_to_table(conn)
+        # Transcripts made before the versions: by the model the recording names
+        cur.execute("UPDATE meetings SET transcript_model = model_name, transcript_at = COALESCE(completed_at, '') "
+                    "WHERE COALESCE(transcript_model, '') = '' AND has_transcript = 1")
         if cur.execute("PRAGMA user_version").fetchone()[0] < _FTS_SCHEMA_VERSION:
             # First start with the index (or a newer index format): build it from stored transcripts
             cur.execute("DELETE FROM segments_fts")
@@ -287,6 +291,10 @@ _MEETING_EXTRA_COLUMNS = {
     # reads these instead of the transcripts themselves (megabytes per recording)
     "has_transcript": "INTEGER DEFAULT 0",
     "has_summary": "INTEGER DEFAULT 0",
+    # The model the transcript shown was made with, and when (the transcripts of other models are in
+    # transcript_versions)
+    "transcript_model": "TEXT DEFAULT ''",
+    "transcript_at": "TEXT DEFAULT ''",
 }
 
 _HAS_TRANSCRIPT = "(COALESCE({row}.segments_json, '') NOT IN ('', '[]'))"  # recordings stored before the segments table
@@ -307,6 +315,18 @@ _SEGMENTS_DDL = """CREATE TABLE IF NOT EXISTS segments (
     pos INTEGER NOT NULL,
     data TEXT NOT NULL,
     PRIMARY KEY (meeting_id, pos)
+) WITHOUT ROWID"""
+
+
+# The transcripts of a recording made with other models, one per model, to compare them and switch to
+# one (switch_transcript_version). The one shown is in `segments` (meetings.transcript_model): search,
+# analysis and exports read it as before. `data` (JSON) is what belongs to that text: segments,
+# speakers, translations, the copy before the filler cleanup, language, verified flag, date.
+_VERSIONS_DDL = """CREATE TABLE IF NOT EXISTS transcript_versions (
+    meeting_id INTEGER NOT NULL,
+    model TEXT NOT NULL,
+    data TEXT NOT NULL,
+    PRIMARY KEY (meeting_id, model)
 ) WITHOUT ROWID"""
 
 
@@ -669,10 +689,15 @@ def save_meeting_results(
     summaries: Optional[Dict[str, Any]] = None,
     language: Optional[str] = None,
     reindex: bool = True,
+    transcript_model: Optional[str] = None,
 ) -> None:
-    """reindex=False: a partial transcript shown while recognizing (search is indexed at the end)."""
+    """reindex=False: a partial transcript shown while recognizing (search is indexed at the end).
+    transcript_model: the model the new segments were made with (see stash_transcript_for)."""
     fields = []
     values = []
+    if transcript_model is not None:
+        fields.append("transcript_model = ?, transcript_at = ?")
+        values.extend([transcript_model, datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
     if speakers is not None:
         fields.append("speakers_json = ?")
         values.append(json.dumps(speakers, ensure_ascii=False))
@@ -697,6 +722,86 @@ def save_meeting_results(
                 _reindex_segments(conn, meeting_id, segments)
         conn.commit()
         conn.close()
+
+
+_VERSION_COLUMNS = "transcript_model, transcript_at, speakers_json, segments_backup_json, translations_json, language, transcript_verified"
+
+
+def _stash_active(conn: sqlite3.Connection, meeting_id: int) -> Optional[str]:
+    """Copies the transcript shown (with what belongs to it) into transcript_versions under its model;
+    returns the model, None when there is no transcript or no model to file it under."""
+    row = conn.execute(f"SELECT {_VERSION_COLUMNS} FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+    segments = _read_segments(conn, meeting_id)
+    if not row or not row["transcript_model"] or not segments:
+        return None
+    data = {"segments": segments, "speakers": _loads_dict(row["speakers_json"]),
+            "segments_backup": _loads_list(row["segments_backup_json"]), "translations": _loads_dict(row["translations_json"]),
+            "language": row["language"] or "", "verified": bool(row["transcript_verified"]), "at": row["transcript_at"] or ""}
+    conn.execute("INSERT OR REPLACE INTO transcript_versions (meeting_id, model, data) VALUES (?, ?, ?)",
+                 (meeting_id, row["transcript_model"], json.dumps(data, ensure_ascii=False)))
+    return row["transcript_model"]
+
+
+def stash_transcript_for(meeting_id: int, model: str) -> None:
+    """A job is about to save the transcript `model` made. The one shown, made with another model,
+    is kept among the versions; what belongs only to it (translations, the verified flag) does not
+    pass to the new text. An older version of this same model is replaced by the new one."""
+    with _db_lock:
+        conn = get_connection()
+        try:
+            row = conn.execute("SELECT transcript_model FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+            if row and row["transcript_model"] and row["transcript_model"] != model and _stash_active(conn, meeting_id):
+                conn.execute("UPDATE meetings SET translations_json = '{}', transcript_verified = 0 WHERE id = ?", (meeting_id,))
+            conn.execute("DELETE FROM transcript_versions WHERE meeting_id = ? AND model = ?", (meeting_id, model))
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def transcript_versions(conn: sqlite3.Connection, meeting_id: int) -> List[Dict[str, Any]]:
+    """The models a recording has a stored transcript of (besides the one shown), with its date."""
+    out = []
+    for r in conn.execute("SELECT model, data FROM transcript_versions WHERE meeting_id = ? ORDER BY model", (meeting_id,)):
+        try:
+            data = json.loads(r["data"])
+        except ValueError:
+            continue
+        out.append({"model": r["model"], "at": data.get("at") or "", "lines": len(data.get("segments") or [])})
+    return out
+
+
+def switch_transcript_version(meeting_id: int, model: str) -> bool:
+    """Shows the transcript `model` made: the one shown goes to the versions, this one takes its
+    place (search index included). False when there is no such version."""
+    with _db_lock:
+        conn = get_connection()
+        try:
+            row = conn.execute("SELECT transcript_model FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+            if not row:
+                return False
+            if row["transcript_model"] == model:
+                return True
+            got = conn.execute("SELECT data FROM transcript_versions WHERE meeting_id = ? AND model = ?",
+                               (meeting_id, model)).fetchone()
+            if not got:
+                return False
+            data = json.loads(got["data"])
+            _stash_active(conn, meeting_id)
+            segments = [s for s in data.get("segments") or [] if isinstance(s, dict)]
+            backup = data.get("segments_backup") or []
+            conn.execute(
+                "UPDATE meetings SET transcript_model = ?, transcript_at = ?, speakers_json = ?, segments_backup_json = ?, "
+                "translations_json = ?, language = ?, transcript_verified = ?, model_name = ? WHERE id = ?",
+                (model, data.get("at") or "", json.dumps(data.get("speakers") or {}, ensure_ascii=False),
+                 json.dumps(backup, ensure_ascii=False) if backup else "", json.dumps(data.get("translations") or {}, ensure_ascii=False),
+                 data.get("language") or "", 1 if data.get("verified") else 0, model, meeting_id))
+            _write_segments(conn, meeting_id, segments)
+            _reindex_segments(conn, meeting_id, segments)
+            conn.execute("DELETE FROM transcript_versions WHERE meeting_id = ? AND model = ?", (meeting_id, model))
+            conn.commit()
+            return True
+        finally:
+            conn.close()
 
 
 def edit_meeting(meeting_id: int, mutate: Callable[[Dict[str, Any]], Iterable[str]]) -> Optional[Dict[str, Any]]:
@@ -1019,7 +1124,7 @@ def get_meeting(meeting_id: int) -> Optional[Dict[str, Any]]:
 _LIST_COLUMNS = """id, title, filename, media_path, duration, status, progress, stage_text,
     error_message, language, model_name, num_speakers_hint,
     speakers_json, created_at, completed_at, folder_id, source, recorded_at, has_video, local_only, media_size, series_id,
-    transcript_verified,
+    transcript_verified, transcript_model,
     obsidian_path, exports_json,
     has_transcript, has_summary"""
 
@@ -1301,6 +1406,7 @@ def delete_meeting(meeting_id: int, with_source: bool = False, with_exports: boo
         conn = get_connection()
         conn.execute("DELETE FROM meetings WHERE id = ?", (meeting_id,))
         conn.execute("DELETE FROM segments WHERE meeting_id = ?", (meeting_id,))
+        conn.execute("DELETE FROM transcript_versions WHERE meeting_id = ?", (meeting_id,))
         conn.execute("DELETE FROM segments_fts WHERE meeting_id = ?", (meeting_id,))
         conn.execute("DELETE FROM semantic_chunks WHERE meeting_id = ?", (meeting_id,))
         conn.execute("DELETE FROM semantic_meta WHERE meeting_id = ?", (meeting_id,))
@@ -1332,9 +1438,10 @@ def clear_results(meeting_id: int) -> bool:
         conn.execute(
             "UPDATE meetings SET segments_json = '', has_transcript = 0, speakers_json = '{}', summaries_json = '{}', translations_json = '{}', "
             "segments_backup_json = '', dubs_json = '[]', pending_exports_json = '[]', status = 'cleared', progress = 0, "
-            "stage_text = '', error_message = '', transcript_verified = 0 WHERE id = ?",
+            "stage_text = '', error_message = '', transcript_verified = 0, transcript_model = '', transcript_at = '' WHERE id = ?",
             (meeting_id,))
         conn.execute("DELETE FROM segments WHERE meeting_id = ?", (meeting_id,))
+        conn.execute("DELETE FROM transcript_versions WHERE meeting_id = ?", (meeting_id,))
         conn.execute("DELETE FROM segments_fts WHERE meeting_id = ?", (meeting_id,))
         conn.execute("DELETE FROM semantic_chunks WHERE meeting_id = ?", (meeting_id,))
         conn.execute("DELETE FROM semantic_meta WHERE meeting_id = ?", (meeting_id,))
@@ -1375,6 +1482,7 @@ def _deserialize_meeting(d: Dict[str, Any], conn: sqlite3.Connection) -> Dict[st
     from app.translation import resolve_all
 
     d["translations"] = resolve_all(d["segments"], _loads_dict(d.pop("translations_json", None)))
+    d["transcript_versions"] = transcript_versions(conn, d["id"])
     return d
 
 

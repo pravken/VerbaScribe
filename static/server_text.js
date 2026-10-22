@@ -177,6 +177,7 @@ const SERVER_TEXT_EN = {
   "Системную папку нельзя вложить в другую": "A system folder cannot be put into another one",
   "Системную папку удалить нельзя": "A system folder cannot be deleted",
   "Скачивание отменено": "Download cancelled",
+  "Этой моделью запись ещё не расшифрована": "The recording is not transcribed with this model yet",
   "Скачивание по ссылке прервано перезапуском — нажмите «Повторить»": "The download was interrupted by a restart — press Retry",
   "Скачивание по ссылке…": "Downloading from the link…",
   "Слишком большой фрагмент записи": "The recording chunk is too large",
