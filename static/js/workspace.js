@@ -590,11 +590,13 @@ function langName(code) {
   // Serbian is written in two scripts: say which one
   if (code === 'sr') code = 'sr-Cyrl';
   if (code === 'sr-latn') code = 'sr-Latn';
+  // Without ICU data for a language the browser returns the code itself: then the dub list's own names
+  const own = () => ((I18N[state.uiLang] || I18N.ru).dubLangNames || {})[code] || String(code).toUpperCase();
   try {
     const n = new Intl.DisplayNames([state.uiLang], { type: 'language' }).of(code);
-    return n ? n.charAt(0).toUpperCase() + n.slice(1) : String(code).toUpperCase();
+    return n && n.toLowerCase() !== String(code).toLowerCase() ? n.charAt(0).toUpperCase() + n.slice(1) : own();
   } catch (e) {
-    return String(code).toUpperCase();
+    return own();
   }
 }
 
