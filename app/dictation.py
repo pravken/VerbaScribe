@@ -4,8 +4,9 @@ microphone; the same keys again stop it, the speech is recognized and the text i
 window that has the focus (through the clipboard and Ctrl+V; the clipboard is put back after).
 
 Recognition uses the models already downloaded: GigaAM v3 for Russian, Parakeet for other
-languages (both on the CPU, a second or two), otherwise the live-caption Whisper worker. Nothing is
-saved in the library.
+languages (both on the CPU, a second or two), otherwise the live-caption Whisper worker. Each
+dictation is also kept in the library (folder "Dictations", local analysis only): the sound, the
+text and its translation; off in Settings ("dictation_save").
 
 Dictation with translation has a hotkey of its own (Ctrl+Alt+T by default): the recognized text is
 translated into the chosen language before it is typed. The local Ollama model translates; a cloud
@@ -94,14 +95,17 @@ def _finish(notify=None) -> None:
         _chunks.clear()
         translate_to = _state.get("translate_to") or ""
     try:
-        text = recognize(audio) if audio.size > SR // 2 else ""
-        note = ""
+        text, model = recognize(audio) if audio.size > SR // 2 else ("", "")
+        original, note = text, ""
         if text and translate_to:
             text, note = translate(text, translate_to)
         with _lock:
             _state.update(last_text=text, error="" if text else "Речь не распознана")
         if text:
             type_text(text)
+            # After the typing, so the text is not held up; the translation is kept only when it is one
+            threading.Thread(target=save_to_library, args=(audio, original, model, translate_to if text != original else "", text),
+                             daemon=True, name="dictation_save").start()
         if notify:
             if not text:
                 notify("Диктовка", "Речь не распознана")
@@ -169,17 +173,68 @@ def _language() -> Optional[str]:
     return None if lang in ("", "auto") else lang
 
 
-def recognize(audio: np.ndarray) -> str:
+def recognize(audio: np.ndarray) -> "tuple[str, str]":
+    """(text, the model that made it)."""
     from app import asr_onnx, live
     from app.database import get_all_settings
+    from app.hardware import get_hardware_info
 
     lang = _language()
-    model = live.caption_onnx_model({**get_all_settings(), "live_whisper_model": "auto"}, lang)
+    settings = get_all_settings()
+    model = live.caption_onnx_model({**settings, "live_whisper_model": "auto"}, lang)
     if model:
         parts = asr_onnx.recognize_array(model, audio)
-        return " ".join(t for _, _, t in parts).strip()
+        return " ".join(t for _, _, t in parts).strip(), model
     segs, _lang, _prob = live._caption_worker().transcribe(audio, lang)
-    return " ".join(s.text.strip() for s in segs).strip()
+    return " ".join(s.text.strip() for s in segs).strip(), live.caption_model(settings, get_hardware_info())
+
+
+def save_to_library(audio: np.ndarray, text: str, model: str, translated_to: str = "", translation: str = "") -> Optional[int]:
+    """Keeps a dictation as a recording of the library, in its folder "Dictations": the sound
+    (16 kHz WAV), the recognized text and, for a dictation with translation, the typed translation as
+    the recording's translation. Returns its id (None when it is off or failed: the typing is done)."""
+    import uuid
+    import wave
+    from datetime import datetime
+
+    from app.database import (create_meeting, get_all_settings, save_meeting_results, save_meeting_translation,
+                              update_meeting_progress)
+    from app.naming import in_date_folder
+    from app.paths import recordings_dir
+
+    settings = get_all_settings()
+    if (settings.get("dictation_save") or "true").lower() != "true" or not text or not audio.size:
+        return None
+    try:
+        now = datetime.now()
+        folder = in_date_folder(recordings_dir(settings.get("recordings_dir") or ""), now)
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / f"{uuid.uuid4().hex[:8]}_dictation_{now:%Y%m%d_%H%M%S}.wav"
+        pcm = (np.clip(audio, -1.0, 1.0) * 32767).astype("<i2").tobytes()
+        with wave.open(str(path), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(SR)
+            w.writeframes(pcm)
+        words = text.split()
+        title = "Диктовка: " + " ".join(words[:6]) + ("…" if len(words) > 6 else "")
+        lang = _language() or ""
+        m = create_meeting(title=title, filename=path.name, media_path=str(path), language=lang or "auto", model_name=model,
+                           source="dictation", owns_media=True, recorded_at=now.strftime("%Y-%m-%d %H:%M:%S"), has_video=False)
+        duration = round(audio.size / SR, 2)
+        segments = [{"id": 0, "start": 0.0, "end": duration, "speaker": "SPEAKER_00", "text": text}]
+        save_meeting_results(m["id"], speakers={"SPEAKER_00": {"name": "Я", "color": "#0A84FF"}}, segments=segments,
+                             language=lang or None, transcript_model=model)
+        if translated_to and translation:
+            from app.translation import merge_translated_items
+
+            save_meeting_translation(m["id"], translated_to, merge_translated_items(
+                None, segments, {0: translation}, model="dictation", source_lang=lang or "auto"))
+        update_meeting_progress(m["id"], status="completed", progress=100, stage_text="", duration=duration)
+        return m["id"]
+    except Exception:
+        traceback.print_exc()
+        return None
 
 
 # ---- typing into the focused window (Windows) ----

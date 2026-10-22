@@ -108,6 +108,7 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     document.getElementById('set-dictation-language').value = s.dictation_language || 'auto';
     document.getElementById('set-translate-hotkey').value = s.dictation_translate_hotkey ?? 'Ctrl+Alt+T';
     document.getElementById('set-dictation-translate-cloud').checked = s.dictation_translate_cloud === 'true';
+    document.getElementById('set-dictation-save').checked = s.dictation_save !== 'false';
     fillDictationTranslateLangs(s.dictation_translate_to || 'en');
     document.getElementById('set-calendar-ics').value = s.calendar_ics || '';
     loadCalendarSource();
@@ -1552,6 +1553,7 @@ async function saveAllSettings() {
       dictation_translate_hotkey: document.getElementById('set-translate-hotkey')?.value.trim() || '',
       dictation_translate_to: document.getElementById('set-dictation-translate-to')?.value || 'en',
       dictation_translate_cloud: document.getElementById('set-dictation-translate-cloud')?.checked ? 'true' : 'false',
+      dictation_save: document.getElementById('set-dictation-save')?.checked ? 'true' : 'false',
       calendar_ics: document.getElementById('set-calendar-ics')?.value.trim() || '',
       onnx_gpu: document.getElementById('set-onnx-gpu')?.checked ? 'true' : 'false',
       ...callSettingsPayload(),

@@ -52,7 +52,7 @@ class FolderTest(unittest.TestCase):
 
     def test_system_folders_and_default_placement(self):
         keys = {f["system_key"] for f in list_folders() if f["system_key"]}
-        self.assertEqual(keys, {"recordings", "imports"})
+        self.assertEqual(keys, {"recordings", "imports", "dictations"})
         rec = create_meeting(title="r", filename="r.webm", media_path="r.webm", source="recording")
         imp = create_meeting(title="i", filename="i.mp4", media_path="i.mp4")
         self.assertEqual(rec["folder_id"], system_folder_id("recordings"))

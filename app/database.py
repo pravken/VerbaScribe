@@ -159,6 +159,7 @@ def init_db() -> None:
             "dictation_language": "auto",
             "dictation_translate_hotkey": "Ctrl+Alt+T",  # dictation typed in another language; empty: off
             "dictation_translate_to": "en",
+            "dictation_save": "true",  # each dictation is kept in the library, folder "Dictations"
             "dictation_translate_cloud": "false",  # dictation is translated by the local model unless allowed
             "quiet_mode": "false",  # no tray notifications (run.py TrayController)
             "call_auto_record": "false",  # record calls by themselves (app/call_watch.py)
@@ -391,7 +392,7 @@ def _move_segments_to_table(conn: sqlite3.Connection) -> int:
     return len(ids)
 
 
-SYSTEM_FOLDERS = {"recordings": "Записи", "imports": "Импорт"}
+SYSTEM_FOLDERS = {"recordings": "Записи", "imports": "Импорт", "dictations": "Диктовки"}
 _VIDEO_EXTS = {".mp4", ".mkv", ".mov", ".avi", ".m4v", ".webm", ".wmv", ".flv", ".mpg", ".mpeg", ".ts", ".mts", ".3gp"}
 
 
@@ -400,6 +401,11 @@ def _ensure_system_folders(cur: sqlite3.Cursor) -> None:
     for key, name in SYSTEM_FOLDERS.items():
         if not cur.execute("SELECT 1 FROM folders WHERE system_key = ?", (key,)).fetchone():
             cur.execute("INSERT INTO folders (name, parent_id, system_key, created_at) VALUES (?, NULL, ?, ?)", (name, key, now))
+            if key == "dictations":  # they can hold anything said (a password too): never sent to a cloud model
+                try:
+                    cur.execute("UPDATE folders SET local_only = 1 WHERE system_key = 'dictations'")
+                except sqlite3.OperationalError:
+                    pass  # a library from before local_only (the column comes with its migration)
 
 
 def _sort_existing_meetings(cur: sqlite3.Cursor) -> None:
@@ -603,7 +609,7 @@ def create_meeting(
         cur = conn.cursor()
         if folder_id is None or not cur.execute("SELECT 1 FROM folders WHERE id = ?", (folder_id,)).fetchone():
             # New recordings land in the system folder of their kind
-            key = "recordings" if source == "recording" else "imports"
+            key = {"recording": "recordings", "dictation": "dictations"}.get(source, "imports")
             row = cur.execute("SELECT id FROM folders WHERE system_key = ?", (key,)).fetchone()
             folder_id = row[0] if row else None
         cur.execute(

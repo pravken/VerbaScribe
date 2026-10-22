@@ -297,6 +297,11 @@
               <span data-i18n="dictTrCloud">Разрешить облачную модель для перевода диктовки</span>
             </label>
             <p class="text-[10.5px] text-apple-tertiary mt-1" data-i18n="dictTrHint">Говорите на любом языке — вставится перевод. Переводит локальная модель Ollama; облачная — только если отмечено выше и облако включено в «Анализе». Если перевод не удался, вставляется исходный текст.</p>
+            <label class="flex items-center gap-2 cursor-pointer text-[11px] text-apple-label mt-2.5" data-i18n-title="tipDictSave"
+              title="Звук, текст и перевод каждой диктовки сохраняются записью в папке «Диктовки» медиатеки. Эта папка только для локального анализа: в облако её записи не отправляются">
+              <input type="checkbox" id="set-dictation-save" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+              <span data-i18n="dictSave">Сохранять диктовки в медиатеку (папка «Диктовки»)</span>
+            </label>
           </div>
 
         </div>

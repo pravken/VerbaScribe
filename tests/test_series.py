@@ -574,7 +574,7 @@ class DictationTest(unittest.TestCase):
         init_db()
         with mock.patch.object(live, "caption_onnx_model", return_value="gigaam-v3"), \
              mock.patch.object(asr_onnx, "recognize_array", return_value=[(0, 1, "Привет."), (1, 2, "Как дела?")]):
-            self.assertEqual(dictation.recognize(np.zeros(16000, dtype=np.float32)), "Привет. Как дела?")
+            self.assertEqual(dictation.recognize(np.zeros(16000, dtype=np.float32)), ("Привет. Как дела?", "gigaam-v3"))
         from app.hotkey import parse_hotkey
         self.assertIsNotNone(parse_hotkey("Ctrl+Alt+D"))
 

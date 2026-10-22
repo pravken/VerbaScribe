@@ -61,9 +61,10 @@ class DictationTranslateTest(unittest.TestCase):
         self.assertIn("не ответила", note)
 
     def test_hotkey_with_translation_types_the_translation(self):
-        typed, notes = [], []
+        typed, notes, saved = [], [], []
         with mock.patch.object(dictation, "_record"), \
-                mock.patch.object(dictation, "recognize", return_value="Привет, завтра пришлю отчёт."), \
+                mock.patch.object(dictation, "recognize", return_value=("Привет, завтра пришлю отчёт.", "gigaam-v3")), \
+                mock.patch.object(dictation, "save_to_library", side_effect=lambda *a: saved.append(a[1:])), \
                 mock.patch.object(dictation, "type_text", side_effect=typed.append), \
                 mock.patch.object(llm, "target", return_value=_Target(answer="Hi, I will send the report tomorrow.")):
             self.assertEqual(dictation.toggle(translate=True), "started")
@@ -71,11 +72,15 @@ class DictationTranslateTest(unittest.TestCase):
             dictation._finish(notify=lambda title, text, warning=False: notes.append((title, warning)))
         self.assertEqual(typed, ["Hi, I will send the report tomorrow."])
         self.assertEqual(notes, [("Диктовка с переводом", False)])
+        dictation.threading.Event().wait(0.2)  # the library copy is made in a thread of its own
+        # the library keeps what was said, with the typed translation as its translation
+        self.assertEqual(saved, [("Привет, завтра пришлю отчёт.", "gigaam-v3", "en", "Hi, I will send the report tomorrow.")])
 
         # the plain hotkey still types what was said
         typed.clear()
         with mock.patch.object(dictation, "_record"), \
-                mock.patch.object(dictation, "recognize", return_value="Привет"), \
+                mock.patch.object(dictation, "recognize", return_value=("Привет", "gigaam-v3")), \
+                mock.patch.object(dictation, "save_to_library"), \
                 mock.patch.object(dictation, "type_text", side_effect=typed.append), \
                 mock.patch.object(llm, "target") as pick:
             dictation.toggle()
@@ -83,6 +88,29 @@ class DictationTranslateTest(unittest.TestCase):
             dictation._finish()
         self.assertEqual(typed, ["Привет"])
         pick.assert_not_called()
+
+    def test_a_dictation_is_kept_in_its_library_folder(self):
+        from pathlib import Path
+
+        from app import database
+
+        update_settings({"dictation_save": "true", "dictation_language": "ru"})
+        audio = np.zeros(dictation.SR * 2, dtype=np.float32)
+        mid = dictation.save_to_library(audio, "Привет, завтра пришлю отчёт.", "gigaam-v3", "en", "Hi, I will send it tomorrow.")
+        self.addCleanup(database.delete_meeting, mid)
+        m = database.get_meeting(mid)
+        folder = next(f for f in database.list_folders() if f["id"] == m["folder_id"])
+        self.assertEqual(folder["system_key"], "dictations")
+        self.assertTrue(database.is_local_only(m))  # never sent to a cloud model
+        self.assertEqual((m["status"], m["duration"], m["transcript_model"]), ("completed", 2.0, "gigaam-v3"))
+        self.assertEqual([s["text"] for s in m["segments"]], ["Привет, завтра пришлю отчёт."])
+        self.assertEqual(m["translations"]["en"]["segments"]["0"]["text"], "Hi, I will send it tomorrow.")
+        self.assertTrue(Path(m["media_path"]).exists())
+        self.assertTrue(m["title"].startswith("Диктовка: Привет"))
+
+        update_settings({"dictation_save": "false"})
+        self.addCleanup(update_settings, {"dictation_save": "true"})
+        self.assertIsNone(dictation.save_to_library(audio, "текст", "gigaam-v3"))
 
     def test_target_language_is_checked_when_saved(self):
         from app.settings_schema import clean

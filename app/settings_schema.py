@@ -22,7 +22,7 @@ BOOLS = {
     "call_auto_record", "semantic_search", "auto_title", "obsidian_auto", "summary_grounding", "auto_commitments",
     "delete_media_after", "update_auto", "update_beta", "obsidian_summary", "obsidian_tasks", "obsidian_chapters",
     "obsidian_transcript", "obsidian_generate", "llm_cloud_consent", "watch_folder_recursive",
-    "dub_keep_original_track", "dub_denoise", "dub_room_tone", "dub_keep_workdir", "dictation_translate_cloud",
+    "dub_keep_original_track", "dub_denoise", "dub_room_tone", "dub_keep_workdir", "dictation_translate_cloud", "dictation_save",
 }
 INTS = {"num_speakers": (0, 20), "idle_unload_minutes": (0, 24 * 60), "media_retention_days": (0, 3650),
         "onnx_gpu_batch": (1, 256)}
