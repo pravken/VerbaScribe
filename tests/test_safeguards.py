@@ -241,7 +241,9 @@ class UpdateSourceTest(unittest.TestCase):
 
         sums = f"{'b' * 64}  VerbaScribe-v9.0.0.zip\n"
         transport = httpx.MockTransport(lambda req: httpx.Response(200, text=sums))
-        with mock.patch("httpx.Client", side_effect=lambda **kw: real(transport=transport, **kw)):
+        # the checksums are compared here; the signature has its tests in tests/test_updater.py
+        with mock.patch("httpx.Client", side_effect=lambda **kw: real(transport=transport, **kw)), \
+                mock.patch.object(updater, "check_signature"):
             updater._download({**latest, "sums_url": base + "SHA256SUMS.txt"})
         self.assertIn("не совпадают", updater.status()["download"]["error"])
 
