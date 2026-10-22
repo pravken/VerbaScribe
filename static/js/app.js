@@ -1345,7 +1345,7 @@ document.addEventListener('contextmenu', (e) => {
   menu.innerHTML = clean.map((it, i) => it.sep
     ? '<div class="my-1 h-px bg-white/10"></div>'
     : `<button class="macos-menu-item gap-6" data-i="${i}" ${it.disabled ? 'disabled style="opacity:.4"' : ''}><span>${escapeHtml(it.label)}</span>`
-      + `<span class="text-[10.5px] opacity-50 font-mono">${escapeHtml(it.key || '')}</span></button>`).join('');
+      + `<span class="text-[10.5px] opacity-80 font-mono">${escapeHtml(it.key || '')}</span></button>`).join('');
   // Keeps the selection: a click in the menu must not clear it before the action reads it
   menu.addEventListener('mousedown', ev => ev.preventDefault());
   menu.addEventListener('click', (ev) => {

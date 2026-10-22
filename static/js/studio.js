@@ -821,7 +821,7 @@ function openQuickLangMenu(e, index) {
   menu.className = 'fixed w-56 max-h-80 overflow-y-auto macos-menu z-50';
   menu.innerHTML = `<div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(t('quickLangPick'))}</div>`
     + codes.map(({ c, n }) => `<button class="macos-menu-item" data-code="${c}" ${langs.includes(c) && c !== langs[index] ? 'disabled style="opacity:.4"' : ''}>`
-      + `<span>${escapeHtml(n)}</span><span class="text-[10.5px] opacity-60">${c === langs[index] ? '✓' : escapeHtml(langCode(c))}</span></button>`).join('');
+      + `<span>${escapeHtml(n)}</span><span class="text-[10.5px] opacity-80">${c === langs[index] ? '✓' : escapeHtml(langCode(c))}</span></button>`).join('');
   menu.addEventListener('click', (ev) => {
     const b = ev.target.closest('button[data-code]');
     ev.stopPropagation();

@@ -180,7 +180,7 @@ function renderQueuePanel() {
             <span class="text-[12px] font-medium text-white truncate">${escapeHtml(q.title)}</span>
           </span>
           <button onclick="event.stopPropagation(); cancelProcessing(${q.id})" title="${escapeHtml(t('tipQueueCancel'))}"
-            class="shrink-0 text-apple-tertiary hover:text-apple-red opacity-60 group-hover:opacity-100 transition ${q.cancelling ? 'hidden' : ''}">${SVG_ICONS.closeX}</button>
+            class="shrink-0 text-apple-tertiary hover:text-apple-red opacity-80 group-hover:opacity-100 transition ${q.cancelling ? 'hidden' : ''}">${SVG_ICONS.closeX}</button>
         </div>
         <div class="flex items-center justify-between gap-2 text-[10.5px] mt-0.5">
           <span class="${q.kind === 'transcribe' ? 'text-apple-secondary' : 'text-apple-amber'} shrink-0">${escapeHtml(queueKindLabel(q))}</span>

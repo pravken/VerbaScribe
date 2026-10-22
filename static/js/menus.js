@@ -36,7 +36,7 @@ function renderExportMenu() {
     `<div class="px-2.5 pt-2 pb-1 flex items-center justify-between gap-2"><span class="text-[10px] font-semibold uppercase tracking-wider text-apple-secondary">${escapeHtml(label)}</span>${extra}</div>`;
   const item = (payload, label, tag, hint) =>
     `<button onclick="runExport(${jsArg(payload)})" class="macos-menu-item gap-3" ${hint ? `title="${escapeHtml(hint)}"` : ''}>`
-    + `<span class="truncate">${escapeHtml(label)}</span><span class="text-[10.5px] opacity-60 shrink-0">${escapeHtml(tag)}</span></button>`;
+    + `<span class="truncate">${escapeHtml(label)}</span><span class="text-[10.5px] opacity-80 shrink-0">${escapeHtml(tag)}</span></button>`;
   const note = (text, cls = 'text-apple-tertiary') => `<div class="px-2.5 pb-1 text-[10.5px] leading-snug ${cls}">${escapeHtml(text)}</div>`;
   const sep = '<div class="my-1 border-t border-white/10"></div>';
   const langSelect = (id, onchange, options) =>
