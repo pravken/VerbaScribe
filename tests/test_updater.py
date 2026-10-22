@@ -52,7 +52,9 @@ class ApplyUpdateTest(unittest.TestCase):
                                 ".venv/keep.txt": "evil", "models/model.bin": "evil", "../outside.txt": "evil"})
         with mock.patch.object(updater.subprocess, "run") as run:
             updater.apply_update(self.zip, self.app, self.data, lambda _m: None)
-        run.assert_not_called()  # requirements.txt did not change
+        # requirements.txt did not change: no packages installed (the queue of other tests may run FFmpeg
+        # meanwhile through the same patched subprocess.run, so only the updater's own calls count)
+        self.assertFalse([c for c in run.call_args_list if "requirements.txt" in " ".join(map(str, c.args[0] if c.args else []))])
         self.assertEqual((self.app / "app" / "main.py").read_text(), "new main")
         self.assertEqual((self.app / "app" / "new.py").read_text(), "added")
         self.assertEqual((self.app / ".venv" / "keep.txt").read_text(), "venv")

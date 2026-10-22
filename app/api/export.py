@@ -18,7 +18,7 @@ from app.export_build import build_export_bytes
 from fastapi import APIRouter
 
 from app.main import (  # noqa: E402 - shared helpers live in app/main.py
-    _EXPORT_FILE_TYPES, _default_export_dir, _local_time, _pick_export_path, _pick_path_native, _recordings_dir, _remember_export,
+    _default_export_dir, _local_time, _pick_path_native, _recordings_dir,
 )
 
 router = APIRouter()
@@ -46,33 +46,6 @@ def api_export_meeting(meeting_id: int, fmt: str, lang: Optional[str] = None, va
         "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}",
     }
     return Response(content=content, media_type=media_type, headers=headers)
-
-@router.post("/api/meetings/{meeting_id}/save-export/{fmt}")
-def api_save_export_to_disk(
-    meeting_id: int, fmt: str, lang: Optional[str] = None, variant: str = "translated"
-) -> Dict[str, Any]:
-    """
-    Asks the user where to save the export via a native Save dialog,
-    writes the file there and remembers the chosen folder for next time.
-    """
-    m = get_meeting(meeting_id)
-    if not m:
-        raise HTTPException(status_code=404, detail="Встреча не найдена")
-
-    content, _, filename = _build_export_bytes(m, fmt, lang, variant)
-    chosen = _pick_export_path(m, filename, fmt.lower())
-    if not chosen:
-        return {"ok": False, "cancelled": True}
-
-    out_path = Path(chosen)
-    ext = _EXPORT_FILE_TYPES.get(fmt.lower(), ("", "", ""))[2]
-    if ext and out_path.suffix.lower() != ext.lower():
-        out_path = out_path.with_name(out_path.name + ext)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_bytes(content)
-    _remember_export(meeting_id, out_path)
-
-    return {"ok": True, "path": str(out_path), "filename": out_path.name, "folder": str(out_path.parent)}
 
 @router.post("/api/export-dir/pick")
 def api_pick_export_dir() -> Dict[str, Any]:
