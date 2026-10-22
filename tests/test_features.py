@@ -471,3 +471,62 @@ class CutStderrTest(unittest.TestCase):
         with self.assertRaises(RuntimeError) as err:
             media_cut._follow(proc, 1.0, out, lambda _f: None, lambda: None)
         self.assertIn("decode error 19999", str(err.exception))
+
+
+class UrlImportLimitsTest(unittest.TestCase):
+    def _run(self, info, hook_downloads=(), cancel_meanwhile=False):
+        import sys
+        import types
+        from unittest import mock
+
+        from app import url_import
+        from app.database import create_meeting, get_meeting, init_db
+
+        init_db()
+        m = create_meeting(title="Ссылка", filename="", media_path="", source="import")
+
+        class YDL:
+            def __init__(self, opts):
+                self.opts = opts
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def extract_info(self, url, download):
+                return dict(info)
+
+            def process_ie_result(self, i, download):
+                if cancel_meanwhile:  # the user presses Cancel while it downloads
+                    for ev in list(url_import._cancel.values()):
+                        ev.set()
+                for d in hook_downloads:
+                    for h in self.opts["progress_hooks"]:
+                        h(d)
+                raise AssertionError("should have stopped")
+
+        fake = types.SimpleNamespace(YoutubeDL=YDL)
+        with mock.patch.dict(sys.modules, {"yt_dlp": fake}), mock.patch.object(url_import, "ensure_package"), \
+             mock.patch("app.transcriber.enqueue_meeting_job"):
+            url_import._download(m["id"], "https://example.com/v")
+        return get_meeting(m["id"])
+
+    def test_live_streams_and_huge_files_are_refused(self):
+        m = self._run({"is_live": True, "title": "Эфир"})
+        self.assertEqual(m["status"], "failed")
+        self.assertIn("трансляция", m["error_message"])
+        m = self._run({"title": "Огромный", "filesize_approx": 20 * 2**30})
+        self.assertIn("ГБ", m["error_message"])
+        m = self._run({"title": "Растёт"}, hook_downloads=[{"status": "downloading", "downloaded_bytes": 9 * 2**30}])
+        self.assertEqual(m["status"], "failed")
+
+    def test_cancel_stops_the_download(self):
+        from app import url_import
+
+        m = self._run({"title": "Отмена"}, hook_downloads=[{"status": "downloading", "downloaded_bytes": 1}],
+                      cancel_meanwhile=True)
+        self.assertEqual(m["status"], "cancelled")
+        self.assertEqual(m["error_message"], "")
+        self.assertFalse(url_import.cancel(m["id"]))  # nothing runs any more

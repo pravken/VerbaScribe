@@ -514,7 +514,9 @@ def api_cancel_meeting(meeting_id: int) -> Dict[str, Any]:
     m = get_meeting(meeting_id)
     if not m:
         raise HTTPException(status_code=404, detail="Встреча не найдена")
-    if not request_cancel(meeting_id):
+    from app import url_import
+
+    if not request_cancel(meeting_id) and not url_import.cancel(meeting_id):
         raise HTTPException(status_code=409, detail="Запись сейчас не обрабатывается")
     update_meeting_progress(meeting_id, stage_text="Отмена обработки...")
     return get_meeting(meeting_id)
@@ -545,6 +547,9 @@ def api_delete_meeting(meeting_id: int, with_source: bool = False, with_exports:
     if is_job_active(meeting_id):
         request_cancel(meeting_id)
         raise HTTPException(status_code=409, detail="Запись обрабатывается: обработка отменяется, удалите её через несколько секунд.")
+    from app import url_import
+
+    url_import.cancel(meeting_id)  # a download of it stops and its file is removed
     ok = delete_meeting(meeting_id, with_source=with_source, with_exports=with_exports, with_note=with_note)
     if not ok:
         raise HTTPException(status_code=404, detail="Встреча не найдена")

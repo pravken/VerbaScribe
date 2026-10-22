@@ -463,7 +463,10 @@ class UrlImportTest(unittest.TestCase):
                 return self
             def __exit__(self, *a):
                 return False
-            def extract_info(self, url, download=True):
+            def extract_info(self, url, download=True):  # the information first, then the download
+                return {"title": "Лекция о звуке", "upload_date": "20260115"}
+
+            def process_ie_result(self, info, download=True):
                 path = UPLOADS_DIR / self.opts["outtmpl"].split("/")[-1].split("\\\\")[-1].replace("%(title).80B.%(ext)s", "Лекция.m4a")
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(b"x" * 100)
