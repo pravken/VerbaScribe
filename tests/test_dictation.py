@@ -94,3 +94,38 @@ class DictationTranslateTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OllamaModelChoiceTest(unittest.TestCase):
+    """The embedding model of search by meaning (bge-m3) is never picked to write text: Ollama
+    answers a chat with it by 400. And an Ollama error reaches the user in Ollama's words."""
+
+    def setUp(self):
+        init_db()
+        update_settings({"ollama_model": "qwen2.5:7b", "semantic_model": "bge-m3"})
+
+    def test_a_missing_model_falls_back_to_a_chat_model(self):
+        from app import ollama_client
+
+        status = {"running": True, "models": ["bge-m3:latest", "nomic-embed-text:latest", "qwen3:8b"]}
+        status["chat_models"] = ollama_client.chat_models(status["models"])
+        with mock.patch("app.ollama_client.ensure_ollama_running"), \
+                mock.patch("app.ollama_client.get_ollama_status", return_value=status):
+            self.assertEqual(llm.target(None, local_only=True).model, "qwen3:8b")
+        with mock.patch("app.ollama_client.ensure_ollama_running"), \
+                mock.patch("app.ollama_client.get_ollama_status",
+                           return_value={"running": True, "models": ["bge-m3:latest"], "chat_models": []}):
+            with self.assertRaises(llm.LlmError):  # only an embedding model: "no model downloaded"
+                llm.target(None, local_only=True)
+
+    def test_ollama_error_text_is_kept(self):
+        import httpx
+
+        from app import ollama_client
+
+        resp = httpx.Response(400, json={"error": "\"bge-m3:latest\" does not support chat"},
+                              request=httpx.Request("POST", "http://127.0.0.1:11434/api/chat"))
+        with self.assertRaises(RuntimeError) as e:
+            ollama_client.raise_for_ollama(resp)
+        self.assertIn("does not support chat", str(e.exception))
+        self.assertIn("400", str(e.exception))

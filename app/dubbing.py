@@ -44,7 +44,7 @@ from app.dub_text import (
     plan_placement,
     speech_free_gaps,
 )
-from app.ollama_client import ensure_ollama_running, get_ollama_status
+from app.ollama_client import ensure_ollama_running, get_ollama_status, raise_for_ollama
 from app.paths import APP_DIR, DATA_DIR, MODELS_DIR
 
 # The optional environment sits next to the program; outputs go to the per-user data folder
@@ -116,7 +116,7 @@ def _ollama_chat(base_url: str, model: str, system: str, user: str, keep_alive: 
                 **thinking_off(model),
             },
         )
-        resp.raise_for_status()
+        raise_for_ollama(resp)
         return strip_think(str((resp.json().get("message") or {}).get("content") or ""))
 
 
@@ -188,10 +188,11 @@ def translate_units(
     model = settings.get("ollama_model") or "qwen2.5:7b"
     ensure_ollama_running(base_url)
     st = get_ollama_status(base_url)
-    if not st["running"] or not st["models"]:
+    usable = st.get("chat_models", st["models"])
+    if not st["running"] or not usable:
         raise RuntimeError("Ollama не запущена или в ней нет моделей — перевод невозможен")
-    if model not in st["models"]:
-        model = st["models"][0]
+    if model not in usable:
+        model = usable[0]
     src = DUB_LANGUAGES.get(src_code, src_code)
     tgt = DUB_LANGUAGES[tgt_code]
 

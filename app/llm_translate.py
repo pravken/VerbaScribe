@@ -14,7 +14,7 @@ import httpx
 
 from app.database import get_all_settings
 from app.dub_text import has_foreign_script
-from app.ollama_client import ensure_ollama_running, get_ollama_status
+from app.ollama_client import ensure_ollama_running, get_ollama_status, raise_for_ollama
 
 _LINE_RE = re.compile(r"^\s*(\d+)\s*[.):]\s*(.+?)\s*$")
 
@@ -57,13 +57,13 @@ def ollama_chat(
     with httpx.Client(timeout=600.0) as client:
         if check_cancel is None:
             resp = client.post(f"{base_url}/api/chat", json=payload)
-            resp.raise_for_status()
+            raise_for_ollama(resp)
             return strip_think(str((resp.json().get("message") or {}).get("content") or ""))
         # Streamed, so a cancel request is noticed between tokens; closing the connection also
         # makes Ollama stop generating.
         parts: List[str] = []
         with client.stream("POST", f"{base_url}/api/chat", json=payload) as resp:
-            resp.raise_for_status()
+            raise_for_ollama(resp)
             for line in resp.iter_lines():
                 check_cancel()
                 if not line.strip():
@@ -120,10 +120,11 @@ def resolve_ollama(preferred_model: Optional[str] = None) -> Tuple[str, str]:
     model = preferred_model or settings.get("ollama_model") or "qwen2.5:7b"
     ensure_ollama_running(base_url)
     st = get_ollama_status(base_url)
-    if not st["running"] or not st["models"]:
+    usable = st.get("chat_models", st["models"])
+    if not st["running"] or not usable:
         raise RuntimeError("Ollama не запущена или в ней нет моделей — перевод невозможен")
-    if model not in st["models"]:
-        model = st["models"][0]
+    if model not in usable:
+        model = usable[0]
     return base_url, model
 
 
