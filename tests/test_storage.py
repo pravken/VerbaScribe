@@ -174,3 +174,50 @@ class EventBusTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PendingDeleteTest(unittest.TestCase):
+    """A file Windows keeps open (the player streams it) is deleted at the next start, not left forever."""
+
+    def test_locked_file_is_deleted_later(self):
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+
+        from app import database
+
+        database.init_db()
+        f = Path(tempfile.mkdtemp()) / "open.wav"
+        f.write_bytes(b"x")
+        real_unlink = Path.unlink
+
+        def locked(self, missing_ok=False):
+            if self == f:
+                raise PermissionError("used by another process")
+            return real_unlink(self, missing_ok=missing_ok)
+
+        with mock.patch.object(Path, "unlink", locked):
+            self.assertFalse(database.delete_file(str(f)))
+            self.assertEqual(database.retry_pending_deletes(), 0)  # still open
+        self.assertTrue(f.exists())
+        self.assertEqual(database.retry_pending_deletes(), 1)
+        self.assertFalse(f.exists())
+        self.assertEqual(database.retry_pending_deletes(), 0)
+
+
+class UploadDiskSpaceTest(unittest.TestCase):
+    def test_upload_refused_without_room(self):
+        from unittest import mock
+
+        from fastapi.testclient import TestClient
+
+        from app import main
+        from app.api import library
+
+        with TestClient(main.app, base_url="http://127.0.0.1:8790") as c:
+            c.get(f"/?token={main.SESSION_TOKEN}")
+            before = set(main.UPLOADS_DIR.iterdir())
+            with mock.patch.object(library, "_free_bytes", return_value=100 * 1024 * 1024):
+                r = c.post("/api/meetings/upload", files={"files": ("big.wav", b"x" * 1024, "audio/wav")})
+            self.assertEqual(r.status_code, 507, r.text)
+            self.assertEqual(set(main.UPLOADS_DIR.iterdir()), before)

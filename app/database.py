@@ -786,10 +786,7 @@ def delete_meeting_dub(meeting_id: int, lang: str) -> bool:
         for key in _DUB_PATH_KEYS:
             p = Path(old.get(key) or "")
             if p.name and p.exists() and DATA_DIR in p.resolve().parents:
-                try:
-                    p.unlink()
-                except OSError:
-                    pass
+                delete_file(str(p))
     events.publish({"type": "list"})
     return bool(gone)
 
@@ -925,6 +922,47 @@ def list_meetings() -> List[Dict[str, Any]]:
     return result
 
 
+def delete_file(path: str) -> bool:
+    """Deletes a file of the app. Windows refuses while a file is open (the player streams it): such a
+    file is remembered and deleted at the next start (retry_pending_deletes), never left forever."""
+    p = Path(path)
+    try:
+        p.unlink(missing_ok=True)
+        return True
+    except OSError as e:
+        print(f"[delete] {path}: {e} (deleted at the next start)", flush=True)
+    with _db_lock:
+        conn = get_connection()
+        conn.execute("CREATE TABLE IF NOT EXISTS pending_deletes (path TEXT PRIMARY KEY, since TEXT NOT NULL)")
+        conn.execute("INSERT OR IGNORE INTO pending_deletes (path, since) VALUES (?, datetime('now'))", (str(p),))
+        conn.commit()
+        conn.close()
+    return False
+
+
+def retry_pending_deletes() -> int:
+    """Files that could not be deleted before (see delete_file); returns how many are gone now."""
+    with _db_lock:
+        conn = get_connection()
+        conn.execute("CREATE TABLE IF NOT EXISTS pending_deletes (path TEXT PRIMARY KEY, since TEXT NOT NULL)")
+        paths = [r["path"] for r in conn.execute("SELECT path FROM pending_deletes").fetchall()]
+        conn.close()
+    gone = []
+    for path in paths:
+        try:
+            Path(path).unlink(missing_ok=True)
+            gone.append(path)
+        except OSError:
+            pass
+    if gone:
+        with _db_lock:
+            conn = get_connection()
+            conn.executemany("DELETE FROM pending_deletes WHERE path = ?", [(g,) for g in gone])
+            conn.commit()
+            conn.close()
+    return len(gone)
+
+
 def remove_media(meeting_id: int) -> bool:
     """Deletes the sound of a recording and keeps its transcript and analysis (privacy settings, or
     by hand). Only files the app made or copied in; a file used in place is the user's and stays."""
@@ -936,10 +974,7 @@ def remove_media(meeting_id: int) -> bool:
         paths.append(m.get("media_path"))
     for p_str in paths:
         if p_str:
-            try:
-                Path(p_str).unlink(missing_ok=True)
-            except OSError as e:
-                print(f"[privacy] {p_str}: {e}", flush=True)
+            delete_file(p_str)
     with _db_lock:
         conn = get_connection()
         if m.get("owns_media"):
@@ -1010,10 +1045,7 @@ def delete_meeting(meeting_id: int, with_source: bool = False, with_exports: boo
             # Files in the data folder, and the app's own recordings wherever the recordings folder is;
             # a file used in place (added by its path) is never touched
             if p.exists() and (DATA_DIR in p.resolve().parents or p_str in owned):
-                try:
-                    p.unlink()
-                except Exception:
-                    pass
+                delete_file(p_str)
     thumb = DATA_DIR / "thumbs" / f"{meeting_id}.jpg"
     thumb.unlink(missing_ok=True)
 

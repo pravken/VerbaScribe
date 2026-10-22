@@ -59,17 +59,26 @@ def restart(meeting_id: int, url: str) -> None:
     threading.Thread(target=_download, args=(meeting_id, url), daemon=True, name=f"url_import_{meeting_id}").start()
 
 
+def _drop_files(stem: str) -> None:
+    """The file (and the .part pieces) of a download nobody needs any more."""
+    for p in UPLOADS_DIR.glob(f"{stem}_*"):
+        try:
+            p.unlink()
+        except OSError:
+            pass
+
+
 def _download(meeting_id: int, url: str) -> None:
-    from app.database import update_meeting_fields, update_meeting_progress
+    from app.database import get_meeting, update_meeting_fields, update_meeting_progress
     from app.ffmpeg_manager import find_tool
     from app.transcriber import enqueue_meeting_job
 
+    stem = uuid.uuid4().hex[:8]
     try:
         ensure_package()
         import yt_dlp
 
         UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-        stem = uuid.uuid4().hex[:8]
         last = {"pct": 0}
 
         def hook(d: Dict[str, Any]) -> None:
@@ -103,6 +112,9 @@ def _download(meeting_id: int, url: str) -> None:
             path = found[0] if found else None
         if not path:
             raise RuntimeError("Файл не скачался")
+        if not get_meeting(meeting_id):  # the recording was deleted while it was downloading
+            _drop_files(stem)
+            return
         title = str((info or {}).get("title") or "").strip()[:300]
         date = str((info or {}).get("upload_date") or "")
         if title:
@@ -119,5 +131,6 @@ def _download(meeting_id: int, url: str) -> None:
         enqueue_meeting_job(meeting_id)
     except Exception as e:
         traceback.print_exc()
+        _drop_files(stem)
         update_meeting_progress(meeting_id, status="failed", progress=0, stage_text="",
                                 error_message=f"Не удалось скачать по ссылке: {str(e)[:250]}")

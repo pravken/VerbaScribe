@@ -19,7 +19,7 @@ from app.transcriber import enqueue_meeting_job, is_job_active, request_cancel
 from fastapi import APIRouter
 
 from app.main import (  # noqa: E402 - shared helpers live in app/main.py
-    SUPPORTED_EXTENSIONS, _COLOR_RE, _SPEAKER_ID_RE, _ensure_not_processing, _ensure_not_transcribing, _file_time, _local_time, _recordings_dir, api_get_meeting, disk_state,
+    DISK_STOP_BYTES, SUPPORTED_EXTENSIONS, _COLOR_RE, _SPEAKER_ID_RE, _ensure_not_processing, _ensure_not_transcribing, _file_time, _free_bytes, _local_time, _recordings_dir, api_get_meeting, disk_state,
 )
 
 router = APIRouter()
@@ -302,8 +302,17 @@ async def api_upload_meetings(
             with dst.open("wb") as out_f:
                 shutil.copyfileobj(src, out_f, 1 << 20)
 
+        # Room for the file, and the reserve that keeps recordings and the database working
+        free = _free_bytes(target_dir)
+        if uf.size and free >= 0 and free - uf.size < DISK_STOP_BYTES:
+            raise HTTPException(status_code=507, detail=f"Недостаточно места на диске для «{orig_name}»: "
+                                                        f"нужно {uf.size / 2**30:.1f} ГБ и запас")
         # A multi-GB file must not stop the server (events, other requests) while it is copied
-        await run_in_threadpool(_save)
+        try:
+            await run_in_threadpool(_save)
+        except OSError as e:
+            dest_path.unlink(missing_ok=True)  # no half file left behind
+            raise HTTPException(status_code=507, detail=f"Не удалось сохранить «{orig_name}»: {e}")
 
         recorded_at = ""
         if not is_recording and i < len(last_modified):

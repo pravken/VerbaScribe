@@ -166,6 +166,12 @@ def _quiet_windows_connection_resets() -> None:
 async def lifespan(_app: FastAPI):
     _quiet_windows_connection_resets()
     init_db()
+    from app.database import retry_pending_deletes
+
+    try:
+        retry_pending_deletes()  # files that were open when their recording was deleted
+    except Exception:
+        traceback.print_exc()
     from app import idle_unload
 
     try:
