@@ -13,6 +13,9 @@
 - **Запуск вместе с Windows** в трее, без окна, и закрытие окна, которое оставляет программу в трее
   («Настройки → Общие → Запуск и трей»). Скачанное обновление ставится само, пока окно скрыто и
   ничего не идёт, и программа возвращается в трей.
+- **Параметры распознавания для записи** (кнопка «Параметры» рядом с моделью): шумоподавление,
+  нормализация громкости, нормализация тихих мест, пропуск тишины, разделение по голосам, очистка
+  слов-паразитов, язык и число участников. Запоминаются у записи.
 - **Медиатека:** кнопка «Свернуть всё / Развернуть всё»; точка у свёрнутой папки или дня, где открытая запись.
 
 ### Изменено
@@ -40,6 +43,9 @@
 - **Rename a speaker from the text:** right click on their circle, or "Rename…" in a line's speaker list.
 - **Start with Windows** in the tray without a window, and closing the window keeps the app in the tray;
   a downloaded update installs while the window is hidden and nothing runs.
+- **Recognition options per recording** ("Options" next to the model): noise reduction, loudness
+  normalization, quiet parts normalization, skip silence, speaker separation, filler cleanup, language,
+  number of speakers; remembered for the recording.
 - **Library:** fold / unfold everything; a dot on a folded folder or day holding the open recording.
 
 ### Changed
