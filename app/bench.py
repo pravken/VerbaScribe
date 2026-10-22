@@ -391,6 +391,9 @@ def _asr_one(mid: str, clip: Path, audio: Any, dur: float, lang: Optional[str]) 
             t2 = time.perf_counter()
         asr_onnx.release(mid, gpu=gpu)
         text, device = " ".join(s["text"] for s in segs), "cuda" if gpu else "cpu"
+        if gpu:
+            batch, vad_gpu = asr_onnx.gpu_tuning()
+            device = f"cuda · batch {batch}{' · VAD cuda' if vad_gpu else ''}"
     else:
         from app import transcriber
         from app.database import get_all_settings

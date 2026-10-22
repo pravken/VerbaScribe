@@ -115,6 +115,8 @@ class OnnxLoadProvidersTest(unittest.TestCase):
         self.assertEqual(gpu_providers[0][0], "CUDAExecutionProvider")
         self.assertEqual(fake.load_model.call_args_list[1].kwargs["providers"], ["CPUExecutionProvider"])
         self.assertEqual(fake.load_vad.call_args_list[0].kwargs["providers"], ["CPUExecutionProvider"])
+        self.assertEqual(model.with_vad.call_args_list[0].kwargs["batch_size"], asr_onnx.GPU_BATCH)  # bigger batches on the GPU
+        self.assertEqual(model.with_vad.call_args_list[1].kwargs["batch_size"], asr_onnx.CPU_BATCH)
 
 
 class OnnxTextTest(unittest.TestCase):

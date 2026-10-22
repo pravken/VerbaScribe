@@ -139,6 +139,8 @@ def init_db() -> None:
             "batched_inference": "true",  # faster-whisper BatchedInferencePipeline on GPU
             "keep_model_loaded": "true",  # reuse Whisper between queued recordings if VRAM allows
             "onnx_gpu": "true",  # GigaAM / Parakeet jobs on the NVIDIA GPU, its ONNX Runtime fetched once (app/onnx_gpu.py)
+            "onnx_gpu_batch": "32",  # phrases per batch on the GPU (app/asr_onnx.gpu_tuning)
+            "onnx_gpu_vad": "false",  # the VAD on the GPU too
             "voice_profiles": "true",  # name known voices automatically (app/voice_profiles.py)
             "update_check": "true",  # look for a new release on GitHub at start (app/updater.py)
             "idle_unload_minutes": "10",  # free models from memory after this long unused; 0 = never

@@ -155,6 +155,22 @@ def _install_commands(args=None):
     yield [sys.executable, "-m", "pip", "install", "--disable-pip-version-check", *(args or [ONNX_ASR_PIN])]
 
 
+CPU_BATCH = 8   # phrases recognized at once (onnx-asr's default)
+GPU_BATCH = 32  # a GPU is faster with more at once; settings "onnx_gpu_batch" / "onnx_gpu_vad" to tune
+
+
+def gpu_tuning() -> Tuple[int, bool]:
+    """(phrases per batch, VAD on the GPU too) for jobs on the GPU."""
+    try:
+        from app.database import get_all_settings
+
+        st = get_all_settings()
+        batch = int(st.get("onnx_gpu_batch") or GPU_BATCH)
+        return max(1, min(128, batch)), str(st.get("onnx_gpu_vad", "false")).lower() == "true"
+    except Exception:
+        return GPU_BATCH, False
+
+
 def _key(model_id: str, gpu: bool) -> str:
     return f"{model_id}@gpu" if gpu else model_id
 
@@ -176,11 +192,12 @@ def _load(model_id: str, gpu: bool = False):
         if key not in _loaded:
             if gpu:
                 onnx_gpu.prepare_cuda()
+            batch, vad_gpu = gpu_tuning() if gpu else (CPU_BATCH, False)
             asr = onnx_asr.load_model(ONNX_MODELS[model_id]["onnx_name"], model_dir(model_id),
                                       providers=onnx_gpu.providers(gpu))
-            vad = onnx_asr.load_vad(VAD_NAME, _vad_dir(), providers=onnx_gpu.providers(False))
+            vad = onnx_asr.load_vad(VAD_NAME, _vad_dir(), providers=onnx_gpu.providers(vad_gpu))
             _loaded[key] = asr.with_vad(vad, max_speech_duration_s=MAX_PHRASE_SEC, min_silence_duration_ms=300,
-                                        speech_pad_ms=120).with_timestamps()
+                                        speech_pad_ms=120, batch_size=batch).with_timestamps()
         return _loaded[key]
 
 
