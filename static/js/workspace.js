@@ -1158,7 +1158,7 @@ function renderSpeakerPillsBar() {
     const active = state.speakerFilter === spkId;
     const named = !/^(Участник|Speaker|SPEAKER)[ _]?\d+$/i.test(s.name || '');
     const label = named ? (s.name || '?').trim().slice(0, 1).toUpperCase() : String(i + 1);
-    return `<button data-click="filterBySpeaker" data-click-args='[${jsArg(spkId)}]' data-contextmenu="preventThen" data-contextmenu-args='[{"$": "event"}, "previewSpeakerVoice", ${Number(s.sample_start) || 0}, ${Number(s.sample_end) || 5}]'
+    return `<button data-click="filterBySpeaker" data-click-args='[${jsArg(spkId)}]' data-contextmenu="openSpeakerChipMenu" data-contextmenu-args='[{"$": "event"}, ${jsArg(spkId)}]'
       title="${escapeHtml(`${s.name}\n${t('tipFilterSpeaker')} · ${t('tipSpeakerChipVoice')}`)}"
       class="spk-chip ${active ? 'spk-chip-on' : ''}" style="--spk:${s.color}">${escapeHtml(label)}</button>`;
   }).join('');
@@ -1282,6 +1282,28 @@ function filterBySpeaker(spkId) {
   state.speakerFilter = (state.speakerFilter === spkId) ? null : spkId;
   renderSpeakerPillsBar();
   renderTranscript();
+}
+
+// Right click on a speaker circle: rename, hear the voice, show only their lines
+function openSpeakerChipMenu(e, spkId) {
+  e.preventDefault();
+  e.stopPropagation();
+  const s = ((state.activeMeeting && state.activeMeeting.speakers) || {})[spkId];
+  if (!s) return;
+  openTextMenuAt([
+    { label: t('spkRename'), run: () => renameSpeakerPrompt(spkId) },
+    { label: t('listenBtn'), run: () => previewSpeakerVoice(Number(s.sample_start) || 0, Number(s.sample_end) || 5) },
+    { label: state.speakerFilter === spkId ? t('spkShowAll') : t('spkShowOnly'), run: () => filterBySpeaker(state.speakerFilter === spkId ? null : spkId) },
+  ], e.clientX, e.clientY);
+}
+
+// The speaker's name in every line, the speakers tab and exports (one name per speaker of a recording)
+async function renameSpeakerPrompt(spkId) {
+  const s = ((state.activeMeeting && state.activeMeeting.speakers) || {})[spkId];
+  if (!s) return;
+  const name = await askText(t('spkRenameLabel').replace('{name}', () => s.name || spkId), s.name || '');
+  if (name === null || !name.trim() || name.trim() === s.name) return;
+  await updateSpeaker(spkId, name, null);
 }
 
 async function updateSpeaker(speakerId, newName, newColor) {
@@ -1413,8 +1435,9 @@ function transcriptSegmentHtml(seg, idx) {
   const speakers = tx.speakers;
   const query = tx.query;
   const speakerOptionsHtml = (currentSpk) => Object.keys(speakers).map(k =>
-    `<option value="${k}" ${k === currentSpk ? 'selected' : ''} class="bg-apple-card text-white">${escapeHtml(speakers[k].name)}</option>`
-  ).join('');
+    `<option value="${escapeHtml(k)}" ${k === currentSpk ? 'selected' : ''} class="bg-apple-card text-white">${escapeHtml(speakers[k].name)}</option>`
+  ).join('') + (speakers[currentSpk] ? `<option value="__rename:${escapeHtml(currentSpk)}" class="bg-apple-card text-white">✎ ${
+    escapeHtml(t('spkRenameOption').replace('{name}', () => speakers[currentSpk].name))}</option>` : '');
 
   const spk = speakers[seg.speaker] || { name: seg.speaker || 'Speaker', color: '#0A84FF' };
   const words = seg.words || [];
@@ -1731,6 +1754,11 @@ async function saveSegmentEdit(segId) {
 }
 
 async function changeSegmentSpeaker(segId, newSpeaker) {
+  if (newSpeaker.startsWith('__rename:')) {  // "Rename…" at the end of the speaker list of a line
+    renderTranscript();  // the list shows the speaker again
+    await renameSpeakerPrompt(newSpeaker.slice('__rename:'.length));
+    return;
+  }
   const res = await fetch(`/api/meetings/${state.activeMeeting.id}/segments/${segId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
