@@ -377,7 +377,7 @@ async function saveRecordPresetAs() {
   await saveRecordPresetSettings(own);
   state.recPresetId = preset.id;
   renderRecordPresetSelect(preset.id);
-  showToast(t('presetSaved').replace('{name}', preset.name));
+  showToast(t('presetSaved').replace('{name}', () => preset.name));
 }
 
 async function updateRecordPreset() {
@@ -385,13 +385,13 @@ async function updateRecordPreset() {
   const own = recordPresets().filter(p => !p.builtin).map(p => (p.id === id ? presetFromForm(p) : p));
   await saveRecordPresetSettings(own);
   renderRecordPresetSelect(id);
-  showToast(t('presetSaved').replace('{name}', presetLabel(own.find(p => p.id === id) || {})));
+  showToast(t('presetSaved').replace('{name}', () => presetLabel(own.find(p => p.id === id) || {})));
 }
 
 async function deleteRecordPreset() {
   const id = document.getElementById('record-preset-select').value;
   const p = recordPresets().find(x => x.id === id);
-  if (!p || p.builtin || !await askConfirm(t('presetDeleteConfirm').replace('{name}', p.name))) return;
+  if (!p || p.builtin || !await askConfirm(t('presetDeleteConfirm').replace('{name}', () => p.name))) return;
   const own = recordPresets().filter(x => !x.builtin && x.id !== id);
   await saveRecordPresetSettings(own, defaultRecordPresetId() === id ? 'call' : null);
   applyRecordPreset(defaultRecordPresetId());
@@ -401,7 +401,7 @@ async function setDefaultRecordPreset() {
   const id = document.getElementById('record-preset-select').value;
   await saveRecordPresetSettings(recordPresets().filter(p => !p.builtin), id);
   renderRecordPresetSelect(id);
-  showToast(t('presetDefaultSet').replace('{name}', presetLabel(recordPresets().find(p => p.id === id) || {})));
+  showToast(t('presetDefaultSet').replace('{name}', () => presetLabel(recordPresets().find(p => p.id === id) || {})));
 }
 
 function toggleRecordPresetMenu(e) {
@@ -473,7 +473,7 @@ async function handleCallEvent(ev) {
     if (isRecording()) return;  // already recording by hand: that recording is left alone
     const s = (state.system && state.system.settings) || {};
     state.callRecording = ev.app;
-    showToast(t('callRecordStarted').replace('{app}', ev.name || ev.app));
+    showToast(t('callRecordStarted').replace('{app}', () => ev.name || ev.app));
     try {
       await quickRecord(s.call_preset || defaultRecordPresetId());
     } catch (e) {
@@ -485,7 +485,7 @@ async function handleCallEvent(ev) {
   } else if (ev.state === 'ended' && state.callRecording) {
     state.callRecording = null;
     if (!isRecording()) return;
-    showToast(t('callRecordEnded').replace('{app}', ev.name || ev.app));
+    showToast(t('callRecordEnded').replace('{app}', () => ev.name || ev.app));
     stopAndTranscribeRecording();
   }
 }
@@ -662,7 +662,7 @@ function saveRecordVideoPref() {
 
 function renderRecordSaveHint() {
   const dir = state.system && state.system.paths && state.system.paths.recordings;
-  document.getElementById('record-save-hint').textContent = dir ? t('recordSaveHint').replace('{dir}', dir) : '';
+  document.getElementById('record-save-hint').textContent = dir ? t('recordSaveHint').replace('{dir}', () => dir) : '';
 }
 
 // --- Live captions while recording ---
@@ -787,7 +787,7 @@ function relabelStudioLanguages() {
 function fillTranslateSelect(codes, value) {
   const sel = document.getElementById('live-translate-select');
   sel.innerHTML = `<option value="">${escapeHtml(t('liveNoTranslation'))}</option>`
-    + `<option value="auto">${escapeHtml(t('liveAutoPair').replace('{pair}', autoPairLabel()))}</option>`
+    + `<option value="auto">${escapeHtml(t('liveAutoPair').replace('{pair}', () => autoPairLabel()))}</option>`
     + textLangOptions(codes, false);
   sel.value = [...sel.options].some(o => o.value === value) ? value : '';
 }
@@ -800,9 +800,9 @@ function renderQuickLangs() {
   const btn = (value, label, title, menuIndex) =>
     `<button onclick="setQuickTranslate(${jsArg(value)})" ${menuIndex != null ? `oncontextmenu="openQuickLangMenu(event, ${menuIndex})"` : ''}
       class="quick-lang ${current === value ? 'on' : ''}" title="${escapeHtml(title)}">${escapeHtml(label)}</button>`;
-  box.innerHTML = btn(a, langCode(a), t('tipQuickLang').replace('{lang}', langName(a)), 0)
-    + btn(b, langCode(b), t('tipQuickLang').replace('{lang}', langName(b)), 1)
-    + btn('auto', `⇄ ${t('liveAutoShort')}`, t('tipQuickAuto').replace('{a}', langName(a)).replace('{b}', langName(b)), null);
+  box.innerHTML = btn(a, langCode(a), t('tipQuickLang').replace('{lang}', () => langName(a)), 0)
+    + btn(b, langCode(b), t('tipQuickLang').replace('{lang}', () => langName(b)), 1)
+    + btn('auto', `⇄ ${t('liveAutoShort')}`, t('tipQuickAuto').replace('{a}', () => langName(a)).replace('{b}', () => langName(b)), null);
 }
 
 function setQuickTranslate(value) {
@@ -1316,11 +1316,11 @@ async function startLiveRecording() {
     const disk = await fetch('/api/disk').then(r => r.json()).catch(() => null);
     if (disk && disk.critical) {
       _recVideoStream?.getTracks().forEach(tr => tr.stop());
-      throw new Error(t('diskFullError').replace('{free}', formatSize(Math.max(0, disk.free_bytes))));
+      throw new Error(t('diskFullError').replace('{free}', () => formatSize(Math.max(0, disk.free_bytes))));
     }
     if (disk && disk.low && !await askConfirm(t('diskLowConfirm')
-      .replace('{free}', formatSize(disk.free_bytes))
-      .replace('{min}', recMinutesLeft(disk.free_bytes, !!_recVideoStream || !!appTarget)))) {
+      .replace('{free}', () => formatSize(disk.free_bytes))
+      .replace('{min}', () => recMinutesLeft(disk.free_bytes, !!_recVideoStream || !!appTarget)))) {
       _recVideoStream?.getTracks().forEach(tr => tr.stop());
       document.getElementById('record-video-preview').classList.add('hidden');
       return;
@@ -1506,8 +1506,8 @@ async function checkRecordingDisk() {
     stopAndTranscribeRecording();
   } else if (disk.low && !_recDiskWarned) {
     _recDiskWarned = true;
-    showToast(t('diskLowWarn').replace('{free}', formatSize(disk.free_bytes))
-      .replace('{min}', recMinutesLeft(disk.free_bytes, !!_recVideoStream)));
+    showToast(t('diskLowWarn').replace('{free}', () => formatSize(disk.free_bytes))
+      .replace('{min}', () => recMinutesLeft(disk.free_bytes, !!_recVideoStream)));
   }
 }
 

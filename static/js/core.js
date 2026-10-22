@@ -47,6 +47,11 @@ function t(key) {
   return (I18N[state.uiLang] && I18N[state.uiLang][key]) || I18N.ru[key] || key;
 }
 
+// A text that may not exist (a status or summary kind made up from data): undefined, not the key
+function tMaybe(key) {
+  return (I18N[state.uiLang] && I18N[state.uiLang][key]) || I18N.ru[key] || undefined;
+}
+
 function setUILanguage(lang) {
   state.uiLang = lang;
   document.documentElement.lang = lang;
@@ -293,7 +298,7 @@ function renderVoiceProfiles(data) {
   box.innerHTML = list.map(p => `
     <div class="flex items-center justify-between gap-2 text-xs">
       <span class="text-apple-label truncate">${escapeHtml(p.name)}
-        <span class="text-apple-tertiary">· ${escapeHtml(t('voiceProfileSamples').replace('{n}', p.samples))}</span></span>
+        <span class="text-apple-tertiary">· ${escapeHtml(t('voiceProfileSamples').replace('{n}', () => p.samples))}</span></span>
       <button onclick="deleteVoiceProfile(${Number(p.id)}, this.dataset.name)" data-name="${escapeHtml(p.name)}"
         class="ui-btn ui-btn-subtle h-6 px-2 text-[11px] text-apple-red" title="${escapeHtml(t('tipVoiceProfileDelete'))}">${escapeHtml(t('voiceProfileDelete'))}</button>
     </div>`).join('');
@@ -303,7 +308,7 @@ async function applyVoiceProfilesToLibrary() {
   const res = await fetch('/api/voice-profiles/apply-all', { method: 'POST' });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) { showToast(data.detail || 'Error'); return; }
-  showToast(data.speakers ? t('voiceApplyAllDone').replace('{n}', data.speakers).replace('{m}', data.meetings) : t('voiceApplyAllNone'));
+  showToast(data.speakers ? t('voiceApplyAllDone').replace('{n}', () => data.speakers).replace('{m}', () => data.meetings) : t('voiceApplyAllNone'));
   if (data.speakers) {
     await loadMeetingsList();
     if (state.activeMeeting) selectMeeting(state.activeMeeting.id, false);
@@ -311,7 +316,7 @@ async function applyVoiceProfilesToLibrary() {
 }
 
 async function deleteVoiceProfile(id, name) {
-  if (!await askConfirm(t('voiceProfileDeleteConfirm').replace('{name}', name || ''))) return;
+  if (!await askConfirm(t('voiceProfileDeleteConfirm').replace('{name}', () => name || ''))) return;
   const res = await fetch(`/api/voice-profiles/${id}`, { method: 'DELETE' });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {

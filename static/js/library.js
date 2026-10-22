@@ -122,7 +122,7 @@ function formatTiming(timing) {
   let text = formatDurationShort(timing.elapsed);
   if (timing.remaining != null) {
     const mins = Math.round(timing.remaining / 60);
-    text += ' · ' + (mins < 1 ? t('etaUnderMinute') : t('etaMinutes').replace('{n}', mins));
+    text += ' · ' + (mins < 1 ? t('etaUnderMinute') : t('etaMinutes').replace('{n}', () => mins));
   }
   return text;
 }
@@ -169,7 +169,7 @@ function renderQueuePanel() {
     const pct = running ? (m.progress ?? q.progress ?? 0) : 0;
     const detail = q.cancelling
       ? t('queueCancelling')
-      : running ? (m.stage_text || q.stage_text || '') : t('queueWaiting').replace('{n}', q.position);
+      : running ? (m.stage_text || q.stage_text || '') : t('queueWaiting').replace('{n}', () => q.position);
     const timing = running && !q.cancelling ? formatTiming(jobTiming(q, pct)) : '';
     return `
       <div onclick="openMeeting(${q.id}, true)" title="${escapeHtml(detail)}"
@@ -350,7 +350,7 @@ function askScopeValid(scope) {
 function askScopeLabel(scope) {
   if (scope.type === 'folder') {
     const f = folderById(scope.id);
-    return `${t('askScopeFolder')}: ${folderName(f)} · ${t('askRecordingsCount').replace('{n}', meetingsInFolderTree(scope.id).length)}`;
+    return `${t('askScopeFolder')}: ${folderName(f)} · ${t('askRecordingsCount').replace('{n}', () => meetingsInFolderTree(scope.id).length)}`;
   }
   if (scope.type === 'meeting') {
     const m = state.meetings.find(x => x.id === scope.id);
@@ -358,13 +358,13 @@ function askScopeLabel(scope) {
   }
   if (scope.type === 'series') {
     const s = (state.series || []).find(x => x.id === scope.id);
-    return `${t('askScopeSeries')}: ${s ? s.name : ''} · ${t('askRecordingsCount').replace('{n}', s ? s.count : 0)}`;
+    return `${t('askScopeSeries')}: ${s ? s.name : ''} · ${t('askRecordingsCount').replace('{n}', () => s ? s.count : 0)}`;
   }
   if (scope.type === 'person') {
     const p = personByName(scope.name);
-    return `${t('askScopePerson').replace('{name}', scope.name)} · ${t('askRecordingsCount').replace('{n}', p ? p.recordings.length : 0)}`;
+    return `${t('askScopePerson').replace('{name}', () => scope.name)} · ${t('askRecordingsCount').replace('{n}', () => p ? p.recordings.length : 0)}`;
   }
-  return `${t('askScopeAll')} · ${t('askRecordingsCount').replace('{n}', state.meetings.length)}`;
+  return `${t('askScopeAll')} · ${t('askRecordingsCount').replace('{n}', () => state.meetings.length)}`;
 }
 
 function renderAskScope() {
@@ -439,7 +439,7 @@ function renderPeople() {
   const sc = state.askScope;
   document.getElementById('ask-people-list').innerHTML = people.slice(0, 50).map(p => {
     const on = sc.type === 'person' && sc.name.toLowerCase() === p.name.toLowerCase();
-    const tip = t('tipPerson').replace('{n}', p.recordings.length).replace('{time}', formatSpeakingTime(p.total_seconds))
+    const tip = t('tipPerson').replace('{n}', () => p.recordings.length).replace('{time}', () => formatSpeakingTime(p.total_seconds))
       + '\n' + p.recordings.slice(0, 12).map(r => `${r.date} · ${r.title} · ${formatSpeakingTime(r.seconds)}`).join('\n');
     return `<button onclick="setAskScope(${jsArg({ type: 'person', name: p.name })})" title="${escapeHtml(tip)}"
       class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[12px] transition ${on ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'}">
@@ -596,6 +596,35 @@ function renderAskThread() {
   }
 }
 
+// "[2]" in an answer becomes a button to its source. Text nodes are rewritten, never the sanitized
+// HTML string: a [2] inside a link title or an image's alt text stays text there
+function linkifyCitations(root, byN, itemId) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) {
+    const n = walker.currentNode;
+    if (/\[\d{1,3}\]/.test(n.nodeValue) && !n.parentElement.closest('button, a, code')) nodes.push(n);
+  }
+  for (const node of nodes) {
+    const frag = document.createDocumentFragment();
+    let last = 0;
+    for (const m of node.nodeValue.matchAll(/\[(\d{1,3})\]/g)) {
+      const src = byN[m[1]];
+      if (!src) continue;
+      const b = document.createElement('button');
+      b.className = 'lib-cite';
+      b.textContent = m[1];
+      b.title = `${src.title} · ${formatTime(src.start)}`;
+      b.addEventListener('click', () => openLibrarySource(itemId, Number(m[1])));
+      frag.append(node.nodeValue.slice(last, m.index), b);
+      last = m.index + m[0].length;
+    }
+    if (!last) continue;
+    frag.append(node.nodeValue.slice(last));
+    node.replaceWith(frag);
+  }
+}
+
 function renderLibraryAnswer(body, item) {
   const data = item.data || {};
   if (!data.found) {
@@ -603,10 +632,7 @@ function renderLibraryAnswer(body, item) {
     return;
   }
   const byN = Object.fromEntries((data.sources || []).map(s => [s.n, s]));
-  let html = sanitizedMarkdown(data.answer || '');
-  html = html.replace(/\[(\d{1,3})\]/g, (m, n) => byN[n]
-    ? `<button class="lib-cite" onclick="openLibrarySource(${item.id}, ${Number(n)})" title="${escapeHtml(byN[n].title)} · ${formatTime(byN[n].start)}">${n}</button>`
-    : m);
+  const html = sanitizedMarkdown(data.answer || '');
   // Only the fragments the answer refers to; all of them if it cites none
   const cited = new Set([...(data.answer || '').matchAll(/\[(\d{1,3})\]/g)].map(x => Number(x[1])));
   const shown = (data.sources || []).filter(s => !cited.size || cited.has(s.n)).slice(0, 20);
@@ -625,7 +651,8 @@ function renderLibraryAnswer(body, item) {
       <div class="text-[10.5px] uppercase tracking-wider text-apple-tertiary mb-1">${escapeHtml(t('libraryAskSources'))}</div>
       ${sources}
     </div>` : ''}
-    ${data.model ? `<div class="mt-2 text-[10.5px] text-apple-tertiary">${data.cloud ? '☁ ' : ''}${escapeHtml(data.cloud ? data.model : formatModelName(data.model))}${data.mode === 'full' ? ' · ' + escapeHtml(t('askModeFull')) : ''}${data.mode === 'digest' ? ' · ' + escapeHtml(t('digestCount').replace('{n}', data.count)) : ''}${data.excluded_local ? ' · ' + escapeHtml(t('askExcludedLocal').replace('{n}', data.excluded_local)) : ''}</div>` : ''}`;
+    ${data.model ? `<div class="mt-2 text-[10.5px] text-apple-tertiary">${data.cloud ? '☁ ' : ''}${escapeHtml(data.cloud ? data.model : formatModelName(data.model))}${data.mode === 'full' ? ' · ' + escapeHtml(t('askModeFull')) : ''}${data.mode === 'digest' ? ' · ' + escapeHtml(t('digestCount').replace('{n}', () => data.count)) : ''}${data.excluded_local ? ' · ' + escapeHtml(t('askExcludedLocal').replace('{n}', () => data.excluded_local)) : ''}</div>` : ''}`;
+  linkifyCitations(body.querySelector('.markdown-body'), byN, item.id);
 }
 
 function openLibrarySource(itemId, n) {
@@ -792,7 +819,7 @@ async function fctxDelete() {
   hideFolderMenu();
   const f = folderById(state.contextFolderId);
   if (!f || f.system_key) return;
-  if (!await askConfirm(t('folderDeleteConfirm').replace('{name}', folderName(f)))) return;
+  if (!await askConfirm(t('folderDeleteConfirm').replace('{name}', () => folderName(f)))) return;
   const res = await fetch(`/api/folders/${f.id}`, { method: 'DELETE' });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) { showToast(data.detail || 'Error'); return; }
@@ -1142,7 +1169,7 @@ function renderLibSelectionBar() {
     const list = document.getElementById('meetings-list');
     list.parentNode.insertBefore(bar, list);
   }
-  bar.innerHTML = `<span class="flex-1 min-w-0 truncate">${escapeHtml(t('libSelected').replace('{n}', n))}</span>
+  bar.innerHTML = `<span class="flex-1 min-w-0 truncate">${escapeHtml(t('libSelected').replace('{n}', () => n))}</span>
     <button onclick="bulkRename()" class="ui-btn ui-btn-subtle h-6 !px-2 text-[11px]" title="${escapeHtml(t('tipBulkRename'))}">${escapeHtml(t('bulkRename'))}</button>
     <button onclick="bulkAutoTitles()" class="ui-btn ui-btn-subtle h-6 !px-2 text-[11px]" title="${escapeHtml(t('tipBulkAutoTitle'))}">${escapeHtml(t('bulkAutoTitle'))}</button>
     <button onclick="bulkDelete()" class="ui-btn h-6 !px-2 text-[11px] bg-apple-red/80 text-white hover:bg-apple-red">${escapeHtml(t('ctxDelete'))}</button>
@@ -1173,7 +1200,7 @@ async function bulkDelete() {
   state.multi.clear();
   renderLibSelectionBar();
   await loadMeetingsList();
-  showToast(failed ? t('bulkSomeFailed').replace('{n}', failed) : t('bulkDeleted').replace('{n}', list.length));
+  showToast(failed ? t('bulkSomeFailed').replace('{n}', () => failed) : t('bulkDeleted').replace('{n}', () => list.length));
 }
 
 // One name for all, numbered: "Interview {n}" -> "Interview 1", "Interview 2"…; {title} and {date} too
@@ -1195,7 +1222,7 @@ async function bulkRename() {
   }
   await loadMeetingsList();
   if (state.activeMeeting && state.multi.has(state.activeMeeting.id)) openMeeting(state.activeMeeting.id);
-  if (failed) showToast(t('bulkSomeFailed').replace('{n}', failed));
+  if (failed) showToast(t('bulkSomeFailed').replace('{n}', () => failed));
 }
 
 // Titles made by the analysis model from each transcript
@@ -1204,13 +1231,13 @@ async function bulkAutoTitles() {
   if (!list.length) { showToast(t('bulkNoTranscripts')); return; }
   let failed = 0;
   for (const [i, m] of list.entries()) {
-    showToast(t('bulkAutoTitleWorking').replace('{i}', i + 1).replace('{n}', list.length));
+    showToast(t('bulkAutoTitleWorking').replace('{i}', () => i + 1).replace('{n}', () => list.length));
     const res = await fetch(`/api/meetings/${m.id}/title/generate`, { method: 'POST' });
     if (!res.ok) failed++;
     await loadMeetingsList();
   }
   if (state.activeMeeting && state.multi.has(state.activeMeeting.id)) openMeeting(state.activeMeeting.id);
-  showToast(failed ? t('bulkSomeFailed').replace('{n}', failed) : t('bulkAutoTitleDone'));
+  showToast(failed ? t('bulkSomeFailed').replace('{n}', () => failed) : t('bulkAutoTitleDone'));
 }
 
 // Ctrl+A selects recordings only after a click in the library (elsewhere it selects text as usual)
@@ -1509,7 +1536,7 @@ function dropMediaFiles(e) {
   const media = files.filter(isMediaFile);
   if (media.length < files.length) {
     const skipped = files.filter(f => !isMediaFile(f)).map(f => f.name).slice(0, 3).join(', ');
-    showToast(t('dropSkipped').replace('{names}', skipped));
+    showToast(t('dropSkipped').replace('{names}', () => skipped));
   }
   if (media.length) handleFileSelect(media);
 }
@@ -1577,7 +1604,7 @@ async function handleFileSelect(fileList) {
   if (!fileList || fileList.length === 0) return;
   const statusEl = document.getElementById('upload-status-text');
   statusEl.classList.remove('hidden');
-  statusEl.textContent = t('uploadingFiles').replace('{n}', fileList.length);
+  statusEl.textContent = t('uploadingFiles').replace('{n}', () => fileList.length);
   switchAppView('library');
 
   try {

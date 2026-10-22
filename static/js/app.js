@@ -308,7 +308,7 @@ async function clearSummaryTab() {
   if (!m) return;
   const tab = state.activeSummaryTab;
   const label = document.getElementById(`sumtab-${tab.startsWith('tpl:') ? 'tpl-' + tab.slice(4) : tab}`)?.textContent.trim() || t('tabSummary');
-  if (!(await confirmDialog(t('clearTabTitle').replace('{tab}', label), t('clearTabText'), t('clearBtn')))) return;
+  if (!(await confirmDialog(t('clearTabTitle').replace('{tab}', () => label), t('clearTabText'), t('clearBtn')))) return;
   let res;
   if (tab === 'mynotes') {
     res = await fetch(`/api/meetings/${m.id}/notes`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notes: '' }) });
@@ -883,7 +883,7 @@ async function refreshRecordingsDirLabel() {
     el.title = data.folder || '';
     document.getElementById('recdir-reset-btn').classList.toggle('hidden', !data.folder || data.folder === data.default);
     const uploads = state.system && state.system.paths && state.system.paths.uploads;
-    document.getElementById('set-imports-dir').textContent = uploads ? t('recDirImports').replace('{dir}', uploads) : '';
+    document.getElementById('set-imports-dir').textContent = uploads ? t('recDirImports').replace('{dir}', () => uploads) : '';
   } catch (e) {}
 }
 
@@ -993,8 +993,8 @@ function updateObsidianPreview() {
   const m = state.activeMeeting;
   const d = new Date();
   const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  const name = tpl.replace('{date}', date).replace('{time}', `${String(d.getHours()).padStart(2, '0')}-${String(d.getMinutes()).padStart(2, '0')}`)
-    .replace('{title}', (m && m.title) || t('obsExampleTitle')).replace('{lang}', ((m && m.language) || 'ru').toUpperCase());
+  const name = tpl.replace('{date}', () => date).replace('{time}', () => `${String(d.getHours()).padStart(2, '0')}-${String(d.getMinutes()).padStart(2, '0')}`)
+    .replace('{title}', () => (m && m.title) || t('obsExampleTitle')).replace('{lang}', () => ((m && m.language) || 'ru').toUpperCase());
   const sep = vault.includes('/') && !vault.includes('\\') ? '/' : '\\';
   document.getElementById('obs-preview').textContent = vault
     ? `${t('obsPreview')}: ${[vault, sub, name + '.md'].filter(Boolean).join(sep)}`
@@ -1155,11 +1155,13 @@ function renderMeetingInfo(info) {
     + row(t('infoBitrate'), probe.bitrate_kbps ? `${probe.bitrate_kbps} kbps` : ''));
 
   html += card(t('infoProcessing'),
-    row(t('infoStatus'), t(`status_${info.status}`) || info.status)
+    row(t('infoStatus'), tMaybe(`status_${info.status}`) || info.status)
     + row(t('infoModel'), formatModelName(info.model_name))
-    + row(t('infoLanguage'), info.language ? `${langName(info.language)} (${String(info.language).toUpperCase()})` : '')
-    + row(t('infoCounts'), t('infoCountsValue').replace('{spk}', info.speakers).replace('{seg}', info.segments).replace('{words}', info.words))
-    + row(t('infoAnalyses'), (info.summaries || []).map(k => t(`summaryName_${k}`) || k).join(', '))
+    + row(t('infoLanguage'), !info.language ? '' : info.language === 'auto' ? t('studioSpeechAuto')
+      : `${langName(info.language)} (${String(info.language).toUpperCase()})`)
+    + row(t('infoCounts'), t('infoCountsValue').replace('{spk}', () => info.speakers).replace('{seg}', () => info.segments).replace('{words}', () => info.words))
+    + row(t('infoAnalyses'), (info.summaries || []).filter(k => k !== 'error')
+      .map(k => tMaybe(`summaryName_${k}`) || ((state.summaryTemplates || []).find(x => x.id === k) || {}).name || k).join(', '))
     + row(t('infoTranslations'), (info.translations || []).map(c => langName(c)).join(', '))
     + row(t('infoWorkAudio'), info.audio && info.audio.exists ? `${info.audio.path} · ${formatBytes(info.audio.size)}` : '', { mono: true }));
 
@@ -1172,7 +1174,7 @@ function renderMeetingInfo(info) {
   }
   if ((info.pending_exports || []).length) {
     html += `<div class="rounded-xl border border-apple-amber/40 bg-apple-amber/10 px-4 py-3 text-xs text-apple-amber flex items-center justify-between gap-3">
-      <span>${escapeHtml(t('infoPendingExports').replace('{n}', info.pending_exports.length))}</span>
+      <span>${escapeHtml(t('infoPendingExports').replace('{n}', () => info.pending_exports.length))}</span>
       <button onclick="cancelPendingExports(${info.id})" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]">${escapeHtml(t('cancel'))}</button>
     </div>`;
   }
@@ -1239,7 +1241,7 @@ function textMenuItems(e) {
     const wordEl = el.closest && el.closest('.word-token');
     const word = wordEl ? wordEl.textContent.replace(/^[\s.,!?;:«»"'()]+|[\s.,!?;:«»"'()]+$/g, '') : '';
     if (word) {
-      items.push({ label: t('ctxAddWordToDictionary').replace('{word}', word), run: () => addToDictionary(word) });
+      items.push({ label: t('ctxAddWordToDictionary').replace('{word}', () => word), run: () => addToDictionary(word) });
       items.push({ label: t('ctxPlayFromHere'), key: formatTime(Number(wordEl.dataset.start)), run: () => seekPlayer(Number(wordEl.dataset.start)) });
       items.push({ sep: true });
     }
@@ -1331,7 +1333,7 @@ function findEverywhere(text) {
 function askAbout(text) {
   const inLibrary = !document.getElementById('library-view')?.classList.contains('hidden');
   const scope = inLibrary && state.activeMeeting ? { type: 'meeting', id: state.activeMeeting.id } : null;
-  openLibraryAsk(t('ctxAskTemplate').replace('{text}', text.length > 300 ? text.slice(0, 300) + '…' : text), scope);
+  openLibraryAsk(t('ctxAskTemplate').replace('{text}', () => text.length > 300 ? text.slice(0, 300) + '…' : text), scope);
 }
 
 async function addToDictionary(text) {
@@ -1343,7 +1345,7 @@ async function addToDictionary(text) {
     body: JSON.stringify({ term, category: 'Термин' }),
   });
   if (res.ok) {
-    showToast(t('ctxAddedToDictionary').replace('{term}', term));
+    showToast(t('ctxAddedToDictionary').replace('{term}', () => term));
     loadDictionary();
   }
 }

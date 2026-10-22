@@ -20,7 +20,7 @@ function renderFfmpegStatus(st) {
   textEl.title = textEl.textContent;
   btn.classList.toggle('hidden', st.available || dl.active || !st.can_download);
   const info = st.download_info || {};
-  btn.title = t('tipFfmpegDownload').replace('{version}', info.version || '').replace('{size}', info.size_mb || '');
+  btn.title = t('tipFfmpegDownload').replace('{version}', () => info.version || '').replace('{size}', () => info.size_mb || '');
 }
 
 async function installFfmpeg() {
@@ -57,9 +57,9 @@ ${t('modelsFolder')}: ${data.paths.models}`;
       document.getElementById('legacy-conflict-banner').classList.toggle('hidden', !conflict);
       if (conflict) {
         document.getElementById('legacy-conflict-text').textContent = t('legacyConflictText')
-          .replace('{legacy}', conflict.legacy)
-          .replace('{count}', conflict.legacy_recordings)
-          .replace('{current}', conflict.current);
+          .replace('{legacy}', () => conflict.legacy)
+          .replace('{count}', () => conflict.legacy_recordings)
+          .replace('{current}', () => conflict.current);
       }
     }
 
@@ -178,10 +178,10 @@ function vramChipLabel(c) {
 
 function vramChipTitle(c) {
   if (c.kind === 'dub') return t('tipVramDub');
-  if (c.loading) return t('tipVramLoading').replace('{name}', vramChipLabel(c));
-  if (c.kind === 'live') return c.can_unload ? t('tipVramUnload').replace('{name}', vramChipLabel(c)) : t('tipVramInUse');
-  if (c.loaded) return c.can_unload ? t('tipVramUnload').replace('{name}', vramChipLabel(c)) : t('tipVramInUse');
-  return c.can_preload ? t('tipVramPreload').replace('{name}', vramChipLabel(c)) : t('tipVramNotLoaded');
+  if (c.loading) return t('tipVramLoading').replace('{name}', () => vramChipLabel(c));
+  if (c.kind === 'live') return c.can_unload ? t('tipVramUnload').replace('{name}', () => vramChipLabel(c)) : t('tipVramInUse');
+  if (c.loaded) return c.can_unload ? t('tipVramUnload').replace('{name}', () => vramChipLabel(c)) : t('tipVramInUse');
+  return c.can_preload ? t('tipVramPreload').replace('{name}', () => vramChipLabel(c)) : t('tipVramNotLoaded');
 }
 
 function renderSystemLoad(sys) {
@@ -193,7 +193,7 @@ function renderSystemLoad(sys) {
   const nameEl = document.getElementById('cpu-name');
   if (sys && sys.cpu_name && nameEl.textContent !== sys.cpu_name) {
     nameEl.textContent = sys.cpu_name;
-    document.getElementById('cpu-cell').title = `${sys.cpu_name}${sys.cores ? ` · ${t('hwThreads').replace('{n}', sys.cores)}` : ''}\n${t('tipCpuUsage')}`;
+    document.getElementById('cpu-cell').title = `${sys.cpu_name}${sys.cores ? ` · ${t('hwThreads').replace('{n}', () => sys.cores)}` : ''}\n${t('tipCpuUsage')}`;
   }
   if (cpu != null) {
     document.getElementById('cpu-text').textContent = `${Math.round(cpu)}%`;
@@ -203,10 +203,10 @@ function renderSystemLoad(sys) {
   if (ram) {
     const pct = (100 * ram.used_gb) / Math.max(0.1, ram.total_gb);
     document.getElementById('ram-text').textContent = `${ram.used_gb}/${ram.total_gb} ${t('unitGB')}`;
-    document.getElementById('ram-name').textContent = t('hwRamName').replace('{gb}', Math.round(ram.total_gb));
+    document.getElementById('ram-name').textContent = t('hwRamName').replace('{gb}', () => Math.round(ram.total_gb));
     document.getElementById('ram-bar').style.width = `${Math.min(100, pct)}%`;
     document.getElementById('ram-bar').className = `${pct > 90 ? 'bg-apple-red/80' : 'bg-apple-amber/70'}`;
-    document.getElementById('ram-cell').title = t('tipRamUsage').replace('{free}', ram.free_gb);
+    document.getElementById('ram-cell').title = t('tipRamUsage').replace('{free}', () => ram.free_gb);
   }
 }
 
@@ -215,7 +215,7 @@ function renderIdleStatus(idle) {
   if (!el || !idle) return;
   const loaded = (vram.chips || []).some(c => c.loaded && c.kind !== 'dub');
   el.textContent = idle.minutes && loaded && idle.unload_in_sec != null
-    ? t('idleUnloadIn').replace('{min}', Math.max(1, Math.ceil(idle.unload_in_sec / 60))) : '';
+    ? t('idleUnloadIn').replace('{min}', () => Math.max(1, Math.ceil(idle.unload_in_sec / 60))) : '';
 }
 
 function renderVram(data) {
@@ -228,7 +228,7 @@ function renderVram(data) {
   if (!gpu) { document.getElementById('vram-text').textContent = ''; vram.chips = data.chips || []; renderIdleStatus(data.idle); return; }
   document.getElementById('vram-text').textContent = `${gpu.used_gb}/${gpu.total_gb} ${t('unitGB')}`;
   document.getElementById('vram-bar').style.width = `${Math.min(100, (100 * gpu.used_gb) / Math.max(1, gpu.total_gb))}%`;
-  document.querySelector('#hw-block .hw-row-btn').title = `${t('tipVramUsage').replace('{free}', gpu.free_gb)}\n${t('tipHwStatus')}`;
+  document.querySelector('#hw-block .hw-row-btn').title = `${t('tipVramUsage').replace('{free}', () => gpu.free_gb)}\n${t('tipHwStatus')}`;
 
   const chips = data.chips || [];  // every model: loaded, loading or ready to load
   const html = chips.map((c, i) => {
@@ -269,7 +269,7 @@ async function vramChipClick(index) {
   if (action === 'preload' && !c.can_preload) return;
   vram.busy = true;
   renderVram(vram.data);
-  showToast(t(action === 'unload' ? 'vramUnloading' : 'vramPreloading').replace('{name}', vramChipLabel(c)));
+  showToast(t(action === 'unload' ? 'vramUnloading' : 'vramPreloading').replace('{name}', () => vramChipLabel(c)));
   try {
     const res = await fetch(`/api/vram/${action}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: c.kind, name: c.name || '' }),
@@ -614,7 +614,7 @@ function modelLocationHtml(path, mb, label) {
 }
 
 async function confirmModelDelete(name, path) {
-  return confirmDialog(t('modelDeleteTitle'), t('modelDeleteText').replace('{name}', name) + (path ? `\n${path}` : ''), t('modelDeleteBtn'));
+  return confirmDialog(t('modelDeleteTitle'), t('modelDeleteText').replace('{name}', () => name) + (path ? `\n${path}` : ''), t('modelDeleteBtn'));
 }
 
 async function deleteWhisperModel(modelId) {
@@ -632,7 +632,7 @@ async function deleteOllamaModel(name) {
   const res = await fetch(`/api/ollama/models/${encodeURIComponent(name)}`, { method: 'DELETE' });
   if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
   updateOllamaUI(await readJson(res));
-  showToast(t('modelDeleted').replace('{name}', formatModelName(name)));
+  showToast(t('modelDeleted').replace('{name}', () => formatModelName(name)));
 }
 
 function startWhisperPollingLoop(modelId) {
@@ -802,7 +802,7 @@ async function renderAnalysisEstimate() {
     html = `<span class="text-apple-green">${ICON_LOCK}</span><span class="text-apple-secondary">${escapeHtml(cloudSelected ? t('estLocalOnlyCloud') : t('estLocalOnly'))}</span>`;
   } else if (est.cloud) {
     const tokens = est.tokens >= 1000 ? `${(est.tokens / 1000).toFixed(est.tokens >= 10000 ? 0 : 1)} ${t('estThousand')}` : String(est.tokens);
-    html = `<span class="text-apple-amber">☁</span><span class="text-apple-secondary">${escapeHtml(t('estCloud').replace('{model}', est.label || '').replace('{tokens}', tokens))}</span>`;
+    html = `<span class="text-apple-amber">☁</span><span class="text-apple-secondary">${escapeHtml(t('estCloud').replace('{model}', () => est.label || '').replace('{tokens}', () => tokens))}</span>`;
   }
   box.innerHTML = html;
   box.classList.toggle('hidden', !html);
@@ -814,7 +814,7 @@ const ICON_LOCK = '<svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColo
 function renderWatchFolder(st) {
   document.getElementById('watch-folder-path').textContent = st.folder || t('watchOff');
   const box = document.getElementById('watch-folder-status');
-  box.textContent = st.error ? st.error : st.folder ? t('watchOn').replace('{n}', st.imported || 0) + (st.last_import ? ` · ${st.last_import}` : '') : '';
+  box.textContent = st.error ? st.error : st.folder ? t('watchOn').replace('{n}', () => st.imported || 0) + (st.last_import ? ` · ${st.last_import}` : '') : '';
   box.className = 'text-[11px] ' + (st.error ? 'text-apple-amber' : 'text-apple-tertiary');
 }
 
@@ -851,7 +851,7 @@ async function makeBackup() {
       body: JSON.stringify({ with_media: document.getElementById('backup-with-media').checked }) });
     const data = await readJson(res);
     if (!res.ok) throw new Error(data.detail || 'Error');
-    box.textContent = data.cancelled ? '' : t('backupMade').replace('{path}', data.path).replace('{mb}', data.size_mb);
+    box.textContent = data.cancelled ? '' : t('backupMade').replace('{path}', () => data.path).replace('{mb}', () => data.size_mb);
   } catch (e) {
     box.className = 'text-[11px] text-apple-amber';
     box.textContent = e.message;
@@ -870,7 +870,7 @@ async function restoreBackup() {
   if (!res.ok) { box.className = 'text-[11px] text-apple-amber'; box.textContent = data.detail || 'Error'; return; }
   if (data.cancelled) { box.textContent = ''; return; }
   box.className = 'text-[11px] text-apple-green';
-  box.textContent = t('backupRestored').replace('{n}', data.recordings).replace('{m}', data.media_restored);
+  box.textContent = t('backupRestored').replace('{n}', () => data.recordings).replace('{m}', () => data.media_restored);
 }
 
 // --- GigaAM / Parakeet on the NVIDIA GPU (app/onnx_gpu.py) ---
@@ -936,7 +936,7 @@ async function checkCalendar() {
   const st = await fetch('/api/calendar/upcoming?refresh=true').then(r => r.json()).catch(() => null);
   if (!st || !st.configured) { box.textContent = source ? 'Error' : t('watchOff'); return; }
   if (st.error) { box.className = 'text-[11px] text-apple-amber'; box.textContent = st.error; return; }
-  box.textContent = t('calendarOk').replace('{n}', st.count).replace('{next}', st.events.length);
+  box.textContent = t('calendarOk').replace('{n}', () => st.count).replace('{next}', () => st.events.length);
 }
 
 // --- Calls recorded by themselves (app/call_watch.py) ---
@@ -968,7 +968,7 @@ async function refreshCallMicNow() {
     // Program names as people know them: "chrome.exe" -> "chrome", no store package suffixes
     const names = [...new Set((st.mic_now || []).map(n => n.replace(/_[a-z0-9]{13}$/, '').replace(/\.exe$/i, '')))];
     box.textContent = `${t('callMicNow')}: ${names.length ? names.join(', ') : t('callMicNobody')}`
-      + (st.active ? ` · ${t('callActive').replace('{app}', st.active)}` : '')
+      + (st.active ? ` · ${t('callActive').replace('{app}', () => st.active)}` : '')
       + (st.running ? '' : ` · ${t('callWatcherOff')}`);
   }
 }
@@ -1055,7 +1055,7 @@ async function loadSemanticStatus() {
   if (!box) return;
   const st = await fetch('/api/semantic/status').then(r => r.json()).catch(() => null);
   if (!st) return;
-  const parts = [t('semanticIndexed').replace('{n}', st.indexed).replace('{total}', st.total)];
+  const parts = [t('semanticIndexed').replace('{n}', () => st.indexed).replace('{total}', () => st.total)];
   if (st.running) parts.push(t('semanticRunning'));
   box.textContent = parts.join(' · ');
   box.className = 'pl-6 text-[11px] ' + (st.error ? 'text-apple-amber' : 'text-apple-secondary');
@@ -1193,7 +1193,7 @@ function renderLlmProvider(keepModel) {
   const hint = document.getElementById('llm-key-hint');
   hint.textContent = p.key.saved
     ? (p.key.readable ? t('llmKeySaved') : t('llmKeyUnreadable'))
-    : (p.keys_url ? t('llmKeyWhere').replace('{url}', p.keys_url) : t('llmKeyCompat'));
+    : (p.keys_url ? t('llmKeyWhere').replace('{url}', () => p.keys_url) : t('llmKeyCompat'));
   hint.className = `mt-1 text-[11px] leading-snug break-words select-text ${p.key.saved && !p.key.readable ? 'text-apple-red' : 'text-apple-tertiary'}`;
   const links = document.getElementById('llm-key-links');
   links.classList.toggle('hidden', !p.keys_url);
@@ -1226,7 +1226,7 @@ function renderLlmModelSelect(prov) {
   input.classList.toggle('hidden', !state.llmCustomModel);
   const hint = document.getElementById('llm-model-hint');
   hint.textContent = loaded
-    ? (custom ? t('llmModelNotInList') : t('llmModelsFromKey').replace('{n}', loaded.length))
+    ? (custom ? t('llmModelNotInList') : t('llmModelsFromKey').replace('{n}', () => loaded.length))
     : (p.key.saved ? '' : t('llmModelsAfterKey'));
   hint.className = `mt-1 text-[10.5px] leading-snug ${loaded && custom ? 'text-apple-amber' : 'text-apple-tertiary'}`;
 }
@@ -1309,7 +1309,7 @@ async function saveLlmKey() {
   state.llmCustomModel = false;
   renderLlmSettings();
   renderSummaryModelSelect();
-  if (data.model_changed) showToast(t('llmModelSwitched').replace('{model}', data.model));
+  if (data.model_changed) showToast(t('llmModelSwitched').replace('{model}', () => data.model));
   await testLlmConnection();
 }
 
@@ -1338,10 +1338,10 @@ async function loadLlmModels(explicit) {
     // The chosen model is not available with this key: suggest the recommended one
     if (!state.llmCustomModel && data.recommended && !models.includes(input.value.trim())) {
       input.value = data.recommended;
-      if (explicit) showToast(t('llmModelSwitched').replace('{model}', data.recommended));
+      if (explicit) showToast(t('llmModelSwitched').replace('{model}', () => data.recommended));
     }
     renderLlmModelSelect(provider);
-    if (explicit) showToast(t('llmModelsLoaded').replace('{n}', models.length));
+    if (explicit) showToast(t('llmModelsLoaded').replace('{n}', () => models.length));
   } finally {
     btn.classList.remove('animate-spin');
   }
@@ -1357,7 +1357,7 @@ async function testLlmConnection() {
     const res = await fetch(`/api/llm/test/${provider}`, { method: 'POST' });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.detail || 'Error');
-    setLlmTestResult('ok', t('llmTestOk').replace('{model}', data.model).replace('{sec}', data.seconds));
+    setLlmTestResult('ok', t('llmTestOk').replace('{model}', () => data.model).replace('{sec}', () => data.seconds));
   } catch (e) {
     setLlmTestResult('err', e.message);
   } finally {
@@ -1618,7 +1618,7 @@ async function addDictionaryItems() {
 }
 
 async function clearDictionary() {
-  if (!await askConfirm(t('dictClearConfirm').replace('{n}', state.dictionary.length))) return;
+  if (!await askConfirm(t('dictClearConfirm').replace('{n}', () => state.dictionary.length))) return;
   await fetch('/api/dictionary', { method: 'DELETE' });
   await loadDictionary();
 }

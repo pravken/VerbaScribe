@@ -51,6 +51,16 @@ class StaticUiTest(unittest.TestCase):
         self.assertEqual(sorted(used - en), [], "no English text")
         self.assertEqual(sorted(ru - en), [], "Russian text without English")
 
+    def test_placeholders_take_text_as_is(self):
+        """t('…{title}…').replace('{title}', title): a title with "$'" or "$&" would be read as a pattern;
+        a function's result is taken as is."""
+        bad = []
+        for f in sorted((ROOT / "static" / "js").glob("*.js")):
+            for n, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+                for m in re.finditer(r"""\.replace\((['"])\{[A-Za-z_]+\}\1,(?!\s*\(\) =>)""", line):
+                    bad.append(f"{f.name}:{n}: {line.strip()[:100]}")
+        self.assertEqual(bad, [])
+
     def test_vendor_files_match_package_json(self):
         """static/vendor is what `npm run vendor` built from the versions in package.json."""
         import json

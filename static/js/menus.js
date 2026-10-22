@@ -58,7 +58,7 @@ function renderExportMenu() {
   const trOptions = (have.length ? `<optgroup label="${escapeHtml(t('exportLangReady'))}">${have.map(c => `<option value="${c}" ${c === trLang ? 'selected' : ''}>✓ ${escapeHtml(langName(c))}</option>`).join('')}</optgroup>` : '')
     + `<optgroup label="${escapeHtml(t('exportLangNew'))}">${others.map(o => `<option value="${o.c}" ${o.c === trLang ? 'selected' : ''}>${escapeHtml(o.n)}</option>`).join('')}</optgroup>`;
   html += sep + header(t('exportGroupTr'), langSelect('export-tr-lang', 'setExportLang(this.value)', trOptions));
-  if (!trReady) html += note(t('exportTrWillRun').replace('{lang}', langName(trLang)));
+  if (!trReady) html += note(t('exportTrWillRun').replace('{lang}', () => langName(trLang)));
   const tr = (fmt, variant, label, tag) => item({ kind: 'doc', fmt, lang: trLang, variant }, label, tag);
   html += tr('docx', 'translated', 'Word', 'DOCX') + tr('md', 'translated', 'Markdown', 'MD') + tr('txt', 'translated', t('exportPlainText'), 'TXT')
     + tr('srt', 'translated', t('exportSrtFile'), 'SRT') + tr('vtt', 'translated', t('exportVttFile'), 'VTT')
@@ -86,7 +86,7 @@ function renderExportMenu() {
   const settings = (state.system && state.system.settings) || {};
   html += sep + header('Obsidian');
   html += item({ kind: 'obsidian' }, t('exportObsidian'), 'MD', settings.obsidian_vault ? settings.obsidian_vault : t('exportObsidianNoVault'));
-  if (m.obsidian_path) html += note(t('exportObsidianSaved').replace('{name}', String(m.obsidian_path).split(/[\\/]/).pop()));
+  if (m.obsidian_path) html += note(t('exportObsidianSaved').replace('{name}', () => String(m.obsidian_path).split(/[\\/]/).pop()));
 
   html += sep + `<button onclick="hideExportMenu(); openExportDir()" class="macos-menu-item"><span>${escapeHtml(t('exportOpenFolder'))}</span></button>`;
   menu.innerHTML = html;
@@ -106,7 +106,7 @@ async function ctxClearResults() {
   hideContextMenu();
   const id = state.contextMeetingId;
   const m = state.meetings.find(x => x.id === id);
-  if (!m || !(await confirmDialog(t('clearResultsTitle'), t('clearResultsText').replace('{title}', m.title), t('ctxClearResults')))) return;
+  if (!m || !(await confirmDialog(t('clearResultsTitle'), t('clearResultsText').replace('{title}', () => m.title), t('ctxClearResults')))) return;
   const res = await fetch(`/api/meetings/${id}/clear-results`, { method: 'POST' });
   if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
   await loadMeetingsList();
@@ -117,7 +117,7 @@ async function ctxRemoveMedia() {
   hideContextMenu();
   const id = state.contextMeetingId;
   const m = state.meetings.find(x => x.id === id);
-  if (!m || !(await confirmDialog(t('removeMediaTitle'), t('removeMediaText').replace('{title}', m.title), t('ctxRemoveMedia')))) return;
+  if (!m || !(await confirmDialog(t('removeMediaTitle'), t('removeMediaText').replace('{title}', () => m.title), t('ctxRemoveMedia')))) return;
   const res = await fetch(`/api/meetings/${id}/remove-media`, { method: 'POST' });
   if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
   await loadMeetingsList();
@@ -144,7 +144,7 @@ async function requestCut(kind) {
   if (!res.ok) { showToast(data.detail || 'Error'); return; }
   if (data.cancelled) return;
   const saved = Math.max(0, Math.round((data.duration || 0) - (data.kept_seconds || 0)));
-  showToast(t('cutQueued').replace('{name}', data.filename).replace('{kept}', formatTime(data.kept_seconds || 0))
+  showToast(t('cutQueued').replace('{name}', () => data.filename).replace('{kept}', () => formatTime(data.kept_seconds || 0))
     + (kind === 'clean' && saved ? ` · −${formatTime(saved)}` : ''));
   await loadMeetingsList();
 }
@@ -176,7 +176,7 @@ async function runExport(item) {
   }
   if (data.status === 'queued') {
     const what = t(`exportWaiting_${data.waiting_for}`) || '';
-    showToast(t('exportQueued').replace('{what}', what).replace('{dir}', data.folder || ''), { label: t('showInFolder'), onClick: () => revealPath(data.folder) });
+    showToast(t('exportQueued').replace('{what}', () => what).replace('{dir}', () => data.folder || ''), { label: t('showInFolder'), onClick: () => revealPath(data.folder) });
     await loadMeetingsList();
     return;
   }
@@ -214,7 +214,7 @@ function onExportedEvent(ev) {
     showToast(`${t('exportSavedTo')} ${name}${files.length > 1 ? ` (+${files.length - 1})` : ''}`,
       { label: t('showInFolder'), onClick: () => revealPath(files[0]) });
   } else if ((ev.queued || []).length) {
-    showToast(t('subsBurnQueued').replace('{name}', ''));
+    showToast(t('subsBurnQueued').replace('{name}', () => ''));
   }
   if ((ev.errors || []).length) setTimeout(() => showToast(ev.errors.join('; ')), files.length ? 3000 : 0);
 }
@@ -258,7 +258,7 @@ function openBulkMenu(e) {
   menu.id = 'bulk-menu';
   menu.className = 'fixed w-56 macos-menu z-50';
   const item = (fn, label, cls = '') => `<button class="macos-menu-item ${cls}" data-fn="${fn}"><span>${escapeHtml(label)}</span></button>`;
-  menu.innerHTML = `<div class="px-2.5 py-1 text-[11px] font-semibold text-apple-secondary border-b border-white/10 mb-1">${escapeHtml(t('libSelected').replace('{n}', state.multi.size))}</div>`
+  menu.innerHTML = `<div class="px-2.5 py-1 text-[11px] font-semibold text-apple-secondary border-b border-white/10 mb-1">${escapeHtml(t('libSelected').replace('{n}', () => state.multi.size))}</div>`
     + item('bulkRename', t('bulkRename') + '…') + item('bulkAutoTitles', t('bulkAutoTitle'))
     + '<div class="my-1 h-px bg-white/10"></div>' + item('bulkDelete', t('ctxDelete'), 'text-apple-red');
   menu.addEventListener('click', ev => {
@@ -492,10 +492,10 @@ function confirmDeleteDialog(list) {
         <span>${escapeHtml(label)}${detail ? `<span class="block text-[11px] text-apple-tertiary mt-0.5 break-all line-clamp-2">${escapeHtml(detail)}</span>` : ''}</span></label>`;
     const options = [
       sources.length ? opt('del-with-source', t('deleteWithSource'), sources.map(m => m.filename).join(', ')) : '',
-      exportsN ? opt('del-with-exports', t('deleteWithExports').replace('{n}', exportsN), list.flatMap(m => m.exports || []).slice(0, 3).join(', ')) : '',
-      notes.length ? opt('del-with-note', t('deleteWithNote').replace('{n}', notes.length), notes.map(m => m.obsidian_path).slice(0, 2).join(', ')) : '',
+      exportsN ? opt('del-with-exports', t('deleteWithExports').replace('{n}', () => exportsN), list.flatMap(m => m.exports || []).slice(0, 3).join(', ')) : '',
+      notes.length ? opt('del-with-note', t('deleteWithNote').replace('{n}', () => notes.length), notes.map(m => m.obsidian_path).slice(0, 2).join(', ')) : '',
     ].filter(Boolean);
-    const what = list.length === 1 ? t('confirmDeleteOne').replace('{title}', list[0].title) : t('confirmDeleteMany').replace('{n}', list.length);
+    const what = list.length === 1 ? t('confirmDeleteOne').replace('{title}', () => list[0].title) : t('confirmDeleteMany').replace('{n}', () => list.length);
     const wrap = document.createElement('div');
     wrap.className = 'fixed inset-0 modal-backdrop z-[70] flex items-center justify-center p-4';
     wrap.innerHTML = `<div class="w-full max-w-md bg-apple-card border apple-border rounded-2xl shadow-2xl p-5 space-y-4 modal-card">

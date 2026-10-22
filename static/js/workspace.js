@@ -129,7 +129,7 @@ function setAudioTrack(key) {
     if (wasPlaying) player.play().catch(() => {});
   }, { once: true });
   renderAudioTrackSwitch();
-  showToast(key === 'orig' ? t('trackOriginalOn') : t('trackDubOn').replace('{lang}', dubLangName(key)));
+  showToast(key === 'orig' ? t('trackOriginalOn') : t('trackDubOn').replace('{lang}', () => dubLangName(key)));
 }
 
 function renderDubExportMenu() {
@@ -208,8 +208,8 @@ function renderDubSetup(env, prefix = 'dub') {
     if (env.installed) return;
   }
 
-  const meta = [t('dubSetupSize').replace('{gb}', st.download_gb ?? 6)];
-  if (st.free_gb != null) meta.push(t('dubSetupFree').replace('{gb}', st.free_gb));
+  const meta = [t('dubSetupSize').replace('{gb}', () => st.download_gb ?? 6)];
+  if (st.free_gb != null) meta.push(t('dubSetupFree').replace('{gb}', () => st.free_gb));
   el('setup-meta').textContent = env.installed && !st.active ? '' : meta.join(' · ');
 
   const logs = st.logs || [];
@@ -242,8 +242,8 @@ function toggleDubSetupLogs(prefix = 'dub') {
 async function startDubSetup() {
   const st = state.dubSetup || {};
   const question = (state.dubEnvInstalled ? t('sdubRepairConfirm') : t('dubSetupConfirm'))
-    .replace('{gb}', st.download_gb ?? 6)
-    .replace('{dir}', st.venv || '.venv-dub');
+    .replace('{gb}', () => st.download_gb ?? 6)
+    .replace('{dir}', () => st.venv || '.venv-dub');
   if (!await askConfirm(question)) return;
   let res = null;
   try { res = await fetch('/api/dub/setup', { method: 'POST' }); } catch (e) { console.error(e); }
@@ -251,7 +251,7 @@ async function startDubSetup() {
   if (!res || !res.ok) {
     // e.g. an older server process is still running behind this window
     const code = res ? res.status : 0;
-    const failed = { installed: false, setup: { ...st, active: false, error: t('dubSetupRequestFailed').replace('{code}', code || '—') } };
+    const failed = { installed: false, setup: { ...st, active: false, error: t('dubSetupRequestFailed').replace('{code}', () => code || '—') } };
     renderDubSetup(failed, 'dub');
     renderDubSetup(failed, 'sdub');
     return;
@@ -368,10 +368,10 @@ function renderDubInfo(info) {
 
   const d = info.disk || {};
   document.getElementById('sdub-disk').textContent = t('sdubDisk')
-    .replace('{env}', formatBytes(d.env_bytes))
-    .replace('{weights}', formatBytes(d.weights_bytes))
-    .replace('{outputs}', formatBytes(d.outputs_bytes))
-    .replace('{free}', formatBytes(d.free_bytes));
+    .replace('{env}', () => formatBytes(d.env_bytes))
+    .replace('{weights}', () => formatBytes(d.weights_bytes))
+    .replace('{outputs}', () => formatBytes(d.outputs_bytes))
+    .replace('{free}', () => formatBytes(d.free_bytes));
 
   // Rubber Band is only offered when this FFmpeg build has the filter
   const rb = document.querySelector('#set-dub-stretch option[value="rubberband"]');
@@ -388,9 +388,9 @@ async function downloadDubWeights(ids) {
   if (!items.length) return;
   const total = items.reduce((a, i) => a + (i.expected_bytes || 0), 0);
   const question = t('sdubDownloadConfirm')
-    .replace('{names}', items.map(i => i.name).join(', '))
-    .replace('{size}', formatBytes(total))
-    .replace('{dir}', state.dubInfo.weights.dir);
+    .replace('{names}', () => items.map(i => i.name).join(', '))
+    .replace('{size}', () => formatBytes(total))
+    .replace('{dir}', () => state.dubInfo.weights.dir);
   if (!await askConfirm(question)) return;
   const res = await fetch('/api/dub/weights/download', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ models: items.map(i => i.id) }),
@@ -407,7 +407,7 @@ async function cancelDubWeights() {
 
 async function deleteDubWeights(id) {
   const item = ((state.dubInfo && state.dubInfo.weights.items) || []).find(i => i.id === id);
-  if (!item || !await askConfirm(t('sdubDeleteConfirm').replace('{name}', item.name).replace('{size}', formatBytes(item.size_bytes)))) return;
+  if (!item || !await askConfirm(t('sdubDeleteConfirm').replace('{name}', () => item.name).replace('{size}', () => formatBytes(item.size_bytes)))) return;
   const res = await fetch(`/api/dub/weights/${encodeURIComponent(id)}`, { method: 'DELETE' });
   const data = await res.json().catch(() => ({}));
   if (data.error) showToast(data.error);
@@ -538,7 +538,7 @@ async function startDub() {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(pending),
       });
       const d = await r.json().catch(() => ({}));
-      showToast(r.ok && d.status === 'queued' ? t('exportQueued').replace('{what}', t('exportWaiting_dub')).replace('{dir}', d.folder || '') : t('dubQueued'));
+      showToast(r.ok && d.status === 'queued' ? t('exportQueued').replace('{what}', () => t('exportWaiting_dub')).replace('{dir}', () => d.folder || '') : t('dubQueued'));
     } catch (e) {
       showToast(t('dubQueued'));
     }
@@ -662,7 +662,7 @@ function renderTranslateResults() {
         <div class="min-w-0">
           <div class="text-xs font-semibold text-white">${escapeHtml(langName(lang))} (${escapeHtml(lang.toUpperCase())})</div>
           <div class="text-[10.5px] text-apple-tertiary truncate">${escapeHtml(meta)}</div>
-          ${outdated ? `<div class="text-[10.5px] text-apple-amber">${escapeHtml(t('translateOutdated').replace('{stale}', r.stale || 0).replace('{missing}', r.missing || 0))}</div>` : ''}
+          ${outdated ? `<div class="text-[10.5px] text-apple-amber">${escapeHtml(t('translateOutdated').replace('{stale}', () => r.stale || 0).replace('{missing}', () => r.missing || 0))}</div>` : ''}
         </div>
         <div class="flex items-center gap-1.5 shrink-0">
           <button onclick="showTranslation(${jsArg(lang)})" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]">${escapeHtml(t('translateShow'))}</button>
@@ -680,7 +680,7 @@ function renderSubsControls() {
   const langs = Object.keys(meetingTranslations(m));
   const sel = document.getElementById('subs-lang');
   const prev = sel.value;
-  sel.innerHTML = langs.map(c => `<option value="${c}">${escapeHtml(t('subsLangTranslation').replace('{lang}', langName(c)))}</option>`).join('')
+  sel.innerHTML = langs.map(c => `<option value="${c}">${escapeHtml(t('subsLangTranslation').replace('{lang}', () => langName(c)))}</option>`).join('')
     + `<option value="">${escapeHtml(t('subsLangOriginal'))}</option>`;
   if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
   updateSubsControls();
@@ -749,7 +749,7 @@ async function toggleTranscriptVerified() {
 
 async function deleteTranslation(lang) {
   const m = state.activeMeeting;
-  if (!m || !await askConfirm(t('translateDeleteConfirm').replace('{lang}', langName(lang)))) return;
+  if (!m || !await askConfirm(t('translateDeleteConfirm').replace('{lang}', () => langName(lang)))) return;
   const res = await fetch(`/api/meetings/${m.id}/translations/${encodeURIComponent(lang)}`, { method: 'DELETE' });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -802,7 +802,7 @@ async function requestVideoSubtitles(lang, variant, mode, askPath) {
   }
   if (data.cancelled) return false;
   if (data.queued) {
-    showToast(t('subsBurnQueued').replace('{name}', data.filename));
+    showToast(t('subsBurnQueued').replace('{name}', () => data.filename));
     await loadMeetingsList();
     return true;
   }
@@ -823,7 +823,7 @@ function renderTxQuickLangs() {
     const ready = !!have[c];
     const on = ready && showing === c;
     return `<button onclick="${on ? "setTranscriptView('orig')" : `quickTranslate(${jsArg(c)})`}"
-      title="${escapeHtml(on ? t('subsLangOriginal') : ready ? t('translateQuickShow').replace('{lang}', langName(c)) : t('translateQuickMake').replace('{lang}', langName(c)))}"
+      title="${escapeHtml(on ? t('subsLangOriginal') : ready ? t('translateQuickShow').replace('{lang}', () => langName(c)) : t('translateQuickMake').replace('{lang}', () => langName(c)))}"
       class="quick-lang ${on ? 'on' : ''}">${ready && !on ? '✓ ' : ''}${escapeHtml(langCode(c))}</button>`;
   }).join('');
 }
@@ -867,7 +867,7 @@ function renderTranslationControls() {
 async function deleteTranslation(lang) {
   hideTxViewMenu();
   const m = state.activeMeeting;
-  if (!m || !(await confirmDialog(t('txDeleteTrTitle').replace('{lang}', langName(lang)), t('txDeleteTrText'), t('txDeleteTr')))) return;
+  if (!m || !(await confirmDialog(t('txDeleteTrTitle').replace('{lang}', () => langName(lang)), t('txDeleteTrText'), t('txDeleteTr')))) return;
   const res = await fetch(`/api/meetings/${m.id}/translations/${encodeURIComponent(lang)}`, { method: 'DELETE' });
   if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
   if (state.txLang === lang) state.txView = 'orig';
@@ -885,7 +885,7 @@ async function deleteActiveDub() {
   const m = state.activeMeeting;
   const lang = state.audioTrack;
   if (!m || !lang || lang === 'orig') return;
-  if (!(await confirmDialog(t('dubDeleteTitle').replace('{lang}', lang.toUpperCase()), t('dubDeleteText'), t('dubDelete')))) return;
+  if (!(await confirmDialog(t('dubDeleteTitle').replace('{lang}', () => lang.toUpperCase()), t('dubDeleteText'), t('dubDelete')))) return;
   const res = await fetch(`/api/meetings/${m.id}/dubs/${encodeURIComponent(lang)}`, { method: 'DELETE' });
   if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
   setAudioTrack('orig');
@@ -1059,7 +1059,7 @@ function renderSpeakersPanel() {
         ${s.voice_profile ? `<span class="text-[10.5px] px-1.5 py-0.5 rounded bg-apple-blue/15 text-apple-blue shrink-0"
           title="${escapeHtml(t('tipVoiceRecognised'))}">${escapeHtml(t('voiceRecognisedBadge'))}</span>` : ''}
         ${s.voice_suggest ? `<span class="flex items-center gap-1 shrink-0 text-[11px] px-1.5 py-0.5 rounded bg-apple-amber/15 text-apple-amber"
-            title="${escapeHtml(t('tipVoiceSuggest'))}">${escapeHtml(t('voiceSuggest').replace('{name}', s.voice_suggest.name))}
+            title="${escapeHtml(t('tipVoiceSuggest'))}">${escapeHtml(t('voiceSuggest').replace('{name}', () => s.voice_suggest.name))}
             <button data-spk="${escapeHtml(spkId)}" data-name="${escapeHtml(s.voice_suggest.name)}" onclick="updateSpeaker(this.dataset.spk, this.dataset.name, null)"
               class="px-1.5 rounded bg-apple-amber/25 hover:bg-apple-amber/40 text-white">${escapeHtml(t('voiceSuggestYes'))}</button>
             <button data-spk="${escapeHtml(spkId)}" onclick="dismissVoiceSuggestion(this.dataset.spk)" class="px-1 hover:text-white">${escapeHtml(t('voiceSuggestNo'))}</button>
