@@ -819,7 +819,7 @@ async function fctxDelete() {
   hideFolderMenu();
   const f = folderById(state.contextFolderId);
   if (!f || f.system_key) return;
-  if (!await askConfirm(t('folderDeleteConfirm').replace('{name}', () => folderName(f)))) return;
+  if (!await askConfirm(t('folderDeleteConfirm').replace('{name}', () => folderName(f)), true)) return;
   const res = await fetch(`/api/folders/${f.id}`, { method: 'DELETE' });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) { showToast(data.detail || 'Error'); return; }

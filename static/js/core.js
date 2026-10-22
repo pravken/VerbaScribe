@@ -130,9 +130,10 @@ function confirmDialog(title, text, okLabel, danger = true) {
   });
 }
 
-// Short forms for the old browser dialogs (window.confirm / prompt / alert), in the app's style
-function askConfirm(text) {
-  return confirmDialog(t('confirmTitle'), text, t('ok'), /удал|delete|remove|сброс|clear|отмен/i.test(text));
+// Short forms for the old browser dialogs (window.confirm / prompt / alert), in the app's style.
+// danger: the button is red (deleting, discarding); said by the caller, not guessed from the words
+function askConfirm(text, danger = false) {
+  return confirmDialog(t('confirmTitle'), text, t('ok'), danger);
 }
 
 function askText(label, value = '') {
@@ -316,7 +317,7 @@ async function applyVoiceProfilesToLibrary() {
 }
 
 async function deleteVoiceProfile(id, name) {
-  if (!await askConfirm(t('voiceProfileDeleteConfirm').replace('{name}', () => name || ''))) return;
+  if (!await askConfirm(t('voiceProfileDeleteConfirm').replace('{name}', () => name || ''), true)) return;
   const res = await fetch(`/api/voice-profiles/${id}`, { method: 'DELETE' });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {

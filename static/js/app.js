@@ -197,6 +197,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   loadSystemInfo();
+  loadSeries();  // the series name in the context menu of a recording
   loadLlmStatus();
   setTimeout(() => checkForUpdates(false), 4000);  // after the page has settled; only if enabled in settings
   loadDictionary();
@@ -1047,15 +1048,6 @@ async function unloadAllModelsNow() {
 function openExportDir() {
   const el = document.getElementById('set-export-dir');
   if (el && el.textContent) revealPath(el.textContent);
-}
-
-async function exportCurrentMeeting(fmt, opts) {
-  document.getElementById('export-menu')?.classList.add('hidden');
-  if (!state.activeMeeting) {
-    showToast(state.uiLang === 'en' ? 'Select a recording first' : 'Сначала выберите запись');
-    return;
-  }
-  await exportMeetingById(state.activeMeeting.id, fmt, opts);
 }
 
 function escapeHtml(str) {

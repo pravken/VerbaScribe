@@ -326,13 +326,24 @@ async function openSeriesMenu(e) {
   menu.innerHTML = `<div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(t('ctxSeries'))}</div>`
     + state.series.map(s => `<button class="macos-menu-item" data-sid="${s.id}"><span class="truncate">${escapeHtml(s.name)}</span><span class="text-[10.5px] opacity-70">${m.series_id === s.id ? '✓' : s.count}</span></button>`).join('')
     + `<button class="macos-menu-item" data-sid="new"><span>${escapeHtml(t('seriesNew'))}</span></button>`
-    + (m.series_id ? `<button class="macos-menu-item" data-sid="none"><span>${escapeHtml(t('seriesRemove'))}</span></button>` : '');
+    + (m.series_id ? `<button class="macos-menu-item" data-sid="rename"><span>${escapeHtml(t('seriesRename'))}</span></button>`
+      + `<button class="macos-menu-item" data-sid="none"><span>${escapeHtml(t('seriesRemove'))}</span></button>` : '');
   menu.addEventListener('click', async (ev) => {
     const b = ev.target.closest('button[data-sid]');
     ev.stopPropagation();
     if (!b) return;
     menu.remove();
     let body = { series_id: null };
+    if (b.dataset.sid === 'rename') {
+      const cur = state.series.find(s => s.id === m.series_id);
+      const name = (await askText(t('seriesNamePrompt'), cur ? cur.name : '') || '').trim();
+      if (!name) return;
+      const r = await fetch(`/api/series/${m.series_id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+      if (!r.ok) { showToast(errorText(await readJson(r), r)); return; }
+      await loadSeries();
+      if (state.activeMeeting && state.activeMeeting.series_id === m.series_id) renderSeriesUi();
+      return;
+    }
     if (b.dataset.sid === 'new') {
       const name = (await askText(t('seriesNamePrompt'), m.title) || '').trim();
       if (!name) return;

@@ -407,7 +407,7 @@ async function cancelDubWeights() {
 
 async function deleteDubWeights(id) {
   const item = ((state.dubInfo && state.dubInfo.weights.items) || []).find(i => i.id === id);
-  if (!item || !await askConfirm(t('sdubDeleteConfirm').replace('{name}', () => item.name).replace('{size}', () => formatBytes(item.size_bytes)))) return;
+  if (!item || !await askConfirm(t('sdubDeleteConfirm').replace('{name}', () => item.name).replace('{size}', () => formatBytes(item.size_bytes)), true)) return;
   const res = await fetch(`/api/dub/weights/${encodeURIComponent(id)}`, { method: 'DELETE' });
   const data = await res.json().catch(() => ({}));
   if (data.error) showToast(data.error);
@@ -749,7 +749,7 @@ async function toggleTranscriptVerified() {
 
 async function deleteTranslation(lang) {
   const m = state.activeMeeting;
-  if (!m || !await askConfirm(t('translateDeleteConfirm').replace('{lang}', () => langName(lang)))) return;
+  if (!m || !await askConfirm(t('translateDeleteConfirm').replace('{lang}', () => langName(lang)), true)) return;
   const res = await fetch(`/api/meetings/${m.id}/translations/${encodeURIComponent(lang)}`, { method: 'DELETE' });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -857,21 +857,26 @@ function renderTranslationControls() {
   }
   if (canTranslate) html += sep + item("setTxViewChoice('__new')", '＋', t('txTranslateNew').replace(/^＋\s*/, ''));
   // Clearing: one translation, or everything the processing made
-  if (langs.length) html += sep + langs.map(c => item(`deleteTranslation(${jsArg(c)})`, '✕', `${t('txDeleteTr')}: ${langName(c)}`)).join('');
+  if (langs.length) html += sep + langs.map(c => item(`deleteTranslationFromMenu(${jsArg(c)})`, '✕', `${t('txDeleteTr')}: ${langName(c)}`)).join('');
   document.getElementById('tx-view-menu').innerHTML = html;
   document.getElementById('tx-clear-btn')?.classList.toggle('hidden', !(m && m.status === 'completed'));
   renderVerifiedButton();
   renderExportTranslatedMenu();
 }
 
-async function deleteTranslation(lang) {
+// From the "Text language" menu of the transcript (deleteTranslation above is the Translate window's)
+async function deleteTranslationFromMenu(lang) {
   hideTxViewMenu();
   const m = state.activeMeeting;
   if (!m || !(await confirmDialog(t('txDeleteTrTitle').replace('{lang}', () => langName(lang)), t('txDeleteTrText'), t('txDeleteTr')))) return;
   const res = await fetch(`/api/meetings/${m.id}/translations/${encodeURIComponent(lang)}`, { method: 'DELETE' });
-  if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
+  const data = await readJson(res);
+  if (!res.ok) { showToast(errorText(data, res)); return; }
   if (state.txLang === lang) state.txView = 'orig';
-  await selectMeeting(m.id, true);
+  state.activeMeeting = data;  // the player keeps playing where it was
+  renderSubsControls();
+  renderTranslationControls();
+  renderTranscript();
 }
 
 function clearActiveResults() {
@@ -920,17 +925,6 @@ function setTranscriptView(view) {
   renderTranslationControls();
   renderTranscript();
   updateTheatreCaption(document.getElementById('media-player').currentTime || 0, true);
-}
-
-function setTranscriptViewLang(lang) {
-  if (lang === '__new') {
-    renderTranslationControls();  // put the selection back
-    openTranslateModal();
-    return;
-  }
-  state.txLang = lang;
-  renderTranslationControls();
-  renderTranscript();
 }
 
 // Translation of a segment for the current view, or null in "original" view

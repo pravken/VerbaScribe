@@ -391,7 +391,7 @@ async function updateRecordPreset() {
 async function deleteRecordPreset() {
   const id = document.getElementById('record-preset-select').value;
   const p = recordPresets().find(x => x.id === id);
-  if (!p || p.builtin || !await askConfirm(t('presetDeleteConfirm').replace('{name}', () => p.name))) return;
+  if (!p || p.builtin || !await askConfirm(t('presetDeleteConfirm').replace('{name}', () => p.name), true)) return;
   const own = recordPresets().filter(x => !x.builtin && x.id !== id);
   await saveRecordPresetSettings(own, defaultRecordPresetId() === id ? 'call' : null);
   applyRecordPreset(defaultRecordPresetId());
@@ -1555,7 +1555,7 @@ function _cleanupRecordingResources() {
 
 async function cancelLiveRecording() {
   if (!isRecording()) return;
-  if (!await askConfirm(t('recCancelConfirm'))) return;
+  if (!await askConfirm(t('recCancelConfirm'), true)) return;
   if (_mediaRecorder && _mediaRecorder.state !== 'inactive') {
     _mediaRecorder.ondataavailable = null;
     _mediaRecorder.onstop = null;

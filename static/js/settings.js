@@ -909,7 +909,7 @@ async function installOnnxGpu() {
 }
 
 async function removeOnnxGpu() {
-  if (!await askConfirm(t('onnxGpuRemoveConfirm'))) return;
+  if (!await askConfirm(t('onnxGpuRemoveConfirm'), true)) return;
   const data = await fetch('/api/onnx-gpu/remove', { method: 'POST' }).then(r => r.json()).catch(() => null);
   document.getElementById('set-onnx-gpu').checked = false;
   if (data) renderOnnxGpu(data);
@@ -1315,7 +1315,7 @@ async function saveLlmKey() {
 
 async function deleteLlmKey() {
   const provider = document.getElementById('set-llm-provider').value;
-  if (!await askConfirm(t('llmKeyDeleteConfirm'))) return;
+  if (!await askConfirm(t('llmKeyDeleteConfirm'), true)) return;
   await fetch(`/api/llm/key/${provider}`, { method: 'DELETE' });
   if (state.llmModels) delete state.llmModels[provider];
   await loadLlmStatus();
@@ -1618,7 +1618,7 @@ async function addDictionaryItems() {
 }
 
 async function clearDictionary() {
-  if (!await askConfirm(t('dictClearConfirm').replace('{n}', () => state.dictionary.length))) return;
+  if (!await askConfirm(t('dictClearConfirm').replace('{n}', () => state.dictionary.length), true)) return;
   await fetch('/api/dictionary', { method: 'DELETE' });
   await loadDictionary();
 }
