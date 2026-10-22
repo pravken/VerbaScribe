@@ -7,6 +7,7 @@ being written is not grabbed half-way). Every file seen is remembered (watch_see
 deleted from the library is not imported again.
 """
 
+import os
 import threading
 import time
 import traceback
@@ -23,6 +24,7 @@ MAX_FILES_PER_POLL = 20
 
 _state: Dict[str, object] = {"running": False, "last_import": "", "error": "", "imported": 0}
 _pending: Dict[str, Tuple[int, float]] = {}  # path -> (size, first time seen at that size)
+_keys: Dict[str, str] = {}  # path as found -> its resolved form (the key of watch_seen), worked out once
 _started = False
 _lock = threading.Lock()
 
@@ -53,15 +55,44 @@ def _mark_seen(paths: List[str]) -> None:
 
 
 def candidates(folder: Path, recursive: bool, extensions: Set[str]) -> List[Path]:
-    it = folder.rglob("*") if recursive else folder.iterdir()
-    return sorted(p for p in it if p.is_file() and p.suffix.lower() in extensions and not p.name.startswith("."))
+    """Media files in the folder. The names are filtered first: a folder like Documents has tens of
+    thousands of files, and only media files are looked at (os.scandir reads the type with the name)."""
+    out: List[Path] = []
+    stack = [str(folder)]
+    while stack:
+        try:
+            with os.scandir(stack.pop()) as it:
+                for e in it:
+                    if e.name.startswith((".", "$")):
+                        continue
+                    try:
+                        if e.is_dir(follow_symlinks=False):
+                            if recursive:
+                                stack.append(e.path)
+                        elif os.path.splitext(e.name)[1].lower() in extensions and e.is_file():
+                            out.append(Path(e.path))
+                    except OSError:
+                        continue
+        except OSError:
+            continue
+    return sorted(out)
+
+
+def _key(p: Path) -> str:
+    raw = str(p)
+    key = _keys.get(raw)
+    if key is None:
+        key = _keys[raw] = str(p.resolve())
+    return key
 
 
 def ready_files(files: List[Path], seen: Set[str], now: float) -> List[Path]:
     """New files whose size has not changed for STABLE_SEC."""
     out = []
+    present = set()
     for p in files:
-        key = str(p.resolve())
+        key = _key(p)
+        present.add(key)
         if key in seen:
             continue
         try:
@@ -74,6 +105,8 @@ def ready_files(files: List[Path], seen: Set[str], now: float) -> List[Path]:
         elif size > 0 and now - prev[1] >= STABLE_SEC:
             out.append(p)
             _pending.pop(key, None)
+    for gone in [k for k in _pending if k not in present]:  # deleted or moved away while being copied
+        _pending.pop(gone, None)
     return out[:MAX_FILES_PER_POLL]
 
 
@@ -93,14 +126,14 @@ def scan_once(add: Callable[[Path], None], now: Optional[float] = None) -> int:
     seen = _seen()
     if settings.get("watch_folder_baseline") != folder:
         # A newly chosen folder: what is already there is not imported, only what comes next
-        _mark_seen([str(p.resolve()) for p in files])
+        _mark_seen([_key(p) for p in files])
         from app.database import update_settings
 
         update_settings({"watch_folder_baseline": folder})
         return 0
     ready = ready_files(files, seen, now if now is not None else time.time())
     for p in ready:
-        _mark_seen([str(p.resolve())])  # before adding: a failure later in the batch must not import it twice
+        _mark_seen([_key(p)])  # before adding: a failure later in the batch must not import it twice
         add(p)
     if ready:
         _state["imported"] = int(_state["imported"]) + len(ready)
