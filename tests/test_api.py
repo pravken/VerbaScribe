@@ -76,10 +76,9 @@ class TranscriptEditApiTest(unittest.TestCase):
         self.mid = m["id"]
         from app.database import update_meeting_progress
 
-        update_meeting_progress(self.mid, status="completed")  # a pending one is queued again when the app starts
+        update_meeting_progress(self.mid, status="completed")
+        # Without "with": the app's start-up (queue restart, background loops) is not needed here
         self.c = TestClient(main.app, base_url="http://127.0.0.1:8790")
-        self.c.__enter__()
-        self.addCleanup(self.c.__exit__, None, None, None)
         self.c.get(f"/?token={main.SESSION_TOKEN}")
 
     def test_line_text_and_speaker(self):
@@ -122,7 +121,7 @@ class StartupResumeTest(unittest.TestCase):
     def test_interrupted_work_after_a_restart(self):
         from unittest import mock
 
-        from app.database import update_meeting_progress
+        from app.database import delete_meeting, update_meeting_progress
 
         main.init_db()
         ids = {}
@@ -130,6 +129,8 @@ class StartupResumeTest(unittest.TestCase):
             m = main.create_meeting(title=f"После перезапуска {state}", filename="a.wav", media_path="a.wav")
             update_meeting_progress(m["id"], status=state)
             ids[state] = m["id"]
+            # the next start of the app in another test would queue it for real
+            self.addCleanup(delete_meeting, m["id"])
         with mock.patch.object(main, "enqueue_meeting_job") as enqueue:
             with TestClient(main.app, base_url="http://127.0.0.1:8790"):
                 pass

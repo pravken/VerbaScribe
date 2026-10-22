@@ -269,8 +269,9 @@ class LiveSentenceLinesTest(unittest.TestCase):
         with mock.patch.object(live, "caption_onnx_model", return_value=None):
             s = live.LiveSession("ru", None)
         with mock.patch.object(asr_onnx, "is_installed", return_value=True), \
-             mock.patch.object(asr_onnx, "preload"):
+             mock.patch.object(asr_onnx, "preload_async") as pre:
             s.set_caption_model("parakeet-v3")
+        pre.assert_called_once_with("parakeet-v3")
         self.assertEqual(s.onnx_model, "parakeet-v3")
         self.assertEqual(get_all_settings()["live_whisper_model"], "parakeet-v3")
         s.translator = mock.Mock()
