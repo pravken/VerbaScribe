@@ -51,6 +51,16 @@ class StaticUiTest(unittest.TestCase):
         self.assertEqual(sorted(used - en), [], "no English text")
         self.assertEqual(sorted(ru - en), [], "Russian text without English")
 
+    def test_no_text_in_inline_handlers(self):
+        """Data in an onclick="..." goes through jsArg() (or Number()): a quote in a name must not end the code."""
+        bad = []
+        for f in sorted((ROOT / "static" / "js").glob("*.js")):
+            for n, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+                # a quoted ${...} in a handler, or a handler in single quotes (JSON.stringify keeps ' as is)
+                if re.search(r"""\bon[a-z]+='|\bon[a-z]+="[^"]*'\$\{|\(`[^`]*'\$\{[^}]*\}'""", line):
+                    bad.append(f"{f.name}:{n}: {line.strip()[:120]}")
+        self.assertEqual(bad, [])
+
 
 if __name__ == "__main__":
     unittest.main()

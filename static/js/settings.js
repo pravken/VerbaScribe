@@ -1671,7 +1671,7 @@ function renderBench() {
   const box = document.getElementById('bench-models');
   box.innerHTML = models.length
     ? models.map(m => `<label class="flex items-center gap-1.5 cursor-pointer text-xs text-apple-label">
-        <input type="checkbox" ${picked.has(m.id) ? 'checked' : ''} ${d.running ? 'disabled' : ''} onchange="benchPick('${escapeHtml(m.id)}', this.checked)"
+        <input type="checkbox" ${picked.has(m.id) ? 'checked' : ''} ${d.running ? 'disabled' : ''} onchange="benchPick(${jsArg(m.id)}, this.checked)"
           class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
         <span>${escapeHtml(m.name || m.id)}</span>${m.engine === 'onnx' ? '<span class="text-[10px] text-apple-tertiary">CPU</span>' : ''}</label>`).join('')
     : `<span class="text-[11px] text-apple-tertiary">${escapeHtml(t(bench.kind === 'asr' ? 'benchNoAsr' : 'benchNoLlm'))}</span>`;
@@ -1713,7 +1713,7 @@ function benchTable(run) {
   // The work, and under it the loading of the model (timed apart, each model from an empty memory)
   const timeCell = (r, isBest) => `<td class="px-2 py-1 text-right font-mono ${isBest ? 'text-apple-green' : ''}">${r.sec} s${r.load_sec != null
     ? `<div class="text-[10px] text-apple-tertiary font-sans">${escapeHtml(t('benchLoad'))} ${r.load_sec} s</div>` : ''}</td>`;
-  const useBtn = r => r.error ? '' : `<button onclick="benchUse('${run.kind}', '${escapeHtml(r.model)}')" class="text-[11px] text-apple-blue hover:underline">${escapeHtml(t('benchUse'))}</button>`;
+  const useBtn = r => r.error ? '' : `<button onclick="benchUse(${jsArg(run.kind)}, ${jsArg(r.model)})" class="text-[11px] text-apple-blue hover:underline">${escapeHtml(t('benchUse'))}</button>`;
   const mem = r => [r.vram_mb ? `${(r.vram_mb / 1024).toFixed(1)} GB VRAM` : '', r.ram_mb ? `${(r.ram_mb / 1024).toFixed(1)} GB RAM` : ''].filter(Boolean).join(' · ') || '—';
   const text = r => r.text ? `<details><summary class="cursor-pointer text-[11px] text-apple-tertiary">${escapeHtml(t('benchShowText'))}</summary>
       <div class="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap text-[11.5px] text-apple-secondary">${escapeHtml(r.text)}</div></details>` : '';

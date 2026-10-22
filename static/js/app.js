@@ -274,7 +274,7 @@ function renderChaptersBar() {
   const bar = document.getElementById('chapters-bar');
   bar.classList.toggle('hidden', _chapters.length < 2);
   document.getElementById('chapters-list').innerHTML = _chapters.map((c, i) =>
-    `<button onclick="seekPlayer(${c.start})" id="chapter-${i}" title="${escapeHtml(c.desc || c.title)}"
+    `<button onclick="seekPlayer(${Number(c.start) || 0})" id="chapter-${i}" title="${escapeHtml(c.desc || c.title)}"
       class="chapter-chip"><span class="font-mono text-apple-tertiary">${formatTime(c.start)}</span> ${escapeHtml(c.title)}</button>`
   ).join('');
 }
@@ -459,7 +459,7 @@ async function extractCommitments() {
 
 // Promises as tasks for another app: Markdown (Obsidian, Notion), Todoist's CSV, a table
 function commitmentExportBar(meetingId) {
-  const b = (fmt, label) => `<button onclick="exportCommitments('${fmt}', ${meetingId == null ? 'null' : meetingId})" class="ui-btn ui-btn-subtle h-7 text-[11px]">${escapeHtml(label)}</button>`;
+  const b = (fmt, label) => `<button onclick="exportCommitments(${jsArg(fmt)}, ${jsArg(meetingId)})" class="ui-btn ui-btn-subtle h-7 text-[11px]">${escapeHtml(label)}</button>`;
   return `<div class="flex flex-wrap items-center gap-1.5 pt-3">
       <span class="text-[11px] text-apple-tertiary mr-1">${escapeHtml(t('commitmentsExport'))}</span>
       ${b('md', 'Markdown')}${b('todoist', 'Todoist')}${b('csv', t('commitmentsTable'))}
@@ -1058,6 +1058,12 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+// A value as a JavaScript literal for an inline handler: onclick="f(${jsArg(name)})". Any text is
+// safe there (quotes included); a value never goes into a handler without it, or Number() for numbers.
+function jsArg(value) {
+  return escapeHtml(JSON.stringify(value ?? null));
 }
 
 // --- "Details" tab: where the file is, what it is, and what was done with it ---

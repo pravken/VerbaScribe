@@ -497,7 +497,7 @@ function renderDubResults() {
           <div class="text-[10.5px] text-apple-secondary truncate" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
           <div class="text-[10.5px] text-apple-tertiary">${escapeHtml(meta)}</div>
         </div>
-        <button onclick="revealDub('${lang}')" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px] shrink-0">${escapeHtml(t('dubReveal'))}</button>
+        <button onclick="revealDub(${jsArg(lang)})" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px] shrink-0">${escapeHtml(t('dubReveal'))}</button>
       </div>
       ${isVideo
         ? `<video controls preload="none" class="w-full rounded-md bg-black max-h-56" src="${src}"></video>`
@@ -665,10 +665,10 @@ function renderTranslateResults() {
           ${outdated ? `<div class="text-[10.5px] text-apple-amber">${escapeHtml(t('translateOutdated').replace('{stale}', r.stale || 0).replace('{missing}', r.missing || 0))}</div>` : ''}
         </div>
         <div class="flex items-center gap-1.5 shrink-0">
-          <button onclick="showTranslation('${lang}')" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]">${escapeHtml(t('translateShow'))}</button>
-          ${outdated ? `<button onclick="startTranslation(true, '${lang}')" class="ui-btn ui-btn-primary h-6 px-2 text-[11px]" title="${escapeHtml(t('tipTranslateUpdate'))}">${escapeHtml(t('translateUpdate'))}</button>` : ''}
-          <button onclick="startTranslation(false, '${lang}')" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]" title="${escapeHtml(t('tipTranslateRedo'))}">${escapeHtml(t('translateRedo'))}</button>
-          <button onclick="deleteTranslation('${lang}')" class="ui-btn ui-btn-subtle h-6 px-1.5 text-[11px] hover:text-apple-red" title="${escapeHtml(t('tipTranslateDelete'))}">${SVG_ICONS.trash}</button>
+          <button onclick="showTranslation(${jsArg(lang)})" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]">${escapeHtml(t('translateShow'))}</button>
+          ${outdated ? `<button onclick="startTranslation(true, ${jsArg(lang)})" class="ui-btn ui-btn-primary h-6 px-2 text-[11px]" title="${escapeHtml(t('tipTranslateUpdate'))}">${escapeHtml(t('translateUpdate'))}</button>` : ''}
+          <button onclick="startTranslation(false, ${jsArg(lang)})" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]" title="${escapeHtml(t('tipTranslateRedo'))}">${escapeHtml(t('translateRedo'))}</button>
+          <button onclick="deleteTranslation(${jsArg(lang)})" class="ui-btn ui-btn-subtle h-6 px-1.5 text-[11px] hover:text-apple-red" title="${escapeHtml(t('tipTranslateDelete'))}">${SVG_ICONS.trash}</button>
         </div>
       </div>
     </div>`;
@@ -822,7 +822,7 @@ function renderTxQuickLangs() {
   box.innerHTML = quickLangs().filter(c => c !== src).map(c => {
     const ready = !!have[c];
     const on = ready && showing === c;
-    return `<button onclick="${on ? "setTranscriptView('orig')" : `quickTranslate('${c}')`}"
+    return `<button onclick="${on ? "setTranscriptView('orig')" : `quickTranslate(${jsArg(c)})`}"
       title="${escapeHtml(on ? t('subsLangOriginal') : ready ? t('translateQuickShow').replace('{lang}', langName(c)) : t('translateQuickMake').replace('{lang}', langName(c)))}"
       class="quick-lang ${on ? 'on' : ''}">${ready && !on ? '✓ ' : ''}${escapeHtml(langCode(c))}</button>`;
   }).join('');
@@ -852,12 +852,12 @@ function renderTranslationControls() {
   for (const c of langs) {
     const on = c === state.txLang;
     html += sep;
-    html += item(`setTxViewChoice('tr','${c}')`, view === 'tr' && on ? '✓' : '', `${t('txViewTr')}: ${langName(c)}`);
-    html += item(`setTxViewChoice('both','${c}')`, view === 'both' && on ? '✓' : '', `${t('txViewBothWith')} ${langName(c)}`);
+    html += item(`setTxViewChoice('tr', ${jsArg(c)})`, view === 'tr' && on ? '✓' : '', `${t('txViewTr')}: ${langName(c)}`);
+    html += item(`setTxViewChoice('both', ${jsArg(c)})`, view === 'both' && on ? '✓' : '', `${t('txViewBothWith')} ${langName(c)}`);
   }
   if (canTranslate) html += sep + item("setTxViewChoice('__new')", '＋', t('txTranslateNew').replace(/^＋\s*/, ''));
   // Clearing: one translation, or everything the processing made
-  if (langs.length) html += sep + langs.map(c => item(`deleteTranslation('${c}')`, '✕', `${t('txDeleteTr')}: ${langName(c)}`)).join('');
+  if (langs.length) html += sep + langs.map(c => item(`deleteTranslation(${jsArg(c)})`, '✕', `${t('txDeleteTr')}: ${langName(c)}`)).join('');
   document.getElementById('tx-view-menu').innerHTML = html;
   document.getElementById('tx-clear-btn')?.classList.toggle('hidden', !(m && m.status === 'completed'));
   renderVerifiedButton();
@@ -996,7 +996,7 @@ function renderSpeakerPillsBar() {
     const active = state.speakerFilter === spkId;
     const named = !/^(Участник|Speaker|SPEAKER)[ _]?\d+$/i.test(s.name || '');
     const label = named ? (s.name || '?').trim().slice(0, 1).toUpperCase() : String(i + 1);
-    return `<button onclick="filterBySpeaker('${spkId}')" oncontextmenu="event.preventDefault(); previewSpeakerVoice(${s.sample_start || 0}, ${s.sample_end || 5})"
+    return `<button onclick="filterBySpeaker(${jsArg(spkId)})" oncontextmenu="event.preventDefault(); previewSpeakerVoice(${Number(s.sample_start) || 0}, ${Number(s.sample_end) || 5})"
       title="${escapeHtml(`${s.name}\n${t('tipFilterSpeaker')} · ${t('tipSpeakerChipVoice')}`)}"
       class="spk-chip ${active ? 'spk-chip-on' : ''}" style="--spk:${s.color}">${escapeHtml(label)}</button>`;
   }).join('');
@@ -1025,7 +1025,7 @@ async function renderTalkAnalytics() {
         ].filter(Boolean).join(' · '))}</div></div>`).join('')}
     </div>
     ${a.longest_monologues.length ? `<div class="text-[11px] text-apple-secondary">${escapeHtml(t('analyticsMonologues'))}: ${a.longest_monologues.map(x =>
-      `<button onclick="seekPlayer(${x.start})" class="text-apple-blue hover:underline font-mono">${formatTime(x.start)}</button> ${escapeHtml(x.name)} (${min(x.seconds)})`).join(' · ')}</div>` : ''}`;
+      `<button onclick="seekPlayer(${Number(x.start) || 0})" class="text-apple-blue hover:underline font-mono">${formatTime(x.start)}</button> ${escapeHtml(x.name)} (${min(x.seconds)})`).join(' · ')}</div>` : ''}`;
 }
 
 function renderSpeakersPanel() {
@@ -1045,14 +1045,14 @@ function renderSpeakersPanel() {
 
     return `
       <div class="px-4 py-3 flex items-center gap-3">
-        <input type="color" value="${s.color || '#0A84FF'}"
+        <input type="color" value="${escapeHtml(s.color || '#0A84FF')}"
           title="${escapeHtml(t('tipSpeakerColor'))}"
-          onchange="updateSpeaker('${spkId}', null, this.value)"
+          onchange="updateSpeaker(${jsArg(spkId)}, null, this.value)"
           class="w-4 h-4 rounded-full cursor-pointer bg-transparent border-0 shrink-0" />
 
         <input type="text" value="${escapeHtml(s.name)}"
           title="${escapeHtml(t('tipSpeakerNameInput'))}"
-          onblur="updateSpeaker('${spkId}', this.value, null)"
+          onblur="updateSpeaker(${jsArg(spkId)}, this.value, null)"
           onkeydown="if(event.key==='Enter') this.blur()"
           class="flex-1 bg-transparent hover:bg-white/5 focus:bg-apple-card focus:outline-none px-2.5 py-1 rounded-md text-xs font-medium text-white" />
 
@@ -1066,7 +1066,7 @@ function renderSpeakersPanel() {
           </span>` : ''}
         <span class="text-[11px] text-apple-secondary font-mono">${turnCount} ${t('turns')}</span>
 
-        <button onclick="previewSpeakerVoice(${s.sample_start || 0}, ${s.sample_end || 5})"
+        <button onclick="previewSpeakerVoice(${Number(s.sample_start) || 0}, ${Number(s.sample_end) || 5})"
           title="${escapeHtml(t('tipPlayVoiceSample'))}"
           class="ui-btn ui-btn-subtle text-apple-label">
           ${SVG_ICONS.playMini}
@@ -1242,10 +1242,10 @@ function transcriptSegmentHtml(seg, idx) {
   } else {
     if (words.length > 0 && !query) {
       bodyHtml = words.map(w =>
-        `<span class="word-token cursor-pointer" data-start="${w.start}" data-end="${w.end}" onclick="seekPlayer(${w.start})">${escapeHtml(w.word)}</span>`
+        `<span class="word-token cursor-pointer" data-start="${Number(w.start) || 0}" data-end="${Number(w.end) || 0}" onclick="seekPlayer(${Number(w.start) || 0})">${escapeHtml(w.word)}</span>`
       ).join('');
     } else {
-      bodyHtml = `<span class="cursor-pointer" onclick="seekPlayer(${seg.start})">${highlightSearch(escapeHtml(seg.text), query)}</span>`;
+      bodyHtml = `<span class="cursor-pointer" onclick="seekPlayer(${Number(seg.start) || 0})">${highlightSearch(escapeHtml(seg.text), query)}</span>`;
     }
     if (tr) bodyHtml += translationHtml(seg, tr, query, true);
   }
@@ -1262,7 +1262,7 @@ function transcriptSegmentHtml(seg, idx) {
   return `
     <div id="seg-${seg.id}" data-start="${seg.start}" data-end="${seg.end}"
       class="segment-row group px-3.5 py-2.5 flex items-baseline gap-4 hover:bg-white/[0.02]">
-      <button onclick="seekPlayer(${seg.start})"
+      <button onclick="seekPlayer(${Number(seg.start) || 0})"
         title="${escapeHtml(t('tipSeekTimestamp'))}"
         class="text-[11px] font-mono text-apple-tertiary hover:text-apple-blue shrink-0 w-12 text-right transition">
         ${formatTime(seg.start)}
@@ -1344,7 +1344,7 @@ function translationWordsHtml(seg, text) {
   return parts.map(w => {
     if (!w.trim()) return w;
     const t0 = Math.round(times[i++] * 100) / 100;
-    return `<span class="tr-word" data-start="${t0}" onclick="event.stopPropagation(); seekPlayer(${t0})">${escapeHtml(w)}</span>`;
+    return `<span class="tr-word" data-start="${Number(t0) || 0}" onclick="event.stopPropagation(); seekPlayer(${Number(t0) || 0})">${escapeHtml(w)}</span>`;
   }).join('');
 }
 
@@ -1359,7 +1359,7 @@ function translationHtml(seg, tr, query, secondary) {
       ? highlightSearch(escapeHtml(tr.text), query)
       : translationWordsHtml(seg, tr.text);
   const cls = secondary ? 'block mt-1 text-[13px] text-apple-secondary' : '';
-  return `<span class="tr-text cursor-pointer ${cls} ${tr.stale ? 'opacity-70' : ''}" onclick="seekPlayer(${seg.start})">${body}${staleBadge}</span>`;
+  return `<span class="tr-text cursor-pointer ${cls} ${tr.stale ? 'opacity-70' : ''}" onclick="seekPlayer(${Number(seg.start) || 0})">${body}${staleBadge}</span>`;
 }
 
 // Sorted segment list for O(log n) lookup of the playing segment; words are looked up inside it.

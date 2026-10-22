@@ -369,7 +369,7 @@ function renderAskScope() {
   const sc = state.askScope;
   const item = (scope, label, count, depth, icon) => {
     const on = scope.type === sc.type && scope.id === sc.id;
-    return `<button onclick='setAskScope(${JSON.stringify(scope)})'
+    return `<button onclick="setAskScope(${jsArg(scope)})"
       class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[12px] transition ${on ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'}"
       style="padding-left:${8 + depth * 14}px">
       <span class="shrink-0 ${on ? 'text-white' : 'text-apple-tertiary'}">${icon}</span>
@@ -419,7 +419,7 @@ function renderSeriesScope() {
   const sc = state.askScope;
   document.getElementById('ask-series-list').innerHTML = list.map(s => {
     const on = sc.type === 'series' && sc.id === s.id;
-    return `<button onclick='setAskScope(${JSON.stringify({ type: 'series', id: s.id })})'
+    return `<button onclick="setAskScope(${jsArg({ type: 'series', id: s.id })})"
       class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[12px] transition ${on ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'}">
       <span class="shrink-0 ${on ? 'text-white' : 'text-apple-tertiary'}">↻</span><span class="truncate flex-1">${escapeHtml(s.name)}</span>
       <span class="text-[10.5px] font-mono ${on ? 'text-white/80' : 'text-apple-tertiary'}">${s.count}</span></button>`;
@@ -437,7 +437,7 @@ function renderPeople() {
     const on = sc.type === 'person' && sc.name.toLowerCase() === p.name.toLowerCase();
     const tip = t('tipPerson').replace('{n}', p.recordings.length).replace('{time}', formatSpeakingTime(p.total_seconds))
       + '\n' + p.recordings.slice(0, 12).map(r => `${r.date} · ${r.title} · ${formatSpeakingTime(r.seconds)}`).join('\n');
-    return `<button onclick='setAskScope(${JSON.stringify({ type: 'person', name: p.name })})' title="${escapeHtml(tip)}"
+    return `<button onclick="setAskScope(${jsArg({ type: 'person', name: p.name })})" title="${escapeHtml(tip)}"
       class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[12px] transition ${on ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'}">
       <span class="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold ${on ? 'bg-white/25' : 'bg-white/10 text-apple-secondary'}">${escapeHtml(p.name.slice(0, 1).toUpperCase())}</span>
       <span class="truncate flex-1">${escapeHtml(p.name)}${p.profile ? ` <span class="${on ? 'text-white/70' : 'text-apple-tertiary'}" title="${escapeHtml(t('tipPersonVoice'))}">◉</span>` : ''}</span>

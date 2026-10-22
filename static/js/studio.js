@@ -415,7 +415,7 @@ function toggleRecordPresetMenu(e) {
     + (hint ? `<span class="block text-[10.5px] text-apple-tertiary truncate">${escapeHtml(hint)}</span>` : '') + `</span></button>`;
   const sourceName = { mic: t('sourceMic'), system: t('sourceSystem'), both: t('sourceBoth') };
   menu.innerHTML = recordPresets().map(p => item(
-    `hideRecordPresetMenu(); quickRecord('${p.id}')`, p.id === def ? '★' : '', presetLabel(p),
+    `hideRecordPresetMenu(); quickRecord(${jsArg(p.id)})`, p.id === def ? '★' : '', presetLabel(p),
     sourceName[p.source] + (p.live ? ` · ${t('presetWithCaptions')}` : ''))).join('')
     + '<div class="h-px bg-white/10 my-1"></div>'
     + item('hideRecordPresetMenu(); openRecordModal()', '', t('presetOpenSettings'), '');
@@ -798,7 +798,7 @@ function renderQuickLangs() {
   const current = document.getElementById('live-translate-select').value;
   const [a, b] = quickLangs();
   const btn = (value, label, title, menuIndex) =>
-    `<button onclick="setQuickTranslate('${value}')" ${menuIndex != null ? `oncontextmenu="openQuickLangMenu(event, ${menuIndex})"` : ''}
+    `<button onclick="setQuickTranslate(${jsArg(value)})" ${menuIndex != null ? `oncontextmenu="openQuickLangMenu(event, ${menuIndex})"` : ''}
       class="quick-lang ${current === value ? 'on' : ''}" title="${escapeHtml(title)}">${escapeHtml(label)}</button>`;
   box.innerHTML = btn(a, langCode(a), t('tipQuickLang').replace('{lang}', langName(a)), 0)
     + btn(b, langCode(b), t('tipQuickLang').replace('{lang}', langName(b)), 1)
