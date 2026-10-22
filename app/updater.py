@@ -286,17 +286,98 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else ""
 
 
-def _wait_for_exit(pid: int, timeout: float = 60.0) -> None:
+class UpdateFailed(RuntimeError):
+    """An update that did not install. `outcome` says what the program folder holds now:
+    "untouched" (nothing was replaced yet), "restored" (the previous version is back) or "broken"
+    (putting it back failed too)."""
+
+    def __init__(self, message: str, outcome: str = "untouched") -> None:
+        super().__init__(message)
+        self.outcome = outcome
+
+
+OUTCOME_TEXT = {
+    "untouched": "Файлы программы не изменены.",
+    "restored": "Прежняя версия восстановлена.",
+    "broken": "Прежнюю версию восстановить не удалось: скачайте и распакуйте VerbaScribe заново "
+              "(ваши записи и настройки в папке data не пострадают; подробности в logs\\update.log).",
+}
+
+# Program code an update owns: a file of these kinds that the new version no longer has is removed
+# (an old module left in app/ could still be imported)
+CODE_DIRS = ("app", "static")
+CODE_SUFFIXES = {".py", ".js", ".html", ".css"}
+# The dubbing environment's ready mark (app/dub_setup.py DUB_READY_MARKER)
+DUB_MARKER = Path(".venv-dub") / "verbascribe-dub-ready.txt"
+
+
+def _wait_for_exit(pid: int, timeout: float = 120.0) -> bool:
+    """False if the process is still running after `timeout` (it may be finishing a job)."""
     if sys.platform != "win32":
-        return
+        return True
     import ctypes
 
-    SYNCHRONIZE = 0x00100000
+    SYNCHRONIZE, WAIT_OBJECT_0 = 0x00100000, 0
     h = ctypes.windll.kernel32.OpenProcess(SYNCHRONIZE, False, pid)
     if h:
-        ctypes.windll.kernel32.WaitForSingleObject(h, int(timeout * 1000))
+        ended = ctypes.windll.kernel32.WaitForSingleObject(h, int(timeout * 1000)) == WAIT_OBJECT_0
         ctypes.windll.kernel32.CloseHandle(h)
+        if not ended:
+            return False
     time.sleep(1.0)  # files and the port are released a moment later
+    return True
+
+
+def _stale_code_files(app_dir: Path, new_files: List[str]) -> List[str]:
+    """Code files of the installed version that the new one does not ship."""
+    new = set(new_files)
+    if not any(rel.startswith("app/") for rel in new):  # not a full program archive: remove nothing
+        return []
+    out = []
+    for top in CODE_DIRS:
+        base = app_dir / top
+        if not base.is_dir():
+            continue
+        for p in base.rglob("*"):
+            if p.suffix.lower() in CODE_SUFFIXES and p.is_file() and "__pycache__" not in p.parts:
+                rel = p.relative_to(app_dir).as_posix()
+                if rel not in new:
+                    out.append(rel)
+    return sorted(out)
+
+
+def _preflight(app_dir: Path, need_bytes: int) -> None:
+    """Fails before anything is replaced when the program folder is not writable or the disk is full."""
+    probe = app_dir / ".update-write-test"
+    try:
+        probe.write_bytes(b"ok")
+        probe.unlink()
+    except OSError as e:
+        raise UpdateFailed(f"Нет права записи в папку программы {app_dir} ({e}). "
+                           "Переместите VerbaScribe в папку пользователя или запустите от имени администратора.")
+    try:
+        free = shutil.disk_usage(app_dir).free
+    except OSError:
+        return
+    if free < need_bytes:
+        raise UpdateFailed(f"Недостаточно места на диске: нужно около {need_bytes / 1e9:.1f} ГБ, "
+                           f"свободно {free / 1e9:.1f} ГБ.")
+
+
+def _mark_dub_outdated(app_dir: Path, old_hash: str) -> None:
+    """requirements-dub.txt changed: the dubbing environment needs its packages updated. A ready
+    mark that records the requirements it was made with notices that itself; an older mark gets
+    the previous requirements written in, so it reads as outdated."""
+    marker = app_dir / DUB_MARKER
+    try:
+        text = marker.read_text(encoding="utf-8")
+    except OSError:
+        return
+    if not re.search(r"^requirements=", text, re.M):
+        try:
+            marker.write_text(text.rstrip("\n") + f"\nrequirements={old_hash}\n", encoding="utf-8")
+        except OSError:  # the update itself is fine; the next dub check shows what is missing
+            pass
 
 
 def _find_uv() -> Optional[str]:
@@ -357,14 +438,20 @@ def apply_update(zip_path: Path, app_dir: Path, data_dir: Path, report: Callable
     log_dir.mkdir(parents=True, exist_ok=True)
     backup = data_dir / "updates" / "backup.zip"
     old_req = _sha256(app_dir / "requirements.txt")
+    old_dub_req = _sha256(app_dir / "requirements-dub.txt")
     replaced: List[str] = []
     restore_packages: Optional[Callable[[], None]] = None
 
     with zipfile.ZipFile(zip_path) as z:
         files = archive_files(z.namelist(), app_dir)
+        stale = _stale_code_files(app_dir, [rel for _n, rel in files])
+        new_req = next((hashlib.sha256(z.read(n)).hexdigest() for n, rel in files if rel == "requirements.txt"), old_req)
+        # The new files, their backup in the data folder and, with new libraries, room to install them
+        size = sum(z.getinfo(n).file_size for n, _rel in files)
+        _preflight(app_dir, 2 * size + 200_000_000 + (3_000_000_000 if new_req != old_req else 0))
         report(f"Резервная копия ({len(files)} файлов)…")
         with zipfile.ZipFile(backup, "w", zipfile.ZIP_DEFLATED) as bz:
-            for _n, rel in files:
+            for rel in [rel for _n, rel in files] + stale:
                 p = app_dir / rel
                 if p.is_file():
                     bz.write(p, rel)
@@ -385,6 +472,8 @@ def apply_update(zip_path: Path, app_dir: Path, data_dir: Path, report: Callable
                         time.sleep(1.0)
                 if i % 50 == 0:
                     report(f"Замена файлов программы… {i}/{len(files)}")
+            for rel in stale:
+                (app_dir / rel).unlink(missing_ok=True)
             if _sha256(app_dir / "requirements.txt") != old_req:
                 report("Установка библиотек Python (может занять несколько минут)…")
                 py = app_dir / ".venv" / "Scripts" / "python.exe"
@@ -406,8 +495,11 @@ def apply_update(zip_path: Path, app_dir: Path, data_dir: Path, report: Callable
                                          creationflags=_NO_WINDOW)
                 if res.returncode != 0:
                     raise RuntimeError("Не удалось установить библиотеки (подробности в logs\\update.log)")
-        except Exception:
+            if _sha256(app_dir / "requirements-dub.txt") != old_dub_req:
+                _mark_dub_outdated(app_dir, old_dub_req)
+        except Exception as e:
             report("Ошибка — восстановление прежней версии…")
+            outcome = "restored"
             # Each step on its own: a failure here must not hide the original error
             try:
                 with zipfile.ZipFile(backup) as bz:
@@ -417,6 +509,7 @@ def apply_update(zip_path: Path, app_dir: Path, data_dir: Path, report: Callable
                     if rel not in kept:
                         (app_dir / rel).unlink(missing_ok=True)
             except Exception:
+                outcome = "broken"
                 with open(log_dir / "update.log", "a", encoding="utf-8") as lf:
                     lf.write("restore of the program files failed:\n" + traceback.format_exc())
             if restore_packages:
@@ -424,9 +517,10 @@ def apply_update(zip_path: Path, app_dir: Path, data_dir: Path, report: Callable
                 try:
                     restore_packages()
                 except Exception:
+                    outcome = "broken"
                     with open(log_dir / "update.log", "a", encoding="utf-8") as lf:
                         lf.write("restore of the Python packages failed:\n" + traceback.format_exc())
-            raise
+            raise UpdateFailed(str(e), outcome) from e
 
 
 def _main(argv: List[str]) -> int:
@@ -449,19 +543,20 @@ def _main(argv: List[str]) -> int:
         nonlocal ok, message
         try:
             ui.set("Ожидание закрытия VerbaScribe…")
-            if a.pid:
-                _wait_for_exit(a.pid)
+            if a.pid and not _wait_for_exit(a.pid):
+                # Replacing files under a running program would mix two versions
+                raise UpdateFailed("VerbaScribe не закрылся за две минуты. Закройте программу и установите обновление снова.")
             apply_update(Path(a.zip), app_dir, data_dir, ui.set)
             ui.set("Готово." if a.no_restart else "Готово. Запуск VerbaScribe…")
         except Exception as e:
-            ok, message = False, str(e)
+            ok, message = False, f"{e}\n{OUTCOME_TEXT[getattr(e, 'outcome', 'untouched')]}"
             with open(data_dir / "logs" / "update.log", "a", encoding="utf-8") as lf:
                 lf.write(traceback.format_exc())
         finally:
             launcher = app_dir / "VerbaScribe.exe"
             if launcher.is_file() and not (a.no_restart and ok):
                 subprocess.Popen([str(launcher)], cwd=str(app_dir))
-            ui.close(None if ok else f"Обновление не установлено: {message}\nПрежняя версия восстановлена.")
+            ui.close(None if ok else f"Обновление не установлено: {message}")
 
     threading.Thread(target=work, daemon=True).start()
     ui.run()

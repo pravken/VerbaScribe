@@ -78,6 +78,59 @@ class ApplyUpdateTest(unittest.TestCase):
         self.assertEqual((self.app / "requirements.txt").read_text(), "same")
         self.assertFalse((self.app / "app" / "new.py").exists())
 
+    def test_failed_restore_is_reported_as_broken(self):
+        _release_zip(self.zip, {"app/main.py": "new main", "requirements.txt": "changed"})
+        with mock.patch.object(updater.subprocess, "run", return_value=mock.Mock(returncode=1)), \
+                mock.patch.object(updater.zipfile.ZipFile, "extractall", side_effect=PermissionError("locked")):
+            with self.assertRaises(updater.UpdateFailed) as cm:
+                updater.apply_update(self.zip, self.app, self.data, lambda _m: None)
+        self.assertEqual(cm.exception.outcome, "broken")
+
+    def test_files_the_new_version_dropped_are_removed_and_come_back_on_failure(self):
+        (self.app / "app" / "gone.py").write_text("old module")
+        (self.app / "app" / "notes.txt").write_text("not code")
+        _release_zip(self.zip, {"app/main.py": "new main", "requirements.txt": "same"})
+        with mock.patch.object(updater.subprocess, "run"):
+            updater.apply_update(self.zip, self.app, self.data, lambda _m: None)
+        self.assertFalse((self.app / "app" / "gone.py").exists())
+        self.assertTrue((self.app / "app" / "notes.txt").exists())
+
+        (self.app / "app" / "gone.py").write_text("old module")
+        _release_zip(self.zip, {"app/main.py": "newer main", "requirements.txt": "changed"})
+        with mock.patch.object(updater.subprocess, "run", return_value=mock.Mock(returncode=1)):
+            with self.assertRaises(updater.UpdateFailed) as cm:
+                updater.apply_update(self.zip, self.app, self.data, lambda _m: None)
+        self.assertEqual(cm.exception.outcome, "restored")
+        self.assertEqual((self.app / "app" / "gone.py").read_text(), "old module")
+        self.assertEqual((self.app / "app" / "main.py").read_text(), "new main")
+
+    def test_full_disk_stops_before_any_file_changes(self):
+        _release_zip(self.zip, {"app/main.py": "new main", "requirements.txt": "same"})
+        with mock.patch.object(updater.shutil, "disk_usage", return_value=mock.Mock(free=1000)):
+            with self.assertRaises(updater.UpdateFailed) as cm:
+                updater.apply_update(self.zip, self.app, self.data, lambda _m: None)
+        self.assertEqual(cm.exception.outcome, "untouched")
+        self.assertIn("места", str(cm.exception))
+        self.assertEqual((self.app / "app" / "main.py").read_text(), "old main")
+
+    def test_changed_dub_requirements_mark_the_dub_environment_outdated(self):
+        from app import dub_setup
+
+        (self.app / "requirements-dub.txt").write_text("torch==1")
+        marker = self.app / ".venv-dub" / "verbascribe-dub-ready.txt"
+        marker.parent.mkdir()
+        marker.write_text("Verified 2026-01-01: cuda=True\n")  # made before marks recorded requirements
+        _release_zip(self.zip, {"app/main.py": "new main", "requirements.txt": "same", "requirements-dub.txt": "torch==2"})
+        with mock.patch.object(updater.subprocess, "run"):
+            updater.apply_update(self.zip, self.app, self.data, lambda _m: None)
+        with mock.patch.object(dub_setup, "DUB_READY_MARKER", marker), \
+                mock.patch.object(dub_setup, "REQUIREMENTS", self.app / "requirements-dub.txt"):
+            self.assertTrue(dub_setup.is_outdated())
+            self.assertFalse(dub_setup.is_installed())
+            marker.write_text(f"Verified\nrequirements={dub_setup._requirements_hash()}\n")
+            self.assertFalse(dub_setup.is_outdated())
+            self.assertTrue(dub_setup.is_installed())
+
 
 if __name__ == "__main__":
     unittest.main()

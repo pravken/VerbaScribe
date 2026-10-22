@@ -208,7 +208,8 @@ function renderDubSetup(env, prefix = 'dub') {
     if (env.installed) return;
   }
 
-  const meta = [t('dubSetupSize').replace('{gb}', () => st.download_gb ?? 6)];
+  const meta = st.outdated && !st.active ? [t('dubSetupOutdated')] : [];
+  meta.push(t('dubSetupSize').replace('{gb}', () => st.download_gb ?? 6));
   if (st.free_gb != null) meta.push(t('dubSetupFree').replace('{gb}', () => st.free_gb));
   el('setup-meta').textContent = env.installed && !st.active ? '' : meta.join(' · ');
 

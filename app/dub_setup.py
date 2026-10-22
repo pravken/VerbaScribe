@@ -7,7 +7,9 @@ then check that the packages really import. Only a successful check marks the en
 ready, so an interrupted or failed install never enables the Dub button.
 """
 
+import hashlib
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -68,6 +70,29 @@ def _find_uv() -> Optional[str]:
     return next((str(p) for p in candidates if p.is_file()), None)
 
 
+def _requirements_hash() -> str:
+    try:
+        return hashlib.sha256(REQUIREMENTS.read_bytes()).hexdigest()
+    except OSError:
+        return ""
+
+
+def _marked_requirements() -> Optional[str]:
+    """The requirements hash the ready mark was made with; None without a mark or a hash in it."""
+    try:
+        m = re.search(r"^requirements=(\w+)", DUB_READY_MARKER.read_text(encoding="utf-8"), re.M)
+    except OSError:
+        return None
+    return m.group(1) if m else None
+
+
+def is_outdated() -> bool:
+    """The environment was made for an older requirements-dub.txt (an update changed it): it needs
+    its packages installed again before dubbing."""
+    marked = _marked_requirements()
+    return marked is not None and marked != _requirements_hash()
+
+
 def _verify() -> bool:
     if not DUB_PYTHON.is_file():
         return False
@@ -83,8 +108,10 @@ def _verify() -> bool:
         for line in tail:
             _log(f"check: {line}")
         return False
+    # A re-check of an outdated environment keeps it outdated: the imports work, the versions are old
+    req = _marked_requirements() if is_outdated() else _requirements_hash()
     DUB_READY_MARKER.write_text(
-        f"Verified {datetime.now():%Y-%m-%d %H:%M:%S}: {res.stdout.strip()}\n", encoding="utf-8"
+        f"Verified {datetime.now():%Y-%m-%d %H:%M:%S}: {res.stdout.strip()}\nrequirements={req}\n", encoding="utf-8"
     )
     return True
 
@@ -93,7 +120,7 @@ def is_installed() -> bool:
     """Ready = verified once. Environments made earlier by setup_dub.bat are checked lazily."""
     global _verified_once
     if DUB_READY_MARKER.is_file():
-        return True
+        return not is_outdated()
     with _lock:
         busy = _state["active"]
     if busy or _verified_once or not DUB_PYTHON.is_file():
@@ -116,6 +143,7 @@ def setup_status() -> Dict[str, Any]:
         "download_gb": DOWNLOAD_SIZE_GB,
         "venv": str(DUB_VENV),
         "uv": bool(_find_uv()),
+        "outdated": is_outdated(),
     }
 
 
