@@ -11,7 +11,7 @@ from app import backup
 class BackupTest(unittest.TestCase):
     def test_make_restore_apply(self):
         from app import secret_store
-        from app.database import DB_PATH, create_meeting, get_meeting, init_db, list_meetings
+        from app.database import DB_PATH, _db_lock, create_meeting, get_meeting, init_db, list_meetings
 
         init_db()
         media = Path(tempfile.mkdtemp()) / "talk.m4a"
@@ -38,7 +38,11 @@ class BackupTest(unittest.TestCase):
         self.assertTrue(backup.PENDING.exists())
 
         create_meeting("Сделана после копии", "x.m4a", "/tmp/x.m4a")
-        kept = backup.apply_pending()  # what the next start does
+        # What the next start does, before anything opens the database. Here the background threads of
+        # the app started by earlier tests (call detection, retention, the search indexer...) still
+        # read it; on Windows an open -wal cannot be deleted, so they wait on the database lock.
+        with _db_lock:
+            kept = backup.apply_pending()
         self.assertTrue(Path(kept).exists())
         self.assertFalse(backup.PENDING.exists())
         self.assertEqual(len(list_meetings()), before)
