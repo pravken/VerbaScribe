@@ -390,6 +390,13 @@ select option, select optgroup {
 label.settings-toggle { display: flex; }
 
 /* Settings tabs fill the bar evenly */
+/* Settings: every group of options is a card with a heading */
+.settings-card { border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.025); border-radius: 12px; padding: 14px 16px; }
+.settings-card > * + * { margin-top: 12px; }
+.settings-card.\!space-y-0 > * + * { margin-top: 0; }
+.settings-card .settings-card { background: transparent; }
+/* "Download a speech model" belongs to the Recognition tab only */
+#modal-settings:not([data-tab="recognition"]) #first-run-banner { display: none; }
 .settings-tabs { display: flex; }
 .settings-tabs .apple-segment-btn { flex: 1 1 0; justify-content: center; text-align: center; }
 

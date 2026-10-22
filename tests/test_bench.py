@@ -98,5 +98,19 @@ class FfmpegScriptOptionTest(unittest.TestCase):
         media_cut._SCRIPT_OPTION.clear()
 
 
+class CleanSlateTest(unittest.TestCase):
+    def test_everything_is_released_and_ollama_emptied(self):
+        loaded = [[{"name": "qwen3:8b"}], []]
+        with mock.patch("app.transcriber.release_whisper_model") as wh, mock.patch("app.asr_onnx.release") as onnx, \
+             mock.patch("app.vram.ollama_loaded", side_effect=lambda: loaded[0] if loaded else []) as ol, \
+             mock.patch("httpx.Client") as client, mock.patch("app.hardware.clear_vram"), mock.patch.object(bench.time, "sleep",
+                                                                                                         side_effect=lambda _s: loaded.pop(0) if loaded else None):
+            bench.clean_slate()
+        wh.assert_called_once()
+        onnx.assert_called_once_with()
+        body = client.return_value.__enter__.return_value.post.call_args.kwargs["json"]
+        self.assertEqual(body, {"model": "qwen3:8b", "keep_alive": 0})
+
+
 if __name__ == "__main__":
     unittest.main()

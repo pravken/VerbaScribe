@@ -197,7 +197,7 @@ function formatTime(sec) {
 
 // --- Modals & Menus ---
 // Settings are split into tabs; the last one is remembered
-const SETTINGS_TABS = ['general', 'record', 'recognition', 'analysis', 'export', 'dub', 'bench'];
+const SETTINGS_TABS = ['general', 'record', 'recognition', 'analysis', 'export', 'integrations', 'dub', 'bench'];
 
 function selectSettingsTab(name) {
   if (!SETTINGS_TABS.includes(name)) name = 'general';
@@ -206,6 +206,7 @@ function selectSettingsTab(name) {
     const btn = document.getElementById(`stab-${k}`);
     if (btn) btn.className = `apple-segment-btn ${k === name ? 'apple-segment-active' : 'text-apple-secondary hover:text-white'}`;
   });
+  document.getElementById('modal-settings').dataset.tab = name;
   try { localStorage.setItem('verbascribe_settings_tab', name); } catch (e) {}
   if (name === 'bench' && typeof loadBench === 'function') loadBench();
 }

@@ -1656,6 +1656,9 @@ function benchTable(run) {
   const ok = run.results.filter(r => !r.error);
   const best = key => ok.length > 1 ? Math.min(...ok.map(r => r[key])) : null;
   const cell = (v, isBest) => `<td class="px-2 py-1 text-right font-mono ${isBest ? 'text-apple-green' : ''}">${v}</td>`;
+  // The work, and under it the loading of the model (timed apart, each model from an empty memory)
+  const timeCell = (r, isBest) => `<td class="px-2 py-1 text-right font-mono ${isBest ? 'text-apple-green' : ''}">${r.sec} s${r.load_sec != null
+    ? `<div class="text-[10px] text-apple-tertiary font-sans">${escapeHtml(t('benchLoad'))} ${r.load_sec} s</div>` : ''}</td>`;
   const useBtn = r => r.error ? '' : `<button onclick="benchUse('${run.kind}', '${escapeHtml(r.model)}')" class="text-[11px] text-apple-blue hover:underline">${escapeHtml(t('benchUse'))}</button>`;
   const mem = r => [r.vram_mb ? `${(r.vram_mb / 1024).toFixed(1)} GB VRAM` : '', r.ram_mb ? `${(r.ram_mb / 1024).toFixed(1)} GB RAM` : ''].filter(Boolean).join(' · ') || '—';
   const text = r => r.text ? `<details><summary class="cursor-pointer text-[11px] text-apple-tertiary">${escapeHtml(t('benchShowText'))}</summary>
@@ -1667,7 +1670,7 @@ function benchTable(run) {
     rows = run.results.map(r => r.error
       ? `<tr><td class="px-2 py-1">${escapeHtml(r.name || benchModelName(r.model))}</td><td colspan="5" class="px-2 py-1 text-apple-amber">${escapeHtml(r.error)}</td></tr>`
       : `<tr class="align-top"><td class="px-2 py-1">${escapeHtml(r.name || benchModelName(r.model))}${text(r)}</td>
-          ${cell(`${(r.wer * 100).toFixed(1)}%`, r.wer === bw)}${cell(`${r.sec} s`, r.sec === bs)}${cell(`×${r.speed}`, false)}
+          ${cell(`${(r.wer * 100).toFixed(1)}%`, r.wer === bw)}${timeCell(r, r.sec === bs)}${cell(`×${r.speed}`, false)}
           <td class="px-2 py-1 text-right text-[11px] text-apple-secondary">${escapeHtml(mem(r))}<div class="text-apple-tertiary">${escapeHtml(r.device || '')}</div></td>
           <td class="px-2 py-1 text-right">${useBtn(r)}</td></tr>`);
   } else {
@@ -1676,7 +1679,7 @@ function benchTable(run) {
     rows = run.results.map(r => r.error
       ? `<tr><td class="px-2 py-1">${escapeHtml(r.name || benchModelName(r.model))}</td><td colspan="4" class="px-2 py-1 text-apple-amber">${escapeHtml(r.error)}</td></tr>`
       : `<tr class="align-top"><td class="px-2 py-1">${escapeHtml(r.name || benchModelName(r.model))}${text(r)}</td>
-          ${cell(`${(r.unverified_share * 100).toFixed(0)}% (${r.unverified})`, r.unverified_share === bu)}${cell(`${r.sec} s`, r.sec === bs)}${cell(r.points, false)}
+          ${cell(`${(r.unverified_share * 100).toFixed(0)}% (${r.unverified})`, r.unverified_share === bu)}${timeCell(r, r.sec === bs)}${cell(r.points, false)}
           <td class="px-2 py-1 text-right">${useBtn(r)}</td></tr>`);
   }
   return `<div class="overflow-x-auto"><table class="w-full text-[12px] text-apple-label">

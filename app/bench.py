@@ -327,6 +327,50 @@ def _run_asr(m: Dict[str, Any], models: List[str], clip_sec: int) -> Dict[str, A
     return {"clip_start": round(start, 1), "clip_sec": round(end - start, 1), "ref_words": len(ref), "language": lang or ""}
 
 
+def _ollama_unload_all(timeout: float = 20.0) -> None:
+    """Every model Ollama holds is unloaded (and waited for): the next one gets the whole GPU."""
+    try:
+        import httpx
+
+        from app.vram import _ollama_base, ollama_loaded
+
+        loaded = ollama_loaded()
+        if not loaded:
+            return
+        with httpx.Client(timeout=15.0) as client:
+            for m in loaded:
+                client.post(f"{_ollama_base()}/api/generate", json={"model": m["name"], "keep_alive": 0})
+        deadline = time.time() + timeout
+        while ollama_loaded() and time.time() < deadline:
+            time.sleep(0.5)
+    except Exception:
+        traceback.print_exc()
+
+
+def clean_slate() -> None:
+    """Before each measured model: nothing else in memory (Whisper, GigaAM / Parakeet, the speaker
+    model, the caption worker, Ollama's models), so every model starts from the same state and the
+    one before it does not take video memory away from it."""
+    import gc
+
+    from app import asr_onnx, live, transcriber
+    from app.diarizer import ecapa_loaded_on, unload_diarizer
+    from app.hardware import clear_vram
+
+    transcriber.release_whisper_model()
+    asr_onnx.release()
+    if ecapa_loaded_on():
+        unload_diarizer()
+    worker = live._worker
+    if worker is not None and worker.proc is not None:
+        with worker.lock:
+            worker._kill()
+    _ollama_unload_all()
+    gc.collect()
+    clear_vram()
+    time.sleep(1.0)  # the driver returns the memory a moment later
+
+
 def _asr_one(mid: str, clip: Path, audio: Any, dur: float, lang: Optional[str]) -> Dict[str, Any]:
     from app import asr_onnx
 
@@ -335,8 +379,8 @@ def _asr_one(mid: str, clip: Path, audio: Any, dur: float, lang: Optional[str]) 
             raise ValueError(f"Модель не знает язык записи ({lang})")
         from app import onnx_gpu
 
-        gpu = onnx_gpu.gpu_for_job(mid)  # as a transcription job would run it
-        was_loaded = gpu and asr_onnx.on_gpu(mid) or not gpu and mid in asr_onnx.loaded_models()
+        clean_slate()
+        gpu = onnx_gpu.gpu_for_job(mid)  # as a transcription job would run it, with the GPU free
         with _Peak() as peak:
             t0 = time.perf_counter()
             asr_onnx._load(mid, gpu)
@@ -344,15 +388,14 @@ def _asr_one(mid: str, clip: Path, audio: Any, dur: float, lang: Optional[str]) 
             _set(stage="Распознавание…")
             segs = asr_onnx.transcribe(mid, clip, dur, lambda _p: None, _check, gpu=gpu)
             t2 = time.perf_counter()
-        if not was_loaded:
-            asr_onnx.release(mid, gpu=gpu)
+        asr_onnx.release(mid, gpu=gpu)
         text, device = " ".join(s["text"] for s in segs), "cuda" if gpu else "cpu"
     else:
         from app import transcriber
         from app.database import get_all_settings
 
         settings = get_all_settings()
-        transcriber.release_whisper_model()  # each model alone in memory
+        clean_slate()
         with _Peak() as peak:
             t0 = time.perf_counter()
             model = transcriber._load_whisper_with_fallback(mid, settings.get("device", "cuda"),
@@ -381,10 +424,22 @@ def _run_llm(m: Dict[str, Any], models: List[str], clip_sec: int) -> Dict[str, A
     from app.grounding import UNVERIFIED_MARK, ground_summary
     from app.ollama_client import generate_meeting_summary
 
+    import httpx
+
+    from app.ollama_client import ensure_ollama_running
+    from app.vram import _ollama_base
+
+    ensure_ollama_running(_ollama_base())
     for mid in models:
         _check()
-        _set(model=mid, stage="Пишет протокол…")
+        _set(model=mid, stage="Загрузка модели…")
         try:
+            clean_slate()  # the models before it are out of the video memory
+            t_load = time.perf_counter()
+            with httpx.Client(timeout=600.0) as client:  # loading alone, timed apart from the writing
+                client.post(f"{_ollama_base()}/api/generate", json={"model": mid, "keep_alive": "10m"}).raise_for_status()
+            load_sec = time.perf_counter() - t_load
+            _set(stage="Пишет протокол…")
             t0 = time.perf_counter()
             md = generate_meeting_summary(m["segments"], m.get("speakers") or {}, "protocol", model_name=mid,
                                           answer_lang=_answer_lang(m), local_only=True)
@@ -392,7 +447,7 @@ def _run_llm(m: Dict[str, Any], models: List[str], clip_sec: int) -> Dict[str, A
             grounded = ground_summary(md, m["segments"], m.get("speakers") or {})
             points = [ln for ln in grounded.splitlines() if re.match(r"\s*(?:[-*+]|\d+[.)])\s+\S", ln)]
             unverified = sum(1 for ln in points if UNVERIFIED_MARK in ln)
-            r = {"model": mid, "sec": round(sec, 1), "chars": len(md), "points": len(points), "unverified": unverified,
+            r = {"model": mid, "sec": round(sec, 1), "load_sec": round(load_sec, 1), "chars": len(md), "points": len(points), "unverified": unverified,
                  "unverified_share": round(unverified / len(points), 3) if points else 0.0, "text": grounded[:20000]}
         except Cancelled:
             raise
@@ -400,6 +455,7 @@ def _run_llm(m: Dict[str, Any], models: List[str], clip_sec: int) -> Dict[str, A
             traceback.print_exc()
             r = {"model": mid, "error": str(e)[:300]}
         _add_result(r)
+    _ollama_unload_all()
     return {"transcript_chars": sum(len(str(s.get("text") or "")) for s in m["segments"])}
 
 
