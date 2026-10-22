@@ -775,7 +775,8 @@ def _install_update_on_exit() -> None:
 
 
 def show_error_box(text: str) -> None:
-    if sys.platform == "win32":
+    # --headless runs without a window, maybe with nobody at the screen: a message box would wait forever
+    if sys.platform == "win32" and "--headless" not in sys.argv:
         try:
             MB_ICONERROR = 0x10
             ctypes.windll.user32.MessageBoxW(None, text, "VerbaScribe", MB_ICONERROR | MB_ON_TOP)

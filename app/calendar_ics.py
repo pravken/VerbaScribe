@@ -62,7 +62,9 @@ def _parse_dt(value: str, params: str) -> Optional[datetime]:
             except Exception:
                 return dt  # a Windows zone name or no tz database: taken as local time
         return dt
-    except (ValueError, OverflowError):  # a date the calendar cannot have (year 99999, or beyond 9999 in UTC)
+    # A date the calendar cannot have (year 99999, beyond 9999 in UTC); on Windows also a local time
+    # outside the C library's range (from year 3001), which raises OSError instead
+    except (ValueError, OverflowError, OSError):
         return None
 
 
