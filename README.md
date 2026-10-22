@@ -62,6 +62,8 @@ Recordings and transcripts are processed and stored locally (NVIDIA GPU via CUDA
 
 Unpack the archive to a regular folder you can write to, such as `D:\VerbaScribe`, not `Program Files`: the app creates `.venv` and `models` next to itself. The `.exe` alone is not enough, it is only the launcher for the program files in the archive. On the first start the launcher offers to install the Python environment (`setup.bat`). This downloads several gigabytes and usually takes 10–20 minutes, depending on your connection. Later starts take seconds, and new versions are installed from **Settings → General**.
 
+`VerbaScribe.exe` is not code-signed. On the first start Windows SmartScreen may say "Windows protected your PC": click **More info → Run anyway** (compare the file with `SHA256SUMS.txt` first). If Windows blocks the scripts of the unpacked folder, right-click the downloaded `.zip` → **Properties → Unblock** before unpacking. Keep the folder path short (under about 150 characters, e.g. `D:\VerbaScribe`): some CUDA libraries and model files have long names, and Windows refuses paths over 260 characters unless long paths are turned on.
+
 **Option B — from source.**
 
 ```bash
@@ -259,6 +261,8 @@ To update Python dependencies, edit `requirements.in` and regenerate the lock (c
 **Вариант А — архив релиза.** Скачайте `VerbaScribe-vX.Y.Z.zip` со страницы [Releases](https://github.com/pravken/VerbaScribe/releases), сверьте его с `SHA256SUMS.txt`, распакуйте и запустите `VerbaScribe.exe`. Лаунчер собирается из [`build_exe.py`](build_exe.py) в [workflow релиза](.github/workflows/release.yml).
 
 Распакуйте архив в обычную папку с правом записи, например `D:\VerbaScribe`, а не в `Program Files`: рядом с программой создаются `.venv` и `models`. Одного `.exe` недостаточно, это лишь лаунчер для файлов программы из архива. При первом запуске лаунчер предложит установить окружение Python (`setup.bat`). Скачивается несколько гигабайт, обычно это занимает 10–20 минут, в зависимости от скорости интернета. Следующие запуски занимают секунды, а новые версии устанавливаются из **Настройки → Общие**.
+
+`VerbaScribe.exe` не подписан цифровой подписью. При первом запуске SmartScreen может показать «Система Windows защитила ваш компьютер»: нажмите **Подробнее → Выполнить в любом случае** (перед этим сверьте файл с `SHA256SUMS.txt`). Если Windows блокирует скрипты распакованной папки, перед распаковкой откройте свойства скачанного `.zip` и отметьте **Разблокировать**. Путь к папке лучше держать коротким (не длиннее ~150 символов, например `D:\VerbaScribe`): у некоторых библиотек CUDA и файлов моделей длинные имена, а Windows не принимает пути длиннее 260 символов, если не включены длинные пути.
 
 **Вариант Б — из исходников.**
 
