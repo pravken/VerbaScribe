@@ -18,6 +18,7 @@ from app.audio_utils import extract_audio_16k_mono, format_timestamp, get_media_
 from app.database import (
     AUDIO_DIR,
     MODELS_DIR,
+    edit_meeting,
     get_all_settings,
     get_dictionary_hotwords,
     get_meeting,
@@ -148,16 +149,23 @@ def _check_cancel(meeting_id: int) -> None:
 
 
 def clean_meeting_transcript(meeting_id: int) -> Dict[str, Any]:
-    m = get_meeting(meeting_id)
-    if not m:
+    import copy
+
+    removed_box = [0]
+
+    def clean(m: Dict[str, Any]) -> tuple:
+        segments = m.get("segments") or []
+        before = copy.deepcopy(segments)
+        cleaned, removed_box[0] = clean_filler_words_in_segments(segments)
+        if not removed_box[0]:
+            return ()
+        m["segments"], m["segments_backup"] = cleaned, before
+        return ("segments", "segments_backup")
+
+    updated = edit_meeting(meeting_id, clean)
+    if updated is None:
         raise ValueError("Встреча не найдена")
-    segments = m.get("segments") or []
-    cleaned, removed = clean_filler_words_in_segments(segments)
-    if removed:
-        save_segments_backup(meeting_id, segments)
-        save_meeting_results(meeting_id, segments=cleaned)
-    updated = get_meeting(meeting_id)
-    return {"meeting": updated, "removed_count": removed}
+    return {"meeting": updated, "removed_count": removed_box[0]}
 
 
 def enqueue_meeting_job(meeting_id: int) -> bool:

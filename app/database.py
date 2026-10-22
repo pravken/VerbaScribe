@@ -6,7 +6,7 @@ import threading
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from app import events
 from app.hardware import get_hardware_info
@@ -20,7 +20,8 @@ from app.paths import (  # noqa: F401  (re-exported for older imports)
     UPLOADS_DIR,
 )
 
-_db_lock = threading.Lock()
+# Reentrant: a change made under the lock (edit_meeting) may read the settings or a voice profile
+_db_lock = threading.RLock()
 
 
 def get_connection() -> sqlite3.Connection:
@@ -557,6 +558,43 @@ def save_meeting_results(
             _reindex_segments(conn, meeting_id, segments)
         conn.commit()
         conn.close()
+
+
+def edit_meeting(meeting_id: int, mutate: Callable[[Dict[str, Any]], Iterable[str]]) -> Optional[Dict[str, Any]]:
+    """
+    Changes the transcript and/or the participants of a recording in one step under the lock, so two
+    edits at once (two segments, a rename while "apply voice profiles" runs) never undo each other.
+    mutate(meeting) changes meeting["segments"] / ["speakers"] in place (and may set
+    meeting["segments_backup"]) and returns what it changed: "segments", "speakers", "segments_backup".
+    An exception leaves the recording as it was.
+    Returns the recording after the change, or None when there is none.
+    """
+    with _db_lock:
+        conn = get_connection()
+        try:
+            row = conn.execute("SELECT * FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+            if not row:
+                return None
+            m = _deserialize_meeting(dict(row))
+            changed = set(mutate(m) or ())
+            if "segments" in changed:
+                conn.execute("UPDATE meetings SET segments_json = ? WHERE id = ?",
+                             (json.dumps(m["segments"], ensure_ascii=False), meeting_id))
+                _reindex_segments(conn, meeting_id, m["segments"])
+            if "speakers" in changed:
+                conn.execute("UPDATE meetings SET speakers_json = ? WHERE id = ?",
+                             (json.dumps(m["speakers"], ensure_ascii=False), meeting_id))
+            if "segments_backup" in changed:
+                backup = m.get("segments_backup") or []
+                conn.execute("UPDATE meetings SET segments_backup_json = ? WHERE id = ?",
+                             (json.dumps(backup, ensure_ascii=False) if backup else "", meeting_id))
+            if not changed:
+                return m
+            conn.commit()
+            row = conn.execute("SELECT * FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+            return _deserialize_meeting(dict(row))
+        finally:
+            conn.close()
 
 
 def summary_templates() -> List[Dict[str, Any]]:
@@ -1138,38 +1176,25 @@ def merge_segment_with_previous(meeting_id: int, segment_id: int) -> Optional[Di
     Merges the specified segment with the immediately preceding segment,
     combining their text, word timestamps, and end time.
     """
-    m = get_meeting(meeting_id)
-    if not m:
-        return None
+    def merge(m: Dict[str, Any]) -> tuple:
+        segments = m.get("segments") or []
+        target_idx = next((i for i, seg in enumerate(segments) if int(seg.get("id", -1)) == int(segment_id)), -1)
+        if target_idx <= 0:
+            return ()
+        prev_seg = segments[target_idx - 1]
+        curr_seg = segments[target_idx]
+        prev_seg["end"] = round(float(curr_seg.get("end", prev_seg.get("end", 0.0))), 2)
+        prev_seg["text"] = (
+            (prev_seg.get("text") or "").rstrip() + " " + (curr_seg.get("text") or "").lstrip()
+        ).strip()
+        prev_seg["words"] = list(prev_seg.get("words") or []) + list(curr_seg.get("words") or [])
+        segments.pop(target_idx)
+        for idx, s in enumerate(segments):
+            s["id"] = idx + 1
+        m["segments"] = segments
+        return ("segments",)
 
-    segments = m.get("segments") or []
-    target_idx = -1
-    for i, seg in enumerate(segments):
-        if int(seg.get("id", -1)) == int(segment_id):
-            target_idx = i
-            break
-
-    if target_idx <= 0:
-        return m
-
-    prev_seg = segments[target_idx - 1]
-    curr_seg = segments[target_idx]
-
-    prev_seg["end"] = round(float(curr_seg.get("end", prev_seg.get("end", 0.0))), 2)
-    prev_seg["text"] = (
-        (prev_seg.get("text") or "").rstrip() + " " + (curr_seg.get("text") or "").lstrip()
-    ).strip()
-
-    prev_words = list(prev_seg.get("words") or [])
-    curr_words = list(curr_seg.get("words") or [])
-    prev_seg["words"] = prev_words + curr_words
-
-    segments.pop(target_idx)
-    for idx, s in enumerate(segments):
-        s["id"] = idx + 1
-
-    save_meeting_results(meeting_id, segments=segments)
-    return get_meeting(meeting_id)
+    return edit_meeting(meeting_id, merge)
 
 
 

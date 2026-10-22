@@ -36,6 +36,54 @@ class SessionAndSearchApiTest(unittest.TestCase):
 
 
 @unittest.skipIf(main is None, "fastapi and app dependencies not installed")
+class ConcurrentEditsTest(unittest.TestCase):
+    """Edits that arrive at once (two segments, two participants) must all stay."""
+
+    def _meeting(self):
+        main.init_db()
+        segs = [{"id": i, "start": i, "end": i + 1, "speaker": "SPEAKER_00", "text": f"реплика {i}"} for i in range(1, 31)]
+        spk = {f"SPEAKER_0{i}": {"id": f"SPEAKER_0{i}", "name": f"Участник {i}", "color": "#0A84FF"} for i in range(4)}
+        m = main.create_meeting(title="Правки сразу", filename="a.wav", media_path="a.wav")
+        main.save_meeting_results(m["id"], segments=segs, speakers=spk)
+        return m["id"]
+
+    def test_segments_and_speakers_edited_at_once(self):
+        from concurrent.futures import ThreadPoolExecutor
+
+        from app.api.analysis import SegmentUpdatePayload, api_update_segment
+        from app.api.library import SpeakerUpdatePayload, api_update_speaker
+
+        mid = self._meeting()
+        with ThreadPoolExecutor(16) as pool:
+            jobs = [pool.submit(api_update_segment, mid, i, SegmentUpdatePayload(text=f"правка {i}")) for i in range(1, 31)]
+            jobs += [pool.submit(api_update_speaker, mid, SpeakerUpdatePayload(speaker_id=f"SPEAKER_0{i}", name=f"Имя {i}"))
+                     for i in range(4)]
+            for j in jobs:
+                j.result()
+        m = main.get_meeting(mid)
+        self.assertEqual([s["text"] for s in m["segments"]], [f"правка {i}" for i in range(1, 31)])
+        self.assertEqual(sorted(s["name"] for s in m["speakers"].values()), [f"Имя {i}" for i in range(4)])
+
+    def test_failed_edit_changes_nothing(self):
+        from fastapi import HTTPException
+
+        from app.api.analysis import SegmentUpdatePayload, api_update_segment
+
+        mid = self._meeting()
+        with self.assertRaises(HTTPException):
+            api_update_segment(mid, 5, SegmentUpdatePayload(speaker="SPEAKER_99"))
+        with self.assertRaises(HTTPException):
+            api_update_segment(mid, 999, SegmentUpdatePayload(text="нет такой"))
+        self.assertEqual(main.get_meeting(mid)["segments"][4]["text"], "реплика 5")
+        from app.database import merge_segment_with_previous
+
+        m = main.get_meeting(mid)
+        merged = merge_segment_with_previous(mid, 2)
+        self.assertEqual(merged["segments"][0]["text"], "реплика 1 реплика 2")
+        self.assertEqual(len(merged["segments"]), len(m["segments"]) - 1)
+
+
+@unittest.skipIf(main is None, "fastapi and app dependencies not installed")
 class ConnectionResetFilterTest(unittest.TestCase):
     def test_only_proactor_connection_lost_resets_are_ignored(self):
         class Handle:

@@ -12,7 +12,7 @@ from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from app import __version__
 from app.paths import UPLOADS_DIR
-from app.database import create_meeting, delete_meeting, get_all_settings, get_meeting, is_local_only, list_meetings, save_meeting_results, update_meeting_fields, update_meeting_progress, update_settings
+from app.database import create_meeting, delete_meeting, edit_meeting, get_all_settings, get_meeting, is_local_only, list_meetings, update_meeting_fields, update_meeting_progress, update_settings
 from app.transcriber import enqueue_meeting_job, is_job_active, request_cancel
 
 from fastapi import APIRouter
@@ -552,41 +552,46 @@ class SpeakerUpdatePayload(BaseModel):
 @router.patch("/api/meetings/{meeting_id}/speakers")
 def api_update_speaker(meeting_id: int, payload: SpeakerUpdatePayload) -> Dict[str, Any]:
     _ensure_not_transcribing(meeting_id)
-    m = get_meeting(meeting_id)
-    if not m:
-        raise HTTPException(status_code=404, detail="Встреча не найдена")
-
     if not _SPEAKER_ID_RE.match(payload.speaker_id):
         raise HTTPException(status_code=400, detail="Некорректный идентификатор участника")
     if payload.color and not _COLOR_RE.match(payload.color):
         raise HTTPException(status_code=400, detail="Цвет должен быть в формате #RRGGBB")
     name = payload.name.strip()[:120]
+    learned: List[Any] = []  # the voice to teach its profile, after the change (it uses the database)
 
-    speakers = m.get("speakers") or {}
-    if payload.speaker_id not in speakers:
-        speakers[payload.speaker_id] = {
-            "id": payload.speaker_id,
-            "name": name or payload.speaker_id,
-            "color": payload.color or "#6366f1",
-            "sample_start": 0.0,
-            "sample_end": 5.0,
-        }
-    else:
-        old_name = speakers[payload.speaker_id].get("name") or ""
-        speakers[payload.speaker_id]["name"] = name or payload.speaker_id
-        if payload.color:
-            speakers[payload.speaker_id]["color"] = payload.color
-        if name and name != old_name:
-            # Naming a voice teaches its profile: later recordings get the name automatically
-            from app.voice_profiles import learn
+    def change(m: Dict[str, Any]) -> tuple:
+        speakers = m.get("speakers") or {}
+        if payload.speaker_id not in speakers:
+            speakers[payload.speaker_id] = {
+                "id": payload.speaker_id,
+                "name": name or payload.speaker_id,
+                "color": payload.color or "#6366f1",
+                "sample_start": 0.0,
+                "sample_end": 5.0,
+            }
+        else:
+            spk = speakers[payload.speaker_id]
+            old_name = spk.get("name") or ""
+            spk["name"] = name or payload.speaker_id
+            if payload.color:
+                spk["color"] = payload.color
+            if name and name != old_name:
+                learned.append(spk.get("embedding"))
+                spk.pop("voice_profile", None)
+            if payload.dismiss_suggestion or (name and name != old_name):
+                spk.pop("voice_suggest", None)
+        m["speakers"] = speakers
+        return ("speakers",)
 
-            try:
-                learn(name, speakers[payload.speaker_id].get("embedding"))
-            except Exception:
-                traceback.print_exc()
-            speakers[payload.speaker_id].pop("voice_profile", None)
-        if payload.dismiss_suggestion or (name and name != old_name):
-            speakers[payload.speaker_id].pop("voice_suggest", None)
+    m = edit_meeting(meeting_id, change)
+    if m is None:
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    if learned:
+        # Naming a voice teaches its profile: later recordings get the name automatically
+        from app.voice_profiles import learn
 
-    save_meeting_results(meeting_id, speakers=speakers)
-    return get_meeting(meeting_id)
+        try:
+            learn(name, learned[0])
+        except Exception:
+            traceback.print_exc()
+    return m
