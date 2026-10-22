@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from app.paths import APP_DIR
+from app.pyenv import ensure_pip, find_uv as _find_uv
 
 DUB_VENV = APP_DIR / ".venv-dub"
 DUB_PYTHON = DUB_VENV / "Scripts" / "python.exe" if sys.platform == "win32" else DUB_VENV / "bin" / "python"
@@ -57,17 +58,6 @@ def _log(line: str) -> None:
 def _set(**kw: Any) -> None:
     with _lock:
         _state.update(kw)
-
-
-def _find_uv() -> Optional[str]:
-    found = shutil.which("uv")
-    if found:
-        return found
-    candidates = [
-        Path.home() / ".local" / "bin" / "uv.exe",
-        Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "WinGet" / "Links" / "uv.exe",
-    ]
-    return next((str(p) for p in candidates if p.is_file()), None)
 
 
 def _requirements_hash() -> str:
@@ -204,6 +194,7 @@ def _install() -> None:
                 8, 85, env,
             )
         else:
+            ensure_pip(str(DUB_PYTHON))
             _run([str(DUB_PYTHON), "-m", "pip", "install", "--upgrade", "pip"], 8, 10, env)
             rc = _run(
                 [str(DUB_PYTHON), "-m", "pip", "install", "-r", str(REQUIREMENTS), "--extra-index-url", TORCH_INDEX],

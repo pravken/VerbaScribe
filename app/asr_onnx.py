@@ -160,22 +160,14 @@ def _run(cmd):
 def _install_commands(args=None):
     """uv first (setup.bat makes the venv with uv, which has no pip in it), then pip, bootstrapping it
     with ensurepip when the venv has none. `args`: what to install (onnx-asr by default)."""
-    import os
-    import shutil
     import sys
 
-    uv = shutil.which("uv")
-    if not uv:
-        home = Path(os.environ.get("USERPROFILE") or Path.home())
-        for c in (home / ".local" / "bin" / "uv.exe", home / ".cargo" / "bin" / "uv.exe",
-                  Path(os.environ.get("LOCALAPPDATA") or home) / "Microsoft" / "WinGet" / "Links" / "uv.exe"):
-            if c.is_file():
-                uv = str(c)
-                break
+    from app.pyenv import ensure_pip, find_uv
+
+    uv = find_uv()
     if uv:
         yield [uv, "pip", "install", "--python", sys.executable, *(args or [ONNX_ASR_PIN])]
-    if _run([sys.executable, "-m", "pip", "--version"]).returncode != 0:
-        _run([sys.executable, "-m", "ensurepip", "--upgrade"])
+    ensure_pip(sys.executable)
     yield [sys.executable, "-m", "pip", "install", "--disable-pip-version-check", *(args or [ONNX_ASR_PIN])]
 
 

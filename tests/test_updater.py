@@ -245,3 +245,25 @@ class PortChoiceTest(unittest.TestCase):
             self.assertEqual(run.choose_port("127.0.0.1", foreign), (foreign + 2, False))
         with mock.patch.object(run, "read_session_token", return_value="tok"):
             self.assertEqual(run.choose_port("127.0.0.1", ours), (ours, True))
+
+
+class PyEnvTest(unittest.TestCase):
+    def test_missing_pip_is_bootstrapped_with_ensurepip(self):
+        from app import pyenv
+
+        calls = []
+        answers = iter([False, True, True])  # no pip, ensurepip runs, then pip works
+        with mock.patch.object(pyenv, "_ok", side_effect=lambda cmd: calls.append(cmd[2]) or next(answers)):
+            self.assertTrue(pyenv.ensure_pip("python"))
+        self.assertEqual(calls, ["pip", "ensurepip", "pip"])
+
+    def test_uv_is_found_outside_path(self):
+        from app import pyenv
+
+        with tempfile.TemporaryDirectory() as home:
+            uv = Path(home) / ".cargo" / "bin" / "uv.exe"
+            uv.parent.mkdir(parents=True)
+            uv.write_text("")
+            with mock.patch.object(pyenv.shutil, "which", return_value=None), \
+                    mock.patch.dict(pyenv.os.environ, {"USERPROFILE": home, "LOCALAPPDATA": home}):
+                self.assertEqual(pyenv.find_uv(), str(uv))

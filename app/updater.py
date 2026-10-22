@@ -33,6 +33,9 @@ import zipfile
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+# Loaded before the update replaces the program files
+from app.pyenv import ensure_pip, find_uv
+
 GITHUB_REPO = "pravken/VerbaScribe"
 LATEST_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 CHECK_INTERVAL_SEC = 6 * 3600
@@ -380,18 +383,9 @@ def _mark_dub_outdated(app_dir: Path, old_hash: str) -> None:
             pass
 
 
-def _find_uv() -> Optional[str]:
-    found = shutil.which("uv")
-    if found:
-        return found
-    for p in (Path.home() / ".local" / "bin" / "uv.exe",
-              Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "WinGet" / "Links" / "uv.exe"):
-        if p.is_file():
-            return str(p)
-    return None
-
-
 def _freeze(py: Path, uv: Optional[str]) -> str:
+    if not uv:
+        ensure_pip(str(py))
     cmd = [uv, "pip", "freeze", "--python", str(py)] if uv else [str(py), "-m", "pip", "freeze"]
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
@@ -477,7 +471,7 @@ def apply_update(zip_path: Path, app_dir: Path, data_dir: Path, report: Callable
             if _sha256(app_dir / "requirements.txt") != old_req:
                 report("Установка библиотек Python (может занять несколько минут)…")
                 py = app_dir / ".venv" / "Scripts" / "python.exe"
-                uv = _find_uv()
+                uv = find_uv()
                 # What is installed now: put back if the new libraries fail half way
                 frozen = _freeze(py, uv)
                 if frozen:
