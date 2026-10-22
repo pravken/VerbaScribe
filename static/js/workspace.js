@@ -962,32 +962,6 @@ async function startTranslation(onlyChanged, lang) {
   await loadMeetingsList();
 }
 
-// "Checked": the user corrected the transcript, so the model comparison can use it as the reference
-function renderVerifiedButton() {
-  const m = state.activeMeeting;
-  const btn = document.getElementById('tx-verified-btn');
-  if (!btn) return;
-  btn.classList.toggle('hidden', !(m && m.status === 'completed' && (m.segments || []).length));
-  const on = !!(m && m.transcript_verified);
-  btn.className = `${btn.classList.contains('hidden') ? 'hidden ' : ''}ui-btn ${on ? 'ui-btn-active' : 'ui-btn-subtle text-apple-label'}`;
-  document.getElementById('tx-verified-label').textContent = t(on ? 'txVerified' : 'txVerify');
-}
-
-async function toggleTranscriptVerified() {
-  const m = state.activeMeeting;
-  if (!m) return;
-  const res = await fetch(`/api/meetings/${m.id}/verified`, {
-    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ verified: !m.transcript_verified }),
-  });
-  const data = await readJson(res);
-  if (!res.ok) { showToast(data.detail || 'Error'); return; }
-  m.transcript_verified = data.transcript_verified;
-  const row = state.meetings.find(x => x.id === m.id);
-  if (row) row.transcript_verified = data.transcript_verified;
-  renderVerifiedButton();
-  showToast(t(m.transcript_verified ? 'txVerifiedToast' : 'txUnverifiedToast'));
-}
-
 async function deleteTranslation(lang) {
   const m = state.activeMeeting;
   if (!m || !await askConfirm(t('translateDeleteConfirm').replace('{lang}', () => langName(lang)), true)) return;
@@ -1100,7 +1074,6 @@ function renderTranslationControls() {
   // Clearing: one translation, or everything the processing made
   if (langs.length) html += sep + langs.map(c => item(['deleteTranslationFromMenu', c], '✕', `${t('txDeleteTr')}: ${langName(c)}`)).join('');
   document.getElementById('tx-view-menu').innerHTML = html;
-  renderVerifiedButton();
   renderExportTranslatedMenu();
 }
 

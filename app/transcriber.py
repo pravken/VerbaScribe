@@ -858,7 +858,6 @@ def _process_meeting_job(meeting_id: int) -> None:
         return
     from app.database import update_meeting_fields
 
-    update_meeting_fields(meeting_id, transcript_verified=0)  # a new transcript: nobody has checked it yet
     whisper_model = None
 
     settings = get_all_settings()

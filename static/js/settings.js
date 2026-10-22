@@ -1741,11 +1741,9 @@ async function loadBench() {
   if (data.running) bench.kind = data.kind;
   const sel = document.getElementById('bench-meeting');
   const keep = sel.value;
-  // Checked transcripts first: only they are a real reference
-  const rows = (state.meetings || []).filter(m => m.status === 'completed')
-    .sort((a, b) => (b.transcript_verified ? 1 : 0) - (a.transcript_verified ? 1 : 0));
+  const rows = (state.meetings || []).filter(m => m.status === 'completed');
   sel.innerHTML = rows.length
-    ? rows.map(m => `<option value="${m.id}">${m.transcript_verified ? '✓ ' : ''}${escapeHtml(m.title || '')}${m.duration ? ` · ${formatDurationShort(m.duration)}` : ''}${m.transcript_verified ? '' : ` · ${escapeHtml(t('benchNotVerified'))}`}</option>`).join('')
+    ? rows.map(m => `<option value="${m.id}">${escapeHtml(m.title || '')}${m.duration ? ` · ${formatDurationShort(m.duration)}` : ''}</option>`).join('')
     : `<option value="">${escapeHtml(t('benchNoRecordings'))}</option>`;
   if (data.running && data.meeting_id) sel.value = String(data.meeting_id);
   else if (keep && rows.some(m => String(m.id) === keep)) sel.value = keep;
@@ -1794,7 +1792,7 @@ function renderBench() {
     ? `<div class="flex items-center justify-between pt-2"><span class="text-[11px] uppercase tracking-wider text-apple-tertiary">${escapeHtml(t('benchHistory'))}</span>
          <button data-click="clearBenchHistory" class="text-[11px] text-apple-tertiary hover:text-white">${escapeHtml(t('benchClear'))}</button></div>`
       + hist.map((h, i) => `<details class="rounded-lg border apple-border px-3 py-1.5" ${i === 0 && !live ? 'open' : ''}>
-          <summary class="cursor-pointer text-[12px] text-apple-label">${escapeHtml(h.at)} · ${h.verified ? '✓ ' : ''}${escapeHtml(h.title)}${h.kind === 'asr' && !h.verified ? ` · <span class="text-apple-amber">${escapeHtml(t('benchNotVerified'))}</span>` : ''}${h.clip_sec ? ` · ${formatDurationShort(h.clip_sec)}` : ''}${h.ref_words ? ` · ${h.ref_words} ${escapeHtml(t('benchWords'))}` : ''}</summary>
+          <summary class="cursor-pointer text-[12px] text-apple-label">${escapeHtml(h.at)} · ${escapeHtml(h.title)}${h.clip_sec ? ` · ${formatDurationShort(h.clip_sec)}` : ''}${h.ref_words ? ` · ${h.ref_words} ${escapeHtml(t('benchWords'))}` : ''}</summary>
           <div class="pt-2">${benchTable(h)}</div></details>`).join('')
     : '';
 }

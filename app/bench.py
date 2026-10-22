@@ -266,7 +266,6 @@ def _guarded(runner: Callable, m: Dict[str, Any], models: List[str], clip_sec: i
             results = list(_state["results"])
         if results:
             _save_run({"kind": _state["kind"], "meeting_id": m["id"], "title": m.get("title") or "",
-                       "verified": bool(m.get("transcript_verified")),
                        "at": _state["started_at"], "results": results, **info})
     except Cancelled:
         _set(error="Остановлено")

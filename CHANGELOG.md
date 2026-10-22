@@ -23,6 +23,8 @@
   анализ, переводы и дубляж — при наведении и у выбранной записи. «Вид → Значки → Все всегда» — как раньше.
 - Боковая панель: CPU, RAM и GPU с иконками подряд, модели — в отдельной рамке, разделённой на
   «Модели на видеокарте» и «Модели на процессоре», с числом загруженных.
+- Убрана отметка «Проверено» над текстом. В «Сравнении моделей» эталоном служит текст записи, который
+  вы считаете верным.
 
 ### Безопасность
 - **torch 2.11** (CUDA 12.6) вместо 2.6: закрыта уязвимость `torch.load` (PYSEC-2026-2286). Обновление
@@ -54,6 +56,7 @@
 - Library badges: only what needs attention always; analysis, translations, dubs on hover and on the
   selected row ("View → Badges → All, always" for the old list).
 - Sidebar: CPU, RAM, GPU with icons, the models framed apart, on the video card and on the processor.
+- The "Checked" mark above the text is gone; the model comparison takes the recording's text as the reference.
 
 ### Security
 - **torch 2.11** (CUDA 12.6) instead of 2.6 (PYSEC-2026-2286); the update downloads about 2.5 GB once.
