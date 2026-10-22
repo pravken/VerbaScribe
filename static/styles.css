@@ -607,6 +607,12 @@ label.settings-toggle { display: flex; }
 /* Library: what a recording has been through (transcript, analysis, translation, dub) */
 .rec-badges { display: inline-flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; }
 .rec-badge { display: inline-flex; align-items: center; gap: 2px; opacity: 0.75; font-size: 9.5px; font-weight: 600; letter-spacing: 0.02em; white-space: nowrap; }
+/* What a recording has shows on hover, keyboard focus and the selected row (or always: view menu) */
+.rec-badge-extra { display: none; }
+.group:hover .rec-badge-extra, .group:focus-within .rec-badge-extra, .bg-apple-blue .rec-badge-extra,
+.lib-badges-all .rec-badge-extra, .lib-tile .rec-badge-extra { display: inline-flex; }
+/* A folded group holding the open recording */
+.lib-here-dot { width: 6px; height: 6px; border-radius: 9999px; background: #0A84FF; flex-shrink: 0; }
 .rec-badge-busy { color: #64D2FF; opacity: 1; animation: cap-wait 1.4s ease-in-out infinite; }
 .rec-badge-fail { color: #FF453A; opacity: 1; }
 .bg-apple-blue .rec-badge-busy, .bg-apple-blue .rec-badge-fail { color: #fff; }

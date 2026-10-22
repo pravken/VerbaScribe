@@ -684,6 +684,8 @@ const ICON_FOLDER = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" 
 const ICON_MIC = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"/></svg>';
 const ICON_IMPORT = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>';
 const ICON_DICTATION = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z"/></svg>';
+const ICON_FOLD_ALL = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5L12 8.25 15.75 4.5m-7.5 15L12 15.75l3.75 3.75"/></svg>';
+const ICON_UNFOLD_ALL = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9"/></svg>';
 const ICON_CHEVRON = '<svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>';
 
 function folderIcon(f) {
@@ -899,18 +901,24 @@ const REC_STEP_OF_STATUS = {
 function recordingBadgesHtml(m) {
   const running = REC_STEP_OF_STATUS[m.status];
   const failedStep = m.status === 'failed' ? (m.has_transcript ? null : 'transcript') : null;
+  // Always shown: what needs attention (a step running, a failure, a recording marked local by
+  // itself). What a recording has (analysis, translations, dubs) shows on hover and on the selected
+  // row, or always with "Badges: all" in the view menu; having a transcript is the norm: no badge
   const badge = (kind, done, label, text = '') => {
     const busy = running === kind;
     const fail = failedStep === kind;
+    if (kind === 'transcript' && !busy && !fail) return '';
     if (!done && !busy && !fail) return '';
+    const extra = !busy && !fail ? 'rec-badge-extra' : '';
     const tip = busy ? `${label} · ${t('recBadgeRunning')}` : fail ? `${t('statusFailed')}${m.error_message ? ': ' + serverText(m.error_message) : ''}` : label;
-    return `<span class="rec-badge ${busy ? 'rec-badge-busy' : ''} ${fail ? 'rec-badge-fail' : ''}" title="${escapeHtml(tip)}">`
+    return `<span class="rec-badge ${extra} ${busy ? 'rec-badge-busy' : ''} ${fail ? 'rec-badge-fail' : ''}" title="${escapeHtml(tip)}">`
       + `<svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">${REC_BADGE_ICONS[kind]}</svg>`
       + (text ? `<span>${escapeHtml(text)}</span>` : '') + '</span>';
   };
   const trLangs = m.translations_langs || [];
   const dubLangs = m.dub_langs || [];
-  const lock = meetingLocalOnly(m) ? `<span class="rec-badge" title="${escapeHtml(t('tipLocalOnly'))}">${ICON_LOCK}</span>` : '';
+  // The lock of a whole folder is on the folder's row
+  const lock = meetingLocalOnly(m) ? `<span class="rec-badge ${m.local_only ? '' : 'rec-badge-extra'}" title="${escapeHtml(t('tipLocalOnly'))}">${ICON_LOCK}</span>` : '';
   return lock + badge('transcript', m.has_transcript, t('recBadgeTranscript'))
     + badge('summary', m.has_summary, t('recBadgeSummary'))
     + badge('translation', trLangs.length > 0, `${t('recBadgeTranslation')}${trLangs.length ? ': ' + trLangs.map(langName).join(', ') : ''}`, trLangs.map(langCode).join(' '))
@@ -980,6 +988,7 @@ function libPrefs() {
     dir: p.dir === 'asc' ? 'asc' : 'desc',
     group: LIB_GROUPS.includes(p.group) ? p.group : 'none',
     names: p.names === 'file' ? 'file' : 'title',
+    badges: p.badges === 'all' ? 'all' : 'smart',
   };
 }
 
@@ -1010,6 +1019,46 @@ function libDateLabel(key, group) {
   return named ? `${named} · ${full}` : full;
 }
 
+// Where the open recording is: its folders (with their parents) and its day/month group, marked by a
+// dot on their rows, so it is found even with the groups folded
+function libHere() {
+  const m = state.activeMeeting;
+  const key = m ? `${m.id}:${m.folder_id}:${libPrefs().group}:${m.recorded_at || m.created_at}` : '';
+  if (state._libHere && state._libHere.key === key) return state._libHere;
+  const folders = new Set(), dates = new Set();
+  if (m) {
+    const byId = new Map((state.folders || []).map(f => [f.id, f]));
+    for (let id = m.folder_id, guard = 0; id != null && byId.has(id) && guard < 50; id = byId.get(id).parent_id, guard++) folders.add(id);
+    const group = libPrefs().group;
+    if (group !== 'none') dates.add(`${byId.has(m.folder_id) ? m.folder_id : 'root'}:${libDateKey(m, group)}`);
+  }
+  return state._libHere = { key, folders, dates };
+}
+
+// "Fold all" / "Unfold all" in the library header: folders and day groups together
+function libAnyOpen() {
+  const folders = collapsedFolders();
+  const dates = collapsedDates();
+  return (state.folders || []).some(f => !folders.has(f.id)) || (state._libDateIds || []).some(id => !dates.has(id));
+}
+
+function toggleLibraryFold() {
+  const fold = libAnyOpen();
+  try {
+    localStorage.setItem('verbascribe_folders_collapsed', JSON.stringify(fold ? (state.folders || []).map(f => f.id) : []));
+    localStorage.setItem('verbascribe_dates_collapsed', JSON.stringify(fold ? (state._libDateIds || []).slice(-300) : []));
+  } catch (e) {}
+  renderMeetingsSidebar();
+}
+
+function renderLibFoldButton() {
+  const btn = document.getElementById('lib-fold-btn');
+  if (!btn) return;
+  const fold = libAnyOpen();
+  btn.title = t(fold ? 'tipLibFoldAll' : 'tipLibUnfoldAll');
+  btn.innerHTML = fold ? ICON_FOLD_ALL : ICON_UNFOLD_ALL;
+}
+
 function collapsedDates() {
   try { return new Set(JSON.parse(localStorage.getItem('verbascribe_dates_collapsed') || '[]')); } catch (e) { return new Set(); }
 }
@@ -1028,6 +1077,7 @@ function dateRowHtml(id, label, count, depth, open) {
          style="padding-left:${6 + depth * 14}px" title="${escapeHtml(label)}">
       <span class="shrink-0 text-apple-tertiary transition-transform ${open ? 'rotate-90' : ''}">${ICON_CHEVRON}</span>
       <span class="text-[11px] font-semibold truncate flex-1">${escapeHtml(label)}</span>
+      ${!open && libHere().dates.has(id) ? `<span class="lib-here-dot" title="${escapeHtml(t('tipLibHere'))}"></span>` : ''}
       <span class="text-[10.5px] font-mono text-apple-tertiary">${count}</span>
     </div>`;
 }
@@ -1086,7 +1136,10 @@ function openLibViewMenu(e) {
     + LIB_GROUPS.map(v => item('group', v, t(`libGroup_${v}`), p.group === v)).join('')
     + `<div class="my-1 h-px bg-white/10"></div><div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(t('libNames'))}</div>`
     + item('names', 'title', t('libNames_title'), p.names === 'title')
-    + item('names', 'file', t('libNames_file'), p.names === 'file');
+    + item('names', 'file', t('libNames_file'), p.names === 'file')
+    + `<div class="my-1 h-px bg-white/10"></div><div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(t('libBadges'))}</div>`
+    + item('badges', 'smart', t('libBadges_smart'), p.badges === 'smart')
+    + item('badges', 'all', t('libBadges_all'), p.badges === 'all');
   menu.addEventListener('click', (ev) => {
     const b = ev.target.closest('button[data-k]');
     ev.stopPropagation();
@@ -1339,6 +1392,8 @@ function folderRowHtml(f, depth, collapsed) {
       <span class="shrink-0 text-apple-tertiary transition-transform ${open ? 'rotate-90' : ''}">${ICON_CHEVRON}</span>
       <span class="shrink-0 ${f.system_key ? 'text-apple-blue' : 'text-apple-secondary'}">${folderIcon(f)}</span>
       <span class="text-[12px] font-semibold truncate flex-1">${escapeHtml(folderName(f))}</span>
+      ${f.local_only ? `<span class="shrink-0 text-apple-tertiary" title="${escapeHtml(t('tipLocalOnly'))}">${ICON_LOCK}</span>` : ''}
+      ${!open && libHere().folders.has(f.id) ? `<span class="lib-here-dot" title="${escapeHtml(t('tipLibHere'))}"></span>` : ''}
       <span class="text-[10.5px] font-mono text-apple-tertiary">${count}</span>
       <button data-click="openFolderMenu" data-click-args='[{"$": "event"}, ${f.id}]' title="${escapeHtml(t('tipFolderMenu'))}"
         class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 px-1 rounded hover:bg-black/20 text-xs shrink-0 transition">•••</button>
@@ -1402,6 +1457,7 @@ function renderMeetingsSidebar() {
   // Every row is a keyed part: a progress event then replaces only the row that changed
   const parts = [];
   const datesCollapsed = collapsedDates();
+  const dateIds = [];
   const items = (list, depth, groupKey, byDate = prefs.group !== 'none') => {
     if (!list || !list.length) return;
     if (byDate) {
@@ -1413,6 +1469,7 @@ function renderMeetingsSidebar() {
       }
       for (const [k, ms] of buckets) {
         const id = `${groupKey}:${k}`;
+        dateIds.push(id);
         const open = !datesCollapsed.has(id);
         parts.push([`d${id}`, dateRowHtml(id, libDateLabel(k, prefs.group), ms.length, depth, open)]);
         if (open) items(ms, depth + 1, `${groupKey}_${k}`, false);
@@ -1438,7 +1495,11 @@ function renderMeetingsSidebar() {
   };
   walk(null, 0);
   items(byFolder.get(null), 0, 'root');
+  // The day groups of folded folders are not built: the ones seen so far count for "fold all"
+  state._libDateIds = [...new Set([...(state._libDateIds || []), ...dateIds])];
+  listEl.classList.toggle('lib-badges-all', prefs.badges === 'all');
   patchKeyedList(listEl, parts);
+  renderLibFoldButton();
 }
 
 // Updates a list from [key, html] parts, touching only the elements whose html changed and
