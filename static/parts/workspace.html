@@ -453,6 +453,15 @@
             <select id="tx-model-select" data-change="pickTxModel" data-change-args='[{"$": "el"}]'
               data-i18n-title="tipTxModel" title="Модель распознавания. Текст каждой модели хранится отдельно: выберите модель, чтобы увидеть её расшифровку"
               class="h-7 max-w-[15rem] bg-apple-sidebar border apple-border rounded-[7px] px-2 text-xs text-white focus:outline-none shrink-0"></select>
+            <!-- What is done to the sound before recognition and to the text after it, for this recording -->
+            <div class="relative shrink-0">
+              <button data-click="toggleTxProcMenu" data-click-args='[{"$": "event"}]' id="tx-proc-btn" class="ui-btn ui-btn-subtle"
+                data-i18n-title="tipTxProc" title="Что сделать со звуком перед распознаванием и с текстом после: для этой записи">
+                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75"/></svg>
+                <span class="tx-tool-label" data-i18n="txProcBtn">Параметры</span>
+              </button>
+              <div id="tx-proc-menu" class="hidden absolute left-0 top-full mt-1.5 w-80 macos-menu z-40 p-3 space-y-3" data-click="stopEvent" data-click-args='[{"$": "event"}]'></div>
+            </div>
             <button data-click="transcribeWithPickedModel" id="tx-transcribe-btn" class="ui-btn ui-btn-subtle shrink-0"
               data-i18n-title="tipTxTranscribe" title="Расшифровать запись выбранной моделью. Тексты других моделей остаются">
               <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>

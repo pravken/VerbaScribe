@@ -82,6 +82,8 @@ function renderTxModelBar() {
   sel.value = pick;
   const busy = !DONE_STATUSES.includes(m.status);
   sel.disabled = busy;
+  document.getElementById('tx-proc-btn').classList.toggle('hidden', pick === 'merged');  // not made by a model
+  if (busy) hideTxProcMenu();
   const btn = document.getElementById('tx-transcribe-btn');
   btn.disabled = busy || !!m.media_removed;  // without the sound there is nothing to transcribe
   btn.classList.toggle('opacity-40', btn.disabled);
@@ -194,6 +196,69 @@ async function mergeTranscripts() {
   showToast(t('txMergeStarted'));
 }
 
+// --- What is done to the sound before recognition and to the text after it, for this recording
+// ("Parameters" next to the model). Starts from what the recording used last (database.effective_processing:
+// chosen for it, else the settings) and goes with the next Transcribe
+const TX_PROC_GROUPS = [
+  ['txProcSound', [['denoise', 'txProcDenoise', 'txProcDenoiseHint'], ['loudnorm', 'txProcLoudnorm', 'txProcLoudnormHint'],
+    ['leveling', 'txProcLeveling', 'txProcLevelingHint'], ['vad', 'txProcVad', 'txProcVadHint']]],
+  ['txProcText', [['diarization', 'txProcDiarization', 'txProcDiarizationHint'], ['clean_fillers', 'txProcFillers', 'txProcFillersHint']]],
+];
+
+function txProc(m) {
+  if (!state.txProc || state.txProc.id !== m.id) {
+    state.txProc = { id: m.id, values: { ...(m.processing || {}) }, language: m.language || 'auto', speakers: Number(m.num_speakers_hint || 0) };
+  }
+  return state.txProc;
+}
+
+function renderTxProcMenu() {
+  const m = state.activeMeeting;
+  const box = document.getElementById('tx-proc-menu');
+  if (!m || !box) return;
+  const p = txProc(m);
+  const check = ([key, label, hint]) => `<label class="flex items-start gap-2 cursor-pointer">
+      <input type="checkbox" ${p.values[key] !== false ? 'checked' : ''} data-change="setTxProc" data-change-args='[${jsArg(key)}, {"$": "checked"}]'
+        class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+      <span class="min-w-0"><span class="block text-xs text-apple-label">${escapeHtml(t(label))}</span>
+        <span class="block text-[10.5px] text-apple-tertiary leading-snug">${escapeHtml(t(hint))}</span></span></label>`;
+  const select = (key, source, value) => `<select data-change="setTxProcValue" data-change-args='[${jsArg(key)}, {"$": "value"}]'
+      class="mt-1 w-full h-7 bg-apple-sidebar border apple-border rounded-[7px] px-2 text-xs text-white focus:outline-none">${document.getElementById(source).innerHTML}</select>`;
+  box.innerHTML = TX_PROC_GROUPS.map(([title, items]) => `<div class="space-y-1.5">
+      <div class="text-[10px] font-semibold uppercase tracking-wider text-apple-tertiary">${escapeHtml(t(title))}</div>${items.map(check).join('')}</div>`).join('')
+    + `<div class="grid grid-cols-2 gap-2">
+        <label class="block text-[10.5px] text-apple-tertiary">${escapeHtml(t('speechLangLabel'))}${select('language', 'reconfig-language', p.language)}</label>
+        <label class="block text-[10.5px] text-apple-tertiary">${escapeHtml(t('speakersCountLabel'))}${select('speakers', 'reconfig-speakers', p.speakers)}</label></div>
+      <p class="text-[10.5px] text-apple-tertiary">${escapeHtml(t('txProcApplies'))}</p>`;
+  const [lang, spk] = box.querySelectorAll('select');
+  lang.value = p.language;
+  if (lang.value !== p.language) lang.value = 'auto';
+  spk.value = String(p.speakers);
+}
+
+function toggleTxProcMenu(e) {
+  e.stopPropagation();
+  const box = document.getElementById('tx-proc-menu');
+  const open = box.classList.contains('hidden');
+  if (open) renderTxProcMenu();
+  box.classList.toggle('hidden', !open);
+}
+
+function hideTxProcMenu() {
+  document.getElementById('tx-proc-menu')?.classList.add('hidden');
+}
+document.addEventListener('click', hideTxProcMenu);
+
+function setTxProc(key, checked) {
+  if (state.activeMeeting) txProc(state.activeMeeting).values[key] = !!checked;
+}
+
+function setTxProcValue(key, value) {
+  if (!state.activeMeeting) return;
+  const p = txProc(state.activeMeeting);
+  if (key === 'speakers') p.speakers = Number(value) || 0; else p.language = value;
+}
+
 async function transcribeWithPickedModel() {
   const m = state.activeMeeting;
   if (!m) return;
@@ -202,9 +267,11 @@ async function transcribeWithPickedModel() {
   if (model === m.transcript_model && (m.segments || []).length
       && !(await confirmDialog(t('txTranscribeAgainTitle'), t('txTranscribeAgainText').replace('{model}', () => formatModelName(model)),
         t('txTranscribeAgain'), false))) return;
+  hideTxProcMenu();
+  const p = txProc(m);
   const res = await fetch(`/api/meetings/${m.id}/reconfigure`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model_name: model, language: m.language || 'auto', num_speakers_hint: Number(m.num_speakers_hint || 0) }),
+    body: JSON.stringify({ model_name: model, language: p.language || 'auto', num_speakers_hint: p.speakers, processing: p.values }),
   });
   const data = await readJson(res);
   if (!res.ok) { showToast(errorText(data, res)); return; }

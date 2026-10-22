@@ -1,6 +1,6 @@
 import subprocess
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from app.ffmpeg_manager import find_tool, tool_cmd
 
@@ -10,7 +10,10 @@ from app.ffmpeg_manager import find_tool, tool_cmd
 # 3. afftdn=nf=-25:tn=1  -> adaptive FFT spectral denoiser with automatic noise floor tracking
 # 4. adeclick            -> removes keyboard clicks, mouse pops, and mouth clicks
 # 5. dynaudnorm          -> levels quiet and loud speakers on a call to uniform studio volume
-STUDIO_VOICE_FILTER = "highpass=f=80,lowpass=f=7600,afftdn=nf=-25:tn=1,adeclick,dynaudnorm=f=150:g=15:p=0.92"
+# The cleanup before recognition, in two parts that can be chosen apart (the "Recognition" row)
+VOICE_DENOISE_FILTER = "highpass=f=80,lowpass=f=7600,afftdn=nf=-25:tn=1,adeclick"
+VOICE_LEVEL_FILTER = "dynaudnorm=f=150:g=15:p=0.92"
+STUDIO_VOICE_FILTER = f"{VOICE_DENOISE_FILTER},{VOICE_LEVEL_FILTER}"
 # Only the denoising steps of that chain (no band limit, no levelling), for full-range audio that is
 # listened to: the original track and the background of a dub. Removes steady hiss and hum, not
 # sudden noises; music and ambience get a little duller.
@@ -21,6 +24,8 @@ def extract_audio_16k_mono(
     input_media_path: str | Path,
     output_wav_path: str | Path,
     enhance_audio: bool = True,
+    denoise: Optional[bool] = None,
+    loudnorm: Optional[bool] = None,
 ) -> Path:
     """
     Uses FFmpeg to convert any video/audio file into 16kHz 16-bit mono PCM WAV
@@ -38,7 +43,10 @@ def extract_audio_16k_mono(
             "или добавьте ffmpeg в PATH."
         )
 
-    if enhance_audio:
+    # denoise / loudnorm (None: as enhance_audio): the two parts of the cleanup
+    chain = ",".join(f for f, on in ((VOICE_DENOISE_FILTER, enhance_audio if denoise is None else denoise),
+                                     (VOICE_LEVEL_FILTER, enhance_audio if loudnorm is None else loudnorm)) if on)
+    if chain:
         enhanced_cmd = [
             tool_cmd("ffmpeg"),
             "-y",
@@ -46,7 +54,7 @@ def extract_audio_16k_mono(
             str(in_path),
             "-vn",
             "-af",
-            STUDIO_VOICE_FILTER,
+            chain,
             "-acodec",
             "pcm_s16le",
             "-ar",

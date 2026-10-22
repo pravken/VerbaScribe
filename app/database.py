@@ -297,6 +297,7 @@ _MEETING_EXTRA_COLUMNS = {
     "has_summary": "INTEGER DEFAULT 0",
     # The model the transcript shown was made with, and when (the transcripts of other models are in
     # transcript_versions)
+    "processing_json": "TEXT DEFAULT '{}'",  # what is done to the sound and text when transcribed (see effective_processing)
     "transcript_model": "TEXT DEFAULT ''",
     "transcript_at": "TEXT DEFAULT ''",
 }
@@ -1525,6 +1526,35 @@ def clear_results(meeting_id: int) -> bool:
     return True
 
 
+# What is done to a recording when it is transcribed, chosen per recording above the text (the
+# "Recognition" row); what a recording has not chosen comes from the settings
+PROCESSING_KEYS = ("denoise", "loudnorm", "leveling", "vad", "diarization", "clean_fillers")
+
+
+def effective_processing(stored: Optional[Dict[str, Any]], settings: Optional[Dict[str, str]] = None) -> Dict[str, bool]:
+    s = settings if settings is not None else get_all_settings()
+    on = lambda key: (s.get(key) or "true").lower() == "true"  # noqa: E731
+    out = {
+        "denoise": on("audio_enhance"),  # FFmpeg: hiss and hum, clicks, the voice band
+        "loudnorm": on("audio_enhance"),  # FFmpeg: loudness levelled over time
+        "leveling": True,  # quiet parts raised before GigaAM / Parakeet (asr_onnx.level)
+        "vad": on("vad_filter"),  # Whisper skips the silence
+        "diarization": on("diarization_enabled"),
+        "clean_fillers": on("clean_fillers"),
+    }
+    out.update({k: bool(v) for k, v in (stored or {}).items() if k in PROCESSING_KEYS})
+    return out
+
+
+def set_meeting_processing(meeting_id: int, processing: Dict[str, Any]) -> None:
+    clean = {k: bool(v) for k, v in (processing or {}).items() if k in PROCESSING_KEYS}
+    with _db_lock:
+        conn = get_connection()
+        conn.execute("UPDATE meetings SET processing_json = ? WHERE id = ?", (json.dumps(clean), meeting_id))
+        conn.commit()
+        conn.close()
+
+
 def _deserialize_meeting(d: Dict[str, Any], conn: sqlite3.Connection) -> Dict[str, Any]:
     d["has_segments_backup"] = bool(d.pop("segments_backup_json", ""))
     d["pending_exports"] = _loads_list(d.pop("pending_exports_json", None))
@@ -1553,6 +1583,7 @@ def _deserialize_meeting(d: Dict[str, Any], conn: sqlite3.Connection) -> Dict[st
 
     d["translations"] = resolve_all(d["segments"], _loads_dict(d.pop("translations_json", None)))
     d["transcript_versions"] = transcript_versions(conn, d["id"])
+    d["processing"] = effective_processing(_loads_dict(d.pop("processing_json", None)))
     return d
 
 

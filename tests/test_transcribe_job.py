@@ -67,7 +67,7 @@ class ProcessMeetingJobTest(unittest.TestCase):
         self.gpu.return_value = True
         calls = []
 
-        def transcribe(model, wav, dur, progress, cancel, out, gpu=False):
+        def transcribe(model, wav, dur, progress, cancel, out, gpu=False, leveling=True):
             calls.append(gpu)
             if gpu:
                 raise RuntimeError("CUDA out of memory")
@@ -80,7 +80,7 @@ class ProcessMeetingJobTest(unittest.TestCase):
         self.assertEqual([s["text"] for s in m["segments"]], ["новый текст"])
 
     def test_cancel_keeps_the_previous_transcript(self):
-        def transcribe(model, wav, dur, progress, cancel, out, gpu=False):
+        def transcribe(model, wav, dur, progress, cancel, out, gpu=False, leveling=True):
             out.append(NEW[0])
             progress(0.5)  # a partial save would replace the old transcript: not for a recording that has one
             raise transcriber.JobCancelled()
@@ -90,7 +90,7 @@ class ProcessMeetingJobTest(unittest.TestCase):
         self.assertEqual([s["text"] for s in m["segments"]], ["прежняя правка"])
 
     def test_failure_keeps_the_previous_transcript_and_says_why(self):
-        def transcribe(model, wav, dur, progress, cancel, out, gpu=False):
+        def transcribe(model, wav, dur, progress, cancel, out, gpu=False, leveling=True):
             raise RuntimeError("model file damaged")
 
         m = self._run(transcribe)
@@ -124,6 +124,28 @@ class ProcessMeetingJobTest(unittest.TestCase):
             m = self._run(lambda *a, **k: self.fail("recognition must not start"))
         self.assertEqual(m["status"], "failed")
         self.assertIn("Не удалось скачать модель GigaAM v3: no network", m["error_message"])
+
+    def test_the_recordings_own_processing_is_used(self):
+        from app.database import effective_processing, set_meeting_processing
+
+        set_meeting_processing(self.mid, {"denoise": False, "leveling": False, "diarization": False, "bogus": True})
+        self.assertEqual(get_meeting(self.mid)["processing"],
+                         {**effective_processing({}), "denoise": False, "leveling": False, "diarization": False})
+        seen = {}
+
+        def transcribe(model, wav, dur, progress, cancel, out, gpu=False, leveling=True):
+            seen["leveling"] = leveling
+            return NEW
+
+        with mock.patch.object(transcriber, "extract_audio_16k_mono",
+                               side_effect=lambda src, dst, **kw: (seen.update(kw), Path(dst).write_bytes(b"x"))), \
+                mock.patch("app.diarizer.diarize_and_merge_segments",
+                           side_effect=lambda **kw: (seen.update(diar=kw["diarization_enabled"]),
+                                                     ({"SPEAKER_00": {"name": "Участник 1", "color": "#0A84FF"}},
+                                                      [{**s, "id": i, "speaker": "SPEAKER_00"} for i, s in enumerate(kw["raw_segments"])]))[1]):
+            m = self._run(transcribe)
+        self.assertEqual(m["status"], "completed")
+        self.assertEqual((seen["denoise"], seen["loudnorm"], seen["leveling"], seen["diar"]), (False, True, False, False))
 
     def test_missing_media_fails_at_once(self):
         Path(get_meeting(self.mid)["media_path"]).unlink()

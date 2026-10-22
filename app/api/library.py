@@ -501,6 +501,8 @@ class MeetingReconfigurePayload(BaseModel):
     model_name: str
     language: str = "auto"
     num_speakers_hint: int = 0
+    # What is done to the sound and the text (database.PROCESSING_KEYS); None keeps the recording's
+    processing: Optional[Dict[str, bool]] = None
 
 @router.post("/api/meetings/{meeting_id}/reconfigure")
 def api_reconfigure_meeting(meeting_id: int, payload: MeetingReconfigurePayload) -> Dict[str, Any]:
@@ -517,6 +519,10 @@ def api_reconfigure_meeting(meeting_id: int, payload: MeetingReconfigurePayload)
         language=payload.language.strip() or "auto",
         num_speakers_hint=max(0, int(payload.num_speakers_hint)),
     )
+    if payload.processing is not None:
+        from app.database import set_meeting_processing
+
+        set_meeting_processing(meeting_id, payload.processing)
     update_meeting_progress(
         meeting_id,
         status="queued",

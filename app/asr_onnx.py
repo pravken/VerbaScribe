@@ -571,7 +571,7 @@ def split_sentences_text(start: float, end: float, text: str) -> List[Tuple[floa
 
 def transcribe(model_id: str, wav_path: Path, total_dur: float, on_progress: Callable[[float], None],
                check_cancel: Callable[[], None], out: Optional[List[Dict[str, Any]]] = None,
-               gpu: bool = False) -> List[Dict[str, Any]]:
+               gpu: bool = False, leveling: bool = True) -> List[Dict[str, Any]]:
     """Segments like faster-whisper's: [{start, end, text, words: [{word, start, end, prob}]}].
     `out` (optional) receives them as they come, for showing the text while it is recognized."""
     import soundfile as sf
@@ -580,7 +580,8 @@ def transcribe(model_id: str, wav_path: Path, total_dur: float, on_progress: Cal
     audio, sr = sf.read(str(wav_path), dtype="float32")  # 16 kHz mono (app/audio_utils.py)
     if getattr(audio, "ndim", 1) > 1:
         audio = audio.mean(axis=1)
-    results: Iterator[Any] = asr.recognize(level(audio, sr), sample_rate=sr)
+    # leveling: quiet parts raised first (chosen per recording, on by default)
+    results: Iterator[Any] = asr.recognize(level(audio, sr) if leveling else audio, sample_rate=sr)
     segments: List[Dict[str, Any]] = out if out is not None else []
     for res in results:
         check_cancel()
