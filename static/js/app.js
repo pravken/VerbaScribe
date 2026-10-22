@@ -14,7 +14,10 @@ function renderUpdateStatus() {
   let msg = (en ? 'Installed version ' : 'Установлена версия ') + info.current + '.';
   if (dl.active) msg += en ? ` Downloading ${info.latest.version}… ${dl.progress}%` : ` Скачивание ${info.latest.version}… ${dl.progress}%`;
   else if (dl.error) msg += ' ' + dl.error;
-  else if (info.available && dl.done) {
+  else if (info.available && info.git_checkout) {
+    msg += en ? ` Version ${info.latest.version} is available: this copy is a git clone, update it with git pull.`
+      : ` Доступна версия ${info.latest.version}: это клон git, обновите его командой git pull.`;
+  } else if (info.available && dl.done) {
     msg += en ? ` Version ${info.latest.version} is downloaded` : ` Версия ${info.latest.version} скачана`;
     msg += info.auto ? (en ? ' and will be installed when you close the app.' : ' и установится при закрытии программы.') : '.';
   } else if (info.available) {

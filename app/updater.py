@@ -31,7 +31,7 @@ import time
 import traceback
 import zipfile
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 GITHUB_REPO = "pravken/VerbaScribe"
 LATEST_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
@@ -148,7 +148,8 @@ def status() -> Dict[str, Any]:
             "download": dict(_state["download"]),
         }
     out["auto"] = auto_enabled()
-    out["can_install"] = out["available"] and bool(latest and latest.get("zip_url"))
+    # A git clone is updated with git: an archive would overwrite the working copy (and its changes)
+    out["can_install"] = out["available"] and bool(latest and latest.get("zip_url")) and not out["git_checkout"]
     return out
 
 
@@ -173,7 +174,7 @@ def install_on_exit() -> bool:
     try:
         with _lock:
             path = _state["download"].get("path") if _state["download"].get("done") else ""
-        if not path or not auto_enabled():
+        if not path or not auto_enabled() or is_git_checkout():
             return False
         launch_installer(restart=False)
         return True
@@ -328,6 +329,29 @@ def _reinstall(py: Path, uv: Optional[str], frozen_file: Path, log_dir: Path) ->
         subprocess.run(cmd, stdout=lf, stderr=subprocess.STDOUT, creationflags=_NO_WINDOW)
 
 
+def archive_files(names: List[str], app_dir: Path) -> List[Tuple[str, str]]:
+    """(name in the archive, path in the program folder) of the files an update writes. The archive
+    holds one top folder (VerbaScribe-vX.Y.Z/); a name that would land outside the program folder
+    (absolute, a drive, "..", backslashes from another zip tool) or in a protected folder is left out."""
+    root = app_dir.resolve()
+    norm = [(n, n.replace("\\", "/")) for n in names if not n.replace("\\", "/").endswith("/")]
+    first = {x.split("/")[0] for _n, x in norm}
+    prefix = first.pop() + "/" if len(first) == 1 and all("/" in x for _n, x in norm) else ""
+    out = []
+    for n, x in norm:
+        rel = x[len(prefix):] if prefix and x.startswith(prefix) else x
+        parts = rel.split("/")
+        if (not rel or rel.startswith("/") or ":" in rel or any(p in ("", ".", "..") for p in parts)
+                or parts[0].lower() in PROTECTED):
+            continue
+        try:
+            (root / rel).resolve().relative_to(root)
+        except ValueError:
+            continue
+        out.append((n, rel))
+    return out
+
+
 def apply_update(zip_path: Path, app_dir: Path, data_dir: Path, report: Callable[[str], None]) -> None:
     log_dir = data_dir / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -337,14 +361,7 @@ def apply_update(zip_path: Path, app_dir: Path, data_dir: Path, report: Callable
     restore_packages: Optional[Callable[[], None]] = None
 
     with zipfile.ZipFile(zip_path) as z:
-        names = [n for n in z.namelist() if not n.endswith("/")]
-        prefix = os.path.commonprefix(names).split("/")[0] + "/" if names and "/" in names[0] else ""
-        files = []
-        for n in names:
-            rel = n[len(prefix):] if prefix and n.startswith(prefix) else n
-            if not rel or rel.split("/")[0] in PROTECTED or ".." in Path(rel).parts:
-                continue
-            files.append((n, rel))
+        files = archive_files(z.namelist(), app_dir)
         report(f"Резервная копия ({len(files)} файлов)…")
         with zipfile.ZipFile(backup, "w", zipfile.ZIP_DEFLATED) as bz:
             for _n, rel in files:

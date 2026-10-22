@@ -59,6 +59,13 @@ class ApplyUpdateTest(unittest.TestCase):
         self.assertEqual((self.app / "models" / "model.bin").read_text(), "weights")
         self.assertFalse((self.app.parent / "outside.txt").exists())
 
+    def test_names_outside_the_program_folder_are_left_out(self):
+        names = ["VerbaScribe-v9/app/main.py", "VerbaScribe-v9/C:/Users/x/Startup/evil.bat", "VerbaScribe-v9//etc/evil",
+                 "VerbaScribe-v9/../evil.txt", "VerbaScribe-v9/app/../../evil.txt", "VerbaScribe-v9/.VENV/x.py",
+                 "VerbaScribe-v9\\app\\new.py", "VerbaScribe-v9/app/x.py:stream", "VerbaScribe-v9/models/m.bin"]
+        self.assertEqual(updater.archive_files(names, self.app),
+                         [("VerbaScribe-v9/app/main.py", "app/main.py"), ("VerbaScribe-v9\\app\\new.py", "app/new.py")])
+
     def test_failed_package_install_restores_the_old_version(self):
         _release_zip(self.zip, {"app/main.py": "new main", "app/new.py": "added", "requirements.txt": "changed"})
         failed = mock.Mock(returncode=1)
@@ -86,12 +93,20 @@ class AutoUpdateTest(unittest.TestCase):
             updater._auto_download({**st, "auto": False})
             dl.assert_called_once()
         with mock.patch.object(updater, "auto_enabled", return_value=True), \
+             mock.patch.object(updater, "is_git_checkout", return_value=False), \
              mock.patch.object(updater, "launch_installer") as li, \
              mock.patch.dict(updater._state, {"download": {"done": True, "path": "x.zip"}}):
             self.assertTrue(updater.install_on_exit())
             li.assert_called_once_with(restart=False)
         with mock.patch.object(updater, "launch_installer") as li, \
              mock.patch.dict(updater._state, {"download": {"done": False, "path": ""}}):
+            self.assertFalse(updater.install_on_exit())
+            li.assert_not_called()
+        # A git clone is never overwritten by an archive (it is updated with git pull)
+        with mock.patch.object(updater, "auto_enabled", return_value=True), \
+             mock.patch.object(updater, "is_git_checkout", return_value=True), \
+             mock.patch.object(updater, "launch_installer") as li, \
+             mock.patch.dict(updater._state, {"download": {"done": True, "path": "x.zip"}}):
             self.assertFalse(updater.install_on_exit())
             li.assert_not_called()
 
