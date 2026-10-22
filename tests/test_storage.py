@@ -3,6 +3,7 @@ import asyncio
 import shutil
 import sqlite3
 import tempfile
+import sys
 import unittest
 from pathlib import Path
 
@@ -233,6 +234,34 @@ class ShutdownTest(unittest.TestCase):
         proc = shutdown.track(subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"]))
         shutdown.stop_all()
         self.assertIsNotNone(proc.wait(timeout=10))
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows jobs")
+    def test_work_processes_end_even_when_the_app_is_killed(self):
+        """A crash or Task Manager skips stop_all(): the job of the tracked processes ends them."""
+        import ctypes
+        import subprocess
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        app_like = (
+            "import os, subprocess, sys\n"
+            "from app import shutdown\n"
+            "child = shutdown.track(subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)']))\n"
+            "print(child.pid, flush=True)\n"
+            "os._exit(1)  # no stop_all(), as after a crash\n"
+        )
+        out = subprocess.run([sys.executable, "-c", app_like], capture_output=True, text=True, cwd=str(root), timeout=60)
+        pid = int(out.stdout.split()[0])
+        SYNCHRONIZE, WAIT_OBJECT_0 = 0x00100000, 0
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.restype = ctypes.c_void_p
+        h = kernel32.OpenProcess(SYNCHRONIZE, False, pid)
+        if not h:
+            return  # already gone
+        try:
+            self.assertEqual(kernel32.WaitForSingleObject(ctypes.c_void_p(h), 10000), WAIT_OBJECT_0, out.stderr)
+        finally:
+            kernel32.CloseHandle(ctypes.c_void_p(h))
 
     def test_background_work_keeps_the_app_open(self):
         from unittest import mock
