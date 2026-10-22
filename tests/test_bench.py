@@ -100,14 +100,21 @@ class FfmpegScriptOptionTest(unittest.TestCase):
 
 class CleanSlateTest(unittest.TestCase):
     def test_everything_is_released_and_ollama_emptied(self):
+        import threading
+
         loaded = [[{"name": "qwen3:8b"}], []]
-        with mock.patch("app.transcriber.release_whisper_model") as wh, mock.patch("app.asr_onnx.release") as onnx, \
+        here = threading.get_ident()
+        mine, onnx_calls = [], []  # the queue of other tests may release models in its own thread meanwhile
+        with mock.patch("app.transcriber.release_whisper_model",
+                        side_effect=lambda: mine.append(1) if threading.get_ident() == here else None), \
+             mock.patch("app.asr_onnx.release",
+                        side_effect=lambda *a, **k: onnx_calls.append((a, k)) if threading.get_ident() == here else None), \
              mock.patch("app.vram.ollama_loaded", side_effect=lambda: loaded[0] if loaded else []) as ol, \
              mock.patch("httpx.Client") as client, mock.patch("app.hardware.clear_vram"), mock.patch.object(bench.time, "sleep",
-                                                                                                         side_effect=lambda _s: loaded.pop(0) if loaded else None):
+                                                                                                         side_effect=lambda _s: loaded.pop(0) if loaded and threading.get_ident() == here else None):
             bench.clean_slate()
-        wh.assert_called_once()
-        onnx.assert_called_once_with()
+        self.assertEqual(len(mine), 1)
+        self.assertEqual(onnx_calls, [((), {})])
         body = client.return_value.__enter__.return_value.post.call_args.kwargs["json"]
         self.assertEqual(body, {"model": "qwen3:8b", "keep_alive": 0})
 

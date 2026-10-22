@@ -75,7 +75,8 @@ SUPPORTED_EXTENSIONS = {
 # requests to 127.0.0.1. Every launch therefore gets a random session token: the desktop
 # window opens /?token=..., receives it as an HttpOnly SameSite=Strict cookie, and every
 # other request without that cookie is rejected. Requests with a foreign Host header
-# (DNS rebinding) are rejected as well.
+# (DNS rebinding) are rejected as well, and so are requests other pages send (_foreign_page):
+# the cookie is sent along from any port of 127.0.0.1.
 SESSION_COOKIE = "vs_session"
 
 
@@ -113,6 +114,20 @@ def _host_allowed(host_header: str) -> bool:
     else:
         host = host.split(":")[0]
     return host in _ALLOWED_HOSTS
+
+
+def _foreign_page(request: Request) -> bool:
+    """A request sent by another page of the browser. The cookie alone does not tell: for the browser
+    every port of 127.0.0.1 is the same site, so a page of another local program (a dev server, a
+    notebook) gets the session cookie sent along. Browsers say who sent a request in Sec-Fetch-Site
+    (and Origin); requests without both (not from a browser page) still need the cookie."""
+    site = (request.headers.get("sec-fetch-site") or "").lower()
+    if site:
+        return site not in ("same-origin", "none")
+    origin = request.headers.get("origin")
+    if origin is None:
+        return False
+    return origin.rstrip("/").lower() != f"{request.url.scheme}://{request.headers.get('host', '')}".lower()
 
 
 def _token_valid(value: Optional[str]) -> bool:
@@ -211,6 +226,8 @@ async def local_session_guard(request: Request, call_next):
         return Response("Forbidden host", status_code=403)
 
     path = request.url.path
+    if not path.startswith(_PUBLIC_PREFIXES) and _foreign_page(request):
+        return Response('{"detail":"Forbidden origin"}', status_code=403, media_type="application/json")
     if path == "/":
         query_token = request.query_params.get("token")
         if _token_valid(query_token):

@@ -25,6 +25,21 @@ class SessionAndSearchApiTest(unittest.TestCase):
             other.cookies.set("vs_session_8790", main.SESSION_TOKEN)
             self.assertEqual(other.get("/api/meetings").status_code, 401)
 
+    def test_requests_of_other_pages_are_refused(self):
+        """Another local program's page gets the cookie sent along (same site): it is told by its headers."""
+        with self._client(8790) as c:
+            c.get(f"/?token={main.SESSION_TOKEN}")
+            other = {"Sec-Fetch-Site": "same-site", "Origin": "http://127.0.0.1:9999"}
+            self.assertEqual(c.post("/api/settings", json={"settings": {}}, headers=other).status_code, 403)
+            self.assertEqual(c.get("/api/meetings", headers={"Sec-Fetch-Site": "cross-site"}).status_code, 403)
+            self.assertEqual(c.post("/api/settings", json={"settings": {}}, headers={"Origin": "http://127.0.0.1:9999"}).status_code, 403)
+            # the app's own page, a typed address, and a program without browser headers
+            self.assertEqual(c.post("/api/settings", json={"settings": {}}, headers={"Sec-Fetch-Site": "same-origin"}).status_code, 200)
+            self.assertEqual(c.post("/api/settings", json={"settings": {}}, headers={"Origin": "http://127.0.0.1:8790"}).status_code, 200)
+            self.assertEqual(c.get("/api/meetings", headers={"Sec-Fetch-Site": "none"}).status_code, 200)
+            self.assertEqual(c.get("/api/meetings").status_code, 200)
+            self.assertEqual(c.get("/static/js/app.js", headers={"Sec-Fetch-Site": "cross-site"}).status_code, 200)
+
     def test_search_endpoint_and_static_revalidation(self):
         with self._client(8790) as c:
             c.get(f"/?token={main.SESSION_TOKEN}")
