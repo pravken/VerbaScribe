@@ -64,6 +64,32 @@ class StaticUiTest(unittest.TestCase):
                     bad.append(f"{f.name}:{n}: {line.strip()[:100]}")
         self.assertEqual(bad, [])
 
+    def test_every_server_message_has_english(self):
+        """The server speaks Russian; static/server_text.js gives the English interface each message."""
+        import ast
+        import json
+
+        table = (ROOT / "static" / "server_text.js").read_text(encoding="utf-8")
+        plain = set(json.loads("{" + table.split("const SERVER_TEXT_EN = {", 1)[1].split("\n};", 1)[0].rstrip().rstrip(",") + "}"))
+        patterns = {p[0] for p in json.loads("[" + table.split("const SERVER_PATTERNS_EN = [", 1)[1].split("\n];", 1)[0].rstrip().rstrip(",") + "]")}
+        missing = []
+        for f in sorted((ROOT / "app").rglob("*.py")):
+            for node in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
+                if not (isinstance(node, ast.Call) and getattr(node.func, "id", getattr(node.func, "attr", ""))
+                        in ("HTTPException", "ValueError", "RuntimeError", "LlmError")):
+                    continue
+                for v in [kw.value for kw in node.keywords if kw.arg == "detail"] + list(node.args[:1]):
+                    if isinstance(v, ast.Constant) and isinstance(v.value, str):
+                        text, known = v.value, plain
+                    elif isinstance(v, ast.JoinedStr):
+                        text = "".join(x.value if isinstance(x, ast.Constant) else "{}" for x in v.values)
+                        known = patterns
+                    else:
+                        continue
+                    if re.search("[А-Яа-я]", text) and text not in known:
+                        missing.append(f"{f.name}: {text[:80]}")
+        self.assertEqual(missing, [])
+
     def test_vendor_files_match_package_json(self):
         """static/vendor is what `npm run vendor` built from the versions in package.json."""
         import json

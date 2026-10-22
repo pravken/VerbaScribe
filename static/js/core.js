@@ -173,11 +173,24 @@ function showAlert(text) {
   return confirmDialog(t('attentionTitle'), String(text), t('ok'), false).then(() => {});
 }
 
+// A message of the server (always Russian) in the interface language (static/server_text.js)
+function serverText(text) {
+  if (state.uiLang !== 'en' || typeof text !== 'string' || !text || typeof SERVER_TEXT_EN === 'undefined') return text;
+  if (SERVER_TEXT_EN[text]) return SERVER_TEXT_EN[text];
+  for (const [ru, en] of SERVER_PATTERNS_EN) {
+    const parts = ru.split('{}');
+    const re = new RegExp('^' + parts.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('([\\s\\S]*?)') + '$');
+    const m = text.match(re);
+    if (m) return en.replace(/\{(\d)\}/g, (_, i) => serverText(m[Number(i) + 1]));
+  }
+  return text;
+}
+
 // What a failed answer says, for a toast: FastAPI's "detail" is a text, or a list of invalid fields
 function errorText(data, res) {
   const d = data && data.detail;
   if (Array.isArray(d)) return d.map(x => (x && (x.msg || x.message)) || String(x)).join('; ');
-  return (typeof d === 'string' && d) || `${t('serverError')} (HTTP ${res ? res.status : '?'})`;
+  return (typeof d === 'string' && serverText(d)) || `${t('serverError')} (HTTP ${res ? res.status : '?'})`;
 }
 
 // A lost session (the server started again with a new token, the cookie is gone): every request then
@@ -206,7 +219,11 @@ async function onSessionLost() {
 // "Unexpected token ... is not valid JSON" shown to the user
 async function readJson(res) {
   const text = await res.text().catch(() => '');
-  try { return text ? JSON.parse(text) : {}; } catch (e) {
+  try {
+    const data = text ? JSON.parse(text) : {};
+    if (data && typeof data.detail === 'string') data.detail = serverText(data.detail);
+    return data;
+  } catch (e) {
     return { detail: `${t('serverError')} (HTTP ${res.status})` };
   }
 }

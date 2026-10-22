@@ -63,7 +63,7 @@ function updateProcessingBanner(m) {
   document.getElementById('workspace-live-dot').classList.toggle('hidden', !running);
   document.getElementById('workspace-progress-time').textContent = running ? formatTiming(jobTiming(q, m.progress || 0)) : '';
   if (isBusy) {
-    document.getElementById('workspace-stage-text').textContent = m.stage_text || t('processingShort');
+    document.getElementById('workspace-stage-text').textContent = serverText(m.stage_text) || t('processingShort');
     document.getElementById('workspace-progress-pct').textContent = `${m.progress}%`;
     bar.style.background = '';
     bar.style.width = `${Math.max(running ? 3 : 0, m.progress || 0)}%`;
@@ -71,7 +71,7 @@ function updateProcessingBanner(m) {
     // Failed or cancelled: the reason, a red (or grey) bar and Retry, not a "finished" blue bar
     const failed = m.status === 'failed';
     document.getElementById('workspace-stage-text').textContent = m.status === 'cleared' ? t('statusCleared')
-      : (failed ? t('statusFailed') : t('statusCancelled')) + (m.error_message ? `: ${m.error_message}` : m.stage_text ? `: ${m.stage_text}` : '');
+      : (failed ? t('statusFailed') : t('statusCancelled')) + (m.error_message ? `: ${serverText(m.error_message)}` : m.stage_text ? `: ${serverText(m.stage_text)}` : '');
     document.getElementById('workspace-progress-pct').textContent = '';
     bar.style.width = '100%';
     bar.style.background = failed ? 'rgba(255, 69, 58, 0.7)' : 'rgba(255, 255, 255, 0.2)';

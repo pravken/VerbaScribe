@@ -169,7 +169,7 @@ function renderQueuePanel() {
     const pct = running ? (m.progress ?? q.progress ?? 0) : 0;
     const detail = q.cancelling
       ? t('queueCancelling')
-      : running ? (m.stage_text || q.stage_text || '') : t('queueWaiting').replace('{n}', () => q.position);
+      : running ? serverText(m.stage_text || q.stage_text || '') : t('queueWaiting').replace('{n}', () => q.position);
     const timing = running && !q.cancelling ? formatTiming(jobTiming(q, pct)) : '';
     return `
       <div onclick="openMeeting(${q.id}, true)" title="${escapeHtml(detail)}"
@@ -899,7 +899,7 @@ function recordingBadgesHtml(m) {
     const busy = running === kind;
     const fail = failedStep === kind;
     if (!done && !busy && !fail) return '';
-    const tip = busy ? `${label} · ${t('recBadgeRunning')}` : fail ? `${t('statusFailed')}${m.error_message ? ': ' + m.error_message : ''}` : label;
+    const tip = busy ? `${label} · ${t('recBadgeRunning')}` : fail ? `${t('statusFailed')}${m.error_message ? ': ' + serverText(m.error_message) : ''}` : label;
     return `<span class="rec-badge ${busy ? 'rec-badge-busy' : ''} ${fail ? 'rec-badge-fail' : ''}" title="${escapeHtml(tip)}">`
       + `<svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">${REC_BADGE_ICONS[kind]}</svg>`
       + (text ? `<span>${escapeHtml(text)}</span>` : '') + '</span>';
