@@ -16,6 +16,7 @@ async function selectMeeting(id, reloadPlayer = true) {
 
   document.getElementById('workspace-empty').classList.add('hidden');
   document.getElementById('workspace-content').classList.remove('hidden');
+  renderTopbar();
 
   document.getElementById('meeting-title-input').value = m.title;
   document.getElementById('meeting-meta-badge').textContent =

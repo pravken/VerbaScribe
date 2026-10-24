@@ -645,8 +645,8 @@ const I18N = {
     llmKeyOpenSite: 'Открыть сайт',
     llmKeyCopyLink: 'Копировать ссылку',
     tipNavLibrary: 'Расшифровка, анализ и правка выбранной записи (Ctrl+1)',
-    tipNavStudio: 'Запись звука и экрана с субтитрами и переводом в реальном времени (Ctrl+2)',
-    tipNavAsk: 'Вопросы к одной записи, к папке или ко всей медиатеке (Ctrl+3)',
+    tipNavStudio: 'Запись звука и экрана с субтитрами и переводом в реальном времени (Ctrl+4)',
+    tipNavAsk: 'Вопросы к одной записи, к папке или ко всей медиатеке (Ctrl+5)',
     tipCpuUsage: 'Загрузка процессора всеми программами',
     tipRamUsage: 'Оперативная память, занятая всеми программами; свободно {free} ГБ',
     studioIdle: 'Студия записи',
@@ -1296,6 +1296,56 @@ const I18N = {
     ffmpegDownloadBtn: 'Скачать FFmpeg',
     ffmpegDownloading: 'Загрузка FFmpeg',
     tipFfmpegDownload: 'Скачать сборку FFmpeg {version} (~{size} МБ) с github.com/GyanD/codexffmpeg. Архив проверяется по SHA-256, в папку данных распаковываются только ffmpeg.exe и ffprobe.exe.',
+
+    // --- redesign: shell (static/js/shell.js, parts/workspace.html top bar, parts/statusbar.html) ---
+    navAria: 'Разделы программы',
+    tbRecord: 'Запись',
+    tbRecStop: 'Стоп',
+    tipTbRecord: 'Начать запись с последними настройками студии (Ctrl+Alt+R)',
+    tipTbRecordStop: 'Остановить запись. Текст и заметки во время записи — во вкладке «Студия»',
+    tbRecSaved: 'Запись сохранена',
+    tbRecSavedHint: 'Расшифровка начнётся сама.',
+    tbRecSettings: 'Настройки записи',
+    tbRecOpen: 'Открыть запись',
+    navHome: 'Главная',
+    tipNavHome: 'Главная: последние записи, встречи и задачи (Ctrl+1)',
+    navTasks: 'Задачи',
+    tipNavTasks: 'Задачи из всех записей (Ctrl+3)',
+    tbRecordGroup: 'Открытая запись',
+    tbOpenRecord: 'Открытая запись: {title}',
+    tipTbRecMenu: 'Действия с записью',
+    tbRecInfo: 'Сведения о записи…',
+    tbRecMove: 'Переместить в папку…',
+    tbRecDelete: 'Удалить запись…',
+    sbQueueEmpty: 'Очередь пуста',
+    sbQueueMore: 'ещё {n}',
+    sbQueueWaiting: 'В очереди: {n}',
+    homeHello: 'Добрый день',
+    homeImportSub: 'файл или ссылка',
+    homeRecent: 'Недавние записи',
+    homeRecentEmpty: 'Записей пока нет. Нажмите «Запись» или добавьте файл.',
+    tasksEmpty: 'Открытых задач нет',
+
+    // --- redesign: player (A: editor and player — static/js/redesign_player.js); texts of this package go between its two rd… lines ---
+    rdPlyrReserved: '—',
+    rdPlyrEnd: '—',  // (keep last)
+
+    // --- redesign: home (B: home, import, sidebar, status bar — static/js/home.js, importdlg.js); texts of this package go between its two rd… lines ---
+    rdHmReserved: '—',
+    rdHmEnd: '—',  // (keep last)
+
+    // --- redesign: analysis-speakers (C: analysis, speakers, people — static/js/people.js); texts of this package go between its two rd… lines ---
+    rdAsReserved: '—',
+    rdAsEnd: '—',  // (keep last)
+
+    // --- redesign: tasks (D: tasks — static/js/tasks.js); texts of this package go between its two rd… lines ---
+    rdTkReserved: '—',
+    rdTkEnd: '—',  // (keep last)
+
+    // --- redesign: studio-assistant-settings (E: studio, assistant, settings); texts of this package go between its two rd… lines ---
+    rdSasReserved: '—',
+    rdSasEnd: '—',  // (keep last)
+
   },
   en: {
     // --- Cloud language models for analysis ---
@@ -1940,8 +1990,8 @@ const I18N = {
     llmKeyOpenSite: 'Open site',
     llmKeyCopyLink: 'Copy link',
     tipNavLibrary: 'The transcript, analysis and edits of the selected recording (Ctrl+1)',
-    tipNavStudio: 'Record audio and screen with live captions and translation (Ctrl+2)',
-    tipNavAsk: 'Questions about one recording, a folder or the whole library (Ctrl+3)',
+    tipNavStudio: 'Record audio and screen with live captions and translation (Ctrl+4)',
+    tipNavAsk: 'Questions about one recording, a folder or the whole library (Ctrl+5)',
     tipCpuUsage: 'Processor load of all programs',
     tipRamUsage: 'Memory used by all programs; {free} GB free',
     studioIdle: 'Recording studio',
@@ -2591,5 +2641,55 @@ const I18N = {
     ffmpegDownloadBtn: 'Download FFmpeg',
     ffmpegDownloading: 'Downloading FFmpeg',
     tipFfmpegDownload: 'Download FFmpeg {version} (~{size} MB) from github.com/GyanD/codexffmpeg. The archive is verified by SHA-256; only ffmpeg.exe and ffprobe.exe are extracted into the data folder.',
+
+    // --- redesign: shell (static/js/shell.js, parts/workspace.html top bar, parts/statusbar.html) ---
+    navAria: 'Parts of the app',
+    tbRecord: 'Record',
+    tbRecStop: 'Stop',
+    tipTbRecord: 'Start recording with the last studio settings (Ctrl+Alt+R)',
+    tipTbRecordStop: 'Stop recording. The live text and notes are on the Studio tab',
+    tbRecSaved: 'Recording saved',
+    tbRecSavedHint: 'It will be transcribed on its own.',
+    tbRecSettings: 'Recording settings',
+    tbRecOpen: 'Open the recording',
+    navHome: 'Home',
+    tipNavHome: 'Home: the latest recordings, meetings and tasks (Ctrl+1)',
+    navTasks: 'Tasks',
+    tipNavTasks: 'Tasks from all recordings (Ctrl+3)',
+    tbRecordGroup: 'Open recording',
+    tbOpenRecord: 'Open recording: {title}',
+    tipTbRecMenu: 'Recording actions',
+    tbRecInfo: 'Recording details…',
+    tbRecMove: 'Move to folder…',
+    tbRecDelete: 'Delete recording…',
+    sbQueueEmpty: 'The queue is empty',
+    sbQueueMore: '{n} more',
+    sbQueueWaiting: 'Queued: {n}',
+    homeHello: 'Good afternoon',
+    homeImportSub: 'a file or a link',
+    homeRecent: 'Recent recordings',
+    homeRecentEmpty: 'No recordings yet. Press Record or add a file.',
+    tasksEmpty: 'No open tasks',
+
+    // --- redesign: player (A: editor and player — static/js/redesign_player.js); texts of this package go between its two rd… lines ---
+    rdPlyrReserved: '—',
+    rdPlyrEnd: '—',  // (keep last)
+
+    // --- redesign: home (B: home, import, sidebar, status bar — static/js/home.js, importdlg.js); texts of this package go between its two rd… lines ---
+    rdHmReserved: '—',
+    rdHmEnd: '—',  // (keep last)
+
+    // --- redesign: analysis-speakers (C: analysis, speakers, people — static/js/people.js); texts of this package go between its two rd… lines ---
+    rdAsReserved: '—',
+    rdAsEnd: '—',  // (keep last)
+
+    // --- redesign: tasks (D: tasks — static/js/tasks.js); texts of this package go between its two rd… lines ---
+    rdTkReserved: '—',
+    rdTkEnd: '—',  // (keep last)
+
+    // --- redesign: studio-assistant-settings (E: studio, assistant, settings); texts of this package go between its two rd… lines ---
+    rdSasReserved: '—',
+    rdSasEnd: '—',  // (keep last)
+
   }
 };

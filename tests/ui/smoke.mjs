@@ -22,7 +22,7 @@ const step = async (name, fn) => {
 await page.goto(`${base}/?token=${token}`);
 await page.waitForTimeout(2000);
 await page.evaluate(() => document.getElementById('first-run-wizard')?.remove());
-for (const view of ['studio', 'ask', 'library']) {
+for (const view of ['home', 'tasks', 'studio', 'ask', 'library']) {
   await step(`view ${view}`, () => page.evaluate(v => switchAppView(v), view));
   await page.waitForTimeout(400);
 }
@@ -52,6 +52,11 @@ for (const tab of await page.evaluate(() => SETTINGS_TABS)) {
   });
 }
 await step('close settings', () => page.evaluate(() => closeModal('settings')));
+// The settings are a page of the window: closing it goes back to the view it came from
+await step('settings page returns', async () => {
+  const view = await page.evaluate(() => state.appView);
+  if (view === 'settings') throw new Error('still on the settings page');
+});
 await step('about', async () => {
   await page.evaluate(() => openAbout());
   await page.waitForTimeout(500);

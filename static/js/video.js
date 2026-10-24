@@ -369,8 +369,11 @@ document.addEventListener('keydown', (e) => {
     } else if (e.code === 'KeyF' && !e.shiftKey) {
       e.preventDefault();
       focusTranscriptSearch();
-    } else if (/^(Digit|Numpad)[123]$/.test(e.code) && !e.shiftKey && !anyModalOpen()) {
-      // Ctrl+1 / 2 / 3: the Editor, the Studio, the Assistant (the tabs above, in their order)
+    } else if (e.code === 'KeyI' && !e.shiftKey && state.activeMeeting && !anyModalOpen()) {
+      e.preventDefault();  // the details of the open recording (its ⋯ in the top bar)
+      openRecordTab('info');
+    } else if (/^(Digit|Numpad)[1-5]$/.test(e.code) && !e.shiftKey && !anyModalOpen()) {
+      // Ctrl+1…5: Home, the open recording, Tasks, the Studio, the Assistant (the top bar, in its order)
       e.preventDefault();
       switchAppView(APP_VIEWS[Number(e.code.slice(-1)) - 1]);
     }

@@ -7,6 +7,7 @@ async function loadMeetingsList() {
   const list = await readJson(res);
   if (!res.ok || !Array.isArray(list)) return;  // the list shown stays (a lost session reloads the page)
   state.meetings = list;
+  onLibraryChanged();
   // The empty editor points to the list on the left when there is something in it
   document.getElementById('workspace-empty-pick')?.classList.toggle('hidden', !list.length);
   if (!state.globalSearchQuery) {
@@ -147,6 +148,7 @@ async function loadQueue() {
   if (!res.ok) return;
   state.queue = await readJson(res);
   renderQueuePanel();
+  renderStatusbar();
 }
 
 function queueKindLabel(q) {
@@ -268,37 +270,7 @@ function rerunGlobalSearch() {
   if (state.globalSearchQuery) runGlobalSearch(state.globalSearchQuery);
 }
 
-// --- App parts: library, recording studio, questions ---
-const APP_VIEWS = ['library', 'studio', 'ask'];
-state.appView = 'library';
-
-function switchAppView(view) {
-  if (!APP_VIEWS.includes(view)) view = 'library';
-  if (state.theatre && view !== 'library') exitTheatre();
-  state.appView = view;
-  // The sidebar always shows the library; the main area shows the chosen part
-  for (const v of APP_VIEWS) {
-    document.getElementById(`${v}-view`).classList.toggle('hidden', v !== view);
-    const tab = document.getElementById(`nav-${v}`);
-    tab.classList.toggle('app-tab-active', v === view);
-    tab.setAttribute('aria-selected', String(v === view));
-  }
-  if (view === 'ask') loadPeople();
-  hideContextMenu();
-  hideFolderMenu();
-  if (view === 'studio') {
-    prepareStudio();
-    syncStudioCaptions();
-  } else if (studio.focus) {
-    toggleStudioFocus(false);
-  }
-  if (view === 'ask') {
-    renderAskScope();
-    renderAskThread();
-    setTimeout(() => document.getElementById('library-question').focus(), 30);
-  }
-  updateRecordButtonState();
-}
+// The views of the main area (library, studio, questions…) and switchAppView: static/js/shell.js
 
 // --- Questions: about one recording, a folder (with its subfolders) or the whole library ---
 const SVG_SPARK = '<svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>';

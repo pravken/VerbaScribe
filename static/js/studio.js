@@ -1059,24 +1059,8 @@ function toggleStudioFocus(on) {
   }
 }
 
-// While recording, the sidebar button and the Studio tab show the time
-function updateRecordButtonState() {
-  const btn = document.getElementById('record-quick-btn');
-  if (!btn) return;
-  const recording = isRecording();
-  const timer = document.getElementById('studio-timer').textContent;
-  const label = btn.querySelector('[data-i18n="recordBtn"]');
-  if (recording) {
-    label.textContent = `${t('studioRecordingShort')} ${timer}`;
-    btn.classList.add('animate-pulse');
-  } else {
-    label.textContent = t('recordBtn');
-    btn.classList.remove('animate-pulse');
-  }
-  document.getElementById('nav-studio-dot').classList.toggle('hidden', !recording);
-  document.getElementById('nav-studio-icon').classList.toggle('hidden', recording);
-  document.getElementById('nav-studio-label').textContent = recording ? `${t('navStudio')} · ${timer}` : t('navStudio');
-}
+// While recording, the red button of the top bar and the Studio tab show the time:
+// updateRecordButtonState in static/js/shell.js
 
 function renderStudioControls() {
   ['quality', 'fast'].forEach(k => {
@@ -1453,7 +1437,7 @@ async function startLiveRecording() {
 
     reportRecordingState(true);
     window._recMixedStream = mixedStream;
-    switchAppView('studio');
+    if (!state.quickRecStay) switchAppView('studio');  // the red button of the top bar records in place
     renderStudioState();
     syncStudioCaptions();
     document.getElementById('record-status-hint').textContent = t('recStatusRecording');
@@ -1580,9 +1564,12 @@ async function cancelLiveRecording() {
   prepareStudio();
 }
 
-async function stopAndTranscribeRecording() {
+// quiet: no toast (the top bar shows its own); returns the first new recording, null when there is none,
+// undefined when nothing was recording or saving failed
+async function stopAndTranscribeRecording(opts) {
+  const quiet = !!(opts && opts.quiet);
   state.callRecording = null;
-  if (!_mediaRecorder && !_recCaptureId && !_recScreenId) return;
+  if (!_mediaRecorder && !_recCaptureId && !_recScreenId) return undefined;
   document.getElementById('record-status-hint').textContent = t('recStatusSaving');
 
   const recorder = _mediaRecorder;
@@ -1616,14 +1603,16 @@ async function stopAndTranscribeRecording() {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     showToast(data.detail || 'Error');
-    return;
+    return undefined;
   }
   const created = data.created;
   await loadMeetingsList();
   prepareStudio();
   const first = created && created[0];
+  if (quiet) return first || null;
   showToast(
     t('recordSavedQueued'),
     first ? { label: t('recordOpen'), title: first.media_path || '', onClick: () => { switchAppView('library'); selectMeeting(first.id, true); } } : undefined
   );
+  return first || null;
 }

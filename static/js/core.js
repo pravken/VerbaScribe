@@ -188,6 +188,9 @@ function setUILanguage(lang) {
     const key = el.getAttribute('data-i18n-title');
     el.setAttribute('title', t(key));
   });
+  document.querySelectorAll('[data-i18n-aria]').forEach(el => {
+    el.setAttribute('aria-label', t(el.getAttribute('data-i18n-aria')));
+  });
 
   renderMeetingsSidebar();
   loadDictionary();
@@ -414,11 +417,15 @@ document.addEventListener('keydown', e => {
 });
 
 function openModal(name, tab) {
+  if (name === 'settings') mountSettingsPage();  // the settings are a page of the main area (shell.js)
   const modal = document.getElementById(`modal-${name}`);
   _modalReturnFocus[name] = document.activeElement;
-  modal.setAttribute('role', 'dialog');
-  modal.setAttribute('aria-modal', 'true');
+  if (name !== 'settings') {
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+  }
   modal.classList.remove('hidden');
+  if (name === 'settings' && state.appView !== 'settings') switchAppView('settings');
   setTimeout(() => { if (!modal.contains(document.activeElement)) (focusablesIn(modal)[0] || modal).focus(); }, 60);
   if (name === 'import') renderModelHints();
   if (name === 'settings') {
@@ -502,6 +509,8 @@ function closeModal(name) {
   }
   if (name === 'about') endAboutEgg();  // the transcript of the room does not go on unseen
   document.getElementById(`modal-${name}`).classList.add('hidden');
+  // The settings page: back to the view it was opened from
+  if (name === 'settings' && state.appView === 'settings') switchAppView(state.prevView || 'home');
   const back = _modalReturnFocus[name];
   if (back && document.contains(back)) back.focus();
 }
@@ -511,6 +520,7 @@ function closeModalOnBackdrop(e, name) {
 
 function switchWorkspaceTab(tab) {
   state.activeWorkspaceTab = tab;
+  if (typeof renderTopbar === 'function') renderTopbar();
   if (tab === 'info') loadMeetingInfo();
   if (tab === 'summary') renderAnalysisEstimate();
   ['transcript', 'summary', 'speakers', 'info'].forEach(k => {

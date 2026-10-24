@@ -589,18 +589,6 @@ label.settings-toggle { display: flex; }
 }
 
 /* Parts of the app: tabs along the top of the main area */
-.app-bar {
-  height: 40px; display: flex; align-items: flex-end; gap: 2px; padding: 0 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08); background: #19191B;
-}
-.app-tab {
-  height: 34px; display: inline-flex; align-items: center; gap: 7px; padding: 0 14px;
-  font-size: 12.5px; font-weight: 500; color: #98989D; border-radius: 8px 8px 0 0;
-  border: 1px solid transparent; border-bottom: none; margin-bottom: -1px; transition: color 0.12s ease, background-color 0.12s ease;
-}
-.app-tab:hover { color: #F5F5F7; background: rgba(255, 255, 255, 0.04); }
-.app-tab-active { color: #FFFFFF; background: #141416; border-color: rgba(255, 255, 255, 0.08); }
-.app-tab-active svg { color: #0A84FF; }
 #studio-view.studio-focus .studio-settings { display: none; }
 
 /* Signal on the input: one dot of a fixed size, so nothing jumps when it changes */
@@ -661,3 +649,117 @@ label.settings-toggle { display: flex; }
 .sidebar-resizer { position: absolute; top: 0; right: 0; width: 6px; height: 100%; cursor: col-resize; z-index: 30; }
 .sidebar-resizer:hover, .sidebar-resizer.dragging { background: rgba(10, 132, 255, 0.45); }
 body.sidebar-dragging { cursor: col-resize; user-select: none; }
+
+/* =========================================================================
+   redesign: shell — the top bar, the status bar, the settings page (static/js/shell.js)
+   ========================================================================= */
+.topbar {
+  height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 0 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07); background: rgba(255, 255, 255, 0.035); position: relative; z-index: 30;
+}
+.tb-rec {
+  display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 18px; border-radius: 19px;
+  font-size: 14.5px; font-weight: 600; color: #FFFFFF; background: #D70015; white-space: nowrap; transition: filter 0.12s ease;
+}
+.tb-rec:hover { filter: brightness(1.12); }
+.tb-rec-dot { width: 10px; height: 10px; border-radius: 5px; background: #FFFFFF; transition: border-radius 0.15s ease; }
+.tb-rec-on .tb-rec-dot { border-radius: 2px; animation: tb-blink 1s steps(2, start) infinite; }
+.tb-rec-clock { font-family: 'JetBrains Mono Variable', 'JetBrains Mono', monospace; font-weight: 500; font-size: 13px; opacity: 0.85; }
+@keyframes tb-blink { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .tb-rec-on .tb-rec-dot { animation: none; } }
+.tb-sep { width: 1px; height: 22px; margin: 0 8px 0 6px; background: rgba(255, 255, 255, 0.12); flex-shrink: 0; }
+.tb-sep-sm { height: 16px; margin: 0 3px; }
+.tb-tab {
+  display: inline-flex; align-items: center; gap: 7px; height: 38px; padding: 0 18px; border-radius: 19px;
+  font-size: 14.5px; color: #AEAEB2; white-space: nowrap; transition: color 0.12s ease, background-color 0.12s ease;
+}
+.tb-tab:hover, .tb-subtab:hover, .tb-dots:hover { color: #F5F5F7; background: rgba(255, 255, 255, 0.06); }
+.tb-tab.tb-active { background: rgba(255, 255, 255, 0.12); color: #FFFFFF; font-weight: 600; }
+.tb-group.hidden { display: none; }
+.tb-group {
+  display: inline-flex; align-items: center; gap: 2px; height: 42px; padding: 0 4px 0 14px; border-radius: 21px; min-width: 0;
+  background: rgba(255, 255, 255, 0.07); border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.tb-recname {
+  max-width: 200px; margin: 0 4px 0 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-weight: 500; font-size: 13.5px; color: #98989D; cursor: default; user-select: none;
+}
+.tb-recname-sep { flex: none; width: 1px; height: 18px; margin: 0 6px 0 8px; background: rgba(255, 255, 255, 0.16); max-width: none; }
+.tb-subtab {
+  display: inline-flex; align-items: center; gap: 5px; height: 34px; padding: 0 13px; border-radius: 17px;
+  font-size: 14px; color: #AEAEB2; white-space: nowrap; transition: color 0.12s ease, background-color 0.12s ease;
+}
+.tb-subtab.tb-active { background: rgba(255, 255, 255, 0.14); color: #FFFFFF; font-weight: 600; }
+.tb-dots { width: 34px; height: 34px; border-radius: 17px; color: #AEAEB2; display: inline-flex; align-items: center; justify-content: center; }
+.tb-badge { padding: 0 6px; border-radius: 8px; background: rgba(255, 255, 255, 0.1); font-size: 11px; color: #C7C7CC; font-weight: 500; }
+.tb-subtab .tb-badge { padding: 0 5px; border-radius: 7px; font-size: 10.5px; }
+.tb-ai { width: 13px; height: 13px; flex: none; fill: url(#vs-ai-grad); }
+.tb-subtab .tb-ai { width: 12px; height: 12px; }
+.tb-pop {
+  position: absolute; top: 46px; left: 0; width: 320px; padding: 12px 14px; display: flex; flex-direction: column; gap: 9px;
+  border-radius: 12px; background: rgba(16, 17, 21, 0.92); backdrop-filter: blur(24px) saturate(1.3); -webkit-backdrop-filter: blur(24px) saturate(1.3);
+  border: 1px solid rgba(255, 255, 255, 0.09); box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5); z-index: 40;
+}
+.tb-pop.hidden { display: none; }
+.tb-pop-x { width: 24px; height: 24px; border-radius: 12px; color: #8E8E93; }
+.tb-pop-x:hover { background: rgba(255, 255, 255, 0.07); }
+.tb-pop-btn {
+  flex: 1; height: 30px; border-radius: 15px; border: 1px solid rgba(255, 255, 255, 0.14); color: #F5F5F7; font-size: 13px;
+}
+.tb-pop-btn:hover { background: rgba(255, 255, 255, 0.07); }
+.tb-pop-primary { background: #0A84FF; border-color: #0A84FF; font-weight: 600; color: #FFFFFF; }
+.tb-pop-primary:hover { background: #2B93FF; }
+/* A narrow window: the record name goes first */
+@media (max-width: 1250px) { .tb-recname { display: none; } }
+
+.statusbar {
+  height: 30px; flex-shrink: 0; display: flex; align-items: center; gap: 18px; padding: 0 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07); background: #111214; font-size: 12px; color: #AEAEB2; white-space: nowrap;
+}
+.sb-item { display: inline-flex; align-items: center; gap: 7px; }
+.sb-chip {
+  padding: 0 5px; border-radius: 4px; border: 1px solid rgba(100, 210, 255, 0.45); color: #64D2FF;
+  font-family: 'JetBrains Mono Variable', 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600;
+}
+.sb-queue { color: #8E8E93; overflow: hidden; text-overflow: ellipsis; max-width: 50%; }
+.sb-queue-busy { color: #8CC4FF; }
+.sb-queue:hover { color: #F5F5F7; }
+
+/* The settings window, moved into the main area as a page (mountSettingsPage) */
+.settings-page { display: flex; flex: 1; min-height: 0; padding: 20px 24px; }
+.settings-page.hidden { display: none; }
+.settings-page > .modal-card { max-width: 980px; max-height: none; height: 100% !important; margin: 0 auto; }
+
+/* A first home and tasks page (packages B and D replace them) */
+.home-wrap { max-width: 1100px; margin: 0 auto; padding: 28px 32px; display: flex; flex-direction: column; gap: 18px; }
+.home-qa {
+  display: inline-flex; align-items: center; gap: 10px; height: 48px; padding: 0 16px 0 14px; border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12); background: rgba(255, 255, 255, 0.05); color: #F5F5F7; text-align: left;
+}
+.home-qa:hover { filter: brightness(1.15); }
+.home-qa b { font-weight: 650; }
+.home-qa-sub { font-size: 11.5px; color: #8E8E93; }
+.home-card { padding: 16px 18px 10px; border-radius: 14px; background: rgba(255, 255, 255, 0.035); border: 1px solid rgba(255, 255, 255, 0.07); }
+.home-card-title { margin: 0 0 8px; font-size: 15px; font-weight: 650; color: #F5F5F7; }
+.home-row { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 10px; text-align: left; width: 100%; }
+.home-row:hover { background: rgba(255, 255, 255, 0.05); }
+
+/* =========================================================================
+   redesign: player (package A, static/js/redesign_player.js) — styles below this line
+   ========================================================================= */
+
+/* =========================================================================
+   redesign: home (package B: home, import, sidebar, status bar) — styles below this line
+   ========================================================================= */
+
+/* =========================================================================
+   redesign: analysis-speakers (package C) — styles below this line
+   ========================================================================= */
+
+/* =========================================================================
+   redesign: tasks (package D) — styles below this line
+   ========================================================================= */
+
+/* =========================================================================
+   redesign: studio-assistant-settings (package E) — styles below this line
+   ========================================================================= */

@@ -1,0 +1,22 @@
+<!-- Home (package B, static/js/home.js): part of static/parts/workspace.html. A first version:
+     the greeting, quick actions and the latest recordings; the redesign fills it in. -->
+    <div id="home-view" class="hidden flex-1 min-h-0 overflow-y-auto bg-apple-bg">
+      <div class="home-wrap">
+        <div class="flex items-end justify-between gap-4 flex-wrap">
+          <div>
+            <div id="home-date" class="text-[12px] font-semibold uppercase tracking-wider text-apple-tertiary"></div>
+            <h1 id="home-hello" class="text-[26px] font-bold text-white mt-1" data-i18n="homeHello">Добрый день</h1>
+          </div>
+          <div class="flex gap-2">
+            <button data-click="openModal" data-click-args='["import"]' class="home-qa">
+              <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15V4M8 8l4-4 4 4M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/></svg>
+              <span class="flex flex-col items-start"><b data-i18n="add">Импорт</b><span class="home-qa-sub" data-i18n="homeImportSub">файл или ссылка</span></span>
+            </button>
+          </div>
+        </div>
+        <section class="home-card">
+          <h2 class="home-card-title" data-i18n="homeRecent">Недавние записи</h2>
+          <div id="home-recent" class="flex flex-col"></div>
+        </section>
+      </div>
+    </div>
