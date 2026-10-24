@@ -25,22 +25,24 @@ router = APIRouter()
 
 # --- Multi-format Export ---
 def _build_export_bytes(
-    m: Dict[str, Any], fmt: str, lang: Optional[str] = None, variant: str = "translated"
+    m: Dict[str, Any], fmt: str, lang: Optional[str] = None, variant: str = "translated",
+    opts: Optional[Dict[str, Any]] = None,
 ) -> tuple[bytes, str, str]:
     try:
-        return build_export_bytes(m, fmt, lang, variant)
+        return build_export_bytes(m, fmt, lang, variant, opts)
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("/api/meetings/{meeting_id}/export/{fmt}")
-def api_export_meeting(meeting_id: int, fmt: str, lang: Optional[str] = None, variant: str = "translated") -> Response:
+def api_export_meeting(meeting_id: int, fmt: str, lang: Optional[str] = None, variant: str = "translated",
+                       times: bool = True, names: bool = True, nofill: bool = False) -> Response:
     m = get_meeting(meeting_id)
     if not m:
         raise HTTPException(status_code=404, detail="Встреча не найдена")
 
-    content, media_type, filename = _build_export_bytes(m, fmt, lang, variant)
+    content, media_type, filename = _build_export_bytes(m, fmt, lang, variant, {"times": times, "names": names, "nofill": nofill})
     encoded_filename = quote(filename)
     headers = {
         "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}",
