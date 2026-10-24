@@ -2143,7 +2143,13 @@ function workdaySettingsPayload() {
 function syncWorkdayHint() {
   const a = document.getElementById('set-workday-start')?.value || '09:00';
   const b = document.getElementById('set-workday-end')?.value || '18:00';
-  document.getElementById('workday-overnight')?.classList.toggle('hidden', !(b <= a));
+  // the same start and end is the whole day, as on the home page; an end before the start runs past midnight
+  const note = document.getElementById('workday-overnight');
+  if (note) {
+    note.classList.toggle('hidden', !(b <= a));
+    note.dataset.i18n = a === b ? 'hmAllDayNote' : 'rdSasWorkdayOvernight';
+    note.textContent = t(note.dataset.i18n);
+  }
   const ask = document.getElementById('set-meetings-ask-inperson');
   const all = document.getElementById('set-meetings-autorecord');
   if (ask && all) {
