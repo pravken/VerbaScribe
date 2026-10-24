@@ -48,16 +48,17 @@
     <div id="settings-view" class="hidden flex-1 min-h-0 flex flex-col overflow-hidden"></div>
 
     <!-- =====================================================================
-         STUDIO: recording with large live captions and their translation (studio* in static/js/studio.js).
-         What is recorded is chosen in the sidebar; how the captions are shown, here.
+         STUDIO: recording, its sources, the text while recording, the user's notes and marks
+         (studio* in static/js/studio.js). Ready-made settings on top, the sources and the meeting on
+         the left, the recording and what goes on in it on the right
          ===================================================================== -->
-    <div id="studio-view" class="hidden flex-1 min-h-0 flex bg-apple-bg">
-<div id="side-studio" class="studio-settings w-[300px] shrink-0 border-r apple-border bg-apple-sidebar/60 overflow-y-auto px-4 py-4 space-y-3.5">
-      <div>
-        <label for="record-preset-select" class="block text-[11px] text-apple-secondary mb-1" data-i18n="recPresetLabel">Пресет</label>
-        <div class="flex items-center gap-1">
-          <select id="record-preset-select" data-change="applyRecordPreset" data-change-args='[{"$": "value"}]'
-            class="flex-1 min-w-0 h-8 bg-apple-card border apple-border rounded-lg px-2 text-xs text-white focus:outline-none"></select>
+    <div id="studio-view" class="hidden flex-1 min-h-0 flex flex-col bg-apple-bg">
+    <div class="st-presets studio-settings">
+      <span class="st-label" data-i18n="rdSasPresets">Готовые настройки</span>
+      <div id="st-preset-chips" class="flex items-center gap-1.5 flex-wrap"></div>
+        <div class="flex items-center gap-1 st-preset-tools">
+          <select id="record-preset-select" data-i18n-title="recPresetLabel" title="Пресет" data-change="applyRecordPreset" data-change-args='[{"$": "value"}]'
+            class="hidden flex-1 min-w-0 h-8 bg-apple-card border apple-border rounded-lg px-2 text-xs text-white focus:outline-none"></select>
           <button data-click="setDefaultRecordPreset" id="rec-preset-default-btn" class="ui-btn ui-btn-subtle h-8 !px-2" data-i18n-title="tipPresetDefault" title="Сделать пресетом по умолчанию для кнопки «Запись»">★</button>
           <button data-click="saveRecordPresetAs" class="ui-btn ui-btn-subtle h-8 !px-2" data-i18n-title="tipPresetSaveAs" title="Сохранить текущие параметры как новый пресет">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
@@ -69,50 +70,36 @@
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
           </button>
         </div>
-      </div>
-
-      <div>
-        <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="recSourceModeLabel">Источник записи</label>
+      <span class="flex-1"></span>
+      <span class="st-hk"><kbd id="st-hotkey" class="st-kbd">Ctrl+Alt+R</kbd><span data-i18n="rdSasHotkeyAnywhere">запись из любого окна</span></span>
+    </div>
+    <div class="flex-1 min-h-0 flex">
+    <div id="side-studio" class="studio-settings st-side">
+      <section class="st-card">
+        <h3 class="st-card-title" data-i18n="rdSasSources">Источники</h3>
+        <div id="st-source-seg" class="apple-segmented w-full settings-tabs" role="radiogroup" data-i18n-title="tipRecordSourceSelect" title="Выберите источник записи">
+          <button data-click="studioSetSource" data-click-args='["both"]' id="st-src-both" class="apple-segment-btn text-[11px]" role="radio" data-i18n="rdSasSrcBoth">Микрофон и ПК</button>
+          <button data-click="studioSetSource" data-click-args='["mic"]' id="st-src-mic" class="apple-segment-btn text-[11.5px]" role="radio" data-i18n="rdSasSrcMic">Микрофон</button>
+          <button data-click="studioSetSource" data-click-args='["system"]' id="st-src-system" class="apple-segment-btn text-[11.5px]" role="radio" data-i18n="rdSasSrcSystem">Звук ПК</button>
+        </div>
         <select id="record-source-select" data-change="syncRecordModalToSettings"
           data-i18n-title="tipRecordSourceSelect" title="Выберите источник записи: микрофон, системный звук (динамики) или оба канала"
-          class="w-full h-8 bg-apple-card border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
+          class="hidden w-full h-8 bg-apple-card border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
           <option value="mic" data-i18n="sourceMic">Только микрофон</option>
           <option value="system" data-i18n="sourceSystem">Системный звук</option>
           <option value="both" data-i18n="sourceBoth">Микрофон и системный звук</option>
         </select>
-      </div>
-
-      <div>
-        <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="recMicDeviceLabel">Микрофон</label>
+        <div class="st-sub">
+          <div class="flex items-center gap-2">
+            <span class="st-sub-title flex-1" data-i18n="recMicDeviceLabel">Микрофон</span>
+            <button id="st-mic-test" data-click="studioMicTest" class="ui-btn ui-btn-subtle h-6 px-2.5 text-[11px]" data-i18n-title="rdSasMicTestTip"
+              title="Запишет три секунды с микрофона и сразу проиграет их">
+              <span id="st-mic-test-label" data-i18n="rdSasMicTest">Проверить</span></button>
+          </div>
         <select id="record-mic-select" data-change="syncRecordModalToSettings"
           data-i18n-title="tipRecordMicSelect" title="Выберите микрофон для записи"
           class="w-full h-8 bg-apple-card border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none"></select>
-      </div>
-
-      <div>
-        <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="recVideoLabel">Видео</label>
-        <select id="record-video-select" data-change="saveRecordVideoPref" data-i18n-title="tipRecordVideo"
-          title="Записывать вместе со звуком экран, окно программы или вкладку браузера"
-          class="w-full h-8 bg-apple-card border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
-          <option value="" data-i18n="recVideoNone">Без видео — только звук</option>
-          <option value="screen" data-i18n="recVideoScreen">Экран, окно или программа…</option>
-          <option value="app_desktop" class="rec-app-video hidden" data-i18n="recVideoAppDesktop">Весь экран (запись приложением)</option>
-          <option value="app_window" class="rec-app-video hidden" data-i18n="recVideoAppWindow">Окно программы (запись приложением)</option>
-        </select>
-        <select id="record-window-select" data-i18n-title="tipRecordWindow" title="Окно, которое записывается"
-          class="hidden mt-1.5 w-full h-8 bg-apple-card border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none"></select>
-        <video id="record-video-preview" muted autoplay playsinline class="hidden mt-2 w-full rounded-lg bg-black border border-white/10 max-h-40 object-contain"></video>
-      </div>
-
-      <div>
-        <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="recTitleLabel">Название записи</label>
-        <input id="record-title-input" type="text"
-          data-i18n-title="tipRecordTitleInput" title="Введите название для новой записи"
-          placeholder="Созвон / Голосовая заметка" data-i18n-placeholder="phRecordTitle"
-          class="w-full h-8 bg-apple-card border apple-border rounded-lg px-3 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
-      </div>
-
-      <div class="rounded-xl border apple-border bg-black/20 p-3 space-y-2.5">
+      <div class="st-meter">
         <div class="flex items-center justify-between">
           <div id="record-timer-display" class="text-xl font-mono font-semibold text-white tracking-wider">00:00</div>
           <div class="flex items-center gap-2">
@@ -126,7 +113,55 @@
         </div>
         <p id="record-status-hint" class="text-[11px] text-apple-secondary text-center leading-snug" data-i18n="recordWaveHint">Индикатор показывает уровень сигнала выбранного источника в реальном времени</p>
       </div>
+        </div>
+        <div>
+          <span class="st-sub-title" data-i18n="recVideoLabel">Видео</span>
+          <div id="st-video-chips" class="flex flex-wrap gap-1.5 mt-1.5"></div>
+        <select id="record-video-select" data-change="saveRecordVideoPref" data-i18n-title="tipRecordVideo"
+          title="Записывать вместе со звуком экран, окно программы или вкладку браузера"
+          class="hidden w-full h-8 bg-apple-card border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
+          <option value="" data-i18n="recVideoNone">Без видео — только звук</option>
+          <option value="screen" data-i18n="recVideoScreen">Экран, окно или программа…</option>
+          <option value="app_desktop" class="rec-app-video hidden" data-i18n="recVideoAppDesktop">Весь экран (запись приложением)</option>
+          <option value="app_window" class="rec-app-video hidden" data-i18n="recVideoAppWindow">Окно программы (запись приложением)</option>
+        </select>
+        <select id="record-window-select" data-i18n-title="tipRecordWindow" title="Окно, которое записывается"
+          class="hidden mt-1.5 w-full h-8 bg-apple-card border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none"></select>
+        <video id="record-video-preview" muted autoplay playsinline class="hidden mt-2 w-full rounded-lg bg-black border border-white/10 max-h-40 object-contain"></video>
+        </div>
+      </section>
 
+      <section class="st-card">
+        <h3 class="st-card-title" data-i18n="rdSasMeeting">Встреча</h3>
+        <label for="record-title-input" class="st-sub-title" data-i18n="recTitleLabel">Название записи</label>
+        <input id="record-title-input" type="text"
+          data-i18n-title="tipRecordTitleInput" title="Введите название для новой записи"
+          placeholder="Созвон / Голосовая заметка" data-i18n-placeholder="phRecordTitle"
+          class="w-full h-8 bg-apple-card border apple-border rounded-lg px-3 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
+        <div id="studio-upcoming" class="hidden"></div>
+      <div class="text-[11px] text-apple-tertiary leading-snug space-y-1">
+        <p id="record-save-hint" class="break-all"></p>
+        <button data-click="openModal" data-click-args='["settings", "record"]' class="text-apple-blue hover:underline" data-i18n="recordChangeFolder">Изменить папку для записей…</button>
+      </div>
+      </section>
+
+      <section class="st-card">
+        <h3 class="st-card-title" data-i18n="rdSasAuto">Автоматически</h3>
+        <p class="text-[11.5px] text-apple-tertiary leading-snug" data-i18n="rdSasAfterStop">После остановки запись сразу ставится на распознавание.</p>
+        <label class="st-toggle">
+          <span class="min-w-0 flex-1"><span class="block text-[13px] text-white" data-i18n="rdSasAutoAnalysis">✦ Анализ после распознавания</span>
+            <span class="block text-[11.5px] text-apple-tertiary leading-snug" data-i18n="rdSasAutoAnalysisHint">Итоги, решения и задачи появятся сами</span></span>
+          <input type="checkbox" id="st-auto-summary" data-change="studioSetAuto" data-change-args='["auto_summary", {"$": "checked"}]' class="st-switch" />
+        </label>
+        <label class="st-toggle">
+          <span class="min-w-0 flex-1"><span class="block text-[13px] text-white" data-i18n="rdSasAutoCall">Начинать, когда начинается звонок</span>
+            <span class="block text-[11.5px] text-apple-tertiary leading-snug" data-i18n="rdSasAutoCallHint">Запись включится сама и остановится в конце звонка</span></span>
+          <input type="checkbox" id="st-call-record" data-change="studioSetAuto" data-change-args='["call_auto_record", {"$": "checked"}]' class="st-switch" />
+        </label>
+      </section>
+
+      <!-- The old buttons of this column: the scripts still keep them in step, the record card has them now -->
+      <div class="hidden">
       <div class="space-y-2">
         <button id="btn-start-rec" data-click="startLiveRecording"
           data-i18n-title="tipStartRecBtn" title="Начать запись звука с выбранного источника"
@@ -143,15 +178,12 @@
         <button id="btn-cancel-rec" data-click="cancelLiveRecording" data-i18n-title="tipStudioCancel" title="Остановить запись без сохранения"
           class="hidden ui-btn ui-btn-subtle h-8 w-full" data-i18n="studioCancel">Отменить</button>
       </div>
-
-      <div class="text-[11px] text-apple-tertiary leading-snug space-y-1">
-        <p id="record-save-hint" class="break-all"></p>
-        <button data-click="openModal" data-click-args='["settings", "record"]' class="text-apple-blue hover:underline" data-i18n="recordChangeFolder">Изменить папку для записей…</button>
       </div>
     </div>
 
     <div id="studio-stage" class="flex-1 min-w-0 min-h-0 flex flex-col">
-      <div class="h-14 px-5 flex items-center gap-3 xl:gap-4 border-b apple-border shrink-0 bg-apple-sidebar/95 overflow-hidden">
+      <!-- The recording: time, level, start / stop -->
+      <div class="st-rec">
         <span id="studio-rec-dot" class="relative flex w-3 h-3 shrink-0"><span class="studio-ping absolute inset-0 rounded-full bg-apple-red animate-ping opacity-60"></span><span class="relative w-3 h-3 rounded-full bg-apple-red"></span></span>
         <div class="min-w-0 flex-1 xl:flex-none">
           <div id="studio-heading" class="text-[13px] font-semibold text-white leading-tight truncate" data-i18n="studioIdle">Студия записи</div>
@@ -180,7 +212,22 @@
           </button>
         </div>
       </div>
+      <div class="st-rec-info">
+        <span id="st-disk"></span>
+        <span class="flex-1"></span>
+        <button id="st-mark-btn" data-click="studioMark" class="hidden ui-btn ui-btn-subtle h-7 px-3 text-[11.5px]" data-i18n-title="rdSasMarkTip"
+          title="Поставить отметку в этом месте записи (M)"><span aria-hidden="true">⚑</span><span data-i18n="rdSasMark">Отметить</span></button>
+      </div>
 
+      <!-- What goes on in the recording -->
+      <div class="st-tabs" role="tablist">
+        <button data-click="studioTab" data-click-args='["text"]' id="st-tab-text" class="st-tab" role="tab" data-i18n="rdSasTabText">Текст</button>
+        <button data-click="studioTab" data-click-args='["notes"]' id="st-tab-notes" class="st-tab" role="tab" data-i18n="rdSasTabNotes">Мои заметки</button>
+        <button data-click="studioTab" data-click-args='["ask"]' id="st-tab-ask" class="st-tab" role="tab" data-i18n="rdSasTabAsk">Вопросы</button>
+        <span class="flex-1"></span>
+        <span class="st-keys"><kbd class="st-kbd">M</kbd><span data-i18n="rdSasKeyMark">отметка</span> <kbd class="st-kbd">N</kbd><span data-i18n="rdSasKeyNote">заметка</span></span>
+      </div>
+      <div id="st-pane-text" class="flex-1 min-h-0 flex flex-col">
       <div class="px-5 py-2.5 flex items-center gap-4 flex-wrap border-b apple-border shrink-0 bg-apple-bg/95">
         <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label" data-i18n-title="tipLiveCaptions"
           title="Показывать текст речи во время записи. После остановки запись, как обычно, расшифровывается полностью и точнее">
@@ -240,13 +287,11 @@
         </div>
         <span id="studio-status" class="text-[11px] text-apple-tertiary"></span>
       </div>
-
       <!-- Models in memory: shown here when the studio covers the whole window -->
       <div class="studio-focus-only px-5 py-1.5 flex items-center gap-2 border-b apple-border shrink-0 bg-apple-bg/95">
         <span class="text-[10px] font-mono text-apple-tertiary shrink-0">VRAM</span>
         <div id="studio-vram-chips" class="flex flex-wrap gap-1"></div>
       </div>
-
       <div id="studio-captions" class="flex-1 min-h-0 overflow-y-auto px-8 py-6">
         <div id="studio-captions-inner" class="max-w-6xl mx-auto">
           <div id="studio-cap-head" class="hidden grid grid-cols-2 gap-8 text-[11px] uppercase tracking-wider text-apple-tertiary sticky top-0 bg-apple-bg/95 py-1 mb-2 z-10">
@@ -254,22 +299,27 @@
           </div>
           <div id="studio-cap-rows" class="cap-rows"></div>
           <div id="studio-cap-empty" class="text-center text-apple-tertiary text-sm pt-16"></div>
-          <div id="studio-upcoming" class="hidden max-w-xl mx-auto mt-8"></div>
         </div>
       </div>
+      </div>
+      <div id="st-pane-notes" class="hidden flex-1 min-h-0 flex flex-col">
+        <p id="st-notes-idle" class="st-pane-idle" data-i18n="rdSasNotesIdle">Заметки пишутся во время записи: каждая строка получает время записи. Они сохранятся с записью и войдут в анализ.</p>
       <!-- The user's own notes while recording: saved with the recording, every summary takes them in -->
-      <div id="studio-notes" class="hidden shrink-0 border-t apple-border bg-apple-sidebar/95 px-5 py-2">
+      <div id="studio-notes" class="hidden flex-1 min-h-0 flex flex-col px-6 py-4">
         <div class="flex items-center justify-between mb-1">
           <span class="text-[11px] font-semibold text-apple-secondary" data-i18n="notesTitle">Мои заметки</span>
           <span class="text-[10.5px] text-apple-tertiary" data-i18n="notesStudioHint">Enter — новая строка с отметкой времени. Заметки сохранятся с записью и войдут в пересказ</span>
         </div>
-        <textarea id="studio-notes-input" rows="3" data-keydown="studioNotesKey" data-keydown-args='[{"$": "event"}]' data-input="saveStudioNotesDraft"
+        <textarea id="studio-notes-input" rows="12" data-keydown="studioNotesKey" data-keydown-args='[{"$": "event"}]' data-input="saveStudioNotesDraft"
           data-i18n-placeholder="notesPh" placeholder="Главное для вас: решения, вопросы, что не забыть…"
-          class="w-full bg-apple-card border apple-border rounded-lg px-3 py-2 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue resize-y"></textarea>
+          class="w-full bg-apple-card border apple-border rounded-lg px-3 py-2 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue resize-none flex-1 min-h-[160px] text-[13px] leading-relaxed"></textarea>
       </div>
+      </div>
+      <div id="st-pane-ask" class="hidden flex-1 min-h-0 flex flex-col overflow-y-auto">
+        <p id="st-ask-idle" class="st-pane-idle" data-i18n="rdSasAskIdle">Вопросы по разговору работают во время записи, когда включён текст по ходу речи.</p>
       <!-- Questions about what was said so far, while recording (app/live.py ask) -->
-      <div id="studio-ask" class="hidden shrink-0 border-t apple-border bg-apple-sidebar/95 px-5 py-2.5 space-y-2">
-        <div id="studio-ask-answer" class="hidden max-h-48 overflow-y-auto markdown-body text-[13px] text-apple-label"></div>
+      <div id="studio-ask" class="hidden px-6 py-4 space-y-2">
+        <div id="studio-ask-answer" class="hidden max-h-[60vh] overflow-y-auto markdown-body text-[13px] text-apple-label"></div>
         <div class="flex items-center gap-2">
           <input id="studio-ask-input" type="text" data-keydown="onEnter" data-keydown-args='[{"$": "event"}, "studioAsk"]'
             data-i18n-placeholder="studioAskPh" placeholder="Спросить по разговору: о чём договорились? что он ответил про сроки?"
@@ -277,6 +327,8 @@
           <button data-click="studioAsk" id="studio-ask-btn" class="ui-btn ui-btn-primary h-8" data-i18n="askBtn">Спросить</button>
         </div>
       </div>
+      </div>
+    </div>
     </div>
     </div>
 

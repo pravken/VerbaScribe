@@ -932,3 +932,79 @@ body.sidebar-dragging { cursor: col-resize; user-select: none; }
 .as-menu .macos-menu-item:disabled { opacity: 0.4; cursor: default; }
 .as-menu-scroll { max-height: 70vh; overflow-y: auto; }
 @media (max-width: 1250px) { .as-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .as-side { width: 240px; } }
+
+/* --- The studio (static/js/studio.js): ready-made settings, the cards on the left, the recording --- */
+.st-presets {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 24px; flex-shrink: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.st-label { font-size: 12px; color: #8E8E93; }
+.st-chip {
+  height: 26px; padding: 0 11px; border-radius: 13px; border: 1px solid rgba(255, 255, 255, 0.12); font-size: 12px; color: #E5E5EA;
+  white-space: nowrap; transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+.st-chip:hover { background: rgba(255, 255, 255, 0.06); }
+.st-chip.is-on { border-color: #0A84FF; background: rgba(10, 132, 255, 0.16); color: #CFE6FF; }
+.st-chip:disabled { opacity: 0.45; cursor: default; }
+.st-preset-tools .ui-btn { height: 26px; }
+.st-hk { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: #8E8E93; }
+.st-hk.hidden { display: none; }
+.st-kbd {
+  padding: 1px 6px; border-radius: 5px; border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.05);
+  font-family: 'JetBrains Mono Variable', 'JetBrains Mono', monospace; font-size: 10.5px; color: #C7C7CC;
+}
+.st-side {
+  width: 340px; flex-shrink: 0; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px;
+  border-right: 1px solid rgba(255, 255, 255, 0.07); background: rgba(255, 255, 255, 0.015);
+}
+.st-card {
+  display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.03);
+}
+.st-card-title { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #8E8E93; }
+.st-sub { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 10px; background: rgba(0, 0, 0, 0.18); }
+.st-sub.st-dim { opacity: 0.45; }
+.st-sub-title { font-size: 12px; font-weight: 600; color: #E5E5EA; }
+.st-meter { display: flex; flex-direction: column; gap: 6px; }
+.st-meter #record-timer-display { display: none; }
+.st-toggle { display: flex; align-items: center; gap: 12px; cursor: pointer; padding: 2px 0; }
+.st-switch {
+  appearance: none; -webkit-appearance: none; flex-shrink: 0; width: 34px; height: 20px; border-radius: 10px; position: relative;
+  background: rgba(255, 255, 255, 0.18); transition: background-color 0.15s ease; cursor: pointer;
+}
+.st-switch::after {
+  content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 8px; background: #FFFFFF;
+  transition: left 0.15s ease;
+}
+.st-switch:checked { background: #0A84FF; }
+.st-switch:checked::after { left: 16px; }
+.st-switch:focus-visible { outline: 2px solid #0A84FF; outline-offset: 2px; }
+.st-meet { display: flex; align-items: flex-start; gap: 6px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.07); padding: 2px 8px 2px 2px; }
+.st-meet.is-on { border-color: rgba(10, 132, 255, 0.6); background: rgba(10, 132, 255, 0.08); }
+.st-meet.is-live .st-meet-time { color: #FF6961; }
+.st-meet-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; padding: 6px 8px; text-align: left; border-radius: 8px; }
+.st-meet-main:hover { background: rgba(255, 255, 255, 0.04); }
+.st-meet-time { font-family: 'JetBrains Mono Variable', 'JetBrains Mono', monospace; font-size: 11px; color: #8E8E93; }
+.st-meet-title { font-size: 13px; color: #F5F5F7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-meet-people { font-size: 11px; color: #8E8E93; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-link { font-size: 11.5px; color: #8CC4FF; padding-top: 8px; white-space: nowrap; }
+.st-link:hover { text-decoration: underline; }
+.st-rec {
+  margin: 16px 20px 0; padding: 0 18px; height: 72px; display: flex; align-items: center; gap: 14px; border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.035); flex-shrink: 0;
+}
+.st-rec #studio-timer { font-size: 30px; }
+.st-rec-info { display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 6px 26px 0; font-size: 11.5px; color: #8E8E93; flex-shrink: 0; }
+.st-tabs {
+  display: flex; align-items: center; gap: 4px; margin: 6px 20px 0; padding: 4px; border-radius: 12px; flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.035);
+}
+.st-tab { height: 30px; padding: 0 14px; border-radius: 8px; font-size: 12.5px; color: #AEAEB2; }
+.st-tab:hover { color: #F5F5F7; background: rgba(255, 255, 255, 0.05); }
+.st-tab.is-on { background: rgba(255, 255, 255, 0.12); color: #FFFFFF; font-weight: 600; }
+.st-keys { display: inline-flex; align-items: center; gap: 5px; padding-right: 8px; font-size: 11px; color: #636366; }
+.st-pane-idle { margin: 0; padding: 18px 26px 0; font-size: 12.5px; line-height: 1.5; color: #8E8E93; }
+.st-pane-idle.hidden { display: none; }
+#studio-view.studio-focus .st-rec, #studio-view.studio-focus .st-rec-info, #studio-view.studio-focus .st-tabs { display: none; }
+.st-side .apple-segment-btn { padding-left: 6px; padding-right: 6px; white-space: nowrap; }
+@media (max-width: 1250px) { .st-side { width: 320px; } .st-keys { display: none; } }
