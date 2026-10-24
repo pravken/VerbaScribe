@@ -86,8 +86,20 @@ jobs:
       # exclusions miss NFD file names when an sdist is built on macOS. setuptools is here only as
       # torch's dependency and the app builds no sdist; torch 2.11 requires setuptools<82 and
       # torchaudio ends at 2.11, so 83 cannot be locked. Drop the ignore when torch allows it.
+      # GHSA-xmj3-9gf7-h52w (fixed in setuptools 84.1): a wheel's namespace_packages.txt can place an
+      # __init__.py outside the target when setuptools installs a wheel as an egg (the legacy
+      # easy_install path). The app installs with pip/uv and never through setuptools; locked by the
+      # same torch bound. Drop with the one above.
+      # GHSA-v4x8-3wr5-3wq8, GHSA-9vhv-jxww-xfm5, GHSA-567q-5qvw-pf92 (CVE-2026-112940/-112913/-112907,
+      # fixed in filelock 4.2.1): another local account that can create files in the lock's directory
+      # breaks or misdirects filelock's soft and SQLite read-write locks. filelock is here only for
+      # huggingface-hub and torch, locking in the user's own model and cache folders; 4.2 needs
+      # Python 3.11 and the app runs on 3.10. Drop when the app moves to Python 3.11.
       - name: pip-audit
-        run: pip-audit -r requirements.txt --disable-pip --no-deps --progress-spinner off --ignore-vuln PYSEC-2026-3447
+        run: >-
+          pip-audit -r requirements.txt --disable-pip --no-deps --progress-spinner off
+          --ignore-vuln PYSEC-2026-3447 --ignore-vuln GHSA-xmj3-9gf7-h52w
+          --ignore-vuln CVE-2026-112940 --ignore-vuln CVE-2026-112913 --ignore-vuln CVE-2026-112907
 
       # The dubbing environment's lock. Its findings cannot be fixed there for now: chatterbox-tts 0.1.7
       # pins transformers 5.2.0 and diffusers 0.29.0, perth needs setuptools<81, and Pillow 13 needs
