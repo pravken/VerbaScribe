@@ -187,7 +187,7 @@ function impRowHtml(x) {
     sub = t('impKindPath');
   }
   const dur = x.kind === 'file' ? (x.dur != null ? formatTime(x.dur) : '…') : '';
-  const size = x.kind === 'file' ? formatBytes(x.file.size) : '';
+  const size = x.kind === 'file' ? impFormatBytes(x.file.size) : '';
   return `<div class="imp-row">
       <span class="imp-tile ${tone}" aria-hidden="true">${escapeHtml(ext)}</span>
       <span class="min-w-0 flex flex-col"><span class="imp-row-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span><span class="imp-row-sub">${escapeHtml(sub)}</span></span>
@@ -197,7 +197,7 @@ function impRowHtml(x) {
     </div>`;
 }
 
-function formatBytes(n) {
+function impFormatBytes(n) {
   if (!n) return '';
   if (n >= 1 << 30) return `${(n / (1 << 30)).toFixed(1).replace('.', state.uiLang === 'en' ? '.' : ',')} ${t('impGB')}`;
   return `${Math.max(1, Math.round(n / (1 << 20)))} ${t('impMB')}`;

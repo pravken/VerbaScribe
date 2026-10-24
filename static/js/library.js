@@ -278,14 +278,6 @@ state.askScope = { type: 'all' };
 const askThread = [];
 let _askSeq = 0;
 
-function openLibraryAsk(question, scope) {
-  if (scope) state.askScope = scope;
-  switchAppView('ask');
-  const input = document.getElementById('library-question');
-  if (question) input.value = question;
-  input.focus();
-}
-
 function folderById(id) {
   return (state.folders || []).find(f => f.id === id) || null;
 }
@@ -341,38 +333,6 @@ function askScopeLabel(scope) {
   return `${t('askScopeAll')} · ${t('askRecordingsCount').replace('{n}', () => state.meetings.length)}`;
 }
 
-function renderAskScope() {
-  if (!askScopeValid(state.askScope)) state.askScope = { type: 'all' };
-  const box = document.getElementById('ask-scope-list');
-  const sc = state.askScope;
-  const item = (scope, label, count, depth, icon) => {
-    const on = scope.type === sc.type && scope.id === sc.id;
-    return `<button data-click="setAskScope" data-click-args='[${jsArg(scope)}]'
-      class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[12px] transition ${on ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'}"
-      style="padding-left:${8 + depth * 14}px">
-      <span class="shrink-0 ${on ? 'text-white' : 'text-apple-tertiary'}">${icon}</span>
-      <span class="truncate flex-1">${escapeHtml(label)}</span>
-      ${count != null ? `<span class="text-[10.5px] font-mono ${on ? 'text-white/80' : 'text-apple-tertiary'}">${count}</span>` : ''}
-    </button>`;
-  };
-  let html = item({ type: 'all' }, t('askScopeAll'), state.meetings.length, 0, ICON_LIBRARY);
-  const walk = (parentId, depth) => {
-    for (const f of sortedFolders(parentId)) {
-      html += item({ type: 'folder', id: f.id }, folderName(f), meetingsInFolderTree(f.id).length, depth, folderIcon(f));
-      walk(f.id, depth + 1);
-    }
-  };
-  walk(null, 0);
-  const m = state.activeMeeting;
-  if (m) {
-    html += '<div class="h-px bg-white/10 my-1.5"></div>'
-      + item({ type: 'meeting', id: m.id }, `${t('askScopeMeeting')}: ${m.title}`, null, 0, ICON_FILE);
-  }
-  box.innerHTML = html;
-  document.getElementById('ask-scope-label').textContent = askScopeLabel(sc);
-  renderPeople();
-}
-
 // --- People: everyone named in the library, and the recordings they speak in ---
 state.people = [];
 
@@ -383,51 +343,6 @@ function personByName(name) {
 async function loadPeople() {
   [state.people] = await Promise.all([fetch('/api/people').then(r => r.ok ? r.json() : []).catch(() => []), loadSeries()]);
   if (state.appView === 'ask') renderAskScope();
-}
-
-function formatSpeakingTime(sec) {
-  const min = Math.round(sec / 60);
-  return min >= 60 ? `${Math.floor(min / 60)} ${t('unitH')} ${min % 60} ${t('unitMin')}` : `${Math.max(1, min)} ${t('unitMin')}`;
-}
-
-function renderSeriesScope() {
-  const block = document.getElementById('ask-series-block');
-  const list = state.series || [];
-  block.classList.toggle('hidden', !list.length);
-  const sc = state.askScope;
-  document.getElementById('ask-series-list').innerHTML = list.map(s => {
-    const on = sc.type === 'series' && sc.id === s.id;
-    return `<button data-click="setAskScope" data-click-args='[${jsArg({ type: 'series', id: s.id })}]'
-      class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[12px] transition ${on ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'}">
-      <span class="shrink-0 ${on ? 'text-white' : 'text-apple-tertiary'}">↻</span><span class="truncate flex-1">${escapeHtml(s.name)}</span>
-      <span class="text-[10.5px] font-mono ${on ? 'text-white/80' : 'text-apple-tertiary'}">${s.count}</span></button>`;
-  }).join('');
-}
-
-function renderPeople() {
-  renderSeriesScope();
-  const block = document.getElementById('ask-people-block');
-  const people = state.people || [];
-  block.classList.toggle('hidden', !people.length);
-  if (!people.length) return;
-  const sc = state.askScope;
-  document.getElementById('ask-people-list').innerHTML = people.slice(0, 50).map(p => {
-    const on = sc.type === 'person' && sc.name.toLowerCase() === p.name.toLowerCase();
-    const tip = t('tipPerson').replace('{n}', () => p.recordings.length).replace('{time}', () => formatSpeakingTime(p.total_seconds))
-      + '\n' + p.recordings.slice(0, 12).map(r => `${r.date} · ${r.title} · ${formatSpeakingTime(r.seconds)}`).join('\n');
-    return `<button data-click="setAskScope" data-click-args='[${jsArg({ type: 'person', name: p.name })}]' title="${escapeHtml(tip)}"
-      class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[12px] transition ${on ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'}">
-      <span class="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold ${on ? 'bg-white/25' : 'bg-white/10 text-apple-secondary'}">${escapeHtml(p.name.slice(0, 1).toUpperCase())}</span>
-      <span class="truncate flex-1">${escapeHtml(p.name)}${p.profile ? ` <span class="${on ? 'text-white/70' : 'text-apple-tertiary'}" title="${escapeHtml(t('tipPersonVoice'))}">◉</span>` : ''}</span>
-      <span class="text-[10.5px] font-mono ${on ? 'text-white/80' : 'text-apple-tertiary'}">${p.recordings.length}</span>
-    </button>`;
-  }).join('');
-}
-
-function setAskScope(scope) {
-  state.askScope = scope;
-  renderAskScope();
-  document.getElementById('library-question').focus();
 }
 
 function askScopePayload(scope) {
@@ -514,62 +429,6 @@ async function makeDigest(days) {
   renderAskThread();
 }
 
-async function askLibrary() {
-  const input = document.getElementById('library-question');
-  const question = input.value.trim();
-  if (!question) return;
-  const btn = document.getElementById('library-ask-btn');
-  const scope = { ...state.askScope };
-  const item = { id: ++_askSeq, question, scopeLabel: askScopeLabel(scope), status: 'pending', data: null, error: '' };
-  askThread.unshift(item);
-  input.value = '';
-  btn.disabled = true;
-  renderAskThread();
-  try {
-    const res = await fetch('/api/library/ask', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question, lang: state.uiLang === 'en' ? 'en' : 'ru', ...askScopePayload(scope) }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || 'Error');
-    item.data = data;
-    item.status = 'done';
-  } catch (e) {
-    item.error = e.message;
-    item.status = 'error';
-  } finally {
-    btn.disabled = false;
-    renderAskThread();
-  }
-}
-
-function renderAskThread() {
-  const box = document.getElementById('ask-thread');
-  if (!askThread.length) {
-    box.innerHTML = `<div class="py-16 text-center text-xs text-apple-tertiary">${escapeHtml(t('askEmpty'))}</div>`;
-    return;
-  }
-  box.innerHTML = askThread.map(item => `
-    <div class="rounded-2xl border apple-border bg-apple-sidebar/60 overflow-hidden" data-ask="${item.id}">
-      <div class="px-5 py-3 border-b apple-border flex items-start justify-between gap-3">
-        <div class="text-[13px] font-semibold text-white min-w-0">${escapeHtml(item.question)}</div>
-        <div class="text-[10.5px] text-apple-tertiary shrink-0 max-w-[45%] truncate" title="${escapeHtml(item.scopeLabel)}">${escapeHtml(item.scopeLabel)}</div>
-      </div>
-      <div class="px-5 py-4 ask-body"></div>
-    </div>`).join('');
-  for (const item of askThread) {
-    const body = box.querySelector(`[data-ask="${item.id}"] .ask-body`);
-    if (item.status === 'pending') {
-      body.innerHTML = `<div class="py-4 text-center text-xs text-apple-secondary animate-pulse">${escapeHtml(t('libraryAskWorking'))}</div>`;
-    } else if (item.status === 'error') {
-      body.innerHTML = `<div class="text-xs text-apple-red">${escapeHtml(item.error)}</div>`;
-    } else {
-      renderLibraryAnswer(body, item);
-    }
-  }
-}
-
 // "[2]" in an answer becomes a button to its source. Text nodes are rewritten, never the sanitized
 // HTML string: a [2] inside a link title or an image's alt text stays text there
 function linkifyCitations(root, byN, itemId) {
@@ -597,44 +456,6 @@ function linkifyCitations(root, byN, itemId) {
     frag.append(node.nodeValue.slice(last));
     node.replaceWith(frag);
   }
-}
-
-function renderLibraryAnswer(body, item) {
-  const data = item.data || {};
-  if (!data.found) {
-    body.innerHTML = `<div class="text-xs text-apple-secondary">${escapeHtml(t('libraryAskNothing'))}</div>`;
-    return;
-  }
-  const byN = Object.fromEntries((data.sources || []).map(s => [s.n, s]));
-  const html = sanitizedMarkdown(data.answer || '');
-  // Only the fragments the answer refers to; all of them if it cites none
-  const cited = new Set([...(data.answer || '').matchAll(/\[(\d{1,3})\]/g)].map(x => Number(x[1])));
-  const shown = (data.sources || []).filter(s => !cited.size || cited.has(s.n)).slice(0, 20);
-  const sources = shown.map(s => `
-    <button data-click="openLibrarySource" data-click-args='[${item.id}, ${s.n}]' class="w-full text-left px-2.5 py-1.5 rounded-md hover:bg-white/5 transition">
-      <div class="flex items-center gap-2 text-[11px] min-w-0">
-        <span class="lib-cite">${s.n}</span>
-        <span class="text-white truncate">${escapeHtml(s.title)}</span>
-        <span class="text-apple-tertiary font-mono shrink-0 ml-auto">${escapeHtml(s.date)} · ${formatTime(s.start)}</span>
-      </div>
-      <div class="text-[11px] text-apple-secondary truncate mt-0.5 pl-7">${s.speaker ? escapeHtml(s.speaker) + ': ' : ''}${escapeHtml(s.text)}</div>
-    </button>`).join('');
-  body.innerHTML = `
-    <div class="markdown-body text-[13px]">${html}</div>
-    ${sources ? `<div class="mt-4 pt-3 border-t apple-border">
-      <div class="text-[10.5px] uppercase tracking-wider text-apple-tertiary mb-1">${escapeHtml(t('libraryAskSources'))}</div>
-      ${sources}
-    </div>` : ''}
-    ${data.model ? `<div class="mt-2 text-[10.5px] text-apple-tertiary">${data.cloud ? '☁ ' : ''}${escapeHtml(data.cloud ? data.model : formatModelName(data.model))}${data.mode === 'full' ? ' · ' + escapeHtml(t('askModeFull')) : ''}${data.mode === 'digest' ? ' · ' + escapeHtml(t('digestCount').replace('{n}', () => data.count)) : ''}${data.excluded_local ? ' · ' + escapeHtml(t('askExcludedLocal').replace('{n}', () => data.excluded_local)) : ''}</div>` : ''}`;
-  linkifyCitations(body.querySelector('.markdown-body'), byN, item.id);
-}
-
-function openLibrarySource(itemId, n) {
-  const item = askThread.find(x => x.id === itemId);
-  const s = ((item && item.data && item.data.sources) || []).find(x => x.n === n);
-  if (!s) return;
-  switchAppView('library');
-  selectMeetingAndSeek(s.meeting_id, s.start);
 }
 
 // A click in the library list: the recording opens in the library, whatever part of the app is shown
