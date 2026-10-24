@@ -111,7 +111,10 @@ async function rpLoadTextViews(meeting) {
     if (p) { rp.pauses = p.pauses || []; rp.pauseSec = p.seconds || 0; }
     if (f) rp.fillers = f;
     rpRenderFillerButton();
-    if (state.noFillers && typeof renderTranscript === 'function') renderTranscript();
+    // the view without fillers is drawn again, but not over a line being edited: the next drawing
+    // (its «Сохранить» / «Отмена») shows it
+    const editing = document.querySelector('#transcript-inner textarea, #transcript-inner [contenteditable="true"]');
+    if (state.noFillers && !editing && typeof renderTranscript === 'function') renderTranscript();
     rpRender();
   } catch (e) {}
 }
