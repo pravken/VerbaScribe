@@ -160,34 +160,131 @@ document.addEventListener('DOMContentLoaded', () => {
   pollMeetingsLoop();
 });
 
-// --- Summaries ---
+// --- Analysis: sections on the left, the open one on the right ---
+// "protocol" is the overview: the summary itself and, around it, cards of the other sections
+// (which ones: «Настроить»). A section with a dot is made; one without can be made in one click.
 function selectSummaryTab(tab) {
   state.activeSummaryTab = tab;
-  document.querySelectorAll('[id^="sumtab-"]:not(#sumtab-user-templates)').forEach(btn => {
-    const k = btn.dataset.tab || btn.id.slice('sumtab-'.length);
-    const hidden = btn.classList.contains('hidden');
-    btn.className = (k === tab ? 'apple-segment-btn apple-segment-active' : 'apple-segment-btn text-apple-secondary hover:text-white')
-      + (hidden ? ' hidden' : '');
-  });
-  // "My notes" is the user's own text: edited here, nothing to generate
-  document.getElementById('generate-summary-btn')?.classList.toggle('hidden', tab === 'mynotes');
-  document.getElementById('generate-summary-btn')?.removeAttribute('disabled');
   renderSummaryPanel();
+  document.getElementById('an-main')?.scrollTo({ top: 0 });
 }
 
-// --- The user's summary templates: tabs after the built-in ones ---
+// --- The user's summary templates: a group of sections of their own ---
 async function loadSummaryTemplates() {
   state.summaryTemplates = await fetch('/api/summary-templates').then(r => r.json()).catch(() => []);
   renderTemplateTabs();
 }
 
 function renderTemplateTabs() {
-  const box = document.getElementById('sumtab-user-templates');
-  if (!box) return;
-  box.innerHTML = (state.summaryTemplates || []).map(tpl => `<button data-click="selectSummaryTab" data-click-args='[{"$": "data", "k": "tab"}]' id="sumtab-tpl-${escapeHtml(tpl.id)}"
-      data-tab="tpl:${escapeHtml(tpl.id)}" title="${escapeHtml(tpl.prompt)}"
-      class="apple-segment-btn text-apple-secondary hover:text-white">${escapeHtml(tpl.name)}</button>`).join('');
-  selectSummaryTab(state.activeSummaryTab);
+  if (String(state.activeSummaryTab || '').startsWith('tpl:') && !anTemplate(state.activeSummaryTab)) state.activeSummaryTab = 'protocol';
+  renderSummaryPanel();
+}
+
+function anTemplate(key) {
+  const id = String(key || '').startsWith('tpl:') ? key.slice(4) : '';
+  return id ? (state.summaryTemplates || []).find(x => x.id === id) || null : null;
+}
+
+// The sections, by group: {key, label, about, page (has a page of its own), make (a model makes it)}
+function analysisSections() {
+  const m = state.activeMeeting || {};
+  const sums = m.summaries || {};
+  const tpls = (state.summaryTemplates || []).map(x => ({ key: `tpl:${x.id}`, label: x.name, about: x.prompt, page: true, make: true, mine: true }));
+  return [
+    { label: t('anGrpResults'), items: [
+      { key: 'protocol', label: t('sumProtocol'), about: t('anAboutProtocol'), page: true, make: true },
+      ...((sums.custom || '').trim() || anIsBusy('custom') ? [{ key: 'custom', label: t('anAnswer'), about: '', page: true, make: false }] : []),
+    ] },
+    { label: t('anGrpWork'), items: [
+      { key: 'tasks', label: t('sumTasks'), about: t('tipSumTasks'), page: true, make: true },
+      { key: 'commitments', label: t('sumCommitments'), about: t('tipSumCommitments'), page: true, make: true },
+      { key: 'followup', label: t('anLetter'), about: t('tipSumFollowup'), page: true, make: true },
+      ...(m.series_id ? [{ key: 'since_last', label: t('sumSinceLast'), about: t('tipSumSinceLast'), page: true, make: true }] : []),
+    ] },
+    ...(tpls.length ? [{ label: t('anGrpTemplates'), items: tpls }] : []),
+    { label: t('anGrpMine'), items: [
+      { key: 'mynotes', label: t('notesTitle'), about: t('tipSumMyNotes'), page: true, make: false, mine: true },
+      { key: 'notes', label: t('sumNotes'), about: t('tipSumNotes'), page: true, make: true },
+    ] },
+  ];
+}
+
+// Made only in the overview, without a page of their own
+const AN_CARD_ONLY = { tldr: 'anShort', chapters: 'sumChapters' };
+
+function anSectionInfo(key) {
+  for (const g of analysisSections()) {
+    const it = g.items.find(x => x.key === key);
+    if (it) return it;
+  }
+  if (AN_CARD_ONLY[key]) return { key, label: t(AN_CARD_ONLY[key]), about: t(key === 'tldr' ? 'tipSumTldr' : 'tipSumChapters'), page: false, make: true };
+  return { key, label: key, about: '', page: true, make: false };
+}
+
+function anHasContent(key) {
+  const m = state.activeMeeting;
+  if (!m) return false;
+  if (key === 'mynotes') return !!(m.user_notes || '').trim();
+  if (key === 'commitments') return !!(state.anCommit && state.anCommit.id === m.id && state.anCommit.n > 0);
+  return !!((m.summaries || {})[key] || '').trim();
+}
+
+// Points of a list in a section's Markdown ("- …", "1. …"): the count next to its name
+function anListCount(key) {
+  if (key === 'commitments') return state.anCommit && state.activeMeeting && state.anCommit.id === state.activeMeeting.id ? state.anCommit.n : 0;
+  const md = ((state.activeMeeting && state.activeMeeting.summaries) || {})[key] || '';
+  return (md.match(/^\s*(?:[-*+]|\d+[.)])\s+\S/gm) || []).length;
+}
+
+function anBusyKey(key) { return `${state.activeMeeting ? state.activeMeeting.id : 0}:${key}`; }
+function anIsBusy(key) { return !!(state.anBusy && state.anBusy.has(anBusyKey(key))); }
+
+// The cards of the overview that are off («Настроить»); kept in this browser only
+const AN_OFF_DEFAULT = ['followup', 'notes', 'since_last', 'commitments'];
+function anOverviewOff() {
+  try {
+    const v = JSON.parse(localStorage.getItem('vs.analysisOverviewOff') || 'null');
+    return Array.isArray(v) ? v : AN_OFF_DEFAULT.slice();
+  } catch (e) { return AN_OFF_DEFAULT.slice(); }
+}
+function setOverviewOff(list) {
+  try { localStorage.setItem('vs.analysisOverviewOff', JSON.stringify(list)); } catch (e) { /* the default stays */ }
+}
+function toggleOverviewCard(key) {
+  const off = anOverviewOff();
+  setOverviewOff(off.includes(key) ? off.filter(k => k !== key) : off.concat(key));
+  renderSummaryPanel();
+}
+
+// How many promises the open recording has (the count of its section)
+async function refreshCommitmentCount() {
+  const m = state.activeMeeting;
+  if (!m) return;
+  const items = await fetch(`/api/meetings/${m.id}/commitments`).then(r => r.ok ? r.json() : []).catch(() => []);
+  if (state.activeMeeting !== m) return;
+  const n = Array.isArray(items) ? items.length : 0;
+  const changed = !state.anCommit || state.anCommit.id !== m.id || state.anCommit.n !== n;
+  state.anCommit = { id: m.id, n };
+  if (changed) renderAnalysisNav();
+}
+
+function renderAnalysisNav() {
+  const nav = document.getElementById('an-nav');
+  if (!nav || !state.activeMeeting) return;
+  const cur = state.activeSummaryTab;
+  const ai = aiAvailable();
+  nav.innerHTML = analysisSections().map(g => `<div class="an-grp">${escapeHtml(g.label)}</div>` + g.items.map(it => {
+    const done = anHasContent(it.key), busy = anIsBusy(it.key), n = done && it.key !== 'protocol' ? anListCount(it.key) : 0;
+    const dot = done ? (it.mine ? 'an-dot-mine' : 'an-dot-done') : 'an-dot-empty';
+    const make = !done && !busy && it.make && ai
+      ? `<span class="an-mk" ${pageCall('click', 'createAnalysisSection', [it.key, { $: 'event' }])}>✦ ${escapeHtml(t('anCreate'))}</span>` : '';
+    return `<button class="an-navi${it.key === cur ? ' an-navi-on' : ''}" ${pageCall('click', 'selectSummaryTab', [it.key])}
+        ${it.key === cur ? 'aria-current="true"' : ''} title="${escapeHtml(it.about || it.label)}">
+      <span class="an-dot ${dot}"></span><span class="an-navi-label">${escapeHtml(it.label)}</span>
+      ${n > 0 ? `<span class="an-cnt">${n}</span>` : ''}${busy ? `<span class="an-busy">${escapeHtml(t('anMaking'))}</span>` : make}
+    </button>`;
+  }).join('')).join('')
+    + `<button class="an-newtpl" data-click="openTemplateDialog">+ ${escapeHtml(t('anNewTemplate'))}</button>`;
 }
 
 // Ready-made starting points for the user's own templates
@@ -248,16 +345,16 @@ function updateActiveChapter(cur) {
   _activeChapter = idx;
 }
 
-// "Clear": what the open tab of Analysis holds (an analysis, my notes, the promises)
+// "Clear" (the section's ⋯): what the open section holds (an analysis, my notes, the promises)
 function setClearSummaryVisible(on) {
-  document.getElementById('clear-summary-btn')?.classList.toggle('hidden', !on);
+  state.anCanClear = !!on;
 }
 
-async function clearSummaryTab() {
+async function clearSummaryTab(key) {
   const m = state.activeMeeting;
   if (!m) return;
-  const tab = state.activeSummaryTab;
-  const label = document.getElementById(`sumtab-${tab.startsWith('tpl:') ? 'tpl-' + tab.slice(4) : tab}`)?.textContent.trim() || t('tabSummary');
+  const tab = typeof key === 'string' ? key : state.activeSummaryTab;
+  const label = anSectionInfo(tab).label || t('tabSummary');
   if (!(await confirmDialog(t('clearTabTitle').replace('{tab}', () => label), t('clearTabText'), t('clearBtn')))) return;
   let res;
   if (tab === 'mynotes') {
@@ -265,6 +362,7 @@ async function clearSummaryTab() {
     if (res.ok) m.user_notes = '';
   } else if (tab === 'commitments') {
     res = await fetch(`/api/meetings/${m.id}/commitments`, { method: 'DELETE' });
+    if (res.ok) state.anCommit = { id: m.id, n: 0 };
   } else {
     res = await fetch(`/api/meetings/${m.id}/summaries?key=${encodeURIComponent(tab)}`, { method: 'DELETE' });
     if (res.ok) state.activeMeeting.summaries = (await readJson(res)).summaries || {};
@@ -276,31 +374,355 @@ async function clearSummaryTab() {
 
 function renderSummaryPanel() {
   const box = document.getElementById('summary-content');
-  if (!state.activeMeeting) return;
-  const tab = state.activeSummaryTab;
-  setClearSummaryVisible(tab === 'mynotes' ? !!(state.activeMeeting.user_notes || '').trim()
-    : tab !== 'commitments' && !!((state.activeMeeting.summaries || {})[tab] || '').trim());
-  if (state.activeSummaryTab === 'mynotes') { renderMyNotesEditor(box); return; }
-  if (!aiAvailable()) { renderNoModelCard(box); return; }
-  if (state.activeSummaryTab === 'commitments') { renderCommitments(box); return; }
-  const summaries = state.activeMeeting.summaries || {};
-  const md = summaries[state.activeSummaryTab] || '';
-
-  if (!md) {
-    box.innerHTML = `<div class="py-12 text-center text-xs text-apple-secondary">
-      ${t('emptySummary')}
-      ${summaries.error ? `<div class="mt-2 text-apple-red">${escapeHtml(summaries.error)}</div>` : ''}
-    </div>`;
+  const m = state.activeMeeting;
+  if (!m || !box) return;
+  let tab = state.activeSummaryTab;
+  const known = analysisSections().some(g => g.items.some(x => x.key === tab));
+  if (!known) tab = state.activeSummaryTab = 'protocol';  // a template that is gone, "since last time" off a series
+  if (!state.anCommit || state.anCommit.id !== m.id) { state.anCommit = { id: m.id, n: 0 }; refreshCommitmentCount(); }
+  setClearSummaryVisible(tab !== 'protocol' && anHasContent(tab));
+  renderAnalysisNav();
+  renderAnalysisHead();
+  if (tab === 'protocol') { renderAnalysisOverview(box); return; }
+  if (tab === 'mynotes') { renderMyNotesEditor(box); return; }
+  if (tab === 'commitments') { renderCommitments(box); return; }
+  const summaries = m.summaries || {};
+  const md = summaries[tab] || '';
+  if (anIsBusy(tab)) { box.innerHTML = anMakingHtml(); return; }
+  if (!md) { box.innerHTML = anEmptyHtml(tab, summaries.error); return; }
+  if (tab === 'custom' && state.anQuestion && state.anQuestion.id === m.id) {
+    box.innerHTML = `<div class="an-question">${escapeHtml(state.anQuestion.text)}</div><div class="markdown-body an-md"></div>`;
+    renderMarkdownWithTimestamps(box.querySelector('.an-md'), md, m.duration);
     return;
   }
-
-  renderMarkdownWithTimestamps(box, md, state.activeMeeting.duration);
-  if (state.activeSummaryTab === 'followup') {
+  box.innerHTML = '<div class="markdown-body an-md"></div>';
+  renderMarkdownWithTimestamps(box.firstElementChild, md, m.duration);
+  if (tab === 'followup') {
     const bar = document.createElement('div');
-    bar.className = 'mt-4 flex justify-end';
-    bar.innerHTML = `<button class="ui-btn ui-btn-primary">${escapeHtml(t('followupOpenMail'))}</button>`;
+    bar.className = 'an-bar';
+    bar.innerHTML = `<button class="an-btn an-btn-primary">${escapeHtml(t('followupOpenMail'))}</button>`;
     bar.querySelector('button').onclick = () => openFollowupMail(md);
     box.appendChild(bar);
+  }
+}
+
+function anMakingHtml() {
+  return `<div class="an-empty an-making"><span>${escapeHtml(t('uiGeneratingAnalysis'))}</span>
+    <span class="an-chip-sm">${escapeHtml(summaryModelChoice().prettyModel)}</span></div>`;
+}
+
+// A section not made yet: what it will hold, and the button that makes it
+function anEmptyHtml(key, error) {
+  const it = anSectionInfo(key);
+  const ai = aiAvailable();
+  return `<div class="an-empty">
+      <div class="an-empty-title">${escapeHtml(t('anNotMade'))}</div>
+      ${it.about ? `<p class="an-empty-about">${escapeHtml(it.about)}</p>` : ''}
+      ${it.make ? `<button class="an-btn an-btn-primary" ${ai ? '' : 'disabled'} ${pageCall('click', 'createAnalysisSection', [key])}>
+        <svg class="tb-ai" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2l1.9 5.6 5.6 1.9-5.6 1.9L10 17l-1.9-5.6-5.6-1.9 5.6-1.9z"/><path d="M18.5 13l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/></svg>
+        ${escapeHtml(t('anCreateWithModel'))}</button>` : ''}
+      ${error ? `<div class="an-error">${escapeHtml(error)}</div>` : ''}
+    </div>`;
+}
+
+// The head of the open section: its name, the model, what can be done with it
+function renderAnalysisHead() {
+  const tab = state.activeSummaryTab;
+  const it = anSectionInfo(tab);
+  const has = anHasContent(tab), busy = anIsBusy(tab), ai = aiAvailable();
+  const overview = tab === 'protocol';
+  document.getElementById('an-noai')?.classList.toggle('hidden', ai);
+  const title = document.getElementById('an-title');
+  if (title) title.textContent = it.label;
+  const sub = document.getElementById('an-sub');
+  if (sub) sub.textContent = tab === 'mynotes' ? t('anNotesSub') : busy ? t('anMaking') : '';
+  const sel = document.getElementById('summary-llm-select');
+  const name = document.getElementById('an-model-name');
+  if (name) name.textContent = sel && sel.selectedIndex >= 0 && sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : '—';
+  document.getElementById('an-model-btn')?.parentElement.classList.toggle('hidden', !it.make);
+  document.getElementById('an-cfg-btn')?.classList.toggle('hidden', !overview);
+  const gen = document.getElementById('generate-summary-btn');
+  if (gen) {
+    gen.classList.toggle('hidden', !it.make);
+    gen.disabled = !ai || busy;
+    const label = document.getElementById('an-gen-label');
+    if (label) label.textContent = busy ? t('anMaking') : t(has ? 'anRegen' : 'anCreate');
+  }
+  const shown = overview ? anHasContent('protocol') : has;
+  document.getElementById('an-copy-btn')?.classList.toggle('hidden', !shown || tab === 'commitments');
+  document.getElementById('an-exp-btn')?.classList.toggle('hidden', !shown && tab !== 'commitments');
+}
+
+// Overview: the summary and the cards of the other sections («Настроить»); what is not made yet below
+function renderAnalysisOverview(box) {
+  const m = state.activeMeeting;
+  const sums = m.summaries || {};
+  const off = anOverviewOff();
+  const ai = aiAvailable();
+  const card = (key, title, body, opts = {}) => `<section class="an-card${opts.wide ? ' an-wide' : ''}" data-card="${escapeHtml(key)}">
+      <div class="an-cardh">${opts.ai ? '<svg class="tb-ai" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2l1.9 5.6 5.6 1.9-5.6 1.9L10 17l-1.9-5.6-5.6-1.9 5.6-1.9z"/><path d="M18.5 13l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/></svg>' : ''}
+        ${opts.mine ? '<span class="an-dot an-dot-mine"></span>' : ''}${escapeHtml(title.toUpperCase())}
+        ${opts.count ? `<span class="an-cnt">${opts.count}</span>` : ''}${opts.tag ? `<span class="an-tag">${escapeHtml(opts.tag)}</span>` : ''}
+        <span class="flex-1"></span>
+        ${opts.regen && ai ? `<button class="an-more" ${pageCall('click', 'createAnalysisSection', [key])} title="${escapeHtml(t('anRegen'))}">↻</button>` : ''}
+        ${opts.open ? `<button class="an-more" ${pageCall('click', 'selectSummaryTab', [key])}>${escapeHtml(t('anOpen'))} →</button>` : ''}
+      </div>
+      <div class="an-cardb${opts.clamp ? ' an-clamp' : ''}">${body}</div>
+    </section>`;
+  const md = (key) => `<div class="markdown-body an-md" data-md="${escapeHtml(key)}"></div>`;
+  const busyCard = (key, title) => card(key, title, `<div class="an-making-sm">${escapeHtml(t('anMaking'))}</div>`);
+  const cards = [];
+  const missing = [];
+  const consider = (key, title, render, opts) => {
+    if (anIsBusy(key)) { cards.push(busyCard(key, title)); return; }
+    if (!anHasContent(key)) { if (opts.make !== false) missing.push({ key, title, about: anSectionInfo(key).about }); return; }
+    if (off.includes(key)) return;
+    cards.push(render());
+  };
+  consider('tldr', t('anShort'), () => card('tldr', t('anShort'), md('tldr'), { wide: true, ai: true, regen: true }), {});
+  if (anIsBusy('protocol')) cards.push(busyCard('protocol', t('anResults')));
+  else if (anHasContent('protocol')) cards.push(card('protocol', t('anResults'), md('protocol'), { wide: true, regen: false }));
+  else missing.unshift({ key: 'protocol', title: t('anResults'), about: t('anAboutProtocol') });
+  consider('chapters', t('sumChapters'), () => {
+    const chs = parseChapters(sums.chapters);
+    const body = chs.length ? chs.map(c => `<div class="an-row"><button class="an-tc" ${pageCall('click', 'seekPlayer', [Number(c.start) || 0])} title="${escapeHtml(t('anListenChapter'))}">${formatTime(c.start)}</button>
+        <span class="an-row-text"><b>${escapeHtml(c.title)}</b>${c.desc ? `<span class="an-row-sub">${escapeHtml(c.desc)}</span>` : ''}</span></div>`).join('') : md('chapters');
+    return card('chapters', t('sumChapters'), body, { count: chs.length, regen: true });
+  }, {});
+  consider('tasks', t('sumTasks'), () => card('tasks', t('sumTasks'), md('tasks'), { count: anListCount('tasks'), open: true, clamp: true }), {});
+  consider('commitments', t('sumCommitments'), () => card('commitments', t('sumCommitments'), `<div class="an-row-sub">${escapeHtml(t('anCommitCount').replace('{n}', () => String(anListCount('commitments'))))}</div>`, { count: anListCount('commitments'), open: true }), {});
+  (state.summaryTemplates || []).forEach(x => {
+    const key = `tpl:${x.id}`;
+    consider(key, x.name, () => card(key, x.name, md(key), { count: anListCount(key), tag: t('anMyTemplate'), open: true, clamp: true }), {});
+  });
+  consider('followup', t('anLetter'), () => card('followup', t('anLetter'), md('followup'), { open: true, clamp: true }), {});
+  if (m.series_id) consider('since_last', t('sumSinceLast'), () => card('since_last', t('sumSinceLast'), md('since_last'), { open: true, clamp: true }), {});
+  consider('notes', t('sumNotes'), () => card('notes', t('sumNotes'), md('notes'), { open: true, clamp: true }), {});
+  if (!off.includes('mynotes')) {
+    const lines = String(m.user_notes || '').split('\n').map(s => s.trim()).filter(Boolean).slice(0, 6);
+    cards.push(card('mynotes', t('notesTitle'), lines.length ? lines.map(s => `<div class="an-row-text">${escapeHtml(s)}</div>`).join('')
+      : `<div class="an-row-sub">${escapeHtml(t('anNoNotes'))}</div>`, { mine: true, open: true }));
+  }
+  box.innerHTML = `<div class="an-grid">${cards.join('')}</div>`
+    + (missing.length ? `<section class="an-missing"><div class="an-grp an-grp-flat">${escapeHtml(t('anCanMake'))}</div>
+      <div class="an-missing-grid">${missing.map(x => `<div class="an-tile">
+          <span class="an-tile-text"><b>${escapeHtml(x.title)}</b><span>${escapeHtml(x.about || '')}</span></span>
+          <button class="an-tile-btn" ${ai ? '' : 'disabled'} ${pageCall('click', 'createAnalysisSection', [x.key])}>✦ ${escapeHtml(t('anCreate'))}</button>
+        </div>`).join('')}</div></section>` : '');
+  box.querySelectorAll('[data-md]').forEach(el => renderMarkdownWithTimestamps(el, sums[el.dataset.md] || '', m.duration));
+  if (!cards.length && !missing.length) box.innerHTML = anEmptyHtml('protocol', sums.error);
+}
+
+// The menus of the section's head: the model, «Настроить» (the overview's cards), «Экспорт», ⋯
+function openAnalysisMenu(kind, el) {
+  const r = el.getBoundingClientRect();
+  const at = (items) => setTimeout(() => openTextMenuAt(items, r.left, r.bottom + 6), 0);  // after this click closes menus
+  const tab = state.activeSummaryTab;
+  const m = state.activeMeeting;
+  if (!m) return;
+  if (kind === 'model') {
+    const sel = document.getElementById('summary-llm-select');
+    const opts = sel ? [...sel.options].filter(o => o.value) : [];
+    at([...opts.map(o => ({ label: `${o.value === sel.value ? '✓ ' : '   '}${o.textContent}`, run: () => {
+        sel.value = o.value;
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+        renderAnalysisHead();
+      } })),
+      { sep: true }, { label: t('anModelsSettings'), run: () => openModal('settings', 'analysis') }]);
+  } else if (kind === 'cfg') {
+    openOverviewConfig(el);
+  } else if (kind === 'exp') {
+    const items = [];
+    if (anSectionText(tab).trim()) items.push({ label: t('anExportMd'), key: '.md', run: () => saveSectionMarkdown(tab) });
+    if (tab === 'commitments') {
+      items.push({ label: `${t('sumCommitments')}: Markdown`, run: () => exportCommitments('md', m.id) },
+        { label: `${t('sumCommitments')}: Todoist`, key: 'CSV', run: () => exportCommitments('todoist', m.id) },
+        { label: `${t('sumCommitments')}: ${t('commitmentsTable')}`, run: () => exportCommitments('csv', m.id) });
+    }
+    items.push({ sep: true }, { label: t('anExportWord'), key: '.docx', run: () => exportMeetingById(m.id, 'docx') },
+      { label: t('anExportObsidian'), run: () => exportToObsidian(m.id) });
+    at(items);
+  } else if (kind === 'dots') {
+    const tpl = anTemplate(tab);
+    const items = [];
+    if (tpl) items.push({ label: t('anEditTemplate'), run: () => openTemplateDialog(tpl) });
+    items.push({ label: t('anAllTemplates'), run: () => openTemplatesEditor() });
+    if (tab !== 'protocol' && state.anCanClear) items.push({ sep: true }, { label: t('anClearSection'), run: () => clearSummaryTab(tab) });
+    if (tab === 'protocol') {
+      for (const key of ['protocol', 'tldr', 'chapters']) if (anHasContent(key)) items.push({ label: `${t('anClearSection')}: ${anSectionInfo(key).label}`, run: () => clearSummaryTab(key) });
+    }
+    at(items);
+  }
+}
+
+// «Настроить»: which cards the overview shows (made ones; the others are offered below it)
+function openOverviewConfig(el) {
+  document.getElementById('an-cfg-pop')?.remove();
+  const keys = [['tldr', t('anShort')], ['chapters', t('sumChapters')], ['tasks', t('sumTasks')], ['commitments', t('sumCommitments')],
+    ['followup', t('anLetter')], ...(state.activeMeeting && state.activeMeeting.series_id ? [['since_last', t('sumSinceLast')]] : []),
+    ['notes', t('sumNotes')], ['mynotes', t('notesTitle')],
+    ...(state.summaryTemplates || []).map(x => [`tpl:${x.id}`, x.name])];
+  const off = anOverviewOff();
+  const pop = document.createElement('div');
+  pop.id = 'an-cfg-pop';
+  pop.className = 'an-pop';
+  pop.setAttribute('role', 'dialog');
+  pop.innerHTML = `<div class="an-pop-title">${escapeHtml(t('anCfgTitle'))}</div>`
+    + keys.map(([k, label]) => `<label class="an-pop-row"><input type="checkbox" data-k="${escapeHtml(k)}" ${off.includes(k) ? '' : 'checked'}>
+        <span class="flex-1">${escapeHtml(label)}</span><span class="an-pop-tag">${escapeHtml(anHasContent(k) ? '' : t('anNotMadeShort'))}</span></label>`).join('')
+    + `<div class="an-pop-foot"><button class="an-pop-link" data-a="new">+ ${escapeHtml(t('anNewTemplate'))}</button></div>`;
+  pop.addEventListener('change', e => {
+    const k = e.target.dataset && e.target.dataset.k;
+    if (k) toggleOverviewCard(k);
+  });
+  pop.addEventListener('click', e => {
+    if (e.target.closest('[data-a="new"]')) { pop.remove(); openTemplateDialog(null); }
+  });
+  document.body.appendChild(pop);
+  const r = el.getBoundingClientRect();
+  const w = pop.getBoundingClientRect();
+  pop.style.left = `${Math.max(8, Math.min(zpx(r.right - w.width), viewW() - zpx(w.width) - 8))}px`;
+  pop.style.top = `${Math.max(8, Math.min(zpx(r.bottom + 6), viewH() - zpx(w.height) - 8))}px`;
+  const away = (e) => {
+    if (e.type === 'keydown' && e.key !== 'Escape') return;
+    if (e.type === 'mousedown' && (pop.contains(e.target) || el.contains(e.target))) return;
+    pop.remove();
+    document.removeEventListener('mousedown', away, true);
+    document.removeEventListener('keydown', away, true);
+  };
+  setTimeout(() => { document.addEventListener('mousedown', away, true); document.addEventListener('keydown', away, true); }, 0);
+}
+
+// The section as a Markdown file (the overview: the short summary, the summary and the chapters)
+async function saveSectionMarkdown(key) {
+  const m = state.activeMeeting;
+  const text = anSectionText(key).replaceAll('[?]', `(${t('unverifiedBadge')})`).trim();
+  if (!m || !text) return;
+  const label = anSectionInfo(key).label;
+  const name = `${(m.title || 'meeting').replace(/[\\/:*?"<>|]+/g, '_').trim()} — ${label}.md`;
+  const blob = new Blob([`# ${m.title || ''} — ${label}\n\n${text}\n`], { type: 'text/markdown' });
+  if (typeof window.showSaveFilePicker === 'function') {
+    try {
+      const handle = await window.showSaveFilePicker({ suggestedName: name, types: [{ description: 'Markdown (*.md)', accept: { 'text/markdown': ['.md'] } }] });
+      const w = await handle.createWritable();
+      await w.write(blob);
+      await w.close();
+      showToast(`${t('exportSavedTo')} ${handle.name}`);
+      return;
+    } catch (err) {
+      if (err && (err.name === 'AbortError' || err.code === 20)) return;
+    }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 4000);
+  showToast(`${t('exportSavedTo')} ${name}`);
+}
+
+// A template of one's own: a name and what to find in the recording; shown in the overview or not
+function openTemplateDialog(tpl) {
+  document.getElementById('an-tpl-dlg')?.remove();
+  const editing = !!(tpl && tpl.id);
+  const key = editing ? `tpl:${tpl.id}` : '';
+  const wrap = document.createElement('div');
+  wrap.id = 'an-tpl-dlg';
+  wrap.className = 'fixed inset-0 modal-backdrop z-[60] flex items-center justify-center p-4';
+  wrap.setAttribute('role', 'dialog');
+  wrap.setAttribute('aria-modal', 'true');
+  wrap.innerHTML = `<div class="an-dlg modal-card">
+      <div class="an-dlg-head"><h2>${escapeHtml(t(editing ? 'anTplEditTitle' : 'anTplNewTitle'))}</h2>
+        <button data-a="no" class="an-dlg-x" aria-label="${escapeHtml(t('close'))}">✕</button></div>
+      <label class="an-fld-label">${escapeHtml(t('anTplName'))}
+        <input data-f="name" maxlength="60" class="an-fld" value="${escapeHtml(editing ? tpl.name : '')}"></label>
+      <label class="an-fld-label">${escapeHtml(t('anTplPrompt'))}
+        <textarea data-f="prompt" rows="5" maxlength="4000" class="an-fld" placeholder="${escapeHtml(t('anTplPromptPh'))}">${escapeHtml(editing ? tpl.prompt : '')}</textarea></label>
+      <label class="an-pop-row"><input type="checkbox" data-f="show" ${editing && anOverviewOff().includes(key) ? '' : 'checked'}>
+        <span>${escapeHtml(t('anTplShow'))}</span></label>
+      ${editing ? '' : `<label class="an-pop-row"><input type="checkbox" data-f="make" ${aiAvailable() && state.activeMeeting ? 'checked' : 'disabled'}>
+        <span>${escapeHtml(t('anTplMakeNow'))}</span></label>`}
+      <div class="an-dlg-foot">
+        ${editing ? `<button data-a="del" class="an-btn an-btn-danger">${escapeHtml(t('ctxDelete'))}</button>` : ''}
+        <span class="flex-1"></span>
+        <button data-a="no" class="an-btn">${escapeHtml(t('cancel'))}</button>
+        <button data-a="save" class="an-btn an-btn-primary">${escapeHtml(t('save'))}</button>
+      </div></div>`;
+  const val = (f) => wrap.querySelector(`[data-f="${f}"]`);
+  const save = async (list) => {
+    const res = await fetch('/api/summary-templates', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ templates: list }) });
+    const data = await readJson(res);
+    if (!res.ok) { showToast(serverText(data.detail || 'Error')); return null; }
+    state.summaryTemplates = data;
+    return data;
+  };
+  wrap.addEventListener('click', async e => {
+    const b = e.target.closest('button');
+    if (e.target === wrap || (b && b.dataset.a === 'no')) { wrap.remove(); return; }
+    if (!b) return;
+    const all = (state.summaryTemplates || []).map(x => ({ ...x }));
+    if (b.dataset.a === 'del') {
+      if (!(await confirmDialog(t('anTplDelTitle').replace('{name}', () => tpl.name), t('anTplDelText'), t('ctxDelete')))) return;
+      if (await save(all.filter(x => x.id !== tpl.id))) { wrap.remove(); renderTemplateTabs(); }
+      return;
+    }
+    if (b.dataset.a !== 'save') return;
+    const name = val('name').value.trim(), prompt = val('prompt').value.trim();
+    if (!name || !prompt) { (name ? val('prompt') : val('name')).focus(); return; }
+    const before = new Set(all.map(x => x.id));
+    const list = editing ? all.map(x => x.id === tpl.id ? { ...x, name, prompt } : x) : all.concat({ id: '', name, prompt });
+    const saved = await save(list);
+    if (!saved) return;
+    const made = editing ? saved.find(x => x.id === tpl.id) : saved.find(x => !before.has(x.id));
+    wrap.remove();
+    if (made) {
+      const k = `tpl:${made.id}`;
+      const off = anOverviewOff().filter(x => x !== k);
+      setOverviewOff(val('show').checked ? off : off.concat(k));
+      state.activeSummaryTab = k;
+      if (!editing && val('make') && val('make').checked) { createAnalysisSection(k); return; }
+    }
+    renderTemplateTabs();
+  });
+  document.body.appendChild(wrap);
+  val('name').focus();
+}
+
+// A section made (or made again) by the model chosen above; several can be made at once
+async function createAnalysisSection(key, ev) {
+  if (ev && ev.stopPropagation) ev.stopPropagation();
+  const m = state.activeMeeting;
+  if (!m || !aiAvailable()) return;
+  state.anBusy = state.anBusy || new Set();
+  const busy = `${m.id}:${key}`;
+  if (state.anBusy.has(busy)) return;
+  state.anBusy.add(busy);
+  if (state.activeMeeting === m) renderSummaryPanel();
+  const { chosenModel } = summaryModelChoice();
+  try {
+    let res;
+    if (key === 'commitments') {
+      res = await fetch(`/api/meetings/${m.id}/commitments`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: chosenModel }) });
+    } else if (key === 'since_last') {
+      res = await fetch(`/api/meetings/${m.id}/since-last`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: chosenModel, lang: state.uiLang }) });
+    } else {
+      res = await fetch(`/api/meetings/${m.id}/summary`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ template: key, model: chosenModel, lang: state.uiLang }) });
+    }
+    const data = await readJson(res);
+    if (!res.ok) throw new Error(data.detail || 'Error');
+    if (data.summaries) m.summaries = data.summaries;
+    if (key === 'commitments') state.anCommit = { id: m.id, n: Array.isArray(data) ? data.length : (data.items || []).length || 0 };
+    if (key === 'chapters' && state.activeMeeting === m) renderChaptersBar();
+  } catch (e) {
+    showToast(`${anSectionInfo(key).label}: ${serverText(e.message)}`);
+  } finally {
+    state.anBusy.delete(busy);
+    if (state.activeMeeting === m) {
+      if (key === 'commitments') await refreshCommitmentCount();
+      renderSummaryPanel();
+    }
   }
 }
 
@@ -390,28 +812,14 @@ async function renderCommitments(box) {
   const items = await fetch(`/api/meetings/${m.id}/commitments`).then(r => r.json()).catch(() => []);
   if (state.activeMeeting !== m || state.activeSummaryTab !== 'commitments') return;
   setClearSummaryVisible(items.length > 0);
-  box.innerHTML = items.length
-    ? `<div>${items.map(c => commitmentRowHtml(c, false)).join('')}</div>${commitmentExportBar(m.id)}`
-    : `<div class="py-12 text-center text-xs text-apple-secondary">${escapeHtml(t('commitmentsEmpty'))}</div>`;
-}
-
-async function extractCommitments() {
-  const m = state.activeMeeting;
-  const btn = document.getElementById('generate-summary-btn');
-  const box = document.getElementById('summary-content');
-  const { chosenModel, prettyModel } = summaryModelChoice();
-  btn.disabled = true;
-  box.innerHTML = `<div class="py-12 flex items-center justify-center gap-2 text-xs text-apple-secondary animate-pulse"><span>${escapeHtml(t('commitmentsWorking'))}</span><span class="px-2 py-0.5 rounded-md bg-white/10 text-white font-medium">${escapeHtml(prettyModel)}</span></div>`;
-  try {
-    const res = await fetch(`/api/meetings/${m.id}/commitments`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: chosenModel }) });
-    const data = await readJson(res);
-    if (!res.ok) throw new Error(data.detail || 'Error');
-    if (state.activeMeeting === m) renderCommitments(box);
-  } catch (e) {
-    box.innerHTML = `<div class="py-6 text-xs text-apple-red">${escapeHtml(e.message)}</div>`;
-  } finally {
-    btn.disabled = false;
+  if (!state.anCommit || state.anCommit.id !== m.id || state.anCommit.n !== items.length) {
+    state.anCommit = { id: m.id, n: items.length };
+    renderAnalysisNav();
+    renderAnalysisHead();
   }
+  box.innerHTML = anIsBusy('commitments') ? anMakingHtml()
+    : items.length ? `<div class="an-list">${items.map(c => commitmentRowHtml(c, false)).join('')}</div>${commitmentExportBar(m.id)}`
+    : anEmptyHtml('commitments');
 }
 
 // Promises as tasks for another app: Markdown (Obsidian, Notion), Todoist's CSV, a table
@@ -475,19 +883,6 @@ function aiAvailable() {
   const st = state.llm;
   const cloud = st && st.consent && st.providers && st.providers[st.provider] && st.providers[st.provider].key && st.providers[st.provider].key.saved;
   return state.lastOllama === undefined || ollamaModels > 0 || !!cloud;  // not loaded yet: assume yes
-}
-
-// Instead of buttons that only fail when clicked: what to install, in one place
-function renderNoModelCard(box) {
-  document.getElementById('generate-summary-btn')?.setAttribute('disabled', '');
-  box.innerHTML = `<div class="max-w-md mx-auto py-6 text-center space-y-3">
-      <div class="text-sm font-semibold text-white">${escapeHtml(t('noAiTitle'))}</div>
-      <p class="text-[12px] text-apple-secondary leading-relaxed">${escapeHtml(t('noAiText'))}</p>
-      <div class="flex justify-center gap-2 pt-1">
-        <button data-click="pullFirstRunLlm" class="ui-btn ui-btn-primary">${escapeHtml(t('noAiLocal'))}</button>
-        <button data-click="openModal" data-click-args='["settings", "analysis"]' class="ui-btn ui-btn-subtle">${escapeHtml(t('noAiCloud'))}</button>
-      </div>
-    </div>`;
 }
 
 // --- My notes of a recording: plain text, saved as it is typed; every summary takes it in ---
@@ -622,99 +1017,59 @@ function summaryModelChoice() {
   return { chosenModel: value || undefined, prettyModel: formatModelName(value || 'Ollama') };
 }
 
-// "Since last time" (app/series.py): the previous meeting of the series checked against this one
-async function generateSinceLast() {
+function renderSeriesUi() {
+  // "Since last time" is a section only for a recording of a series
+  if (state.activeSummaryTab === 'since_last' && !(state.activeMeeting && state.activeMeeting.series_id)) state.activeSummaryTab = 'protocol';
+  if (document.getElementById('an-nav')) renderSummaryPanel();
+}
+
+async function generateSummaryForActiveTab() {
+  const key = state.activeSummaryTab === 'protocol' && anHasContent('protocol') ? 'protocol' : state.activeSummaryTab;
+  await createAnalysisSection(key);
+}
+
+// A question about this recording: the answer is a section of its own («Ответ на вопрос»)
+async function runCustomQuestion() {
   const m = state.activeMeeting;
-  const btn = document.getElementById('generate-summary-btn');
-  const box = document.getElementById('summary-content');
+  if (!m) return;
+  const input = document.getElementById('custom-summary-prompt');
+  const prompt = input.value.trim();
+  if (!prompt || !aiAvailable()) return;
   const { chosenModel } = summaryModelChoice();
-  btn.disabled = true;
-  box.innerHTML = `<div class="py-12 text-center text-xs text-apple-secondary animate-pulse">${escapeHtml(t('sinceLastWorking'))}</div>`;
+  state.anQuestion = { id: m.id, text: prompt };
+  state.anBusy = state.anBusy || new Set();
+  state.anBusy.add(`${m.id}:custom`);
+  state.activeSummaryTab = 'custom';  // the section shows while it is made
+  renderSummaryPanel();
   try {
-    const res = await fetch(`/api/meetings/${m.id}/since-last`, {
+    const res = await fetch(`/api/meetings/${m.id}/summary`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: chosenModel, lang: state.uiLang }),
+      body: JSON.stringify({ template: 'custom', custom_prompt: prompt, model: chosenModel, lang: state.uiLang }),
     });
     const data = await readJson(res);
     if (!res.ok) throw new Error(data.detail || 'Error');
     m.summaries = data.summaries;
-    renderSummaryPanel();
+    input.value = '';
   } catch (e) {
-    box.innerHTML = `<div class="py-6 text-xs text-apple-red">${escapeHtml(e.message)}</div>`;
+    showToast(serverText(e.message));
   } finally {
-    btn.disabled = false;
+    state.anBusy.delete(`${m.id}:custom`);
+    if (state.activeMeeting === m) { renderChaptersBar(); renderSummaryPanel(); }
   }
 }
 
-function renderSeriesUi() {
+// The text of the open section (the overview: its summary and short summary)
+function anSectionText(key) {
   const m = state.activeMeeting;
-  const tab = document.getElementById('sumtab-since_last');
-  if (tab) tab.classList.toggle('hidden', !(m && m.series_id));
-  if (state.activeSummaryTab === 'since_last' && !(m && m.series_id)) selectSummaryTab('protocol');
-}
-
-async function generateSummaryForActiveTab() {
-  if (!state.activeMeeting) return;
-  if (state.activeSummaryTab === 'since_last') { await generateSinceLast(); return; }
-  if (state.activeSummaryTab === 'commitments') { await extractCommitments(); return; }
-  const btn = document.getElementById('generate-summary-btn');
-  const box = document.getElementById('summary-content');
-  const { chosenModel, prettyModel } = summaryModelChoice();
-  btn.disabled = true;
-  box.innerHTML = `<div class="py-12 flex items-center justify-center gap-2 text-xs text-apple-secondary animate-pulse"><span>${t('uiGeneratingAnalysis')}</span><span class="px-2 py-0.5 rounded-md bg-white/10 text-white font-medium">${escapeHtml(prettyModel)}</span></div>`;
-
-  const forId = state.activeMeeting.id;  // the answer may come minutes later, for another recording
-  try {
-    const res = await fetch(`/api/meetings/${forId}/summary`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ template: state.activeSummaryTab, model: chosenModel, lang: state.uiLang })
-    });
-    const data = await readJson(res);
-    if (!res.ok) throw new Error(data.detail || 'Error');
-    if (!state.activeMeeting || state.activeMeeting.id !== forId) return;
-    state.activeMeeting.summaries = data.summaries;
-    renderChaptersBar();
-    renderSummaryPanel();
-  } catch (e) {
-    box.innerHTML = `<div class="py-6 text-xs text-apple-red">${escapeHtml(e.message)}</div>`;
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-async function runCustomQuestion() {
-  if (!state.activeMeeting) return;
-  const input = document.getElementById('custom-summary-prompt');
-  const prompt = input.value.trim();
-  if (!prompt) return;
-
-  const { chosenModel, prettyModel } = summaryModelChoice();
-  const box = document.getElementById('summary-content');
-  box.innerHTML = `<div class="py-12 flex items-center justify-center gap-2 text-xs text-apple-secondary animate-pulse"><span>${t('uiSearchingForAnswer')}</span><span class="px-2 py-0.5 rounded-md bg-white/10 text-white font-medium">${escapeHtml(prettyModel)}</span></div>`;
-
-  const forId = state.activeMeeting.id;
-  try {
-    const res = await fetch(`/api/meetings/${forId}/summary`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ template: 'custom', custom_prompt: prompt, model: chosenModel, lang: state.uiLang })
-    });
-    const data = await readJson(res);
-    if (!res.ok) throw new Error(data.detail || 'Error');
-    if (!state.activeMeeting || state.activeMeeting.id !== forId) return;
-    state.activeMeeting.summaries = data.summaries;
-    renderChaptersBar();
-    state.activeSummaryTab = 'custom';
-    renderSummaryPanel();
-  } catch (e) {
-    box.innerHTML = `<div class="py-6 text-xs text-apple-red">${escapeHtml(e.message)}</div>`;
-  }
+  if (!m) return '';
+  const sums = m.summaries || {};
+  if (key === 'mynotes') return m.user_notes || '';
+  if (key === 'protocol') return [sums.tldr, sums.protocol, sums.chapters].filter(x => (x || '').trim()).join('\n\n');
+  return sums[key] || '';
 }
 
 function copySummaryText() {
-  if (!state.activeMeeting) return;
-  const text = ((state.activeMeeting.summaries || {})[state.activeSummaryTab] || '').replaceAll('[?]', `(${t('unverifiedBadge')})`);
+  const text = anSectionText(state.activeSummaryTab).replaceAll('[?]', `(${t('unverifiedBadge')})`).trim();
   if (!text) return;
   navigator.clipboard.writeText(text);
   showToastt('uiCopied');

@@ -586,132 +586,96 @@
         </div>
       </div>
 
-      <!-- TAB 2: AI SUMMARY -->
-      <div id="wview-summary" class="hidden flex-1 overflow-y-auto px-6 py-6 tab-pane-anim">
-        <div class="max-w-3xl mx-auto space-y-5">
-          <div class="flex items-center justify-between border-b apple-border pb-3 gap-3 flex-wrap">
-            <div class="apple-segmented">
-              <button data-click="selectSummaryTab" data-click-args='["protocol"]' id="sumtab-protocol"
-                data-i18n-title="tipSumProtocol"
-                title="Подробный протокол встречи с основными темами и решениями"
-                class="apple-segment-btn apple-segment-active" data-i18n="sumProtocol">Обзор</button>
-              <button data-click="selectSummaryTab" data-click-args='["tasks"]' id="sumtab-tasks"
-                data-i18n-title="tipSumTasks"
-                title="Список задач, поручений и дедлайнов по участникам"
-                class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumTasks">Задачи</button>
-              <button data-click="selectSummaryTab" data-click-args='["tldr"]' id="sumtab-tldr"
-                data-i18n-title="tipSumTldr"
-                title="Краткая выжимка встречи на 30 секунд чтения"
-                class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumTldr">Резюме</button>
-              <button data-click="selectSummaryTab" data-click-args='["chapters"]' id="sumtab-chapters"
-                data-i18n-title="tipSumChapters"
-                title="Смысловые главы записи с отметками времени; по ним над текстом появляется оглавление"
-                class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumChapters">Главы</button>
-              <button data-click="selectSummaryTab" data-click-args='["mynotes"]' id="sumtab-mynotes"
-                data-i18n-title="tipSumMyNotes" title="Ваши заметки к записи: они учитываются в каждом пересказе"
-                class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="notesTitle">Мои заметки</button>
-              <button data-click="selectSummaryTab" data-click-args='["notes"]' id="sumtab-notes"
-                data-i18n-title="tipSumNotes" title="Ваши заметки, развёрнутые по расшифровке: что именно сказано, кем и когда"
-                class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumNotes">По заметкам</button>
-              <button data-click="selectSummaryTab" data-click-args='["since_last"]' id="sumtab-since_last"
-                data-i18n-title="tipSumSinceLast"
-                title="Задачи и договорённости прошлой встречи серии: что выполнено, что в работе, что не обсуждали"
-                class="hidden apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumSinceLast">С прошлого раза</button>
-              <button data-click="selectSummaryTab" data-click-args='["followup"]' id="sumtab-followup"
-                data-i18n-title="tipSumFollowup" title="Черновик письма участникам: договорённости, задачи, следующий шаг"
-                class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumFollowup">Письмо</button>
-              <button data-click="selectSummaryTab" data-click-args='["commitments"]' id="sumtab-commitments"
-                data-i18n-title="tipSumCommitments" title="Кто что пообещал, кому и к какому сроку; отметьте выполненные"
-                class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumCommitments">Обещания</button>
-              <!-- The user's own templates (Settings → Analysis) -->
-              <span id="sumtab-user-templates" class="contents"></span>
-              <button data-click="openTemplatesEditor" data-i18n-title="tipTemplatesAdd" title="Свои шаблоны пересказа: 1:1, интервью, планёрка…"
-                class="apple-segment-btn text-apple-secondary hover:text-white">+</button>
+      <!-- TAB 2: ANALYSIS — sections on the left (dots: made or not), the open one on the right (app.js: renderAnalysis) -->
+      <div id="wview-summary" class="hidden flex-1 flex flex-col min-h-0 tab-pane-anim">
+        <div id="an-noai" class="an-noai hidden" role="status">
+          <span class="an-noai-text" data-i18n="anNoAiText">Модель анализа не подключена. Готовые разделы видны и копируются; создать новые или обновить — после подключения.</span>
+          <button data-click="pullFirstRunLlm" class="an-noai-main" data-i18n="noAiLocal">Скачать модель</button>
+          <button data-click="openModal" data-click-args='["settings", "analysis"]' class="an-noai-alt" data-i18n="noAiCloud">Подключить облачную</button>
+        </div>
+        <div class="flex-1 min-h-0 flex">
+          <nav id="an-nav" class="an-nav" aria-label="Разделы анализа" data-i18n-aria="anNavAria"></nav>
+          <div class="flex-1 min-w-0 flex flex-col">
+            <div id="an-main" class="flex-1 min-h-0 overflow-y-auto">
+              <div class="an-wrap">
+                <div class="an-head">
+                  <h2 id="an-title" class="an-title"></h2>
+                  <div class="an-model">
+                    <button id="an-model-btn" data-click="openAnalysisMenu" data-click-args='["model", {"$": "el"}]' class="an-chip"
+                      data-i18n-title="anModelTip" title="Модель, которой создаются и пересоздаются разделы">
+                      <svg class="tb-ai" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2l1.9 5.6 5.6 1.9-5.6 1.9L10 17l-1.9-5.6-5.6-1.9 5.6-1.9z"/><path d="M18.5 13l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/></svg>
+                      <span id="an-model-name">—</span>
+                      <svg class="an-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                    </button>
+                    <!-- The list the chip reads and sets (filled by settings.js) -->
+                    <select id="summary-llm-select" data-change="selectActiveOllamaModel" data-change-args='[{"$": "value"}]'
+                      data-i18n-title="tipSelectLlm" title="Выбрать локальную модель ИИ (Ollama) для генерации протокола" class="hidden">
+                      <option value="qwen2.5:7b">Qwen 7B Standard</option>
+                    </select>
+                  </div>
+                  <span id="an-sub" class="an-sub"></span>
+                  <span class="flex-1"></span>
+                  <button id="an-cfg-btn" data-click="openAnalysisMenu" data-click-args='["cfg", {"$": "el"}]' class="an-btn hidden"
+                    data-i18n-title="anCfgTip" title="Что показывать в обзоре">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+                    <span data-i18n="anCfg">Настроить</span>
+                  </button>
+                  <button id="generate-summary-btn" data-click="generateSummaryForActiveTab" class="an-btn"
+                    data-i18n-title="tipGenerateSummary" title="Сформировать анализ для выбранной вкладки">
+                    <svg class="tb-ai" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2l1.9 5.6 5.6 1.9-5.6 1.9L10 17l-1.9-5.6-5.6-1.9 5.6-1.9z"/><path d="M18.5 13l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/></svg>
+                    <span id="an-gen-label" data-i18n="anRegen">Пересоздать</span>
+                  </button>
+                  <button id="an-copy-btn" data-click="copySummaryText" class="an-btn" data-i18n-title="tipCopySummary" title="Скопировать текст протокола в буфер обмена">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.5"/><path d="M15.5 8.5V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7.5a2 2 0 0 0 2 2h2.5"/></svg>
+                    <span data-i18n="copy">Копировать</span>
+                  </button>
+                  <button id="an-exp-btn" data-click="openAnalysisMenu" data-click-args='["exp", {"$": "el"}]' class="an-btn">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4M8 8l4-4 4 4"/><path d="M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/></svg>
+                    <span data-i18n="anExport">Экспорт</span>
+                    <svg class="an-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                  </button>
+                  <button id="an-dots-btn" data-click="openAnalysisMenu" data-click-args='["dots", {"$": "el"}]' class="an-dots"
+                    data-i18n-title="anMoreTip" title="Ещё действия с разделом" data-i18n-aria="anMoreTip" aria-label="Ещё действия с разделом">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+                  </button>
+                </div>
+                <!-- Where the analysis goes and how big the cloud request is (settings.js) -->
+                <div id="analysis-estimate" class="hidden text-[11px] -mt-1 flex items-center gap-1.5"></div>
+                <div id="summary-content" class="an-body"></div>
+              </div>
             </div>
-
-            <div class="flex items-center gap-1.5">
-              <select id="summary-llm-select" data-change="selectActiveOllamaModel" data-change-args='[{"$": "value"}]'
-                data-i18n-title="tipSelectLlm"
-                title="Выбрать локальную модель ИИ (Ollama) для генерации протокола"
-                class="h-7 bg-apple-sidebar border apple-border rounded-[7px] px-2.5 text-xs text-apple-label focus:outline-none">
-                <option value="qwen2.5:7b">Qwen 7B Standard</option>
-                <option value="qwen2.5:14b">Qwen 14B Pro</option>
-                <option value="mistral:7b">Mistral 7B</option>
-                <option value="qwen2.5:1.5b">Qwen Lite</option>
-              </select>
-              <button data-click="openModal" data-click-args='["settings", "analysis"]'
-                data-i18n-title="tipManageLlm"
-                title="Скачать или настроить модели ИИ в настройках"
-                class="ui-btn ui-btn-subtle">
-                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/>
-                </svg>
-                <span>LLM</span>
-              </button>
-              <button data-click="copySummaryText"
-                data-i18n-title="tipCopySummary"
-                title="Скопировать текст протокола в буфер обмена"
-                class="ui-btn ui-btn-subtle text-apple-label">
-                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75"/>
-                </svg>
-                <span data-i18n="copy">Копировать</span>
-              </button>
-              <button data-click="clearSummaryTab" id="clear-summary-btn"
-                data-i18n-title="tipClearSummary" title="Удалить содержимое этой вкладки"
-                class="hidden ui-btn ui-btn-subtle text-apple-label">
-                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/>
-                </svg>
-                <span data-i18n="clearBtn">Очистить</span>
-              </button>
-              <button data-click="generateSummaryForActiveTab" id="generate-summary-btn"
-                data-i18n-title="tipGenerateSummary"
-                title="Сформировать анализ для выбранной вкладки"
-                class="ui-btn ui-btn-primary shadow-sm">
-                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/>
-                </svg>
-                <span data-i18n="generate">Сформировать</span>
-              </button>
+            <div class="an-ask">
+              <input id="custom-summary-prompt" type="text"
+                data-keydown="onEnter" data-keydown-args='[{"$": "event"}, "runCustomQuestion"]'
+                data-i18n-placeholder="anAskPh" placeholder="Спросите о том, что было в этой записи"
+                data-i18n-title="tipAskInput" title="Введите любой вопрос по содержанию встречи"
+                class="an-ask-input" />
+              <button data-click="runCustomQuestion" data-i18n-title="tipAskBtn" title="Отправить вопрос локальной модели ИИ"
+                class="an-ask-btn" data-i18n="askBtn">Спросить</button>
             </div>
-          </div>
-          <!-- Where the analysis goes and how big the cloud request is -->
-          <div id="analysis-estimate" class="hidden text-[11px] -mt-1 flex items-center gap-1.5"></div>
-
-          <!-- Ask AI Input -->
-          <div class="flex gap-2">
-            <input id="custom-summary-prompt" type="text"
-              data-keydown="onEnter" data-keydown-args='[{"$": "event"}, "runCustomQuestion"]'
-              data-i18n-placeholder="askPlaceholder"
-              data-i18n-title="tipAskInput"
-              title="Введите любой вопрос по содержанию встречи"
-              placeholder="Спросить ИИ по тексту встречи (например: О каких сроках договорились?)…"
-              class="flex-1 h-8 bg-apple-sidebar border apple-border focus:border-apple-blue rounded-lg px-3.5 text-xs text-white placeholder-apple-tertiary focus:outline-none" />
-            <button data-click="runCustomQuestion"
-              data-i18n-title="tipAskBtn"
-              title="Отправить вопрос локальной модели ИИ"
-              class="ui-btn ui-btn-subtle h-8 px-4 text-white" data-i18n="askBtn">Спросить</button>
-          </div>
-
-          <div id="summary-content" class="markdown-body text-[13.5px] bg-apple-sidebar/60 border apple-border rounded-2xl p-6">
-            <!-- Populated dynamically -->
           </div>
         </div>
       </div>
 
-      <!-- TAB 3: SPEAKERS INSPECTOR -->
-      <div id="wview-speakers" class="hidden flex-1 overflow-y-auto px-6 py-6 tab-pane-anim">
-        <div class="max-w-2xl mx-auto space-y-4">
-          <div>
-            <h3 class="text-sm font-semibold text-white" data-i18n="speakersTitle">Участники</h3>
-            <p class="text-xs text-apple-secondary mt-0.5" data-i18n="speakersDesc">Прослушайте фрагмент голоса и укажите имя — оно обновится во всех репликах.</p>
-          </div>
-          <div id="speakers-list" class="divide-y divide-white/5 border apple-border rounded-xl bg-apple-sidebar overflow-hidden">
-            <!-- Populated dynamically -->
-          </div>
+      <!-- TAB 3: SPEAKERS — who spoke (people.js: renderSpeakersPanel), how the talk went -->
+      <div id="wview-speakers" class="hidden flex-1 overflow-y-auto tab-pane-anim">
+        <div class="sp-wrap">
+          <section class="sp-col" aria-label="Участники" data-i18n-aria="speakersTitle">
+            <div class="sp-head">
+              <h2 class="sp-h2" data-i18n="spWhoSpoke">Кто говорил</h2>
+              <span class="sp-note" data-i18n="spWhoSpokeNote">Имя меняется во всех репликах сразу</span>
+              <span class="flex-1"></span>
+              <button data-click="openPeopleDirectory" class="an-btn">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 19c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 14.2c3 .2 5.5 2 5.5 4.8"/></svg>
+                <span data-i18n="spAllPeople">Все люди</span>
+              </button>
+            </div>
+            <datalist id="sp-names"></datalist>
+            <div id="speakers-list" class="sp-list"></div>
+            <div id="sp-mentions"></div>
+          </section>
           <!-- Conversation analytics (app/analytics.py) -->
-          <div id="talk-analytics" class="space-y-3"></div>
+          <section id="talk-analytics" class="sp-side" aria-label="Как шёл разговор" data-i18n-aria="spHowTalk"></section>
         </div>
       </div>
 
