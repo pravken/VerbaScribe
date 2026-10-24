@@ -1485,6 +1485,13 @@ const I18N = {
 
     // --- redesign: analysis-speakers (C: analysis, speakers, people — static/js/people.js) ---
     anNavAria: 'Разделы анализа',
+    llmStateOff: 'Ollama не запущен',
+    llmStateMissing: 'не скачана',
+    rdSasPillOff: 'Модель не установлена',
+    rdSasNoAiText: 'Отвечать пока некому: модель анализа не установлена.',
+    rdSasOpenAiSettings: 'Настройки модели',
+    anNeedModel: 'Нужна модель анализа: скачайте её или подключите облачную — кнопки в полосе вверху или «Настройки → ИИ-анализ».',
+    anAskNeedModel: 'Вопросы заработают, когда будет подключена модель анализа',
     anNoAiText: 'Модель анализа не подключена. Готовые разделы видны и копируются; создать новые или обновить — после подключения.',
     anGrpResults: 'ИТОГИ',
     anGrpWork: 'ДЛЯ РАБОТЫ',
@@ -3464,6 +3471,13 @@ const I18N = {
 
     // --- redesign: analysis-speakers (C: analysis, speakers, people — static/js/people.js) ---
     anNavAria: 'Analysis sections',
+    llmStateOff: 'Ollama is not running',
+    llmStateMissing: 'not downloaded',
+    rdSasPillOff: 'No model installed',
+    rdSasNoAiText: 'Nothing can answer yet: no analysis model is installed.',
+    rdSasOpenAiSettings: 'Model settings',
+    anNeedModel: 'An analysis model is needed: download one or connect a cloud model — the buttons in the bar above or Settings → AI analysis.',
+    anAskNeedModel: 'Questions work once an analysis model is connected',
     anNoAiText: 'No analysis model is connected. Sections already made can be read and copied; new ones and updates need a model.',
     anGrpResults: 'RESULTS',
     anGrpWork: 'FOR WORK',

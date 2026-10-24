@@ -423,7 +423,7 @@ function anEmptyHtml(key, error) {
   return `<div class="an-empty">
       <div class="an-empty-title">${escapeHtml(t('anNotMade'))}</div>
       ${it.about ? `<p class="an-empty-about">${escapeHtml(it.about)}</p>` : ''}
-      ${it.make ? `<button class="an-btn an-btn-primary" ${ai ? '' : 'disabled'} ${pageCall('click', 'createAnalysisSection', [key])}>
+      ${it.make ? `<button class="an-btn an-btn-primary" ${ai ? '' : `aria-disabled="true" title="${escapeHtml(t('anNeedModel'))}"`} ${pageCall('click', 'createAnalysisSection', [key])}>
         <svg class="tb-ai" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2l1.9 5.6 5.6 1.9-5.6 1.9L10 17l-1.9-5.6-5.6-1.9 5.6-1.9z"/><path d="M18.5 13l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/></svg>
         ${escapeHtml(t('anCreateWithModel'))}</button>` : ''}
       ${error ? `<div class="an-error">${escapeHtml(error)}</div>` : ''}
@@ -437,19 +437,32 @@ function renderAnalysisHead() {
   const has = anHasContent(tab), busy = anIsBusy(tab), ai = aiAvailable();
   const overview = tab === 'protocol';
   document.getElementById('an-noai')?.classList.toggle('hidden', ai);
+  // without a model the question field says so; a press anywhere that needs one points to the banner
+  const ask = document.getElementById('custom-summary-prompt');
+  if (ask) {
+    ask.placeholder = ai ? t('anAskPh') : t('anAskNeedModel');
+    ask.title = ai ? t('tipAskInput') : t('anNeedModel');
+    ask.closest('.an-ask')?.classList.toggle('an-ask-off', !ai);
+  }
   const title = document.getElementById('an-title');
   if (title) title.textContent = it.label;
   const sub = document.getElementById('an-sub');
   if (sub) sub.textContent = tab === 'mynotes' ? t('anNotesSub') : busy ? t('anMaking') : '';
   const sel = document.getElementById('summary-llm-select');
   const name = document.getElementById('an-model-name');
-  if (name) name.textContent = sel && sel.selectedIndex >= 0 && sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : '—';
+  const opt = sel && sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex] : null;
+  if (name) {
+    name.textContent = opt ? opt.textContent : '—';
+    name.closest('button')?.classList.toggle('an-model-off', !!opt && opt.dataset.off === '1');
+  }
   document.getElementById('an-model-btn')?.parentElement.classList.toggle('hidden', !it.make);
   document.getElementById('an-cfg-btn')?.classList.toggle('hidden', !overview);
   const gen = document.getElementById('generate-summary-btn');
   if (gen) {
     gen.classList.toggle('hidden', !it.make);
-    gen.disabled = !ai || busy;
+    gen.disabled = busy;
+    gen.setAttribute('aria-disabled', String(!ai));
+    gen.title = ai ? t('tipGenerateSummary') : t('anNeedModel');
     const label = document.getElementById('an-gen-label');
     if (label) label.textContent = busy ? t('anMaking') : t(has ? 'anRegen' : 'anCreate');
   }
@@ -512,7 +525,7 @@ function renderAnalysisOverview(box) {
     + (missing.length ? `<section class="an-missing"><div class="an-grp an-grp-flat">${escapeHtml(t('anCanMake'))}</div>
       <div class="an-missing-grid">${missing.map(x => `<div class="an-tile">
           <span class="an-tile-text"><b>${escapeHtml(x.title)}</b><span>${escapeHtml(x.about || '')}</span></span>
-          <button class="an-tile-btn" ${ai ? '' : 'disabled'} ${pageCall('click', 'createAnalysisSection', [x.key])}>✦ ${escapeHtml(t('anCreate'))}</button>
+          <button class="an-tile-btn" ${ai ? '' : `aria-disabled="true" title="${escapeHtml(t('anNeedModel'))}"`} ${pageCall('click', 'createAnalysisSection', [x.key])}>✦ ${escapeHtml(t('anCreate'))}</button>
         </div>`).join('')}</div></section>` : '');
   box.querySelectorAll('[data-md]').forEach(el => renderMarkdownWithTimestamps(el, sums[el.dataset.md] || '', m.duration));
   if (!cards.length && !missing.length) box.innerHTML = anEmptyHtml('protocol', sums.error);
@@ -699,7 +712,8 @@ function openTemplateDialog(tpl) {
 async function createAnalysisSection(key, ev) {
   if (ev && ev.stopPropagation) ev.stopPropagation();
   const m = state.activeMeeting;
-  if (!m || !aiAvailable()) return;
+  if (!m) return;
+  if (!aiAvailable()) { flashNoAiBanner(); return; }
   state.anBusy = state.anBusy || new Set();
   const busy = `${m.id}:${key}`;
   if (state.anBusy.has(busy)) return;
@@ -883,6 +897,17 @@ async function openOpenCommitments() {
 }
 
 // An analysis model is there: a local one downloaded in Ollama, or a cloud one with its key
+// A press that needs the analysis model while there is none: the banner with its two ways is shown,
+// scrolled to and lit for a moment instead of doing nothing
+function flashNoAiBanner(id = 'an-noai') {
+  const b = document.getElementById(id);
+  if (!b) { showToast(t('anNeedModel')); return; }
+  b.classList.remove('hidden', 'an-noai-flash');
+  void b.offsetWidth;
+  b.classList.add('an-noai-flash');
+  b.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
 function aiAvailable() {
   const ollamaModels = ((state.lastOllama && state.lastOllama.models) || []).length;
   const st = state.llm;
@@ -1039,7 +1064,8 @@ async function runCustomQuestion() {
   if (!m) return;
   const input = document.getElementById('custom-summary-prompt');
   const prompt = input.value.trim();
-  if (!prompt || !aiAvailable()) return;
+  if (!aiAvailable()) { flashNoAiBanner(); return; }
+  if (!prompt) { input.focus(); return; }
   const { chosenModel } = summaryModelChoice();
   state.anQuestion = { id: m.id, text: prompt };
   state.anBusy = state.anBusy || new Set();

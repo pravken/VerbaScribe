@@ -19,7 +19,9 @@ async function assistantLoad() {
 function assistantSaveSoon() {
   clearTimeout(ASSIST.saveTimer);
   ASSIST.saveTimer = setTimeout(async () => {
-    const chats = ASSIST.chats.filter(c => c.items.length);  // an empty new conversation is not kept
+    // only answers are kept: a question that failed or was stopped is not saved, nor a conversation of
+    // nothing else (an empty new one included)
+    const chats = ASSIST.chats.map(c => ({ ...c, items: c.items.filter(i => i.status === 'done') })).filter(c => c.items.length);
     const res = await fetch('/api/assistant/chats', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chats }),
     }).catch(() => null);
@@ -166,7 +168,16 @@ function assistantModelName(model) {
   const s = assistantSettings();
   if (assistantModelIsCloud(model)) return cloudLlmChoice()?.label || t('rdSasCloudModel');
   const tag = model || s.ollama_model || '';
-  return tag ? formatModelName(tag) : t('rdSasNoModel');
+  if (!tag) return t('rdSasNoModel');
+  const note = localLlmNote(tag);
+  return note ? `${formatModelName(tag)} · ${note}` : formatModelName(tag);
+}
+
+// The local model of the conversation cannot answer now (not downloaded, or no Ollama)
+function assistantModelOff(model) {
+  if (assistantModelIsCloud(model)) return false;
+  const tag = model || assistantSettings().ollama_model || '';
+  return !tag || localLlmState(tag) !== 'ready';
 }
 
 function renderAssistantHead() {
@@ -177,11 +188,17 @@ function renderAssistantHead() {
   const label = document.getElementById('as-model-label');
   if (label) label.textContent = assistantModelName(model);
   const pill = document.getElementById('as-privacy');
+  document.getElementById('as-model-btn')?.classList.toggle('an-model-off', assistantModelOff(model));
+  document.getElementById('as-noai')?.classList.toggle('hidden', !assistantModelOff(model));
   if (pill) {
     const cloud = assistantModelIsCloud(model);
-    pill.className = `as-pill ${cloud ? 'as-pill-cloud' : 'as-pill-local'}`;
-    pill.textContent = t(cloud ? 'rdSasPillCloud' : 'rdSasPillLocal');
-    pill.title = t(cloud ? 'rdSasPillCloudHint' : 'rdSasPillLocalHint');
+    const off = assistantModelOff(model);
+    // not «на этом компьютере» while nothing here can answer: the pill says so and leads to the models
+    pill.className = `as-pill ${off ? 'as-pill-off' : cloud ? 'as-pill-cloud' : 'as-pill-local'}`;
+    pill.textContent = t(off ? 'rdSasPillOff' : cloud ? 'rdSasPillCloud' : 'rdSasPillLocal');
+    pill.title = t(off ? 'anNeedModel' : cloud ? 'rdSasPillCloudHint' : 'rdSasPillLocalHint');
+    if (off) { pill.dataset.click = 'openModal'; pill.dataset.clickArgs = '["settings", "analysis"]'; pill.setAttribute('role', 'button'); }
+    else { delete pill.dataset.click; delete pill.dataset.clickArgs; pill.removeAttribute('role'); }
   }
 }
 
@@ -231,7 +248,7 @@ function assistantModelMenu(e) {
   const pick = (model) => () => { chat.model = model; renderAssistantHead(); assistantSaveSoon(); };
   const items = [{ head: t('rdSasWhoAnswers') },
     { label: t('rdSasModelDefault'), note: assistantModelName(''), on: !chat.model, onClick: pick('') }];
-  local.forEach(id => items.push({ label: formatModelName(id), note: t('rdSasLocal'), on: chat.model === id, onClick: pick(id) }));
+  local.forEach(id => items.push({ label: formatModelName(id), note: localLlmNote(id) || t('rdSasLocal'), on: chat.model === id, onClick: pick(id) }));
   // the cloud model as Settings → AI analysis sets it (a provider, its model, a saved key, the consent)
   const cloud = cloudLlmChoice();
   if (cloud) items.push({ label: cloud.label, note: t('rdSasCloud'), on: chat.model === 'cloud', onClick: pick('cloud') });
@@ -468,6 +485,7 @@ async function assistantSend(text, scopeArg) {
   const question = String(text ?? input.value).trim();
   if (!question || assistantPending()) return;
   let chat = currentChat();
+  if (assistantModelOff(chat?.model || '')) { flashNoAiBanner('as-noai'); return; }
   if (!chat) { chat = newChatObject(); ASSIST.chats.unshift(chat); ASSIST.chatId = chat.id; }
   const scope = { ...(scopeArg || state.askScope) };
   const item = { id: newAskItemId(), question, scope, scopeLabel: assistantScopeLabel(scope), status: 'pending', data: null, error: '', at: new Date().toISOString() };
@@ -666,8 +684,12 @@ function renderAssistantItem(item, isLast) {
   if (item.status === 'pending') {
     body = `<div class="as-a"><div class="as-wait"><span class="as-wait-dot"></span>${escapeHtml(t('rdSasSearching'))}</div></div>`;
   } else if (item.status === 'stopped' || item.status === 'error') {
-    body = `<div class="as-a"><div class="text-xs ${item.status === 'error' ? 'text-apple-red' : 'text-apple-secondary'}">${escapeHtml(item.status === 'error' ? item.error : t('rdSasStopped'))}</div>
-      <div class="as-actions"><button data-click="assistantRetry" data-click-args='[${Number(item.id) || 0}]' class="as-act">${escapeHtml(t('rdSasAskAgain'))}</button></div></div>`;
+    // an error in one line (its first sentence; the whole text in the tooltip), with «Повторить» and the settings
+    const err = String(item.error || '');
+    const short = err.split(/(?<=[.!?…])\s/)[0] || err;
+    body = `<div class="as-a as-a-failed"><div class="text-xs ${item.status === 'error' ? 'text-apple-amber' : 'text-apple-secondary'}" title="${escapeHtml(err)}">${escapeHtml(item.status === 'error' ? short : t('rdSasStopped'))}</div>
+      <div class="as-actions"><button data-click="assistantRetry" data-click-args='[${Number(item.id) || 0}]' class="as-act">${escapeHtml(t('rdSasAskAgain'))}</button>
+      ${item.status === 'error' ? `<button data-click="openModal" data-click-args='["settings", "analysis"]' class="as-act">${escapeHtml(t('rdSasOpenAiSettings'))}</button>` : ''}</div></div>`;
   } else {
     const data = item.data || {};
     if (!data.found) {

@@ -1248,6 +1248,20 @@ async function buildSemanticIndex() {
   setTimeout(loadSemanticStatus, 800);
 }
 
+// Can this local model answer now: 'ready', 'missing' (not downloaded) or 'off' (Ollama is not installed
+// or not running). Before the first status arrives it is taken as ready.
+function localLlmState(id) {
+  const o = state.lastOllama || state.system?.ollama;
+  if (!o) return 'ready';
+  if (!o.running) return 'off';
+  const item = (o.catalog || []).find(m => m.id === id);
+  return (item && item.installed) || (o.models || []).includes(id) ? 'ready' : 'missing';
+}
+function localLlmNote(id) {
+  const s = localLlmState(id);
+  return s === 'ready' ? '' : t(s === 'off' ? 'llmStateOff' : 'llmStateMissing');
+}
+
 function renderSummaryModelSelect() {
   const summarySelect = document.getElementById('summary-llm-select');
   const ollama = state.lastOllama;
@@ -1259,8 +1273,8 @@ function renderSummaryModelSelect() {
     ? `<option value="__cloud" ${onCloud ? 'selected' : ''}>☁ ${escapeHtml(cloud.label)}</option>` : '')
     + ollama.catalog.map(item => {
       const pretty = formatModelName(item.id);
-      const mark = item.installed ? '● ' : '';
-      return `<option value="${escapeHtml(item.id)}" ${!onCloud && item.id === activeModel ? 'selected' : ''}>${mark}${escapeHtml(pretty)}</option>`;
+      const note = localLlmNote(item.id);
+      return `<option value="${escapeHtml(item.id)}" data-off="${note ? 1 : 0}" ${!onCloud && item.id === activeModel ? 'selected' : ''}>${escapeHtml(pretty)}${note ? ` · ${escapeHtml(note)}` : ''}</option>`;
     }).join('');
   summarySelect.title = onCloud ? t('tipSummaryCloud') : t('tipSelectLlm');
 }

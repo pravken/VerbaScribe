@@ -378,6 +378,12 @@
             <svg aria-hidden="true" class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
           </button>
         </header>
+        <!-- Nothing here can answer yet: the same two ways as on the analysis page, before a question is asked -->
+        <div id="as-noai" class="an-noai hidden" role="status">
+          <span class="an-noai-text" data-i18n="rdSasNoAiText">Отвечать пока некому: модель анализа не установлена.</span>
+          <button data-click="pullFirstRunLlm" class="an-noai-main" data-i18n="noAiLocal">Скачать модель</button>
+          <button data-click="openModal" data-click-args='["settings", "analysis"]' class="an-noai-alt" data-i18n="noAiCloud">Подключить облачную</button>
+        </div>
 
         <div id="library-answer" class="flex-1 min-h-0 overflow-y-auto px-6 py-5">
           <div id="ask-thread" class="as-thread"></div>
