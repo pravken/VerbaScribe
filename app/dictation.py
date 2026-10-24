@@ -26,7 +26,7 @@ import numpy as np
 SR = 16000
 MAX_SEC = 300  # a forgotten dictation stops by itself
 
-_state: Dict[str, Any] = {"active": False, "error": "", "last_text": "", "started_at": 0.0, "translate_to": ""}
+_state: Dict[str, Any] = {"active": False, "busy": False, "error": "", "last_text": "", "started_at": 0.0, "translate_to": ""}
 TRANSLATE_TIMEOUT_SEC = 30.0  # the first translation may wait for Ollama to load its model
 _lock = threading.Lock()
 _chunks: List[np.ndarray] = []
@@ -38,16 +38,28 @@ def status() -> Dict[str, Any]:
         return dict(_state)
 
 
-def toggle(notify=None, translate: bool = False) -> str:
+def toggle(notify=None, translate: bool = False, type_out: bool = True) -> str:
     """Starts or stops (and types) a dictation; returns "started" or "stopped". `translate`: the
-    dictation with translation (its own hotkey); either hotkey stops a running dictation."""
+    dictation with translation (its own hotkey); either hotkey stops a running dictation.
+    `type_out=False` (the button of the home page): the text is only kept, not typed, since the
+    window with the focus is VerbaScribe itself; the page shows it (status()["last_text"])."""
     with _lock:
         active = _state["active"]
     if active:
-        threading.Thread(target=_finish, args=(notify,), daemon=True, name="dictation_finish").start()
+        threading.Thread(target=_finish, args=(notify, type_out), daemon=True, name="dictation_finish").start()
         return "stopped"
     _start(translate_target() if translate else "")
     return "started"
+
+
+def cancel() -> None:
+    """Stops a dictation and throws its sound away: nothing is recognized, typed or kept."""
+    with _lock:
+        _state.update(active=False, error="")
+    if _thread is not None:
+        _thread.join(timeout=2)
+    with _lock:
+        _chunks.clear()
 
 
 def translate_target() -> str:
@@ -60,7 +72,7 @@ def _start(translate_to: str = "") -> None:
     global _thread
     with _lock:
         _chunks.clear()
-        _state.update(active=True, error="", started_at=time.time(), translate_to=translate_to)
+        _state.update(active=True, error="", last_text="", busy=False, started_at=time.time(), translate_to=translate_to)
     _thread = threading.Thread(target=_record, daemon=True, name="dictation_mic")
     _thread.start()
 
@@ -85,9 +97,9 @@ def _record() -> None:
             _state.update(active=False, error=f"Микрофон: {str(e)[:200]}")
 
 
-def _finish(notify=None) -> None:
+def _finish(notify=None, type_out: bool = True) -> None:
     with _lock:
-        _state["active"] = False
+        _state.update(active=False, busy=True)
     if _thread is not None:
         _thread.join(timeout=2)
     with _lock:
@@ -100,9 +112,10 @@ def _finish(notify=None) -> None:
         if text and translate_to:
             text, note = translate(text, translate_to)
         with _lock:
-            _state.update(last_text=text, error="" if text else "Речь не распознана")
+            _state.update(last_text=text, busy=False, error="" if text else "Речь не распознана")
         if text:
-            type_text(text)
+            if type_out:
+                type_text(text)
             # After the typing, so the text is not held up; the translation is kept only when it is one
             threading.Thread(target=save_to_library, args=(audio, original, model, translate_to if text != original else "", text),
                              daemon=True, name="dictation_save").start()
@@ -116,7 +129,7 @@ def _finish(notify=None) -> None:
     except Exception as e:
         traceback.print_exc()
         with _lock:
-            _state["error"] = str(e)[:200]
+            _state.update(error=str(e)[:200], busy=False)
         if notify:
             notify("Диктовка", f"Не получилось: {str(e)[:120]}")
 

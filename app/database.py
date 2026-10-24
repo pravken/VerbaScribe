@@ -193,6 +193,13 @@ def init_db() -> None:
             "llm_provider": "ollama",  # analysis: "ollama" (local) or "cloud" (app/llm.py)
             "llm_cloud_provider": "openai",
             "llm_cloud_consent": "false",  # the user agreed that transcripts are sent to the cloud service
+            "ask_import_params": "true",  # the import window asks the processing of new files (static/js/importdlg.js)
+            "work_day_start": "9",  # the working day of the home page, hours; an end before the start runs past midnight
+            "work_day_end": "18",
+            "work_day_fit": "true",  # ...stretched for a meeting that runs a little past its edges
+            "meet_auto_all": "false",  # record every calendar meeting by itself (static/js/home.js)
+            "meet_ask_inperson": "true",  # ...but ask first for a meeting without a link to a call
+            "meet_overrides": "{}",  # per meeting of the calendar: "rec" (record it) or "skip", JSON
         }
 
         for k, v in default_settings.items():
@@ -1529,19 +1536,22 @@ def clear_results(meeting_id: int) -> bool:
 
 # What is done to a recording when it is transcribed, chosen per recording above the text (the
 # "Recognition" row); what a recording has not chosen comes from the settings
-PROCESSING_KEYS = ("denoise", "loudnorm", "leveling", "vad", "diarization", "clean_fillers")
+PROCESSING_KEYS = ("denoise", "loudnorm", "leveling", "vad", "diarization", "clean_fillers", "summary")
 
 
 def effective_processing(stored: Optional[Dict[str, Any]], settings: Optional[Dict[str, str]] = None) -> Dict[str, bool]:
     s = settings if settings is not None else get_all_settings()
     on = lambda key: (s.get(key) or "true").lower() == "true"  # noqa: E731
+    # proc_*: one switch each, saved by the import window; without them both follow audio_enhance
+    sound = lambda key: on(key) if s.get(key) else on("audio_enhance")  # noqa: E731
     out = {
-        "denoise": on("audio_enhance"),  # FFmpeg: hiss and hum, clicks, the voice band
-        "loudnorm": on("audio_enhance"),  # FFmpeg: loudness levelled over time
-        "leveling": True,  # quiet parts raised before GigaAM / Parakeet (asr_onnx.level)
+        "denoise": sound("proc_denoise"),  # FFmpeg: hiss and hum, clicks, the voice band
+        "loudnorm": sound("proc_loudnorm"),  # FFmpeg: loudness levelled over time
+        "leveling": on("proc_leveling"),  # quiet parts raised before GigaAM / Parakeet (asr_onnx.level)
         "vad": on("vad_filter"),  # Whisper skips the silence
         "diarization": on("diarization_enabled"),
         "clean_fillers": on("clean_fillers"),
+        "summary": on("auto_summary"),  # the analysis right after the transcript
     }
     out.update({k: bool(v) for k, v in (stored or {}).items() if k in PROCESSING_KEYS})
     return out

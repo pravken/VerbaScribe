@@ -1120,7 +1120,7 @@ def _process_meeting_job(meeting_id: int) -> None:
         skipped = _cancel_wanted(meeting_id)
 
         # 4. Automatic AI Summary via local Ollama (if enabled and Ollama has a model)
-        auto_summary = settings.get("auto_summary", "true").lower() == "true" and not skipped
+        auto_summary = processing.get("summary", settings.get("auto_summary", "true").lower() == "true") and not skipped
         summaries = meeting.get("summaries") or {}
 
         if auto_summary and merged_segments:
