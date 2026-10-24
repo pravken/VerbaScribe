@@ -29,10 +29,32 @@ const TK = {
 
 const TK_KIND_ORDER = ['part', 'ext', 'team', 'org', 'none'];
 const TK_COLORS = ['#64D2FF', '#FFB340', '#C9A2FF', '#7EE787', '#FF8A80', '#8CC4FF', '#FFD60A', '#5DE4C7'];
-const TK_ME_KEY = 'vs-tasks-me';
+const TK_ME_KEY = 'vs-tasks-me';  // where «Это я» of the tasks was kept before the setting my_name
 
-function tkMe() {
-  try { return (localStorage.getItem(TK_ME_KEY) || '').toLocaleLowerCase(); } catch { return ''; }
+// Who the user is: the setting my_name (names separated by commas), shared with the home page and
+// the people directory; tkMe() is the first of them, tkIsMe() checks any
+function tkMeNames() {
+  const v = String(((state.system && state.system.settings) || {}).my_name || '');
+  return v.split(',').map(s => s.trim().toLocaleLowerCase()).filter(Boolean);
+}
+function tkMe() { return tkMeNames()[0] || ''; }
+function tkIsMe(name) { return !!name && tkMeNames().includes(String(name).toLocaleLowerCase()); }
+
+async function tkSaveMyName(value) {
+  const res = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: { my_name: value } }) });
+  const data = await readJson(res);
+  if (!res.ok) { showToast(serverText(data.detail || 'Error')); return false; }
+  if (state.system) state.system.settings = data.settings;
+  return true;
+}
+
+// A choice made before the setting existed moves into it once
+async function tkMigrateMe() {
+  let old = '';
+  try { old = localStorage.getItem(TK_ME_KEY) || ''; } catch { return; }
+  if (!old) return;
+  if (!tkMeNames().length && !await tkSaveMyName(old)) return;
+  try { localStorage.removeItem(TK_ME_KEY); } catch { /* nothing to clean */ }
 }
 
 // --- Dates: the tasks speak in days from today ---
@@ -107,6 +129,7 @@ function tkSourceText(task) {
 
 // --- Loading ---
 async function loadTasks() {
+  await tkMigrateMe();
   const res = await fetch('/api/tasks').catch(() => null);
   if (!res || !res.ok) return;
   TK.data = await res.json();
@@ -141,7 +164,7 @@ function tkMatchesPeopleAndSearch(task) {
 function tkPassesFilter(task, filter) {
   switch (filter) {
     case 'open': return !tkIsDone(task);
-    case 'mine': return !tkIsDone(task) && !!tkMe() && (task.who || '').toLocaleLowerCase() === tkMe();
+    case 'mine': return !tkIsDone(task) && tkIsMe(task.who);
     case 'over': return tkIsOver(task);
     case 'done': return tkIsDone(task);
     default: return true;
@@ -248,8 +271,7 @@ function tkGroups(items) {
       const key = (x.who || '').toLocaleLowerCase();
       add(key, () => ({ person: true, name: x.who, kind: x.who ? x.who_kind : 'none', title: tkWhoName(x) })).items.push(x);
     }
-    const me = tkMe();
-    const mine = (g) => !!me && g.key === me;
+    const mine = (g) => tkIsMe(g.key);
     groups.sort((a, b) => mine(b) - mine(a) || (!a.name) - (!b.name)
       || TK_KIND_ORDER.indexOf(a.kind) - TK_KIND_ORDER.indexOf(b.kind) || b.items.length - a.items.length);
   }
@@ -274,7 +296,7 @@ function renderTasksList() {
     const done = all.filter(tkIsDone).length;
     const head = g.person ? tkAvatar(g.name, g.kind, 24) : TK.by === 'due' ? `<span class="tk-dot" style="background:${g.color}"></span>` : '';
     const kind = g.person && tkKindLabel(g.kind) ? `<span class="tk-kind" title="${escapeHtml(tkKindTitle(g.kind))}">${escapeHtml(tkKindLabel(g.kind))}</span>` : '';
-    const me = g.person && g.key && g.key === tkMe() ? `<span class="tk-kind tk-kind-me">${escapeHtml(t('tkItsMe'))}</span>` : '';
+    const me = g.person && g.key && tkIsMe(g.key) ? `<span class="tk-kind tk-kind-me">${escapeHtml(t('tkItsMe'))}</span>` : '';
     const sub = g.sub || t('tkGroupSub').replace('{open}', () => all.length - done).replace('{done}', () => done);
     const pct = all.length ? Math.round((done / all.length) * 100) : 0;
     return `<section class="tk-group">
@@ -522,13 +544,12 @@ function openTasksPeopleMenu(e) {
 
 function tkRenderPeopleMenu(anchor) {
   const groups = [[t('tkGParts'), 'part'], [t('tkGMentioned'), 'ext'], [t('tkGTeams'), 'team'], [t('tkGOrgs'), 'org']];
-  const me = tkMe();
   const rows = groups.map(([title, kind]) => {
     const list = TK.data.people.filter(p => p.kind === kind);
     if (!list.length) return '';
     return `<div class="tk-pop-cap">${escapeHtml(title)}</div>` + list.map(p => {
       const key = p.name.toLocaleLowerCase(), on = TK.people.includes(key);
-      const isMe = key === me;
+      const isMe = tkIsMe(key);
       const meBtn = kind === 'part' || kind === 'ext'
         ? `<button class="tk-mini tk-me-btn${isMe ? ' tk-on' : ''}" ${pageCall('click', 'setTasksMe', [p.name])} title="${escapeHtml(t('tkItsMeTitle'))}">${escapeHtml(t('tkItsMe'))}</button>` : '';
       return `<label class="tk-pop-item"><input type="checkbox" ${on ? 'checked' : ''} ${pageCall('change', 'toggleTasksPerson', [key])}>
@@ -553,11 +574,11 @@ function toggleTasksPerson(key) {
   tkRenderPeopleMenu(document.getElementById('tk-ppl-btn'));
 }
 
-function setTasksMe(name) {
-  try {
-    if (tkMe() === name.toLocaleLowerCase()) localStorage.removeItem(TK_ME_KEY);
-    else localStorage.setItem(TK_ME_KEY, name);
-  } catch { /* the choice stays for this session only */ }
+async function setTasksMe(name) {
+  const rest = tkMeNames().filter(n => n !== name.toLocaleLowerCase());
+  const off = tkIsMe(name);
+  const names = String(((state.system && state.system.settings) || {}).my_name || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (!await tkSaveMyName(off ? names.filter(n => rest.includes(n.toLocaleLowerCase())).join(', ') : name)) return;
   renderTasks();
   tkRenderPeopleMenu(document.getElementById('tk-ppl-btn'));
 }
@@ -982,7 +1003,7 @@ function renderNewTask() {
 
 function renderNewTaskWho() {
   const typed = TKN.other.trim();
-  const frequent = TK.data.people.slice().sort((a, b) => (b.name.toLocaleLowerCase() === tkMe()) - (a.name.toLocaleLowerCase() === tkMe()) || b.open - a.open).slice(0, 8);
+  const frequent = TK.data.people.slice().sort((a, b) => tkIsMe(b.name) - tkIsMe(a.name) || b.open - a.open).slice(0, 8);
   const chips = frequent.map(p => {
     const on = !typed && TKN.who === p.name;
     return `<button type="button" class="tk-chip tk-chip-ava${on ? ' tk-on' : ''}" aria-pressed="${on}" ${pageCall('click', 'pickNewTaskWho', [p.name, p.kind])}>${tkAvatar(p.name, p.kind, 18)}${escapeHtml(p.name)}</button>`;

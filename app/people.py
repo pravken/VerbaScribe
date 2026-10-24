@@ -6,6 +6,8 @@ promises name — and the people and departments added by hand.
 Two spellings of one person can be merged: the first name stays, the others become its variants
 (aliases), so a later recording, an invitation or a promise with a variant still finds the person.
 "Это я" marks the user (one person at most). A person may have a role ("руководитель проекта").
+Who the user is lives in the setting my_name (names separated by commas), which the home page and
+the tasks read too; the directory's own mark is only a fallback for databases from before it.
 
 Only the hand-made part is stored (table people_directory: added entries, variants, roles, "me");
 the rest is read from the library each time, so it never goes stale.
@@ -16,12 +18,26 @@ import re
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional
 
-from app.database import _db_lock, get_connection
+from app.database import _db_lock, get_all_settings, get_connection, update_settings
 
 KINDS = ("person", "dept")
 MAX_NAME = 120
 # The calendar's participants of a recording, as app/calendar_ics.apply_to_recording writes them
 _CAL_HEAD_RE = re.compile(r"^(?:Участники по календарю|Participants \(calendar\))\s*:\s*(.+)$", re.M)
+
+
+def my_names() -> List[str]:
+    """The user's names from the setting my_name, lower case."""
+    return [n.strip().lower() for n in str(get_all_settings().get("my_name") or "").split(",") if n.strip()]
+
+
+def _set_me(name: str, on: bool) -> None:
+    """"Это я" for name: it becomes the user's name, or stops being one of them."""
+    names = [n.strip() for n in str(get_all_settings().get("my_name") or "").split(",") if n.strip()]
+    if on:
+        update_settings({"my_name": name})
+    elif any(n.lower() == name.lower() for n in names):
+        update_settings({"my_name": ", ".join(n for n in names if n.lower() != name.lower())})
 
 
 def init_table() -> None:
@@ -161,6 +177,10 @@ def directory() -> List[Dict[str, Any]]:
         e = entry(name)
         e["tasks"] += 1
         source(e, "tasks")
+    me = my_names()
+    if me:  # the setting decides; the stored mark only counts while it is empty
+        for e in by_key.values():
+            e["is_me"] = any(n.lower() in me for n in [e["name"], *e["aliases"]])
     return sorted(by_key.values(), key=lambda e: (not e["is_me"], -(e["recordings"] + e["calendar"] + e["tasks"]), e["name"].lower()))
 
 
@@ -234,6 +254,10 @@ def update(name: str, role: Optional[str] = None, kind: Optional[str] = None, is
             conn.commit()
         finally:
             conn.close()
+    if is_me is not None:
+        _set_me(target, is_me)
+    elif target.lower() != name.lower() and name.lower() in my_names():  # the user renamed themselves
+        _set_me(target, True)
     return next(e for e in directory() if e["name"].lower() == target.lower())
 
 

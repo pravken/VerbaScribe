@@ -16,6 +16,7 @@ class PeopleDirectoryTest(unittest.TestCase):
         with database._db_lock:
             conn = database.get_connection()
             conn.execute("DELETE FROM people_directory")
+            conn.execute("DELETE FROM settings WHERE key = 'my_name'")  # who the user is: see people.my_names
             conn.execute("DELETE FROM meetings")
             conn.commit()
             conn.close()
@@ -69,6 +70,21 @@ class PeopleDirectoryTest(unittest.TestCase):
             people.add("  ")
         with self.assertRaises(ValueError):
             people.add("Кто-то", "robot")
+
+    def test_me_is_the_my_name_setting(self):
+        """«Это я» of the directory writes my_name, which the home page and the tasks read."""
+        from app.database import get_all_settings, update_settings
+
+        people.add("Олег")
+        people.update("Олег", is_me=True)
+        self.assertEqual(get_all_settings()["my_name"], "Олег")
+        people.update("Олег", new_name="Олег Петров")
+        self.assertEqual(get_all_settings()["my_name"], "Олег Петров")
+        people.add("Анна")
+        update_settings({"my_name": "Анна"})  # set on the home page: the directory follows
+        self.assertEqual([x["name"] for x in people.directory() if x["is_me"]], ["Анна"])
+        people.update("Анна", is_me=False)
+        self.assertEqual(get_all_settings()["my_name"], "")
 
     def test_mentions_skip_speakers_and_partial_words(self):
         mid = self._meeting(names=("Мария", "Участник 2"), texts=[

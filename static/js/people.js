@@ -160,6 +160,7 @@ async function spMeta(id, body) {
   });
   const data = await readJson(res);
   if (!res.ok) { showToast(serverText(data.detail || 'Error')); return null; }
+  if (body.is_me !== undefined) await spRefreshSettings();
   if (state.activeMeeting === m) {
     state.activeMeeting = data;
     renderSpeakersPanel();
@@ -471,8 +472,16 @@ async function dirUpdate(body) {
   });
   const data = await readJson(res);
   if (!res.ok) { showToast(serverText(data.detail || 'Error')); return; }
+  if (body.is_me !== undefined || body.new_name) await spRefreshSettings();
   await loadDirectory();
   spCtx.data = null;
+}
+
+// «Это я» writes the setting my_name on the server (the home page and the tasks read it): fetch it back
+async function spRefreshSettings() {
+  const res = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: {} }) });
+  const data = await readJson(res);
+  if (res.ok && state.system) state.system.settings = data.settings;
 }
 
 async function dirMerge() {
