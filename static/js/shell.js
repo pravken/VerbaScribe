@@ -226,6 +226,7 @@ function updateRecordButtonState() {
   const clock = document.getElementById('tb-rec-clock');
   clock.textContent = recording ? timer : '';
   clock.classList.toggle('hidden', !recording);
+  if (!recording && recSrc.mic.used + recSrc.sys.used) recSourcesStop();  // a recording that ended another way
   btn.title = recording ? t('tipTbRecordStop') : t('tipTbRecord');
   document.getElementById('nav-studio-dot').classList.toggle('hidden', !recording);
   document.getElementById('nav-studio-label').textContent = recording ? `${t('navStudio')} · ${timer}` : t('navStudio');

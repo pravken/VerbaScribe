@@ -764,6 +764,22 @@ label:has(> .vs-switch.vs-sm) { min-height: 24px; }
 .tb-rec-on .tb-rec-dot { border-radius: 2px; animation: tb-blink 1s steps(2, start) infinite; }
 .tb-rec-clock { font-family: 'JetBrains Mono Variable', 'JetBrains Mono', monospace; font-weight: 500; font-size: 13px; opacity: 0.85; }
 @keyframes tb-blink { 50% { opacity: 0.35; } }
+/* While recording: the microphone and the computer sound, each an icon with three bars that move
+   with its level; dim while it is silent */
+.rec-src { display: inline-flex; align-items: center; gap: 9px; }
+.rec-src.hidden { display: none; }
+.rec-src-item { --lv: 0; display: inline-flex; align-items: center; gap: 3px; opacity: 0.5; transition: opacity 0.25s ease; }
+.rec-src-item svg { width: 13px; height: 13px; flex: none; }
+.rec-src-on { opacity: 1; }
+.rec-src-bars { display: inline-flex; align-items: center; gap: 2px; height: 14px; }
+.rec-src-bars i { width: 3px; border-radius: 2px; background: currentColor; height: 3px; transition: height 0.08s linear; }
+.rec-src-bars i:nth-child(1) { height: calc(3px + 7px * var(--lv)); }
+.rec-src-bars i:nth-child(2) { height: calc(3px + 11px * var(--lv)); }
+.rec-src-bars i:nth-child(3) { height: calc(3px + 5px * var(--lv)); }
+.rec-src-tb { padding-left: 9px; margin-left: 1px; border-left: 1px solid rgba(255, 255, 255, 0.35); }
+.rec-src-studio { color: #30D158; margin-right: 4px; }
+.rec-src-studio .rec-src-item:not(.rec-src-on) { color: #8E8E93; }
+@media (prefers-reduced-motion: reduce) { .rec-src-bars i { transition: none; } }
 @media (prefers-reduced-motion: reduce) { .tb-rec-on .tb-rec-dot { animation: none; } }
 .tb-sep { width: 1px; height: 22px; margin: 0 8px 0 6px; background: rgba(255, 255, 255, 0.12); flex-shrink: 0; }
 /* The toast sits below the top bar (56px), above the dialogs and popovers of every view */

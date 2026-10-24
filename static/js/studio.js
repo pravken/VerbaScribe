@@ -16,6 +16,7 @@ let _recCaptureId = null;
 let _recSysLevel = 0;
 let _recSysTimer = null;
 let _recSignalAt = 0;
+let _recSources = { mic: null, sys: null };
 
 let _settingsTestStreams = [];
 let _settingsTestCtx = null;
@@ -98,6 +99,7 @@ async function buildCaptureStream(sourceMode, micDeviceId, systemByApp = false) 
   const ctx = new AudioCtx();
   const dest = ctx.createMediaStreamDestination();
   const acquiredStreams = [];
+  const sources = { mic: null, sys: null };  // a meter of each, so the page shows which one is heard
 
   const needMic = sourceMode === 'mic' || sourceMode === 'both';
   // When the app records system audio itself, the page does not ask for a screen share
@@ -113,6 +115,7 @@ async function buildCaptureStream(sourceMode, micDeviceId, systemByApp = false) 
     acquiredStreams.push(micStream);
     const micNode = ctx.createMediaStreamSource(micStream);
     micNode.connect(dest);
+    sources.mic = recSourceMeter(ctx, micNode);
   }
 
   if (needSystem) {
@@ -133,9 +136,68 @@ async function buildCaptureStream(sourceMode, micDeviceId, systemByApp = false) 
     }
     const sysNode = ctx.createMediaStreamSource(new MediaStream(sysStream.getAudioTracks()));
     sysNode.connect(dest);
+    sources.sys = recSourceMeter(ctx, sysNode);
   }
 
-  return { ctx, mixedStream: dest.stream, acquiredStreams };
+  return { ctx, mixedStream: dest.stream, acquiredStreams, sources };
+}
+
+function recSourceMeter(ctx, node) {
+  const an = ctx.createAnalyser();
+  an.fftSize = 512;
+  node.connect(an);
+  return { an, buf: new Uint8Array(an.fftSize) };
+}
+
+// --- While recording: the microphone and the system sound each with its own icon and bars, in the
+// red button of the top bar (seen on every page) and by the studio's meter ---
+const REC_SRC_ICONS = {
+  mic: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>',
+  sys: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></svg>',
+};
+const recSrc = { mic: { on: false, lv: 0, at: 0, used: false }, sys: { on: false, lv: 0, at: 0, used: false } };
+
+function recSourcesStart(mic, sys) {
+  for (const [k, used] of [['mic', mic], ['sys', sys]]) Object.assign(recSrc[k], { used, on: false, lv: 0, at: 0 });
+  document.querySelectorAll('[data-rec-src]').forEach(box => {
+    box.innerHTML = ['mic', 'sys'].filter(k => recSrc[k].used).map(k =>
+      `<span class="rec-src-item" data-src="${k}">${REC_SRC_ICONS[k]}<span class="rec-src-bars"><i></i><i></i><i></i></span></span>`).join('');
+    box.classList.toggle('hidden', !mic && !sys);
+  });
+  recSourcesRender();
+}
+
+function recSourcesStop() {
+  recSrc.mic.used = recSrc.sys.used = false;
+  document.querySelectorAll('[data-rec-src]').forEach(box => { box.innerHTML = ''; box.classList.add('hidden'); });
+}
+
+// db of each source this frame (null: not recorded); the bars rise at once and fall slowly, and the
+// "sound" state holds for a moment, so pauses between words do not make it blink
+function recSourcesUpdate(levels) {
+  const now = performance.now();
+  for (const k of ['mic', 'sys']) {
+    const s = recSrc[k], db = levels[k];
+    if (!s.used || db == null) continue;
+    const amp = Math.max(0, Math.min(1, (db + 54) / 42));
+    s.lv = Math.max(amp, s.lv * 0.86);
+    if (db > -44) s.at = now;
+    s.on = now - s.at < 700;
+  }
+  recSourcesRender();
+}
+
+function recSourcesRender() {
+  document.querySelectorAll('[data-rec-src] .rec-src-item').forEach(el => {
+    const s = recSrc[el.dataset.src];
+    el.style.setProperty('--lv', s.lv.toFixed(3));
+    if (el.classList.contains('rec-src-on') !== s.on || !el.title) {
+      el.classList.toggle('rec-src-on', s.on);
+      const name = t(el.dataset.src === 'mic' ? 'recSrcMic' : 'recSrcSys');
+      el.title = `${name}: ${t(s.on ? 'recSrcSound' : 'recSrcSilence')}`;
+      el.setAttribute('aria-label', el.title);
+    }
+  });
 }
 
 function drawIdleSoundCloudBars(canvasId) {
@@ -1345,8 +1407,10 @@ async function startLiveRecording() {
         console.warn(e);
       }
     }
-    const { ctx, mixedStream, acquiredStreams } = await buildCaptureStream(sourceMode, micId, !!_recCaptureId);
+    const { ctx, mixedStream, acquiredStreams, sources } = await buildCaptureStream(sourceMode, micId, !!_recCaptureId);
     _recAudioCtx = ctx;
+    _recSources = sources;
+    recSourcesStart(!!sources.mic, !!(sources.sys || _recCaptureId));
     _recStreams = acquiredStreams;
 
     // The page records the microphone and the video; with system audio from the app, no
@@ -1405,6 +1469,11 @@ async function startLiveRecording() {
           visualAmp = Math.min(1.0, Math.max(0.04, Math.pow(_recSysLevel * 4.2, 0.65)));
         }
       }
+      recSourcesUpdate({
+        mic: _recSources.mic ? computeRmsAndDb(_recSources.mic.an, _recSources.mic.buf).db : null,
+        sys: _recSources.sys ? computeRmsAndDb(_recSources.sys.an, _recSources.sys.buf).db
+          : _recCaptureId ? (_recSysLevel > 0.0001 ? Math.max(-60, 20 * Math.log10(_recSysLevel)) : -60) : null,
+      });
       _recWaveHistory.push(visualAmp);
       if (_recWaveHistory.length > 68) _recWaveHistory.shift();
 
@@ -1528,6 +1597,8 @@ function _cleanupRecordingResources() {
   clearInterval(_recTimerInterval);
   if (_recAnimFrame) cancelAnimationFrame(_recAnimFrame);
   _recAnimFrame = null;
+  _recSources = { mic: null, sys: null };
+  recSourcesStop();
   if (_recStreams) {
     _recStreams.forEach(s => s.getTracks().forEach(tr => tr.stop()));
     _recStreams = [];
