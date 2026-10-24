@@ -51,7 +51,14 @@ function spMinutes(sec) {
   return s >= 60 ? `${Math.floor(s / 60)} ${t('unitMin')}${s % 60 ? ` ${s % 60} ${t('unitSec')}` : ''}` : `${s} ${t('unitSec')}`;
 }
 
-function renderSpeakersPanel() {
+// Typing a name or a role: a card rebuilt now would take the input away (and what was typed)
+function spTyping(box) {
+  const a = document.activeElement;
+  return !!a && box.contains(a) && a.tagName === 'INPUT' && a.type !== 'color';
+}
+
+// background: a refresh nobody asked for (the context arrived); it waits while a card is being typed in
+function renderSpeakersPanel(opts = {}) {
   renderTalkAnalytics();
   const box = document.getElementById('speakers-list');
   const m = state.activeMeeting;
@@ -64,13 +71,24 @@ function renderSpeakersPanel() {
     return;
   }
   const ctx = spCtx.id === m.id ? spCtx.data : null;
-  if (!ctx) loadSpeakersContext().then(() => { if (state.activeMeeting === m) renderSpeakersPanel(); });
+  if (!ctx) loadSpeakersContext().then(() => { if (state.activeMeeting === m) renderSpeakersPanel({ background: true }); });
   const talk = spTalk(m);
   const total = Object.values(talk).reduce((a, r) => a + r.seconds, 0) || 1;
   const names = new Set(keys.map(k => String(speakers[k].name || '').trim().toLowerCase()));
   const guests = ((ctx && ctx.calendar) || []).filter(n => !names.has(n.toLowerCase())).slice(0, 8);
   const list = document.getElementById('sp-names');
   if (list && ctx) list.innerHTML = (ctx.names || []).map(p => `<option value="${escapeHtml(p.name)}"></option>`).join('');
+  if (opts.background && spTyping(box)) {
+    renderMentions(ctx);
+    if (!box._spWait) {
+      box._spWait = true;
+      box.addEventListener('focusout', () => setTimeout(() => {
+        box._spWait = false;
+        if (state.activeMeeting === m) renderSpeakersPanel({ background: true });
+      }, 0), { once: true });
+    }
+    return;
+  }
 
   box.innerHTML = keys.map(id => {
     const s = speakers[id];
@@ -143,7 +161,7 @@ async function spRename(id, value) {
   if (!s || !name || name === s.name) return;
   const old = s.name;
   await updateSpeaker(id, name, null);
-  loadSpeakersContext(true).then(() => { if (state.activeMeeting === m) renderSpeakersPanel(); });
+  loadSpeakersContext(true).then(() => { if (state.activeMeeting === m) renderSpeakersPanel({ background: true }); });
   showToast(t('spRenamed').replace('{name}', () => name), { label: t('spUndo'), onClick: () => updateSpeaker(id, old, null) });
 }
 
