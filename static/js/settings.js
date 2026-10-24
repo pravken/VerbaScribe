@@ -107,9 +107,12 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     document.getElementById('set-start-with-windows').checked = s.start_with_windows === 'true';
     document.getElementById('set-close-to-tray').checked = s.close_to_tray === 'true';
     document.getElementById('set-vad').checked = s.vad_filter !== 'false';
-    if (document.getElementById('set-audio-enhance')) {
-      document.getElementById('set-audio-enhance').checked = s.audio_enhance !== 'false';
-    }
+    // proc_*: one switch each (shared with the import window); before they were saved, both follow audio_enhance
+    const sound = (key) => (s[key] ? s[key] !== 'false' : s.audio_enhance !== 'false');
+    document.getElementById('set-proc-denoise').checked = sound('proc_denoise');
+    document.getElementById('set-proc-loudnorm').checked = sound('proc_loudnorm');
+    document.getElementById('set-proc-leveling').checked = s.proc_leveling !== 'false';
+    document.getElementById('set-ask-import').checked = s.ask_import_params !== 'false';
     if (document.getElementById('set-clean-fillers')) {
       document.getElementById('set-clean-fillers').checked = s.clean_fillers !== 'false';
     }
@@ -1596,7 +1599,11 @@ async function saveAllSettings() {
       close_to_tray: String(document.getElementById('set-close-to-tray').checked),
       quiet_mode: String(document.getElementById('set-quiet-mode').checked),
       vad_filter: String(document.getElementById('set-vad').checked),
-      audio_enhance: String(document.getElementById('set-audio-enhance')?.checked !== false),
+      proc_denoise: String(document.getElementById('set-proc-denoise').checked),
+      proc_loudnorm: String(document.getElementById('set-proc-loudnorm').checked),
+      proc_leveling: String(document.getElementById('set-proc-leveling').checked),
+      audio_enhance: String(document.getElementById('set-proc-denoise').checked || document.getElementById('set-proc-loudnorm').checked),
+      ask_import_params: String(document.getElementById('set-ask-import').checked),
       clean_fillers: String(document.getElementById('set-clean-fillers')?.checked !== false),
       ollama_model: document.getElementById('set-ollama-model').value.trim(),
       auto_summary: String(document.getElementById('set-auto-summary').checked),
@@ -1939,7 +1946,8 @@ const SETTINGS_RESET = {
   record: [['set-record-source', 'record_source_mode', 'value'], ['set-live-model', 'live_whisper_model', 'value'],
     ['set-call-record', 'call_auto_record', 'check']],
   recognition: [['set-diarization', 'diarization_enabled', 'check'], ['set-voice-profiles', 'voice_profiles', 'check'],
-    ['set-vad', 'vad_filter', 'check'], ['set-audio-enhance', 'audio_enhance', 'check'], ['set-clean-fillers', 'clean_fillers', 'check'],
+    ['set-vad', 'vad_filter', 'check'], ['set-proc-denoise', 'proc_denoise', 'check'], ['set-proc-loudnorm', 'proc_loudnorm', 'check'],
+    ['set-proc-leveling', 'proc_leveling', 'check'], ['set-ask-import', 'ask_import_params', 'check'], ['set-clean-fillers', 'clean_fillers', 'check'],
     ['set-onnx-gpu', 'onnx_gpu', 'check']],
   analysis: [['set-auto-summary', 'auto_summary', 'check'], ['set-auto-title', 'auto_title', 'check'],
     ['set-summary-grounding', 'summary_grounding', 'check'], ['set-auto-commitments', 'auto_commitments', 'check'],
@@ -1956,7 +1964,7 @@ const SETTINGS_RESET = {
 const SETTINGS_DEFAULTS = {
   start_with_windows: 'false', close_to_tray: 'false', idle_unload_minutes: '10', quiet_mode: 'false',
   record_source_mode: 'both', live_whisper_model: 'auto', call_auto_record: 'false',
-  diarization_enabled: 'true', voice_profiles: 'true', vad_filter: 'true', audio_enhance: 'true', clean_fillers: 'true', onnx_gpu: 'true',
+  diarization_enabled: 'true', voice_profiles: 'true', vad_filter: 'true', proc_denoise: 'true', proc_loudnorm: 'true', proc_leveling: 'true', ask_import_params: 'true', clean_fillers: 'true', onnx_gpu: 'true',
   auto_summary: 'true', auto_title: 'true', summary_grounding: 'true', auto_commitments: 'true', semantic_search: 'false',
   work_day_start: '09:00', work_day_end: '18:00', meet_auto_all: 'false', meet_ask_inperson: 'true',  // as the controls show them
   record_hotkey: 'Ctrl+Alt+R', dictation_hotkey: 'Ctrl+Alt+D', dictation_translate_hotkey: 'Ctrl+Alt+T', dictation_language: 'auto',

@@ -14,6 +14,9 @@ from app.page import render  # noqa: E402
 HTML = render(ROOT / "static")
 # The working day is kept in whole hours; its controls show them as "09:00"
 SHOWN_AS_TIME = {"work_day_start", "work_day_end"}
+# Sound switches with no row of their own until first saved: the server takes them as on
+# (database.effective_processing; denoise and loudnorm follow audio_enhance, on by default)
+ON_WITHOUT_ROW = {"proc_denoise", "proc_loudnorm", "proc_leveling"}
 
 
 def _js_object(name: str) -> str:
@@ -29,6 +32,10 @@ class SettingsPageTest(unittest.TestCase):
         page = dict(re.findall(r"([a-z_0-9]+): '([^']*)'", _js_object("SETTINGS_DEFAULTS")))
         self.assertTrue(page)
         for key, value in page.items():
+            if key in ON_WITHOUT_ROW:
+                self.assertNotIn(key, db, key)
+                self.assertEqual(value, "true", key)
+                continue
             self.assertIn(key, db, key)
             self.assertEqual(str(int(value[:2])) if key in SHOWN_AS_TIME else value, db[key], key)
 

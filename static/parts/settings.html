@@ -371,13 +371,33 @@
                 data-i18n="voiceApplyAll">Найти эти голоса в старых записях</button>
             </div>
           </div>
-          <label class="settings-toggle flex items-center gap-2.5 cursor-pointer text-xs text-apple-label" data-i18n-title="tipVadToggle" title="Отсекать пустые паузы и тишину нейросетью Silero VAD">
-            <input type="checkbox" id="set-vad" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
-            <span data-i18n="vadToggle">Фильтр тишины (Silero VAD)</span>
+          <!-- Sound before recognition: the same switches the import window starts from (proc_*, vad_filter) -->
+          <div class="text-[11px] font-semibold uppercase tracking-wider text-apple-tertiary pt-1"><span data-i18n="impSound">Звук перед распознаванием</span>
+            <span class="normal-case font-normal tracking-normal" data-i18n="impSoundNote">только для копии, которую слушает модель; сами файлы не меняются</span></div>
+          <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
+            <input type="checkbox" id="set-proc-denoise" checked class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <span><span data-i18n="impDenoise"></span>
+              <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="impDenoiseHint"></span></span>
           </label>
-          <label class="settings-toggle flex items-center gap-2.5 cursor-pointer text-xs text-apple-label" data-i18n-title="tipAudioEnhanceToggle" title="Применять фильтр подавления фонового шума, щелчков и выравнивания громкости перед распознаванием">
-            <input type="checkbox" id="set-audio-enhance" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
-            <span data-i18n="audioEnhanceToggle">Шумоподавление и выравнивание громкости</span>
+          <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
+            <input type="checkbox" id="set-proc-loudnorm" checked class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <span><span data-i18n="impLoudnorm"></span>
+              <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="impLoudnormHint"></span></span>
+          </label>
+          <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
+            <input type="checkbox" id="set-proc-leveling" checked class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <span><span data-i18n="impLeveling"></span> <span class="text-apple-tertiary" data-i18n="rdSasOnlyOnnx"></span>
+              <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="impLevelingHint"></span></span>
+          </label>
+          <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
+            <input type="checkbox" id="set-vad" checked class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <span><span data-i18n="impVad"></span> <span class="text-apple-tertiary" data-i18n="rdSasOnlyWhisper"></span>
+              <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="impVadHint"></span></span>
+          </label>
+          <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
+            <input type="checkbox" id="set-ask-import" checked class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <span><span data-i18n="rdSasAskImport"></span>
+              <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="rdSasAskImportHint"></span></span>
           </label>
           <label class="settings-toggle flex items-center gap-2.5 cursor-pointer text-xs text-apple-label" data-i18n-title="rdSasTipFillersView" title="Скрывать «э-э», «ммм» и повторы слов при показе текста">
             <input type="checkbox" id="set-clean-fillers" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
