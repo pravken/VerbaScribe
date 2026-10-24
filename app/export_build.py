@@ -32,12 +32,18 @@ def safe_title(m: Dict[str, Any]) -> str:
     return base_name(m)
 
 
-def with_options(m: Dict[str, Any], opts: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+# The formats «Без запинок» applies to: the JSON file is the full transcript (a copy of the data) and
+# always keeps every word
+NOFILL_FORMATS = ("docx", "md", "txt", "srt", "vtt")
+
+
+def with_options(m: Dict[str, Any], opts: Optional[Dict[str, Any]], fmt: str = "") -> Dict[str, Any]:
     """The export options of the «Экспорт» window, applied to the exported file only: `nofill`
-    leaves the fillers out of the text, `times` and `names` keep the time stamps and the names."""
+    leaves the fillers out of the text (not of JSON), `times` and `names` keep the time stamps and
+    the names."""
     opts = opts or {}
     out = dict(m, _export={"times": opts.get("times", True) is not False, "names": opts.get("names", True) is not False})
-    if opts.get("nofill"):
+    if opts.get("nofill") and fmt in NOFILL_FORMATS:
         from app.text_utils import clean_filler_words_in_segments
 
         out["segments"], _ = clean_filler_words_in_segments(m.get("segments") or [])
@@ -50,7 +56,7 @@ def build_export_bytes(
 ) -> Tuple[bytes, str, str]:
     """(content, media type, file name)."""
     fmt = fmt.lower()
-    m = with_options(m, opts)
+    m = with_options(m, opts, fmt)
     if lang and fmt == "json":
         raise ValueError("Перевод экспортируется в DOCX, MD, TXT, SRT или VTT")
     if lang and variant == "bilingual" and fmt not in ("srt", "vtt", "docx"):

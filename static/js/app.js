@@ -1080,7 +1080,9 @@ async function exportMeetingById(id, fmt, opts) {
   fmt = (fmt || 'txt').toLowerCase();
   try {
     const params = new URLSearchParams(opts && opts.lang ? { lang: opts.lang, variant: opts.variant || 'translated' } : {});
-    const xo = rpExportOptions();  // the options of the export menu (time stamps, names, without fillers)
+    // the options of the export menu (time stamps, names, without fillers) go with the files of that
+    // menu; the other exports (another recording's context menu, a section of the analysis) take the defaults
+    const xo = opts && opts.menu ? rpExportOptions() : { times: true, names: true, nofill: false };
     if (!xo.times) params.set('times', 'false');
     if (!xo.names) params.set('names', 'false');
     if (xo.nofill) params.set('nofill', 'true');

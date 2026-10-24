@@ -182,7 +182,7 @@ async function runExport(item) {
     return;
   }
   // Everything the export needs is there: save it now, asking where
-  if (item.kind === 'doc') await exportMeetingById(m.id, item.fmt, item.lang ? { lang: item.lang, variant: item.variant } : undefined);
+  if (item.kind === 'doc') await exportMeetingById(m.id, item.fmt, item.lang ? { lang: item.lang, variant: item.variant, menu: true } : { menu: true });
   else if (item.kind === 'video_soft' || item.kind === 'video_burn') await requestVideoSubtitles(item.lang || '', item.variant || 'translated', item.kind === 'video_soft' ? 'soft' : 'burn', true);
   else if (item.kind === 'dub_media') await saveDubFile(item.lang, 'media');
   else if (item.kind === 'dub_srt') await saveDubFile(item.lang, 'srt');

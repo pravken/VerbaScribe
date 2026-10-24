@@ -922,7 +922,8 @@ function rpHiddenWords(seg) {
 // --- The options of the text export (the «Экспорт» menu): the exported file only ---
 function rpExportOptions() {
   const o = state.exportOpts || {};
-  return { times: o.times !== false, names: o.names !== false, nofill: o.nofill === undefined ? !!state.noFillers : !!o.nofill };
+  // «Без запинок» is off until ticked: an export keeps every word unless asked (and JSON always does)
+  return { times: o.times !== false, names: o.names !== false, nofill: !!o.nofill };
 }
 
 function rpExportOptionsHtml() {

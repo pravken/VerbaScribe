@@ -104,6 +104,9 @@ class ExportOptionsTest(unittest.TestCase):
         self.assertNotIn("Анна:", bare)
         self.assertNotIn("[00:00]", bare)
         self.assertIn("Эээ", get_meeting(m["id"])["segments"][0]["text"])  # the export changed nothing
+        # JSON is the full transcript: «Без запинок» never takes words out of it
+        js = build_export_bytes(m, "json", opts={"nofill": True})[0].decode("utf-8")
+        self.assertIn("Эээ", js)
 
 
 if __name__ == "__main__":
