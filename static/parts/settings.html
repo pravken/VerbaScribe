@@ -123,13 +123,13 @@
             <h4 class="text-[13px] font-semibold text-white" data-i18n="startupTitle">Запуск и трей</h4>
             <p class="text-[11px] text-apple-secondary leading-snug" data-i18n="startupHint">Чтобы автозапись по календарю, звонкам и горячие клавиши работали всегда, программа может жить в трее.</p>
           </div>
-          <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label">
-            <input type="checkbox" id="set-start-with-windows" data-change="syncStartupToggles" data-change-args='[{"$": "el"}]' class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <label class="vs-row cursor-pointer text-xs text-apple-label">
             <span data-i18n="startWithWindows">Запускать вместе с Windows (в трее, без окна)</span>
+            <input type="checkbox" role="switch" class="vs-switch" id="set-start-with-windows" data-change="syncStartupToggles" data-change-args='[{"$": "el"}]' />
           </label>
-          <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label">
-            <input type="checkbox" id="set-close-to-tray" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <label class="vs-row cursor-pointer text-xs text-apple-label">
             <span data-i18n="closeToTray">Закрытие окна оставляет программу в трее (выход — из меню значка)</span>
+            <input type="checkbox" role="switch" class="vs-switch" id="set-close-to-tray" />
           </label>
         </div>
 
@@ -154,9 +154,9 @@
             <button data-click="unloadAllModelsNow" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px]" data-i18n="idleUnloadNow">Выгрузить сейчас</button>
             <span id="idle-unload-status" class="text-[11px] text-apple-tertiary"></span>
           </div>
-          <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label" data-i18n-title="tipQuietMode" title="Без всплывающих уведомлений Windows: о начале и конце записи, о готовых расшифровках. Переключается и в меню значка в трее">
-            <input type="checkbox" id="set-quiet-mode" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <label class="vs-row cursor-pointer text-xs text-apple-label" data-i18n-title="tipQuietMode" title="Без всплывающих уведомлений Windows: о начале и конце записи, о готовых расшифровках. Переключается и в меню значка в трее">
             <span data-i18n="quietModeToggle">Тихий режим (без уведомлений)</span>
+            <input type="checkbox" role="switch" class="vs-switch" id="set-quiet-mode" />
           </label>
         </div>
 
@@ -272,10 +272,10 @@
             <h4 class="text-[13px] font-semibold text-white" data-i18n="callsTitle">Звонки</h4>
           </div>
           <div id="call-record-block" class="space-y-2">
-            <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
-              <input type="checkbox" id="set-call-record" data-change="renderCallSettings" class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <label class="vs-row settings-toggle cursor-pointer text-xs text-apple-label">
               <span><span data-i18n="callRecordToggle">Записывать звонки автоматически</span>
                 <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="callRecordHint">Запись начинается, когда выбранная программа держит микрофон дольше 5 секунд, и останавливается через 15 секунд после того, как она его отпустит. Запись, начатую вручную, автоматика не трогает.</span></span>
+              <input type="checkbox" role="switch" class="vs-switch" id="set-call-record" data-change="renderCallSettings" />
             </label>
             <div id="call-record-options" class="pl-6 space-y-2">
               <div id="call-apps" class="flex flex-wrap gap-x-4 gap-y-1.5"></div>
@@ -334,9 +334,9 @@
           </div>
           <!-- GigaAM / Parakeet on the NVIDIA GPU (app/onnx_gpu.py) -->
           <div id="onnx-gpu-box" class="hidden space-y-1.5">
-          <label class="flex items-center gap-2.5 cursor-pointer text-xs text-apple-label">
-            <input type="checkbox" id="set-onnx-gpu" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <label class="vs-row cursor-pointer text-xs text-apple-label">
             <span data-i18n="onnxGpuToggle">GigaAM и Parakeet на видеокарте</span>
+            <input type="checkbox" role="switch" class="vs-switch" id="set-onnx-gpu" checked />
           </label>
           <p class="text-[11px] text-apple-tertiary leading-snug ml-6" data-i18n="onnxGpuHint">Расшифровка записей в несколько раз быстрее. Нужна сборка ONNX Runtime для видеокарты (около 300 МБ, скачивается один раз). Если видеопамяти не хватает, запись распознаётся на процессоре. Субтитры и диктовка всегда идут на процессоре, чтобы видеокарта оставалась свободной для расшифровки.</p>
           <div class="flex items-center gap-2 ml-6">
@@ -354,15 +354,15 @@
           </div>
 
           <div class="settings-toggle">
-            <label class="flex items-center gap-2.5 cursor-pointer text-xs text-apple-label" data-i18n-title="tipDiarizationToggle" title="Автоматически разделять участников разговора по тембру голоса">
-              <input type="checkbox" id="set-diarization" checked data-change="syncVoiceProfilesToggle" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <label class="vs-row cursor-pointer text-xs text-apple-label" data-i18n-title="tipDiarizationToggle" title="Автоматически разделять участников разговора по тембру голоса">
               <span data-i18n="diarizationToggle">Разделение участников по голосам</span>
+              <input type="checkbox" role="switch" class="vs-switch" id="set-diarization" checked data-change="syncVoiceProfilesToggle" />
             </label>
             <div id="voice-profiles-box" class="mt-2 ml-6 rounded-lg border apple-border bg-white/[0.02] px-3 py-2.5 space-y-2">
-              <label class="flex items-center gap-2.5 cursor-pointer text-xs text-apple-label" data-i18n-title="tipVoiceProfilesToggle"
+              <label class="vs-row cursor-pointer text-xs text-apple-label" data-i18n-title="tipVoiceProfilesToggle"
                 title="Когда вы называете участника по имени, его голос запоминается, и в новых записях он получает это имя автоматически">
-                <input type="checkbox" id="set-voice-profiles" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
                 <span data-i18n="voiceProfilesToggle">Запоминать голоса участников</span>
+                <input type="checkbox" role="switch" class="vs-switch" id="set-voice-profiles" checked />
               </label>
               <p class="text-[11px] text-apple-tertiary leading-snug" data-i18n="voiceProfilesHint">Голос запоминается, когда вы указываете имя участника. В новых записях похожий голос получает это имя автоматически. Отпечатки голосов хранятся только в базе на этом компьютере.</p>
               <div id="voice-profiles-list" class="space-y-1"></div>
@@ -374,35 +374,35 @@
           <!-- Sound before recognition: the same switches the import window starts from (proc_*, vad_filter) -->
           <div class="text-[11px] font-semibold uppercase tracking-wider text-apple-tertiary pt-1"><span data-i18n="impSound">Звук перед распознаванием</span>
             <span class="normal-case font-normal tracking-normal" data-i18n="impSoundNote">только для копии, которую слушает модель; сами файлы не меняются</span></div>
-          <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
-            <input type="checkbox" id="set-proc-denoise" checked class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <label class="vs-row settings-toggle cursor-pointer text-xs text-apple-label">
             <span><span data-i18n="impDenoise"></span>
               <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="impDenoiseHint"></span></span>
+            <input type="checkbox" role="switch" class="vs-switch" id="set-proc-denoise" checked />
           </label>
-          <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
-            <input type="checkbox" id="set-proc-loudnorm" checked class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <label class="vs-row settings-toggle cursor-pointer text-xs text-apple-label">
             <span><span data-i18n="impLoudnorm"></span>
               <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="impLoudnormHint"></span></span>
+            <input type="checkbox" role="switch" class="vs-switch" id="set-proc-loudnorm" checked />
           </label>
-          <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
-            <input type="checkbox" id="set-proc-leveling" checked class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <label class="vs-row settings-toggle cursor-pointer text-xs text-apple-label">
             <span><span data-i18n="impLeveling"></span> <span class="text-apple-tertiary" data-i18n="rdSasOnlyOnnx"></span>
               <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="impLevelingHint"></span></span>
+            <input type="checkbox" role="switch" class="vs-switch" id="set-proc-leveling" checked />
           </label>
-          <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
-            <input type="checkbox" id="set-vad" checked class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <label class="vs-row settings-toggle cursor-pointer text-xs text-apple-label">
             <span><span data-i18n="impVad"></span> <span class="text-apple-tertiary" data-i18n="rdSasOnlyWhisper"></span>
               <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="impVadHint"></span></span>
+            <input type="checkbox" role="switch" class="vs-switch" id="set-vad" checked />
           </label>
-          <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
-            <input type="checkbox" id="set-ask-import" checked class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <label class="vs-row settings-toggle cursor-pointer text-xs text-apple-label">
             <span><span data-i18n="rdSasAskImport"></span>
               <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="rdSasAskImportHint"></span></span>
+            <input type="checkbox" role="switch" class="vs-switch" id="set-ask-import" checked />
           </label>
-          <label class="settings-toggle flex items-center gap-2.5 cursor-pointer text-xs text-apple-label" data-i18n-title="rdSasTipFillersView" title="Скрывать «э-э», «ммм» и повторы слов при показе текста">
-            <input type="checkbox" id="set-clean-fillers" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <label class="vs-row settings-toggle cursor-pointer text-xs text-apple-label" data-i18n-title="rdSasTipFillersView" title="Скрывать «э-э», «ммм» и повторы слов при показе текста">
             <span><span data-i18n="rdSasFillersView">Показывать текст без запинок</span>
               <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="rdSasFillersViewHint">Только показ: запись и сам текст не меняются. На странице записи — кнопка «Без запинок».</span></span>
+            <input type="checkbox" role="switch" class="vs-switch" id="set-clean-fillers" checked />
           </label>
         </div>
         </div>
@@ -577,33 +577,33 @@
             <h4 class="text-[13px] font-semibold text-white" data-i18n="afterTitle">После расшифровки</h4>
             <p class="text-[11px] text-apple-secondary leading-snug mt-0.5" data-i18n="afterDesc">Что модель делает сама, когда запись расшифрована.</p>
           </div>
-          <label class="settings-toggle flex items-center gap-2.5 cursor-pointer text-xs text-apple-label" data-i18n-title="tipAutoSummaryToggle" title="Генерировать структурированный протокол автоматически сразу после завершения транскрибации">
-            <input type="checkbox" id="set-auto-summary" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <label class="vs-row settings-toggle cursor-pointer text-xs text-apple-label" data-i18n-title="tipAutoSummaryToggle" title="Генерировать структурированный протокол автоматически сразу после завершения транскрибации">
             <span data-i18n="autoSummaryToggle">Создавать обзор автоматически после расшифровки</span>
+            <input type="checkbox" role="switch" class="vs-switch" id="set-auto-summary" checked />
           </label>
-          <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
-            <input type="checkbox" id="set-auto-title" checked class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <label class="vs-row settings-toggle cursor-pointer text-xs text-apple-label">
             <span><span data-i18n="autoTitleToggle">Называть записи по содержанию</span>
               <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="autoTitleHint">Если у записи безликое название («Запись 14-05», «zoom_0», «VID_2024…»), после расшифровки модель придумает его по тексту. Названия, которые вы ввели сами, не меняются.</span></span>
+            <input type="checkbox" role="switch" class="vs-switch" id="set-auto-title" checked />
           </label>
-          <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
-            <input type="checkbox" id="set-auto-commitments" checked class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <label class="vs-row settings-toggle cursor-pointer text-xs text-apple-label">
             <span><span data-i18n="autoCommitmentsToggle">Находить задачи после автоматического обзора</span>
               <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="autoCommitmentsHint">Кто что пообещал, кому и к какому сроку — во вкладке «Обещания» и в «Ассистенте». Открытые обещания серии попадают в «С прошлого раза» и в справку перед встречей.</span></span>
+            <input type="checkbox" role="switch" class="vs-switch" id="set-auto-commitments" checked />
           </label>
-          <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
-            <input type="checkbox" id="set-summary-grounding" checked class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <label class="vs-row settings-toggle cursor-pointer text-xs text-apple-label">
             <span><span data-i18n="groundingToggle">Проверять пересказ по расшифровке</span>
               <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="groundingHint">Каждый пункт сверяется с текстом записи: найденные получают ссылку на место в записи, а то, чего в записи нет, помечается «не найдено в записи». Работает без модели.</span></span>
+            <input type="checkbox" role="switch" class="vs-switch" id="set-summary-grounding" checked />
           </label>
         </div>
 
         <!-- Search by meaning (app/semantic.py) -->
         <div class="settings-card">
-          <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
-            <input type="checkbox" id="set-semantic" class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <label class="vs-row settings-toggle cursor-pointer text-xs text-apple-label">
             <span><span data-i18n="semanticToggle">Поиск по смыслу</span>
               <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="semanticHint">Ассистент и поиск находят фрагменты, близкие по смыслу, а не только по словам: «о чём договорились по срокам» найдёт «давайте перенесём на пятницу». Работает локально через Ollama, текст никуда не отправляется.</span></span>
+            <input type="checkbox" role="switch" class="vs-switch" id="set-semantic" />
           </label>
           <input id="set-semantic-model" type="hidden" value="bge-m3" />
           <div id="semantic-model-card" class="pl-6"></div>
@@ -646,15 +646,15 @@
             <select id="set-workday-end" class="sx-time"><option value="18:00">18:00</option></select>
             <span id="workday-overnight" class="hidden text-[11px] text-apple-amber" data-i18n="rdSasWorkdayOvernight">через полночь</span>
           </div>
-          <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
-            <input type="checkbox" id="set-meetings-autorecord" class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <label class="vs-row settings-toggle cursor-pointer text-xs text-apple-label">
             <span><span data-i18n="rdSasAutorecordAll">Записывать все встречи из календаря</span>
               <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="rdSasAutorecordAllHint">Запись начнётся в начале встречи и закончится вместе с ней. Отдельные встречи можно пропустить на главной.</span></span>
+            <input type="checkbox" role="switch" class="vs-switch" id="set-meetings-autorecord" />
           </label>
-          <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label ml-6">
-            <input type="checkbox" id="set-meetings-ask-inperson" checked class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <label class="vs-row settings-toggle cursor-pointer text-xs text-apple-label ml-6">
             <span><span data-i18n="rdSasAskInPerson">Перед очными встречами спрашивать</span>
               <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="rdSasAskInPersonHint">Встреча без ссылки на видеозвонок: за минуту до начала придёт вопрос, записывать ли её.</span></span>
+            <input type="checkbox" role="switch" class="vs-switch" id="set-meetings-ask-inperson" checked />
           </label>
         </div>
         </div>
@@ -710,15 +710,15 @@
               </select>
               <span id="translate-hotkey-status" class="text-[11px] text-apple-tertiary"></span>
             </div>
-            <label class="flex items-center gap-2 cursor-pointer text-[11px] text-apple-label mt-1.5">
-              <input type="checkbox" id="set-dictation-translate-cloud" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <label class="vs-row cursor-pointer text-[11px] text-apple-label mt-1.5">
               <span data-i18n="dictTrCloud">Разрешить облачную модель для перевода диктовки</span>
+              <input type="checkbox" role="switch" class="vs-switch" id="set-dictation-translate-cloud" />
             </label>
             <p class="text-[10.5px] text-apple-tertiary mt-1" data-i18n="dictTrHint">Говорите на любом языке — вставится перевод. Переводит локальная модель Ollama; облачная — только если отмечено выше и облако включено в «Анализе». Если перевод не удался, вставляется исходный текст.</p>
-            <label class="flex items-center gap-2 cursor-pointer text-[11px] text-apple-label mt-2.5" data-i18n-title="tipDictSave"
+            <label class="vs-row cursor-pointer text-[11px] text-apple-label mt-2.5" data-i18n-title="tipDictSave"
               title="Звук, текст и перевод каждой диктовки сохраняются записью в папке «Диктовки» медиатеки. Эта папка только для локального анализа: в облако её записи не отправляются">
-              <input type="checkbox" id="set-dictation-save" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
               <span data-i18n="dictSave">Сохранять диктовки в медиатеку (папка «Диктовки»)</span>
+              <input type="checkbox" role="switch" class="vs-switch" id="set-dictation-save" checked />
             </label>
           </div>
 
@@ -838,14 +838,14 @@
           </div>
           <p id="obs-preview" class="text-[11px] text-apple-tertiary leading-snug break-all"></p>
           <div class="space-y-0.5">
-            <label class="settings-toggle flex items-center gap-2.5 cursor-pointer text-xs text-apple-label">
-              <input type="checkbox" id="set-obsidian-auto" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <label class="vs-row settings-toggle cursor-pointer text-xs text-apple-label">
               <span data-i18n="obsAutoToggle">Сохранять заметку автоматически после обработки</span>
+              <input type="checkbox" role="switch" class="vs-switch" id="set-obsidian-auto" />
             </label>
-            <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
-              <input type="checkbox" id="set-obsidian-generate" checked class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <label class="vs-row settings-toggle cursor-pointer text-xs text-apple-label">
               <span><span data-i18n="obsGenerateToggle">Создавать обзор и задачи для заметки, если их ещё нет</span>
                 <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="obsGenerateHint">Через локальную модель Ollama; без неё заметка сохранится с тем, что уже есть.</span></span>
+              <input type="checkbox" role="switch" class="vs-switch" id="set-obsidian-generate" checked />
             </label>
           </div>
           <div>
@@ -883,10 +883,10 @@
               <p class="text-[11px] text-apple-secondary leading-snug mt-0.5" data-i18n="privacyDesc">Сколько хранится звук записей и что отправлялось облачной модели.</p>
             </div>
           </div>
-          <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
-            <input type="checkbox" id="set-delete-media-after" class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <label class="vs-row settings-toggle cursor-pointer text-xs text-apple-label">
             <span><span data-i18n="deleteMediaAfter">Удалять звук после расшифровки</span>
               <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="deleteMediaAfterHint">Остаются расшифровка, анализ и заметки. Файлы, добавленные по пути на диске, не трогаются.</span></span>
+            <input type="checkbox" role="switch" class="vs-switch" id="set-delete-media-after" />
           </label>
           <div class="flex items-center gap-2 text-xs text-apple-label">
             <span id="lbl-media-retention" data-i18n="retentionLabel">Хранить звук записей</span>
@@ -940,19 +940,19 @@
               <button id="update-check-btn" data-click="checkForUpdates" data-click-args='[true]' class="ui-btn ui-btn-subtle h-8 px-3 text-[11px]" data-i18n="updateCheckBtn">Проверить сейчас</button>
             </div>
           </div>
-          <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label">
-            <input type="checkbox" id="set-update-check" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <label class="vs-row cursor-pointer text-xs text-apple-label">
             <span data-i18n="updateAutoToggle">Проверять обновления при запуске</span>
+            <input type="checkbox" role="switch" class="vs-switch" id="set-update-check" checked />
           </label>
-          <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label" data-i18n-title="tipUpdateAutoInstall"
+          <label class="vs-row cursor-pointer text-xs text-apple-label" data-i18n-title="tipUpdateAutoInstall"
             title="Новая версия скачивается в фоне и устанавливается, когда вы закрываете программу. Данные, модели и настройки не затрагиваются">
-            <input type="checkbox" id="set-update-auto" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
             <span data-i18n="updateAutoInstall">Скачивать и устанавливать обновления автоматически</span>
+            <input type="checkbox" role="switch" class="vs-switch" id="set-update-auto" checked />
           </label>
-          <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label" data-i18n-title="tipUpdateBeta"
+          <label class="vs-row cursor-pointer text-xs text-apple-label" data-i18n-title="tipUpdateBeta"
             title="Предлагать и бета-версии: в них новое приходит раньше, но оно ещё проверяется. Когда выходит обычная версия, она тоже предлагается">
-            <input type="checkbox" id="set-update-beta" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
             <span data-i18n="updateBetaToggle">Получать бета-версии</span>
+            <input type="checkbox" role="switch" class="vs-switch" id="set-update-beta" />
           </label>
           <p class="text-[11px] text-apple-tertiary leading-snug" data-i18n="updateHint">Спрашивается только номер последней версии на GitHub. Ваши записи, модели и настройки при обновлении не затрагиваются.</p>
         </div>
@@ -1059,15 +1059,15 @@
 
           <!-- Noise: kept or removed, for the original track and the dub -->
           <div class="space-y-2 pt-1">
-            <label class="flex items-start gap-2 cursor-pointer text-xs text-apple-label">
-              <input type="checkbox" id="set-dub-denoise" data-change="syncDubNoiseControls" data-change-args='["set"]' class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <label class="vs-row cursor-pointer text-xs text-apple-label">
               <span><span data-i18n="dubDenoiseLabel">Шумоподавление</span>
                 <span class="block text-[10.5px] text-apple-tertiary leading-snug mt-0.5" data-i18n="dubDenoiseHint">Шумоподавление FFmpeg для фона дубляжа и для исходной дорожки в файле дубляжа. Убирает ровный шум (гул, шипение, вентилятор), но не стук и голоса вдали; музыка и атмосфера становятся немного глуше. Голос при этом чистый на обеих дорожках.</span></span>
+              <input type="checkbox" role="switch" class="vs-switch" id="set-dub-denoise" data-change="syncDubNoiseControls" data-change-args='["set"]' />
             </label>
-            <label class="flex items-start gap-2 cursor-pointer text-xs text-apple-label">
-              <input type="checkbox" id="set-dub-roomtone" checked class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <label class="vs-row cursor-pointer text-xs text-apple-label">
               <span><span data-i18n="dubRoomToneLabel">Добавлять к синтезированному голосу шум помещения</span>
                 <span class="block text-[10.5px] text-apple-tertiary leading-snug mt-0.5" data-i18n="dubRoomToneHint">Фон остаётся как в оригинале. К синтезированному голосу добавляется шум помещения из пауз исходной записи, чтобы голос звучал естественно, а не наложенным поверх. Голос станет немного менее чистым. При включённом шумоподавлении не применяется.</span></span>
+              <input type="checkbox" role="switch" class="vs-switch" id="set-dub-roomtone" checked />
             </label>
           </div>
         </div>

@@ -55,7 +55,7 @@
                     </div>
                     <span id="hm-overnight" class="hm-overnight hidden"></span>
                     <div id="hm-presets" class="flex flex-wrap gap-1.5"></div>
-                    <label class="hm-check"><input id="hm-fit" type="checkbox" data-change="hmSetFit" data-change-args='[{"$": "checked"}]' /><span data-i18n="hmFit">Расширять, если встреча выходит за эти часы</span></label>
+                    <label class="hm-check"><input id="hm-fit" type="checkbox" role="switch" class="vs-switch" data-change="hmSetFit" data-change-args='[{"$": "checked"}]' /><span data-i18n="hmFit">Расширять, если встреча выходит за эти часы</span></label>
                   </div>
                 </div>
               </div>
@@ -65,10 +65,10 @@
               </div>
               <div id="hm-cal-on">
                 <div id="hm-auto" class="hm-auto">
-                  <button id="hm-auto-sw" role="switch" aria-checked="false" data-click="hmToggleAutoAll" class="hm-switch" data-i18n-title="hmAutoAll" title="Автозапись всех встреч"><span></span></button>
+                  <button id="hm-auto-sw" role="switch" aria-checked="false" data-click="hmToggleAutoAll" class="vs-track" data-i18n-title="hmAutoAll" title="Автозапись всех встреч"></button>
                   <span class="flex-1 min-w-0 flex flex-col gap-0.5"><b class="text-[12.5px] font-semibold text-white" data-i18n="hmAutoAll">Автозапись всех встреч</b><span id="hm-auto-sub" class="hm-note"></span></span>
                   <label id="hm-ask-wrap" class="hm-check hidden" data-i18n-title="hmAskTip" title="Встречи без ссылки на звонок: перед началом программа спросит, записывать ли с микрофона">
-                    <input id="hm-ask-inperson" type="checkbox" data-change="hmSetAskInPerson" data-change-args='[{"$": "checked"}]' /><span data-i18n="hmAskInPerson">очные — спросить</span></label>
+                    <input id="hm-ask-inperson" type="checkbox" role="switch" class="vs-switch" data-change="hmSetAskInPerson" data-change-args='[{"$": "checked"}]' /><span data-i18n="hmAskInPerson">очные — спросить</span></label>
                 </div>
                 <div id="hm-timeline" class="hm-timeline"></div>
               </div>

@@ -151,12 +151,12 @@
         <label class="st-toggle">
           <span class="min-w-0 flex-1"><span class="block text-[13px] text-white" data-i18n="rdSasAutoAnalysis">✦ Анализ после распознавания</span>
             <span class="block text-[11.5px] text-apple-tertiary leading-snug" data-i18n="rdSasAutoAnalysisHint">Итоги, решения и задачи появятся сами</span></span>
-          <input type="checkbox" id="st-auto-summary" data-change="studioSetAuto" data-change-args='["auto_summary", {"$": "checked"}]' class="st-switch" />
+          <input type="checkbox" id="st-auto-summary" data-change="studioSetAuto" data-change-args='["auto_summary", {"$": "checked"}]' role="switch" class="vs-switch" />
         </label>
         <label class="st-toggle">
           <span class="min-w-0 flex-1"><span class="block text-[13px] text-white" data-i18n="rdSasAutoCall">Начинать, когда начинается звонок</span>
             <span class="block text-[11.5px] text-apple-tertiary leading-snug" data-i18n="rdSasAutoCallHint">Запись включится сама и остановится в конце звонка</span></span>
-          <input type="checkbox" id="st-call-record" data-change="studioSetAuto" data-change-args='["call_auto_record", {"$": "checked"}]' class="st-switch" />
+          <input type="checkbox" id="st-call-record" data-change="studioSetAuto" data-change-args='["call_auto_record", {"$": "checked"}]' role="switch" class="vs-switch" />
         </label>
       </section>
 
@@ -231,12 +231,12 @@
       <div class="px-5 py-2.5 flex items-center gap-4 flex-wrap border-b apple-border shrink-0 bg-apple-bg/95">
         <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label" data-i18n-title="tipLiveCaptions"
           title="Показывать текст речи во время записи. После остановки запись, как обычно, расшифровывается полностью и точнее">
-          <input type="checkbox" id="live-captions-toggle" data-change="studioToggleCaptions" data-change-args='[{"$": "checked"}]' class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <input type="checkbox" id="live-captions-toggle" data-change="studioToggleCaptions" data-change-args='[{"$": "checked"}]' role="switch" class="vs-switch vs-sm" />
           <span data-i18n="liveCaptionsToggle">Субтитры в реальном времени</span>
         </label>
         <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-secondary" data-i18n-title="tipLiveDraft"
           title="Показывать фразу по мере произнесения, не дожидаясь паузы. Черновик может поправляться, пока фраза не закончится">
-          <input type="checkbox" id="live-draft-toggle" data-change="studioConfigure" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <input type="checkbox" id="live-draft-toggle" data-change="studioConfigure" role="switch" class="vs-switch vs-sm" />
           <span data-i18n="liveDraftToggle">Текст по ходу речи</span>
         </label>
         <label class="flex items-center gap-1.5 text-xs text-apple-secondary">
@@ -264,7 +264,7 @@
           </div>
           <label class="flex items-center gap-1.5 cursor-pointer text-xs text-apple-label" data-i18n-title="tipLiveDraftTr"
             title="Переводить фразу, пока её произносят, не дожидаясь паузы. Дополнительно нагружает модель перевода">
-            <input type="checkbox" id="live-draft-tr-toggle" data-change="studioConfigure" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <input type="checkbox" id="live-draft-tr-toggle" data-change="studioConfigure" role="switch" class="vs-switch vs-sm" />
             <span data-i18n="liveDraftTrToggle">Перевод по ходу речи</span>
           </label>
         </div>

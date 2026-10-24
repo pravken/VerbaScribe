@@ -1779,7 +1779,7 @@ const I18N = {
 
     // --- redesign: studio-assistant-settings (E: studio, assistant, settings) ---
     rdSasAskImport: 'Спрашивать параметры при импорте',
-    rdSasAskImportHint: 'Перед распознаванием новых файлов откроется окно с моделью и обработкой звука. Без галочки импорт начинается сразу с этими настройками.',
+    rdSasAskImportHint: 'Перед распознаванием новых файлов откроется окно с моделью и обработкой звука. Если выключено, импорт начинается сразу с этими настройками.',
     rdSasOnlyOnnx: '· для GigaAM и Parakeet',
     rdSasOnlyWhisper: '· только Whisper',
     rdSasNewChat: 'Новый разговор',
@@ -2028,7 +2028,7 @@ const I18N = {
     dictTrCloud: 'Allow the cloud model to translate dictation',
     dictSave: 'Keep dictations in the library (folder "Dictations")',
     tipDictSave: 'The sound, text and translation of every dictation are kept as a recording in the library folder "Dictations". That folder is for local analysis only: its recordings are never sent to a cloud model',
-    dictTrHint: 'Speak any language and the translation is typed. The local Ollama model translates; the cloud model only when ticked above and the cloud is on in Analysis. If the translation fails, the original text is typed.',
+    dictTrHint: 'Speak any language and the translation is typed. The local Ollama model translates; the cloud model only when switched on above and the cloud is on in Analysis. If the translation fails, the original text is typed.',
     a11yIdleUnload: 'Free the models from memory after',
     a11yDictationLang: 'Dictation language',
     a11yBenchMeeting: 'Recording to compare on',
@@ -3748,7 +3748,7 @@ const I18N = {
 
     // --- redesign: studio-assistant-settings (E: studio, assistant, settings) ---
     rdSasAskImport: 'Ask the options on import',
-    rdSasAskImportHint: 'Before new files are recognized, a window with the model and the sound processing opens. Unticked, an import starts at once with these settings.',
+    rdSasAskImportHint: 'Before new files are recognized, a window with the model and the sound processing opens. When off, an import starts at once with these settings.',
     rdSasOnlyOnnx: '· for GigaAM and Parakeet',
     rdSasOnlyWhisper: '· Whisper only',
     rdSasNewChat: 'New conversation',

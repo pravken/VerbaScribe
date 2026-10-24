@@ -704,7 +704,7 @@ function rpItem(label, fn, args, opts = {}) {
 function rpSwitch(label, hint, on, fn) {
   return `<button class="rp-switch-row" role="switch" aria-checked="${on}" data-click="${fn}">
     <span class="rp-switch-text"><span class="rp-switch-label">${escapeHtml(label)}</span><span class="rp-switch-hint">${escapeHtml(hint)}</span></span>
-    <span class="rp-switch" aria-hidden="true"></span></button>`;
+    <span class="vs-track" aria-hidden="true"></span></button>`;
 }
 
 // «Звук»: what is done to the sound while listening; the file stays as it is

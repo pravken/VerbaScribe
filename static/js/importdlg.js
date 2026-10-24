@@ -246,8 +246,8 @@ function renderImport() {
     const on = !off && !!imp.proc[key];
     const tag = off ? `<span class="imp-tag">· ${escapeHtml(t(only === 'whisper' ? 'impOnlyWhisper' : 'impNotWhisper'))}</span>` : '';
     return `<label class="imp-opt${on ? ' imp-opt-on' : ''}${off ? ' imp-opt-off' : ''}">
-        <input type="checkbox" ${on ? 'checked' : ''} ${off ? 'disabled' : ''} ${pageCall('change', 'impToggle', [key, { $: 'checked' }])} />
-        <span class="min-w-0 flex flex-col gap-0.5"><span class="imp-opt-label">${escapeHtml(t(label))} ${tag}</span><span class="imp-opt-hint">${escapeHtml(t(hint))}</span></span>
+        <span class="min-w-0 flex-1 flex flex-col gap-0.5"><span class="imp-opt-label">${escapeHtml(t(label))} ${tag}</span><span class="imp-opt-hint">${escapeHtml(t(hint))}</span></span>
+        <input type="checkbox" role="switch" class="vs-switch" ${on ? 'checked' : ''} ${off ? 'disabled' : ''} ${pageCall('change', 'impToggle', [key, { $: 'checked' }])} />
       </label>`;
   };
   document.getElementById('imp-sound').innerHTML = IMP_SOUND.map(card).join('');
