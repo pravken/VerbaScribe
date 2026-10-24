@@ -931,7 +931,6 @@ function openNewTask() {
   const sel = document.getElementById('tk-n-rec');
   const recs = (state.meetings || []).filter(m => m.status === 'completed').slice(0, 40);
   sel.innerHTML = `<option value="">${escapeHtml(t('tkNoRecordOpt'))}</option>` + recs.map(m => `<option value="${m.id}">${escapeHtml(m.title)}</option>`).join('');
-  if (state.activeMeeting && recs.some(m => m.id === state.activeMeeting.id)) sel.value = '';
   renderNewTask();
   document.getElementById('tk-new').classList.remove('hidden');
   setTimeout(() => document.getElementById('tk-n-text').focus(), 30);
@@ -1020,8 +1019,10 @@ function renderNewTaskFoot() {
 }
 
 function tkParseAt(text) {
-  const p = (text || '').trim().split(':').map(Number);
-  if (!p.length || p.some(n => Number.isNaN(n))) return null;
+  const raw = (text || '').trim();
+  if (!raw) return null;  // no moment given: the task is on the recording, not on a place in it
+  const p = raw.split(':').map(Number);
+  if (p.some(n => Number.isNaN(n))) return null;
   return p.reduce((a, v) => a * 60 + v, 0);
 }
 
