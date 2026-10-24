@@ -355,8 +355,8 @@ class MediaCutTest(unittest.TestCase):
     def test_speech_intervals_shorten_pauses(self):
         from app.media_cut import PAD_SEC, speech_intervals
 
-        w = lambda a, b: {"word": " x", "start": a, "end": b}
-        segs = [{"text": "a b", "words": [w(1.0, 1.4), w(1.6, 2.0)]}, {"text": "c", "words": [w(10.0, 10.5)]}]
+        w = lambda t, a, b: {"word": " " + t, "start": a, "end": b}
+        segs = [{"text": "раз два", "words": [w("раз", 1.0, 1.4), w("два", 1.6, 2.0)]}, {"text": "три", "words": [w("три", 10.0, 10.5)]}]
         self.assertEqual(speech_intervals(segs, 20.0), [(1.0 - PAD_SEC, 2.0 + PAD_SEC), (10.0 - PAD_SEC, 10.5 + PAD_SEC)])
 
     def test_parse_moments(self):
