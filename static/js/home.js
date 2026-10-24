@@ -396,11 +396,13 @@ async function hmSetMyName() {
 // --- Recording the meetings of the calendar by themselves (the page is open: it records) ---
 // Every 20 s: a meeting that began and is to be recorded starts the recording (once; a recording the user
 // stopped is not started again); the recording it started stops a minute after the meeting ends. An
-// in-person meeting to be asked about shows the question a minute before it.
+// in-person meeting to be asked about shows the question a minute before it. The window hidden in the
+// tray or minimized keeps the page running (as the calls recorded by themselves do, studio.js), so the
+// tick runs then too; the browser may slow it to once a minute, which the 5-minute start window allows.
+// The question brings the window back (window.pywebview.api.show_window).
 let hmAutoRec = null;  // {key, end}: the recording started for a meeting
 
 async function hmAutoTick() {
-  if (document.hidden && !hmAutoRec) return;
   await hmLoadEvents(false);
   const now = Date.now();
   if (hmAutoRec && !isRecording() && !_quickRecBusy) hmAutoRec = null;  // the user stopped it: it stays stopped
@@ -436,6 +438,8 @@ function hmShowAsk(e) {
   document.getElementById('hm-ask-title').textContent = t('hmAskTitle').replace('{title}', () => e.title || t('hmUntitled'));
   document.getElementById('hm-ask-text').textContent = t('hmAskText').replace('{where}', () => e.location || t('hmInPerson'));
   document.getElementById('hm-ask').classList.remove('hidden');
+  const api = window.pywebview && window.pywebview.api;
+  if (document.hidden && api && api.show_window) api.show_window().catch(() => {});
 }
 
 async function hmAskAnswer(yes) {

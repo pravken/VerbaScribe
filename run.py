@@ -291,6 +291,19 @@ class WindowApi:
             self._fullscreen = not self._fullscreen
         return self._fullscreen
 
+    def show_window(self) -> None:
+        """Brings the window back from the tray or the taskbar, for a question the page must ask (the home
+        page's «record this in-person meeting?»)."""
+        import webview
+
+        if webview.windows:
+            try:
+                webview.windows[0].show()
+                webview.windows[0].restore()
+            except Exception:
+                pass
+        activate_existing_window(timeout=2)
+
 
 _instance_mutex = None
 
