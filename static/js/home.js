@@ -348,7 +348,8 @@ function hmMyNames() {
 
 function renderHomeTasks() {
   const names = hmMyNames();
-  const mine = names.length ? home.tasks.filter(c => names.some(n => String(c.who || '').toLowerCase().includes(n))) : home.tasks;
+  // the whole name, as on the Tasks page (tkIsMe): «Ан» is not «Анна»
+  const mine = names.length ? home.tasks.filter(c => names.includes(String(c.who || '').trim().toLowerCase())) : home.tasks;
   document.getElementById('hm-tasks-title').textContent = t(names.length ? 'hmMyTasks' : 'hmOpenTasks');
   document.getElementById('hm-my-name').classList.toggle('hidden', !!names.length);
   const count = document.getElementById('hm-tasks-count');
