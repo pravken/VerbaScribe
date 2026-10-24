@@ -326,8 +326,6 @@ document.addEventListener('click', (e) => {
     pop.classList.add('hidden');
     document.getElementById('hm-day-btn').setAttribute('aria-expanded', 'false');
   }
-  const hw = document.getElementById('sb-hw-pop');
-  if (hw && !hw.classList.contains('hidden') && !e.target.closest('.sb-load')) hw.classList.add('hidden');
 });
 
 // --- In work: the queue of the library ---
@@ -525,12 +523,6 @@ function openLastRecording() {
     String(y.recorded_at || y.created_at || '').localeCompare(String(x.recorded_at || x.created_at || '')))[0];
   if (last) openMeeting(last.id);
   else switchAppView('home');
-}
-
-// --- The status bar: the details of the load ---
-function sbToggleHw(e) {
-  e.stopPropagation();
-  document.getElementById('sb-hw-pop').classList.toggle('hidden');
 }
 
 registerView('home', { show: renderHome, refresh: (changed) => { if (changed) home.recentAt = 0; renderHome(); } });

@@ -249,14 +249,10 @@ function leaveSettingsPage() {
   stopSettingsAudioTest();
 }
 
-// --- The status bar: the load of the computer and the queue ---
+// --- The status bar: the queue (the load of the computer is in the sidebar) ---
 function renderStatusbar() {
   const text = (id) => (document.getElementById(id)?.textContent || '').trim();
   const put = (id, v) => { const el = document.getElementById(id); if (el && el.textContent !== v) el.textContent = v || '—'; };
-  put('sb-cpu', text('cpu-text'));
-  put('sb-ram', text('ram-text'));
-  const gpu = text('vram-text');
-  put('sb-gpu', gpu ? `${gpu} · ${text('hw-text')}` : text('hw-text'));
   const items = state.queue || [];
   const q = document.getElementById('sb-queue');
   if (!q) return;

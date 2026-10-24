@@ -1458,8 +1458,6 @@ const I18N = {
     hmDictHeard: 'Распознано',
     hmDictDone: 'Готово',
     hmDictCopy: 'Копировать',
-    sbHwTip: 'Процессор, память, видеокарта и модели в памяти',
-    sbHwTitle: 'Компьютер и модели',
     // the import window (importdlg.js)
     impTitle: 'Импорт',
     impNothing: 'ничего не выбрано',
@@ -3493,8 +3491,6 @@ const I18N = {
     hmDictHeard: 'Recognized',
     hmDictDone: 'Done',
     hmDictCopy: 'Copy',
-    sbHwTip: 'Processor, memory, video card and the models in memory',
-    sbHwTitle: 'Computer and models',
     // the import window (importdlg.js)
     impTitle: 'Import',
     impNothing: 'nothing chosen',

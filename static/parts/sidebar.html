@@ -38,6 +38,43 @@
 
     </div>
 
+    <div class="px-3.5 py-2.5 border-b apple-border shrink-0">
+      <!-- Hardware: the processor, memory and video card, then the models in a frame of their own,
+           split by where they run (renderVram in static/js/settings.js) -->
+      <div id="hw-block" class="hw-block">
+        <div id="sys-row" class="hidden space-y-1">
+          <div class="hw-row" data-i18n-title="tipCpuUsage" title="Загрузка процессора всеми программами" id="cpu-cell">
+            <span class="hw-label"><svg class="hw-icon" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 002.25-2.25V6.75a2.25 2.25 0 00-2.25-2.25H6.75A2.25 2.25 0 004.5 6.75v10.5a2.25 2.25 0 002.25 2.25zm.75-12h9v9h-9v-9z"/></svg>CPU</span>
+            <span id="cpu-name" class="hw-name truncate"></span>
+            <span class="hw-bar"><span id="cpu-bar" class="bg-apple-green/70" style="width: 0%"></span></span>
+            <span id="cpu-text" class="hw-value"></span>
+          </div>
+          <div class="hw-row" id="ram-cell">
+            <span class="hw-label"><svg class="hw-icon" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7.5h18v8.25H3V7.5zM6.75 10.5v2.25m3.75-2.25v2.25m3.75-2.25v2.25m3.75-2.25v2.25M6 15.75v2.25m4-2.25v2.25m4-2.25v2.25m4-2.25v2.25"/></svg>RAM</span>
+            <span id="ram-name" class="hw-name truncate"></span>
+            <span class="hw-bar"><span id="ram-bar" class="bg-apple-amber/70" style="width: 0%"></span></span>
+            <span id="ram-text" class="hw-value"></span>
+          </div>
+        </div>
+        <button data-click="openModal" data-click-args='["settings", "recognition"]' class="hw-row hw-row-btn" data-i18n-title="tipHwStatus" title="Открыть настройки оборудования и моделей ИИ">
+          <span class="hw-label"><svg class="hw-icon" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 6.75h19.5v10.5H2.25V6.75zM4.5 17.25v2.25M9 13.875a1.875 1.875 0 100-3.75 1.875 1.875 0 000 3.75zM14.25 9.75h4.5m-4.5 2.25h4.5m-4.5 2.25h4.5"/></svg>GPU</span>
+          <span class="hw-name"><span id="hw-dot" class="w-1.5 h-1.5 rounded-full bg-apple-green shrink-0"></span><span id="hw-text" class="truncate">…</span></span>
+          <span class="hw-bar"><span id="vram-bar" class="bg-apple-blue/70" style="width: 0%"></span></span>
+          <span id="vram-text" class="hw-value"></span>
+        </button>
+        <div id="vram-row" class="hidden hw-models">
+          <div id="hw-models-gpu">
+            <div class="hw-models-head"><span data-i18n="hwModelsGpu">Модели на видеокарте</span><span id="hw-models-gpu-count" class="hw-models-count"></span></div>
+            <div id="vram-chips" class="flex flex-wrap gap-1"></div>
+          </div>
+          <div id="hw-models-cpu">
+            <div class="hw-models-head"><span data-i18n="hwModelsCpu">Модели на процессоре</span><span id="hw-models-cpu-count" class="hw-models-count"></span></div>
+            <div id="vram-chips-cpu" class="flex flex-wrap gap-1"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ===== Sidebar: library ===== -->
     <div id="side-library" class="flex-1 min-h-0 flex flex-col">
       <div class="px-3.5 pt-2.5">
