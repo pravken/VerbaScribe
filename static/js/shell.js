@@ -93,7 +93,8 @@ function renderTopbar() {
     const name = document.getElementById('tb-recname');
     if (name.textContent !== m.title) name.textContent = m.title;
     name.title = t('tbOpenRecord').replace('{title}', () => m.title);
-    const ready = Object.values(m.summaries || {}).filter(v => typeof v === 'string' && v.trim()).length;
+    // the sections made (summaries["error"] is the last failure, not a section)
+    const ready = Object.entries(m.summaries || {}).filter(([k, v]) => k !== 'error' && typeof v === 'string' && v.trim()).length;
     badge('nav-summary-n', ready);
     badge('nav-speakers-n', Object.keys(m.speakers || {}).length);
   }
