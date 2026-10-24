@@ -615,6 +615,8 @@ class TrayController:
             *self._quick_record_item(st),
             *self._record_items(st),
             ("Импорт файлов…", "import", 0),
+            *self._dictation_item(st),
+            ("Открыть последнюю запись", "last", 0),
             ("Вопрос по медиатеке…", "ask", 0),
             (None, None, 0),
             ("Тихий режим (без уведомлений)", "quiet", 0x8 if self._quiet() else 0),  # MF_CHECKED
@@ -630,6 +632,15 @@ class TrayController:
             return []
         key = getattr(self, "_hotkey_spec", "")
         return [("● Начать запись" + (f"\t{key}" if key else ""), "hotkey_record", 0)]
+
+    def _dictation_item(self, st):
+        """Dictation into the program with the focus, as by its hotkey (app/dictation.py)."""
+        from app import dictation
+
+        key = getattr(self, "_dictation_spec", "")
+        if dictation.status().get("active"):
+            return [("■ Закончить диктовку" + (f"\t{key}" if key else ""), "hotkey_dictation", 0)]
+        return [("Диктовка" + (f"\t{key}" if key else ""), "hotkey_dictation", 0)]
 
     def _record_items(self, st):
         """One entry per recording preset (app.js BUILTIN_PRESETS + the user's own)."""
@@ -684,6 +695,9 @@ class TrayController:
             return
         if cmd == "open":
             self.show_window()
+        elif cmd == "last":
+            self.show_window()
+            self.window.evaluate_js("window.openLastRecording && window.openLastRecording()")
         elif cmd in ("record", "import", "ask", "settings"):
             self.show_window()
             self.window.evaluate_js(f"window.trayCommand && window.trayCommand('{cmd}')")
