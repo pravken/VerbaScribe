@@ -14,11 +14,20 @@ function registerView(name, hooks) {
   VIEW_HOOKS[name] = hooks || {};
 }
 
-// The list of recordings was loaded again (loadMeetingsList): the bar and the view on screen follow
+// What the views refresh for: a recording added, removed, renamed, finished or analysed — not the
+// progress of one being processed, which the list is polled for every 2 s
+function librarySignature() {
+  return (state.meetings || []).map(m => `${m.id}:${m.status}:${m.title || ''}:${m.completed_at || ''}:${m.has_summary ? 1 : 0}`).join('|');
+}
+
+// The list of recordings was loaded again (loadMeetingsList): the bar and the view on screen follow;
+// refresh(changed) says whether anything but the progress changed
 function onLibraryChanged() {
   renderTopbar();
   refreshTasksCount();
-  VIEW_HOOKS[state.appView]?.refresh?.();
+  const sig = librarySignature(), changed = sig !== state.librarySig;
+  state.librarySig = sig;
+  VIEW_HOOKS[state.appView]?.refresh?.(changed);
 }
 
 function switchAppView(view) {

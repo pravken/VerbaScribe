@@ -520,7 +520,7 @@ function sbToggleHw(e) {
   document.getElementById('sb-hw-pop').classList.toggle('hidden');
 }
 
-registerView('home', { show: renderHome, refresh: () => { home.recentAt = 0; renderHome(); } });
+registerView('home', { show: renderHome, refresh: (changed) => { if (changed) home.recentAt = 0; renderHome(); } });
 
 document.addEventListener('DOMContentLoaded', () => {
   setInterval(hmAutoTick, 20000);

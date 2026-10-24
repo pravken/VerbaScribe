@@ -1052,4 +1052,4 @@ async function refreshTasksPage() {
   await renderTasksPage();
 }
 
-registerView('tasks', { show: renderTasksPage, refresh: refreshTasksPage, hide: () => { tkClosePop(); closeNewTask(); } });
+registerView('tasks', { show: renderTasksPage, refresh: (changed) => { if (changed) refreshTasksPage(); }, hide: () => { tkClosePop(); closeNewTask(); } });
