@@ -131,6 +131,17 @@ class StaticUiTest(unittest.TestCase):
         head = (ROOT / "static" / "vendor" / "marked.min.js").read_text(encoding="utf-8")[:200]
         self.assertIn(f"marked v{deps['marked']} ", head)
 
+    def test_toasts_call_existing_functions(self):
+        """showToastt('…') (a typo of showToast(t('…'))) threw after the action it was to confirm."""
+        defined = set()
+        calls = {}
+        for f in sorted((ROOT / "static" / "js").glob("*.js")):
+            text = f.read_text(encoding="utf-8")
+            defined.update(re.findall(r"^(?:async )?function ([A-Za-z0-9_]+)\(", text, flags=re.M))
+            for m in re.finditer(r"\b(showToast[A-Za-z0-9_]*)\(", text):
+                calls.setdefault(m.group(1), f.name)
+        self.assertEqual(sorted(set(calls) - defined), [])
+
     def test_no_inline_handlers(self):
         """The page's CSP runs no inline script: events are data-<event> (see PAGE_EVENTS in core.js)."""
         sources = {f.name: f.read_text(encoding="utf-8") for f in (ROOT / "static" / "js").glob("*.js")}

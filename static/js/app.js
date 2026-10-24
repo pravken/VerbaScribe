@@ -1072,7 +1072,7 @@ function copySummaryText() {
   const text = anSectionText(state.activeSummaryTab).replaceAll('[?]', `(${t('unverifiedBadge')})`).trim();
   if (!text) return;
   navigator.clipboard.writeText(text);
-  showToastt('uiCopied');
+  showToast(t('uiCopied'));
 }
 
 // --- Export ---

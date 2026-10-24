@@ -457,7 +457,7 @@ async function submitReconfigure() {
   });
   await loadMeetingsList();
   await selectMeeting(id, false);
-  showToastt('uiReProcessingStarted');
+  showToast(t('uiReProcessingStarted'));
 }
 
 async function ctxCancelProcessing() {
@@ -482,7 +482,7 @@ async function restoreSegments(id) {
     renderTranscript();
     renderSpeakersPanel();
   }
-  showToastt('uiOriginalTextRestored');
+  showToast(t('uiOriginalTextRestored'));
 }
 
 async function ctxRevealInExplorer() {
@@ -571,5 +571,5 @@ async function ctxDeleteRecording() {
     document.getElementById('workspace-empty').classList.remove('hidden');
   }
   await loadMeetingsList();
-  showToastt('uiRecordingDeleted');
+  showToast(t('uiRecordingDeleted'));
 }

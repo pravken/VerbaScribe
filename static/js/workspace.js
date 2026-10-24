@@ -1159,7 +1159,7 @@ async function cancelProcessing(id) {
     showToast(data.detail || 'Error');
     return;
   }
-  showToastt('uiCancelling');
+  showToast(t('uiCancelling'));
   await loadMeetingsList();
 }
 
@@ -1657,7 +1657,7 @@ async function mergeSegmentWithPrevious(segId) {
     renderSpeakerPillsBar();
     renderSpeakersPanel();
     renderTranscript();
-    showToastt('uiSegmentsMerged');
+    showToast(t('uiSegmentsMerged'));
   }
 }
 
