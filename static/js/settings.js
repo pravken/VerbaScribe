@@ -61,6 +61,8 @@ function hwDeviceLabel(hw) {
 }
 
 async function loadSystemInfo() {
+  // a change of the last 450 ms is saved before the form is filled again from the server
+  if (_settingsSaveTimer) { clearTimeout(_settingsSaveTimer); _settingsSaveTimer = null; await saveAllSettings(); }
   try {
     const res = await fetch('/api/system');
     const data = await readJson(res);
@@ -151,7 +153,7 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     loadOrphans();
     loadOnnxGpu();
     document.getElementById('calendar-status').textContent = '';
-    fillCallSettings(s);
+    await fillCallSettings(s);  // before the baseline: its lists are filled after a request
     fillWorkdaySettings(s);
     fillSettingsVersion();
     loadHotkeyStatus();

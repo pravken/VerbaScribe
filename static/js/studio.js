@@ -39,8 +39,12 @@ async function populateAudioInputDevices() {
       return `<option value="${escapeHtml(m.deviceId)}" ${sel}>${escapeHtml(label)}</option>`;
     }).join('');
 
-    if (settingsSelect) settingsSelect.innerHTML = optionsHtml || `<option value="">Default Microphone</option>`;
-    if (modalSelect) modalSelect.innerHTML = optionsHtml || `<option value="">Default Microphone</option>`;
+    const none = `<option value="">${escapeHtml(t('uiDefaultSystemMicrophone'))}</option>`;
+    if (settingsSelect) settingsSelect.innerHTML = optionsHtml || none;
+    if (modalSelect) modalSelect.innerHTML = optionsHtml || none;
+    // The saved microphone not plugged in: the list shows the first one, which is not a change to save
+    // (the settings page sends only what changed, settings.js saveAllSettings)
+    if (settingsSelect && _settingsBaseline) _settingsBaseline.record_mic_device = settingsSelect.value;
   } catch (e) {
     const fallback = `<option value="">${t('uiDefaultSystemMicrophone')}</option>`;
     if (settingsSelect) settingsSelect.innerHTML = fallback;
