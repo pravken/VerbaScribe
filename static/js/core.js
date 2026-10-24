@@ -374,18 +374,23 @@ function formatTime(sec) {
 
 // --- Modals & Menus ---
 // Settings are split into tabs; the last one is remembered
-const SETTINGS_TABS = ['general', 'record', 'recognition', 'analysis', 'export', 'integrations', 'dub', 'bench'];
-
+const SETTINGS_TABS = ['general', 'ui', 'record', 'recognition', 'models', 'analysis', 'calendar', 'hotkeys', 'dictionary',
+  'export', 'privacy', 'updates', 'dub', 'bench', 'about'];
+const SETTINGS_TAB_ALIASES = { integrations: 'export', interface: 'ui', ai: 'analysis', dict: 'dictionary', recog: 'recognition' };
 function selectSettingsTab(name) {
+  name = SETTINGS_TAB_ALIASES[name] || name;
   if (!SETTINGS_TABS.includes(name)) name = 'general';
   document.querySelectorAll('#modal-settings [data-stab]').forEach(el => el.classList.toggle('hidden', el.dataset.stab !== name));
   SETTINGS_TABS.forEach(k => {
     const btn = document.getElementById(`stab-${k}`);
-    if (btn) btn.className = `apple-segment-btn ${k === name ? 'apple-segment-active' : 'text-apple-secondary hover:text-white'}`;
+    if (!btn) return;
+    btn.classList.toggle('is-active', k === name);
+    if (k === name) btn.setAttribute('aria-current', 'page'); else btn.removeAttribute('aria-current');
   });
   document.getElementById('modal-settings').dataset.tab = name;
   try { localStorage.setItem('verbascribe_settings_tab', name); } catch (e) {}
   if (name === 'bench' && typeof loadBench === 'function') loadBench();
+  if (typeof onSettingsTabShown === 'function') onSettingsTabShown(name);  // static/js/settings.js
 }
 
 // Keyboard: an opened window takes the focus, Tab stays inside the top one, and the focus goes back

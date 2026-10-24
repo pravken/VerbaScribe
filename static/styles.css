@@ -763,3 +763,48 @@ body.sidebar-dragging { cursor: col-resize; user-select: none; }
 /* =========================================================================
    redesign: studio-assistant-settings (package E) — styles below this line
    ========================================================================= */
+
+/* --- The settings page: sections on the left, the section on the right (static/js/settings.js) --- */
+.sx-shell {
+  display: flex; min-height: 0; overflow: hidden; border-radius: 16px;
+  background: #15161A; border: 1px solid rgba(255, 255, 255, 0.08); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+}
+.settings-page > .sx-shell { max-width: 1180px; }
+.sx-nav {
+  width: 250px; flex-shrink: 0; display: flex; flex-direction: column; padding: 18px 12px 12px;
+  border-right: 1px solid rgba(255, 255, 255, 0.07); background: rgba(255, 255, 255, 0.02); min-height: 0;
+}
+.sx-search {
+  display: flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; margin: 0 2px 10px; border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(255, 255, 255, 0.04); color: #8E8E93;
+}
+.sx-search:focus-within { border-color: rgba(10, 132, 255, 0.7); }
+.sx-nav-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
+.sx-nav-btn {
+  display: flex; align-items: center; gap: 10px; width: 100%; height: 32px; padding: 0 10px; border-radius: 8px;
+  color: #C7C7CC; font-size: 13px; text-align: left; transition: background-color 0.12s ease, color 0.12s ease;
+}
+.sx-nav-btn:hover { background: rgba(255, 255, 255, 0.06); color: #F5F5F7; }
+.sx-nav-btn.is-active { background: rgba(255, 255, 255, 0.1); color: #FFFFFF; font-weight: 600; }
+.sx-nav-ico { width: 15px; height: 15px; flex-shrink: 0; color: #8E8E93; }
+.sx-nav-btn.is-active .sx-nav-ico { color: #8CC4FF; }
+.sx-nav-dot { width: 6px; height: 6px; border-radius: 3px; background: transparent; flex-shrink: 0; }
+.sx-nav-btn.sx-changed .sx-nav-dot { background: #0A84FF; }
+.sx-nav-btn.sx-dim { opacity: 0.35; }
+.sx-foot { padding: 12px 8px 0; margin-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.07); font-size: 11px; line-height: 1.45; color: #8E8E93; }
+.sx-foot.sx-saved { color: #7EE787; }
+.sx-foot.sx-failed { color: #FF8A80; }
+.sx-main { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; }
+.sx-inner { max-width: 760px; margin: 0 auto; padding: 12px 32px 24px; }
+.sx-reset-row { display: flex; justify-content: flex-end; min-height: 28px; position: sticky; top: 0; z-index: 5; padding-top: 4px; }
+.sx-section-head { padding: 0 0 6px; }
+.sx-section-title { margin: 0; font-size: 21px; font-weight: 700; color: #FFFFFF; }
+.sx-section-desc { margin: 4px 0 0; font-size: 12.5px; line-height: 1.45; color: #98989D; }
+.sx-searching .sx-section { margin-bottom: 26px; }
+.sx-searching .sx-section-title { font-size: 15px; }
+.sx-searching .sx-section-desc { display: none; }
+.sx-hit { box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.75); }
+.sx-time {
+  height: 28px; padding: 0 8px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.14); background: #141518;
+  color: #F5F5F7; color-scheme: dark; font-family: 'JetBrains Mono Variable', 'JetBrains Mono', monospace; font-size: 12.5px;
+}

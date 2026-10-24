@@ -23,7 +23,7 @@ class StaticUiTest(unittest.TestCase):
     def test_settings_tabs_are_balanced(self):
         """Each settings tab closes every <div> it opens (a lost tag shifts the next tab into it)."""
         for tab in re.finditer(r'<div data-stab="([a-z]+)"', HTML):
-            nxt = re.compile(r'<div data-stab="|<!-- Sticky Modal Footer -->').search(HTML, tab.end())
+            nxt = re.compile(r'<div data-stab="|<!-- Sticky Modal Footer -->|<!-- The end of the settings sections -->').search(HTML, tab.end())
             body = _no_comments(HTML[tab.start():nxt.start()])
             opened, closed = len(re.findall(r"<div\b", body)), len(re.findall(r"</div>", body))
             # the last tab is followed by the closing of the scroll area
