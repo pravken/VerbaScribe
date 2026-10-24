@@ -6,7 +6,7 @@ const DONE_STATUSES = ['completed', 'failed', 'cancelled', 'cleared'];
 // The page opened, so the locked page (app/main.py) may again try one fresh address next time
 try { sessionStorage.removeItem('vs_relocked'); } catch (e) { /* storage off */ }
 
-// --- Interface scale (Settings → Interface, ui_scale): CSS zoom on the page, 75 % by default ---
+// --- Interface scale (Settings → Interface, ui_scale): CSS zoom on the page, 100 % by default ---
 // The zoom is on <html>, so the page lays itself out in its own pixels: a point of the window
 // (event.clientX/Y, getBoundingClientRect) is divided by the zoom before it becomes style.left/top.
 const UI_SCALES = ['75', '90', '100', '115'];
@@ -15,7 +15,7 @@ function zpx(v) { return v / uiZoom(); }
 function viewW() { return window.innerWidth / uiZoom(); }
 function viewH() { return window.innerHeight / uiZoom(); }
 function applyUiScale(pct) {
-  const z = (UI_SCALES.includes(String(pct)) ? Number(pct) : 75) / 100;
+  const z = (UI_SCALES.includes(String(pct)) ? Number(pct) : 100) / 100;
   const root = document.documentElement;
   root.style.zoom = String(z);
   root.dataset.zoom = String(z);
@@ -24,7 +24,7 @@ function applyUiScale(pct) {
   if (typeof scheduleFitTopbar === 'function') scheduleFitTopbar();
 }
 // Before anything is drawn: the last scale, so the window does not jump when the settings arrive
-(() => { let v = null; try { v = localStorage.getItem('verbascribe_ui_scale'); } catch (e) {} applyUiScale(v || '75'); })();
+(() => { let v = null; try { v = localStorage.getItem('verbascribe_ui_scale'); } catch (e) {} applyUiScale(v || '100'); })();
 
 // --- Events without inline handlers ---
 // The page's Content-Security-Policy runs no inline script, so markup does not say onclick="…".

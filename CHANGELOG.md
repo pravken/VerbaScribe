@@ -8,7 +8,7 @@
 ### Новый вид программы
 - **Верхняя панель вместо вкладок:** «Главная», «Задачи», открытая запись («Расшифровка», «✦ Анализ»,
   «Участники», меню ⋯), «Студия», «✦ Ассистент». Внизу строка состояния: процессор, видеокарта,
-  память и очередь. Масштаб интерфейса — в «Настройки → Общие», по умолчанию 75 %.
+  память и очередь. Масштаб интерфейса — в «Настройки → Общие» (75–115 %).
 - **Красная кнопка «Запись»** пишет сразу, в любом окне, с последними настройками студии. Второе
   нажатие останавливает запись, она уходит на распознавание.
 - **Главная:** недавние записи с итогами, встречи календаря на рабочий день (его начало и конец
@@ -75,7 +75,7 @@
 ### A new look
 - **A top bar instead of tabs:** Home, Tasks, the open recording (Transcript, ✦ Analysis, Speakers,
   ⋯ menu), Studio, ✦ Assistant; a status bar below (processor, video card, memory, queue). Interface
-  scale in Settings → General, 75 % by default.
+  scale in Settings → General (75–115 %).
 - **The red Record button** records at once in any view with the last studio settings; a second press
   stops and queues the recording.
 - **Home:** recent recordings with their summaries, today's calendar meetings over a working day you
