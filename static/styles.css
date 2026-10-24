@@ -669,9 +669,12 @@ label.settings-toggle { display: flex; }
 
 /* Speaker filter: numbered circles in the speaker's colour */
 .spk-chip { width: 26px; height: 26px; border-radius: 9999px; display: inline-flex; align-items: center; justify-content: center;
-  font-size: 11.5px; font-weight: 600; color: #F5F5F7; background: rgba(255,255,255,0.06); border: 2px solid var(--spk, transparent);
+  font-size: 11.5px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; color: #F5F5F7; background: rgba(255,255,255,0.06); border: 2px solid var(--spk, transparent);
   transition: background-color .15s ease, transform .1s ease; flex-shrink: 0; }
 .spk-chip:hover { background: rgba(255,255,255,0.12); }
+/* The digit or letter sits on the middle of the circle by its cap height, whatever spacing above
+   and below the font keeps (Segoe UI and Inter keep different amounts) */
+.spk-chip:not(:has(svg)) { text-box: trim-both cap alphabetic; }
 .spk-chip-on { background: var(--spk, #F5F5F7); color: #141416; border-color: var(--spk, #F5F5F7); }
 
 /* Sidebar width handle on its right edge */
