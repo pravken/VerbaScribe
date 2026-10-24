@@ -494,7 +494,7 @@ function openTaskMenu(id, e) {
     { label: t('tkOpenRecord'), run: () => openTaskSource(id), disabled: !tkTask(id)?.meeting_id },
     { sep: true },
     { label: t('tkDelete'), run: () => deleteTask(id) },
-  ], r.right - 220, r.bottom + 4);
+  ], r.right, r.bottom + 4, { right: true });
 }
 
 function editTaskText(id) {
@@ -593,7 +593,7 @@ function openTasksExportMenu(e) {
     { label: t('tkExpNotion'), key: 'Markdown', run: () => exportTasks('md'), disabled: !n },
     { label: t('tkExpObsidian'), run: () => exportTasks('obsidian'), disabled: !n },
     { label: t('tkExpTable'), key: 'CSV', run: () => exportTasks('csv'), disabled: !n },
-  ], r.right - 240, r.bottom + 4);
+  ], r.right, r.bottom + 4, { right: true });
 }
 
 async function exportTasks(fmt) {

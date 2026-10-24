@@ -1668,7 +1668,7 @@ document.addEventListener('contextmenu', (e) => {
 });
 
 // A small menu of items ({label, key, run, disabled} or {sep}) at a point of the window
-function openTextMenuAt(items, x, y) {
+function openTextMenuAt(items, x, y, opts) {
   closeTextMenu();
   closeQuickLangMenu();
   const menu = document.createElement('div');
@@ -1689,9 +1689,11 @@ function openTextMenuAt(items, x, y) {
     clean[Number(b.dataset.i)].run();
   });
   document.body.appendChild(menu);
-  // x, y are a point of the window (clientX/Y); the menu is placed in the page's own pixels
+  // x, y are a point of the window (clientX/Y); the menu is placed in the page's own pixels.
+  // opts.right: x is the menu's right edge (a menu under a button at the right)
   const r = menu.getBoundingClientRect();
-  menu.style.left = `${Math.max(4, Math.min(zpx(x), viewW() - zpx(r.width) - 4))}px`;
+  const left = opts && opts.right ? zpx(x) - zpx(r.width) : zpx(x);
+  menu.style.left = `${Math.max(4, Math.min(left, viewW() - zpx(r.width) - 4))}px`;
   menu.style.top = `${Math.max(4, Math.min(zpx(y), viewH() - zpx(r.height) - 4))}px`;
 }
 document.addEventListener('click', closeTextMenu);

@@ -198,7 +198,7 @@ function openSpeakerCardMenu(id, el) {
   items.push({ label: t('spSplit'), run: () => openSplitDialog(id) },
     { label: t('spShowLines'), run: () => { openRecordTab('transcript'); state.speakerFilter = null; filterBySpeaker(id); } },
     { label: t('listenBtn'), run: () => previewSpeakerVoice(Number(s.sample_start) || 0, Number(s.sample_end) || 5) });
-  setTimeout(() => openTextMenuAt(items, r.right - 260, r.bottom + 6), 0);
+  setTimeout(() => openTextMenuAt(items, r.right, r.bottom + 6, { right: true }), 0);
 }
 
 async function spMerge(source, target) {

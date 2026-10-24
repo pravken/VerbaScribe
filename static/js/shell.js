@@ -133,7 +133,7 @@ function openRecordBarMenu(e) {
     { label: t('ctxReveal'), run: at(ctxRevealInExplorer) },
     { sep: true },
     { label: t('tbRecDelete'), key: 'Del', run: at(ctxDeleteRecording) },
-  ], r.right - 230, r.bottom + 4);
+  ], r.right, r.bottom + 4, { right: true });
 }
 
 function openMoveRecordMenu(m, r) {
@@ -141,7 +141,7 @@ function openMoveRecordMenu(m, r) {
   openTextMenuAt(folders.map(f => ({
     label: folderName(f), key: (m.folder_id ?? null) === f.id ? '✓' : '',
     run: () => moveMeetingToFolder(m.id, f.id),
-  })), r.right - 230, r.bottom + 4);
+  })), r.right, r.bottom + 4, { right: true });
 }
 
 // --- Record at once: the red button of the top bar, with the last studio settings, in any view ---
