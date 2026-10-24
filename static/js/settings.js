@@ -290,36 +290,159 @@ function renderVram(data) {
       : 'bg-transparent text-apple-tertiary border-white/15 border-dashed';
     const icon = c.loaded
       ? (actionable ? '<span class="opacity-60 group-hover:opacity-100">×</span>' : '')
-      : (actionable ? '<span class="opacity-70 group-hover:opacity-100">↑</span>' : '');
+      : (actionable ? `<span class="opacity-70 group-hover:opacity-100">${MODEL_START_ICON}</span>` : '');
     return `<button data-i="${i}" data-click="vramChipClick" data-click-args='[{"$": "data", "k": "i"}]' ${actionable || c.kind === 'dub' ? '' : 'disabled'}
       title="${escapeHtml(vramChipTitle(c))}"
       class="group max-w-full inline-flex items-center gap-1 px-1.5 h-5 rounded-full border text-[11px] font-medium transition ${cls} ${actionable ? 'hover:bg-white/10' : 'cursor-default'}">
       <span class="w-1.5 h-1.5 rounded-full shrink-0 ${c.loaded || c.loading ? 'bg-current' : 'border border-current'}"></span>
       <span class="truncate">${c.default ? '★ ' : ''}${escapeHtml(vramChipLabel(c))}</span>${icon}</button>`;
   };
-  // Split by where each model runs (or will); loaded ones first. Without a video card all are on the CPU
-  const part = where => chips.map((c, i) => [c, i]).filter(([c]) => (c.where || 'gpu') === where)
+  // Split by where each model runs (or will), then by what it is for; the ones at work first.
+  // Without a video card all are on the processor
+  const at = where => chips.map((c, i) => [c, i]).filter(([c]) => (c.where || 'gpu') === where)
     .sort(([a], [b]) => (b.loaded || b.loading ? 1 : 0) - (a.loaded || a.loading ? 1 : 0));
-  const parts = { gpu: part('gpu'), cpu: part('cpu') };
-  const html = parts.gpu.map(([c, i]) => chipHtml(c, i)).join('');
-  const htmlCpu = parts.cpu.map(([c, i]) => chipHtml(c, i)).join('');
-  for (const where of ['gpu', 'cpu']) {
-    document.getElementById(`hw-models-${where}`).classList.toggle('hidden', !parts[where].length);
-    const on = parts[where].filter(([c]) => c.loaded).length;
-    document.getElementById(`hw-models-${where}-count`).textContent = t('hwModelsLoaded').replace('{n}', () => on).replace('{total}', () => parts[where].length);
-  }
+  const parts = { gpu: gpu ? at('gpu') : [], cpu: at('cpu') };
+  const working = chips.filter(c => c.loaded || c.loading).length;
+  // The tile in the sidebar: how many work, and the ones that do
+  row.title = t('tipModelsTile');
+  document.getElementById('hw-models-count').textContent = t('hwModelsLoaded').replace('{n}', () => working).replace('{total}', () => chips.length);
+  const runningHtml = chips.filter(c => c.loaded || c.loading).map(c =>
+    `<span class="mp-mini ${c.loading ? 'mp-mini-loading' : c.kind === 'dub' ? 'mp-mini-dub' : ''}"><span class="mp-mini-dot"></span><span class="truncate">${escapeHtml(vramChipLabel(c))}</span></span>`).join('');
+  const running = document.getElementById('hw-models-running');
+  if (running.innerHTML !== runningHtml) running.innerHTML = runningHtml;
+  running.classList.toggle('hidden', !runningHtml);
   // Unchanged chips are left alone, so a refresh never swallows a click
-  if (html + htmlCpu !== vram.html) {
-    document.getElementById('vram-chips').innerHTML = html;
-    document.getElementById('vram-chips-cpu').innerHTML = htmlCpu;
+  const html = parts.gpu.map(([c, i]) => chipHtml(c, i)).join('') + parts.cpu.map(([c, i]) => chipHtml(c, i)).join('');
+  if (html !== vram.html) {
+    vram.parts = parts;
+    vram.chipHtml = chipHtml;
     // The recording studio covers the sidebar: it shows the same chips in its header
     const studioBox = document.getElementById('studio-vram-chips');
-    if (studioBox) studioBox.innerHTML = html + htmlCpu;
-    vram.html = html + htmlCpu;
+    if (studioBox) studioBox.innerHTML = html;
+    vram.html = html;
+    if (modelsPop.open) renderModelsPop();
   }
   vram.chips = chips;
   renderIdleStatus(data.idle);
 }
+
+const MODEL_START_ICON = '<svg class="mp-start" viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 1.6 8.2 5 2.5 8.4z"/></svg>';
+const AI_MARK = '<svg class="tb-ai" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2l1.9 5.6 5.6 1.9-5.6 1.9L10 17l-1.9-5.6-5.6-1.9 5.6-1.9z"/><path d="M18.5 13l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/></svg>';
+
+// --- All the models, beside the sidebar: the tile under the hardware opens it, so the library keeps
+// its room. Where each runs, what it is for, and the ones that can still be downloaded ---
+const modelsPop = { open: false, dlOpen: true };
+try { modelsPop.dlOpen = localStorage.getItem('verbascribe_models_dl_open') !== '0'; } catch (e) {}
+
+function toggleModelsPop(e) {
+  if (e) e.stopPropagation();
+  if (modelsPop.open) { closeModelsPop(); return; }
+  modelsPop.open = true;
+  document.getElementById('vram-row').setAttribute('aria-expanded', 'true');
+  renderModelsPop();
+  const pop = document.getElementById('models-pop');
+  pop.classList.remove('hidden');
+  placeModelsPop();
+  pop.querySelector('button')?.focus();
+}
+
+function closeModelsPop() {
+  if (!modelsPop.open) return;
+  modelsPop.open = false;
+  document.getElementById('models-pop').classList.add('hidden');
+  document.getElementById('vram-row').setAttribute('aria-expanded', 'false');
+}
+
+// Right of the sidebar, its top level with the tile; moved up when it would run past the window
+function placeModelsPop() {
+  const pop = document.getElementById('models-pop');
+  const side = document.getElementById('app-sidebar').getBoundingClientRect();
+  const tile = document.getElementById('vram-row').getBoundingClientRect();
+  pop.style.left = `${zpx(side.right) + 8}px`;
+  pop.style.maxHeight = `${viewH() - 16}px`;
+  pop.style.top = `${Math.max(8, Math.min(zpx(tile.top), viewH() - pop.offsetHeight - 8))}px`;
+}
+
+// What a model is for: speech (recognition, voices, live captions, dubbing) or analysis and search
+const MODEL_GROUP = { ollama: 'ai' };
+
+function modelsDownloadable() {
+  const out = [];
+  const hw = (state.system || {}).hardware || {};
+  const vramGb = hw.cuda_available ? Number(hw.vram_total_gb || 0) : 0;
+  for (const m of state.whisperCatalog || []) {
+    if (m.installed) continue;
+    const setup = ((state.system || {}).models || {}).setup_state || {};
+    const downloading = (setup.active && setup.model_id === m.id) || m.downloading;
+    out.push({ id: m.id, label: formatModelName(m.id), size: modelSizeLabel(m), need: '', downloading,
+      fn: m.engine === 'onnx' ? 'startOnnxModelDownload' : 'startWhisperModelDownload' });
+  }
+  const pull = state.ollamaPullState || {};
+  for (const m of ((state.system || {}).ollama || {}).catalog || []) {
+    if (m.installed || !m.good_ru) continue;
+    const short = vramGb && m.min_vram_gb > vramGb;
+    out.push({ id: m.id, label: formatModelName(m.id), size: m.size || '', ai: true, downloading: pull.active && pull.model === m.id,
+      need: m.min_vram_gb ? t('mpNeedVram').replace('{n}', () => m.min_vram_gb) : '', short, fn: 'modelsPopPullLlm' });
+  }
+  return out;
+}
+
+function modelsPopPullLlm(id) {
+  pullOllamaModel(id, false);
+}
+
+function toggleModelsDownloads() {
+  modelsPop.dlOpen = !modelsPop.dlOpen;
+  try { localStorage.setItem('verbascribe_models_dl_open', modelsPop.dlOpen ? '1' : '0'); } catch (e) {}
+  renderModelsPop();
+}
+
+function renderModelsPop() {
+  const pop = document.getElementById('models-pop');
+  if (!pop || !modelsPop.open) return;
+  const parts = vram.parts || { gpu: [], cpu: [] };
+  const chipHtml = vram.chipHtml || (() => '');
+  const groups = list => ['speech', 'ai'].map(g => {
+    const items = list.filter(([c]) => (MODEL_GROUP[c.kind] || 'speech') === g);
+    if (!items.length) return '';
+    return `<div class="mp-group"><div class="mp-group-title">${AI_MARK}${escapeHtml(t(g === 'ai' ? 'mpGroupAi' : 'mpGroupSpeech'))}</div>
+      <div class="flex flex-wrap gap-1">${items.map(([c, i]) => chipHtml(c, i)).join('')}</div></div>`;
+  }).join('');
+  const section = (where, list) => {
+    const on = list.filter(([c]) => c.loaded || c.loading).length;
+    return `<section class="mp-sec"><div class="mp-sec-head"><span>${escapeHtml(t(where === 'gpu' ? 'hwModelsGpu' : 'hwModelsCpu'))}</span>
+      <span class="hw-models-count">${escapeHtml(t('hwModelsLoaded').replace('{n}', () => on).replace('{total}', () => list.length))}</span></div>
+      ${list.length ? groups(list) : `<p class="mp-empty">${escapeHtml(t(vram.data?.gpu ? 'mpCpuEmpty' : 'mpNone'))}</p>`}</section>`;
+  };
+  const dl = modelsDownloadable();
+  const dlRows = dl.map(m => `<div class="mp-dl-row"><span class="mp-dl-name">${m.ai ? AI_MARK : ''}<span class="truncate">${escapeHtml(m.label)}</span></span>
+      ${m.need ? `<span class="mp-dl-need ${m.short ? 'mp-dl-short' : ''}" title="${escapeHtml(m.short ? t('mpNeedMore') : '')}">${escapeHtml(m.need)}</span>` : ''}
+      ${m.downloading ? `<span class="mp-dl-btn mp-dl-busy">${escapeHtml(t('mpDownloading'))}</span>`
+        : `<button data-click="${m.fn}" data-click-args='[${jsArg(m.id)}]' class="mp-dl-btn" title="${escapeHtml(t('tipDownloadModel'))}">↓ ${escapeHtml(m.size)}</button>`}</div>`).join('');
+  pop.innerHTML = `<div class="mp-head"><span class="mp-title">${escapeHtml(t('mpTitle'))}</span>
+      <button data-click="closeModelsPop" class="mp-close" aria-label="${escapeHtml(t('close'))}" title="${escapeHtml(t('close'))}">×</button></div>
+    ${vram.data?.gpu ? section('gpu', parts.gpu) : ''}${section('cpu', parts.cpu)}
+    ${dl.length ? `<section class="mp-dl"><button data-click="toggleModelsDownloads" class="mp-dl-head" aria-expanded="${modelsPop.dlOpen}">
+        <span class="mp-dl-title">${AI_MARK}${escapeHtml(t('mpDownloadable').replace('{n}', () => dl.length))}</span>
+        <span class="mp-dl-toggle">${escapeHtml(t(modelsPop.dlOpen ? 'mpHide' : 'mpShow'))}</span></button>
+      ${modelsPop.dlOpen ? `<div class="mp-dl-list">${dlRows}</div>` : ''}</section>` : ''}
+    <div class="mp-legend">
+      <span><i class="mp-lg-dot mp-lg-on"></i>${escapeHtml(t('mpLgOn'))}</span>
+      <span><i class="mp-lg-dot mp-lg-loading"></i>${escapeHtml(t('mpLgLoading'))}</span>
+      <span><i class="mp-lg-dot mp-lg-idle"></i>${escapeHtml(t('mpLgIdle'))}</span>
+      <span>${MODEL_START_ICON}${escapeHtml(t('mpLgStart'))}</span>
+      <span><b class="mp-lg-x">×</b>${escapeHtml(t('mpLgStop'))}</span>
+    </div>`;
+  placeModelsPop();
+}
+
+document.addEventListener('pointerdown', (e) => {
+  if (modelsPop.open && !e.target.closest('#models-pop, #vram-row')) closeModelsPop();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && modelsPop.open) { closeModelsPop(); document.getElementById('vram-row').focus(); }
+});
+window.addEventListener('resize', () => { if (modelsPop.open) placeModelsPop(); });
 
 async function vramChipClick(index) {
   const c = (vram.chips || [])[Number(index)];

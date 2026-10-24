@@ -62,16 +62,17 @@
           <span class="hw-bar"><span id="vram-bar" class="bg-apple-blue/70" style="width: 0%"></span></span>
           <span id="vram-text" class="hw-value"></span>
         </button>
-        <div id="vram-row" class="hidden hw-models">
-          <div id="hw-models-gpu">
-            <div class="hw-models-head"><span data-i18n="hwModelsGpu">Модели на видеокарте</span><span id="hw-models-gpu-count" class="hw-models-count"></span></div>
-            <div id="vram-chips" class="flex flex-wrap gap-1"></div>
-          </div>
-          <div id="hw-models-cpu">
-            <div class="hw-models-head"><span data-i18n="hwModelsCpu">Модели на процессоре</span><span id="hw-models-cpu-count" class="hw-models-count"></span></div>
-            <div id="vram-chips-cpu" class="flex flex-wrap gap-1"></div>
-          </div>
-        </div>
+        <!-- The models: how many work and which; a click opens all of them beside the sidebar (#models-pop) -->
+        <button id="vram-row" data-click="toggleModelsPop" data-click-args='[{"$": "event"}]' class="hidden hw-models-tile" aria-haspopup="dialog" aria-expanded="false"
+          data-i18n-title="tipModelsTile" title="Все модели: какие работают, какие установлены и какие можно скачать">
+          <span class="hw-tile-head">
+            <svg class="tb-ai" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2l1.9 5.6 5.6 1.9-5.6 1.9L10 17l-1.9-5.6-5.6-1.9 5.6-1.9z"/><path d="M18.5 13l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/></svg>
+            <span class="hw-tile-title" data-i18n="mpTitle">Модели</span>
+            <span id="hw-models-count" class="hw-models-count"></span>
+            <svg class="hw-tile-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+          </span>
+          <span id="hw-models-running" class="hw-tile-chips hidden"></span>
+        </button>
       </div>
     </div>
 
