@@ -330,6 +330,7 @@ function renderChaptersBar() {
     `<button data-click="seekPlayer" data-click-args='[${Number(c.start) || 0}]' id="chapter-${i}" title="${escapeHtml(c.desc || c.title)}"
       class="chapter-chip"><span class="font-mono text-apple-tertiary">${formatTime(c.start)}</span> ${escapeHtml(c.title)}</button>`
   ).join('');
+  document.getElementById('chapters-all').textContent = t('chaptersAll').replace('{n}', () => _chapters.length);
   rpRenderChapters();  // the same chapters as bands of the player's wave
 }
 
@@ -344,6 +345,23 @@ function updateActiveChapter(cur) {
   el?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   _activeChapter = idx;
 }
+
+// The row shows only the chips that fit: "All chapters" lists them all, the current one ticked
+function openChaptersMenu(e) {
+  e.stopPropagation();
+  const r = e.currentTarget.getBoundingClientRect();
+  openTextMenuAt(_chapters.map((c, i) => ({
+    label: (i === _activeChapter ? '✓ ' : '') + c.title, key: formatTime(c.start), run: () => seekPlayer(c.start),
+  })), r.right, r.bottom + 4, { right: true, maxWidth: 460 });
+}
+
+// The mouse wheel scrolls the row of chapters sideways (its scrollbar is hidden)
+document.getElementById('chapters-list')?.addEventListener('wheel', (e) => {
+  const el = e.currentTarget;
+  if (el.scrollWidth <= el.clientWidth || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+  e.preventDefault();
+  el.scrollLeft += e.deltaY;
+}, { passive: false });
 
 // "Clear" (the section's ⋯): what the open section holds (an analysis, my notes, the promises)
 function setClearSummaryVisible(on) {
@@ -1708,7 +1726,7 @@ function openTextMenuAt(items, x, y, opts) {
   const clean = items.filter((it, i, a) => !it.sep || (i > 0 && !a[i - 1].sep && i < a.length - 1));
   menu.innerHTML = clean.map((it, i) => it.sep
     ? '<div class="my-1 h-px bg-white/10"></div>'
-    : `<button class="macos-menu-item gap-6" data-i="${i}" ${it.disabled ? 'disabled style="opacity:.4"' : ''}><span>${escapeHtml(it.label)}</span>`
+    : `<button class="macos-menu-item gap-6" data-i="${i}" ${it.disabled ? 'disabled style="opacity:.4"' : ''}><span class="min-w-0 truncate">${escapeHtml(it.label)}</span>`
       + `<span class="text-[11px] opacity-80 font-mono">${escapeHtml(it.key || '')}</span></button>`).join('');
   // Keeps the selection: a click in the menu must not clear it before the action reads it
   menu.addEventListener('mousedown', ev => ev.preventDefault());
@@ -1719,6 +1737,9 @@ function openTextMenuAt(items, x, y, opts) {
     closeTextMenu();
     clean[Number(b.dataset.i)].run();
   });
+  if (opts && opts.maxWidth) menu.style.maxWidth = `${opts.maxWidth}px`;
+  menu.style.maxHeight = `${viewH() - 8}px`;  // a long list scrolls instead of leaving the window
+  menu.style.overflowY = 'auto';
   document.body.appendChild(menu);
   // x, y are a point of the window (clientX/Y); the menu is placed in the page's own pixels.
   // opts.right: x is the menu's right edge (a menu under a button at the right)
