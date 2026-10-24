@@ -55,6 +55,11 @@ async function setUiScale(v) {
   if (state.system) state.system.settings = data.settings;
 }
 
+// The computer's device in the interface language: the server names the processor in Russian
+function hwDeviceLabel(hw) {
+  return hw && hw.cuda_available ? (hw.device_name || '—') : t('hwCpuName');
+}
+
 async function loadSystemInfo() {
   try {
     const res = await fetch('/api/system');
@@ -89,7 +94,7 @@ ${t('modelsFolder')}: ${data.paths.models}`;
 
     document.getElementById('settings-hw-name').textContent = hw.cuda_available
       ? `${hw.device_name} · ${hw.vram_total_gb} GB VRAM`
-      : hw.device_name;
+      : hwDeviceLabel(hw);
 
     const s = data.settings;
     document.getElementById('set-whisper-model').value = s.whisper_model || 'large-v3-turbo';
@@ -588,7 +593,7 @@ function openFirstRunWizard(data) {
     let body = '';
     if (st.step === 0) {
       body = `<p class="text-xs text-apple-secondary leading-relaxed">${escapeHtml(t('frIntro'))}</p>
-        <div class="text-[11px] text-apple-tertiary">${escapeHtml(t('frHardware'))}: <span class="text-apple-label">${escapeHtml(hw.device_name || '—')}${hw.vram_total_gb ? ` · ${hw.vram_total_gb} ${t('unitGB')}` : ''}</span></div>
+        <div class="text-[11px] text-apple-tertiary">${escapeHtml(t('frHardware'))}: <span class="text-apple-label">${escapeHtml(hwDeviceLabel(hw))}${hw.vram_total_gb ? ` · ${hw.vram_total_gb} ${t('unitGB')}` : ''}</span></div>
         <div class="text-xs text-white font-medium pt-1">${escapeHtml(t('frLangQ'))}</div>
         <div class="grid grid-cols-3 gap-2">${[['ru', t('frLangRu')], ['en', t('frLangEn')], ['mix', t('frLangMix')]].map(([k, l]) =>
           `<button data-lang="${k}" class="ui-btn h-9 ${st.lang === k ? 'ui-btn-primary' : 'ui-btn-subtle'}">${escapeHtml(l)}</button>`).join('')}</div>`;
@@ -2255,7 +2260,7 @@ async function copySystemInfo() {
   const about = await fetch('/api/about').then(r => r.json()).catch(() => ({}));
   const lines = [
     `VerbaScribe ${about.version || ''}`.trim(),
-    `${t('rdSasInfoDevice')}: ${hw.device_name || '—'}${hw.cuda_available ? ` · ${hw.vram_total_gb} GB VRAM` : ''}`,
+    `${t('rdSasInfoDevice')}: ${hwDeviceLabel(hw)}${hw.cuda_available ? ` · ${hw.vram_total_gb} GB VRAM` : ''}`,
     `${t('rdSasInfoModel')}: ${document.getElementById('set-whisper-model')?.value || '—'}`,
     `${t('dataFolder')}: ${sys.paths?.data || '—'}`,
     `${t('modelsFolder')}: ${sys.paths?.models || '—'}`,
