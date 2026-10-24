@@ -545,7 +545,7 @@ label.settings-toggle { display: flex; }
 /* Hardware block in the sidebar: one row per device, columns aligned */
 .hw-block { display: flex; flex-direction: column; gap: 4px; }
 .hw-row {
-  display: grid; grid-template-columns: 42px minmax(0, 1fr) 52px 70px; align-items: center; column-gap: 8px;
+  display: grid; grid-template-columns: 42px minmax(0, 1fr) 46px 86px; align-items: center; column-gap: 8px;
   width: 100%; min-height: 18px; text-align: left; font-size: 11px;
 }
 .hw-row-btn { border-radius: 6px; padding: 2px 4px; margin: -2px -4px; width: calc(100% + 8px); transition: background-color 0.12s ease; }
