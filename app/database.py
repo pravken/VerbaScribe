@@ -1536,7 +1536,8 @@ def clear_results(meeting_id: int) -> bool:
 
 # What is done to a recording when it is transcribed, chosen per recording above the text (the
 # "Recognition" row); what a recording has not chosen comes from the settings
-PROCESSING_KEYS = ("denoise", "loudnorm", "leveling", "vad", "diarization", "clean_fillers", "summary")
+# (fillers are no longer taken out of the text: «Без запинок» is a view, so there is no switch for them)
+PROCESSING_KEYS = ("denoise", "loudnorm", "leveling", "vad", "diarization", "summary")
 
 
 def effective_processing(stored: Optional[Dict[str, Any]], settings: Optional[Dict[str, str]] = None) -> Dict[str, bool]:
@@ -1550,7 +1551,6 @@ def effective_processing(stored: Optional[Dict[str, Any]], settings: Optional[Di
         "leveling": on("proc_leveling"),  # quiet parts raised before GigaAM / Parakeet (asr_onnx.level)
         "vad": on("vad_filter"),  # Whisper skips the silence
         "diarization": on("diarization_enabled"),
-        "clean_fillers": on("clean_fillers"),
         "summary": on("auto_summary"),  # the analysis right after the transcript
     }
     out.update({k: bool(v) for k, v in (stored or {}).items() if k in PROCESSING_KEYS})
