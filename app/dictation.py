@@ -31,6 +31,7 @@ TRANSLATE_TIMEOUT_SEC = 30.0  # the first translation may wait for Ollama to loa
 _lock = threading.Lock()
 _chunks: List[np.ndarray] = []
 _thread: Optional[threading.Thread] = None
+_finish_args: Dict[str, Any] = {"notify": None, "type_out": True}  # how the dictation started: used when MAX_SEC ends it
 
 
 def status() -> Dict[str, Any]:
@@ -48,6 +49,7 @@ def toggle(notify=None, translate: bool = False, type_out: bool = True) -> str:
     if active:
         threading.Thread(target=_finish, args=(notify, type_out), daemon=True, name="dictation_finish").start()
         return "stopped"
+    _finish_args.update(notify=notify, type_out=type_out)
     _start(translate_target() if translate else "")
     return "started"
 
@@ -85,8 +87,12 @@ def _record() -> None:
         with mic.recorder(samplerate=SR, channels=1, blocksize=SR // 10) as rec:
             while True:
                 with _lock:
-                    if not _state["active"] or time.time() - _state["started_at"] > MAX_SEC:
-                        _state["active"] = False
+                    if not _state["active"]:
+                        break
+                    if time.time() - _state["started_at"] > MAX_SEC:
+                        # a forgotten dictation: what was said is recognized as if the keys were pressed again
+                        _state.update(active=False, busy=True)
+                        threading.Thread(target=_finish, kwargs=dict(_finish_args), daemon=True, name="dictation_finish").start()
                         break
                 block = rec.record(numframes=SR // 10)
                 with _lock:

@@ -89,6 +89,41 @@ class DictationTranslateTest(unittest.TestCase):
         self.assertEqual(typed, ["Привет"])
         pick.assert_not_called()
 
+    def test_a_forgotten_dictation_is_recognized_when_its_time_runs_out(self):
+        """MAX_SEC ends the recording: what was said is recognized and kept as if the keys were pressed
+        again, with the way the dictation was started (the home page: not typed)."""
+        import sys
+        import time
+        import types
+
+        class _Rec:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def record(self, numframes):
+                time.sleep(0.01)
+                return np.zeros((numframes, 1), dtype=np.float32)
+
+        mic = mock.Mock()
+        mic.recorder.return_value = _Rec()
+        fake = types.SimpleNamespace(default_microphone=lambda: mic)
+        typed = []
+        with mock.patch.dict(sys.modules, {"soundcard": fake}), mock.patch.object(dictation, "MAX_SEC", 0.6), \
+                mock.patch.object(dictation, "recognize", return_value=("Длинная диктовка", "gigaam-v3")), \
+                mock.patch.object(dictation, "save_to_library"), \
+                mock.patch.object(dictation, "type_text", side_effect=typed.append):
+            self.assertEqual(dictation.toggle(type_out=False), "started")
+            for _ in range(100):
+                time.sleep(0.05)
+                st = dictation.status()
+                if not st["active"] and not st["busy"]:
+                    break
+        self.assertEqual(st["last_text"], "Длинная диктовка")
+        self.assertEqual(typed, [])  # started from the home page: shown there, not typed
+
     def test_a_dictation_is_kept_in_its_library_folder(self):
         from pathlib import Path
 
