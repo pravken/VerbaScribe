@@ -712,8 +712,10 @@ label:has(> .vs-switch.vs-sm) { min-height: 24px; }
 .vs-row + .vs-row { border-top: 1px solid rgba(255, 255, 255, 0.06); padding-top: 10px; margin-top: 10px; }
 .topbar {
   height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 0 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07); background: rgba(255, 255, 255, 0.035); position: relative; z-index: 30;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.035); position: relative; z-index: 30;
 }
+/* The sidebar's head is as tall as the top bar, so their bottom borders make one line */
+.side-head { height: 56px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; }
 .tb-rec {
   display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 18px; border-radius: 19px;
   font-size: 14.5px; font-weight: 600; color: #FFFFFF; background: #D70015; white-space: nowrap; transition: filter 0.12s ease;
