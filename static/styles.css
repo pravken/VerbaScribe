@@ -93,6 +93,8 @@ body {
 .apple-segmented.hidden,
 .apple-segment-btn.hidden,
 .ui-btn.hidden,
+.rp-skip-note.hidden,
+.lib-filter-chips.hidden,
 .macos-menu-item.hidden {
   display: none;
 }
