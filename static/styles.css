@@ -736,7 +736,25 @@ body.sidebar-dragging { cursor: col-resize; user-select: none; }
 .tb-pop-primary { background: #0A84FF; border-color: #0A84FF; font-weight: 600; color: #FFFFFF; }
 .tb-pop-primary:hover { background: #2B93FF; }
 /* A narrow window: the record name goes first */
-@media (max-width: 1250px) { .tb-recname { display: none; } }
+/* The bar fits its width (fitTopbar in shell.js, also for the interface scale, which no media query sees):
+   step by step the record's name goes, the gaps narrow, the views and then the record's tabs keep only
+   their icons, and the Record button only its dot. Each button keeps its name in title/aria-label. */
+.tb-group, .tb-tab, .tb-rec { flex-shrink: 0; }
+.tb-ico { display: none; width: 16px; height: 16px; flex: none; }
+.topbar.tb-c1 .tb-recname { display: none; }
+.topbar.tb-c2 { gap: 3px; padding: 0 10px; }
+.topbar.tb-c2 .tb-tab { padding: 0 12px; }
+.topbar.tb-c2 .tb-subtab { padding: 0 9px; }
+.topbar.tb-c2 .tb-rec { padding: 0 14px; }
+.topbar.tb-c2 .tb-sep { margin: 0 4px; }
+.topbar.tb-c3 #nav-home .tb-lbl, .topbar.tb-c3 #nav-studio .tb-lbl, .topbar.tb-c3 #nav-ask .tb-lbl { display: none; }
+.topbar.tb-c3 #nav-home .tb-ico, .topbar.tb-c3 #nav-studio .tb-ico { display: block; }
+.topbar.tb-c3 #nav-home, .topbar.tb-c3 #nav-studio, .topbar.tb-c3 #nav-ask { padding: 0 11px; }
+.topbar.tb-c4 .tb-subtab .tb-lbl { display: none; }
+.topbar.tb-c4 .tb-subtab .tb-ico { display: block; }
+.topbar.tb-c5 #tb-rec-label { display: none; }
+.topbar.tb-c5 .tb-rec { padding: 0 13px; }
+.topbar.tb-c6 { overflow-x: auto; scrollbar-width: none; }
 
 .statusbar {
   height: 30px; flex-shrink: 0; display: flex; align-items: center; gap: 18px; padding: 0 12px;

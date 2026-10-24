@@ -98,13 +98,34 @@ function renderTopbar() {
     badge('nav-summary-n', ready);
     badge('nav-speakers-n', Object.keys(m.speakers || {}).length);
   }
+  scheduleFitTopbar();
 }
+
+// The bar fits the window at any width and interface scale: the steps of styles.css (tb-c1…tb-c6) are
+// tried in turn until nothing sticks out
+const TOPBAR_STEPS = ['tb-c1', 'tb-c2', 'tb-c3', 'tb-c4', 'tb-c5', 'tb-c6'];
+function fitTopbar() {
+  const bar = document.getElementById('app-bar');
+  if (!bar || !bar.offsetParent) return;
+  bar.classList.remove(...TOPBAR_STEPS);
+  for (const step of TOPBAR_STEPS) {
+    if (bar.scrollWidth <= bar.clientWidth + 1) break;
+    bar.classList.add(step);
+  }
+}
+let _fitTopbarFrame = 0;
+function scheduleFitTopbar() {
+  cancelAnimationFrame(_fitTopbarFrame);
+  _fitTopbarFrame = requestAnimationFrame(fitTopbar);
+}
+window.addEventListener('resize', scheduleFitTopbar);
 
 function badge(id, n) {
   const el = document.getElementById(id);
   if (!el) return;
   el.textContent = n ? String(n) : '';
   el.classList.toggle('hidden', !n);
+  if (el.closest('#app-bar')) scheduleFitTopbar();
 }
 
 // The open tasks of the whole library, on the "Tasks" tab (refreshed with the list, at most every 10 s)

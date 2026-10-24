@@ -21,6 +21,7 @@ function applyUiScale(pct) {
   root.dataset.zoom = String(z);
   root.style.setProperty('--ui-zoom', String(z));  // body height: 100vh is not zoomed (styles.css)
   try { localStorage.setItem('verbascribe_ui_scale', String(Math.round(z * 100))); } catch (e) {}
+  if (typeof scheduleFitTopbar === 'function') scheduleFitTopbar();
 }
 // Before anything is drawn: the last scale, so the window does not jump when the settings arrive
 (() => { let v = null; try { v = localStorage.getItem('verbascribe_ui_scale'); } catch (e) {} applyUiScale(v || '75'); })();
@@ -194,6 +195,7 @@ function setUILanguage(lang) {
 
   renderMeetingsSidebar();
   loadDictionary();
+  if (typeof scheduleFitTopbar === 'function') scheduleFitTopbar();
   if (state.system) {
     const p = state.system.paths;
     const dirEl = document.getElementById('settings-data-dir');
