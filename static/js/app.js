@@ -293,13 +293,13 @@ const TEMPLATE_PRESETS = {
     { name: '1:1', prompt: 'Это встреча один на один руководителя и сотрудника. Выдели: как дела у сотрудника и что его беспокоит, обратную связь в обе стороны, договорённости и следующие шаги (кто — что — когда), темы на следующую встречу.' },
     { name: 'Интервью', prompt: 'Это интервью. Составь портрет собеседника, выпиши ключевые ответы на каждый вопрос с цитатами, сильные стороны и сомнения, и вывод: что важно запомнить.' },
     { name: 'Планёрка', prompt: 'Это планёрка команды. По каждому участнику: что сделано, что в работе, какие блокеры. Отдельно — решения и новые задачи с ответственными и сроками.' },
-    { name: 'Продажи', prompt: 'Это разговор с клиентом. Выдели: потребности и боли клиента, возражения и как на них ответили, бюджет и сроки, кто принимает решение, договорённости и следующий шаг.' },
+    { name: 'Лекция', prompt: 'Это лекция или занятие. Выдели основные темы по порядку, определения и примеры, вопросы слушателей с ответами и что стоит повторить или изучить дальше.' },
   ],
   en: [
     { name: '1:1', prompt: 'This is a one-on-one between a manager and a report. Cover: how the person is doing and what worries them, feedback both ways, agreements and next steps (who — what — when), topics for next time.' },
     { name: 'Interview', prompt: 'This is an interview. Profile the person, list the key answers to each question with quotes, strengths and doubts, and a conclusion: what to remember.' },
     { name: 'Stand-up', prompt: 'This is a team stand-up. For each person: done, in progress, blockers. Then the decisions and new tasks with owners and deadlines.' },
-    { name: 'Sales call', prompt: 'This is a call with a customer. Cover: needs and pains, objections and how they were answered, budget and timing, who decides, agreements and the next step.' },
+    { name: 'Lecture', prompt: 'This is a lecture or a class. Cover the main topics in order, the definitions and examples, the questions from the audience with their answers, and what is worth reviewing or studying next.' },
   ],
 };
 
