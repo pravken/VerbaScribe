@@ -112,6 +112,113 @@ def api_people() -> List[Dict[str, Any]]:
 
     return people()
 
+# --- The people directory ("Все люди", app/people.py) and the speakers of one recording ---
+class PersonPayload(BaseModel):
+    name: str
+    kind: str = "person"
+
+class PersonUpdatePayload(BaseModel):
+    name: str
+    new_name: Optional[str] = None
+    role: Optional[str] = None
+    kind: Optional[str] = None
+    is_me: Optional[bool] = None
+
+class PeopleMergePayload(BaseModel):
+    names: List[str]
+
+@router.get("/api/people/directory")
+def api_people_directory() -> List[Dict[str, Any]]:
+    from app.people import directory
+
+    return directory()
+
+@router.post("/api/people/directory")
+def api_people_add(payload: PersonPayload) -> Dict[str, Any]:
+    from app.people import add
+
+    try:
+        return add(payload.name, payload.kind)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.patch("/api/people/directory")
+def api_people_update(payload: PersonUpdatePayload) -> Dict[str, Any]:
+    from app.people import update
+
+    try:
+        return update(payload.name, role=payload.role, kind=payload.kind, is_me=payload.is_me, new_name=payload.new_name)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/api/people/merge")
+def api_people_merge(payload: PeopleMergePayload) -> Dict[str, Any]:
+    from app.people import merge
+
+    try:
+        return merge(payload.names)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/api/meetings/{meeting_id}/people")
+def api_meeting_people(meeting_id: int) -> Dict[str, Any]:
+    """For the speakers of a recording: the calendar's invited people, who is mentioned in the text,
+    and the names of the directory (suggestions for a name)."""
+    from app.people import calendar_attendees, directory, mentions
+
+    m = get_meeting(meeting_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    people = directory()
+    speaking = {str((s or {}).get("name") or "").strip().lower() for s in (m.get("speakers") or {}).values()}
+    return {
+        "calendar": [n for n in calendar_attendees(m) if n.lower() not in speaking],
+        "mentions": mentions(m, people),
+        "names": [{"name": p["name"], "kind": p["kind"], "role": p["role"], "is_me": p["is_me"]} for p in people],
+    }
+
+class SpeakerMergePayload(BaseModel):
+    source: str
+    target: str
+
+class SpeakerSplitPayload(BaseModel):
+    speaker_id: str
+    positions: List[int]
+    new_name: str = ""
+
+class SpeakerMetaPayload(BaseModel):
+    speaker_id: str
+    role: Optional[str] = None
+    is_me: Optional[bool] = None
+
+def _speaker_edit(meeting_id: int, run) -> Dict[str, Any]:
+    _ensure_not_transcribing(meeting_id)
+    try:
+        m = run()
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if m is None:
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    return m
+
+@router.post("/api/meetings/{meeting_id}/speakers/merge")
+def api_merge_speakers(meeting_id: int, payload: SpeakerMergePayload) -> Dict[str, Any]:
+    from app.people import merge_speakers
+
+    return _speaker_edit(meeting_id, lambda: merge_speakers(meeting_id, payload.source, payload.target))
+
+@router.post("/api/meetings/{meeting_id}/speakers/split")
+def api_split_speaker(meeting_id: int, payload: SpeakerSplitPayload) -> Dict[str, Any]:
+    from app.people import split_speaker
+
+    return _speaker_edit(meeting_id, lambda: split_speaker(meeting_id, payload.speaker_id, payload.positions, payload.new_name))
+
+@router.patch("/api/meetings/{meeting_id}/speakers/meta")
+def api_speaker_meta(meeting_id: int, payload: SpeakerMetaPayload) -> Dict[str, Any]:
+    from app.people import set_speaker_meta
+
+    return _speaker_edit(meeting_id, lambda: set_speaker_meta(meeting_id, payload.speaker_id, payload.role, payload.is_me))
+
 @router.post("/api/voice-profiles/apply-all")
 def api_voice_profiles_apply_all() -> Dict[str, Any]:
     from app.voice_profiles import apply_to_library
