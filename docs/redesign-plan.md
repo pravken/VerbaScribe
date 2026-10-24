@@ -38,8 +38,8 @@ files, so their changes merge without conflicts.
 
 ## Where each package writes
 
-Every package adds its UI strings to `static/i18n.js` **between its two marker keys**
-(`rd…Reserved` and `rd…End`, in both the `ru` and the `en` object), and its styles in
+Every package adds its UI strings to `static/i18n.js` **under its marker comment**
+(`// --- redesign: … ---`, in both the `ru` and the `en` object; the keys start with its prefix), and its styles in
 `static/styles.css` **under its marker comment**. Russian server messages get English in
 `static/server_text.js` (in its alphabetical place, not at the end). New Tailwind classes: `npm run vendor`.
 
