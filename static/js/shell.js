@@ -47,6 +47,8 @@ function switchAppView(view) {
     renderAskThread();
     setTimeout(() => document.getElementById('library-question').focus(), 30);
   }
+  // Reached without openModal (another script switching to it): the page needs its content
+  if (view === 'settings' && document.getElementById('modal-settings')?.classList.contains('hidden')) openModal('settings');
   VIEW_HOOKS[view]?.show?.();
   updateRecordButtonState();
   renderTopbar();
