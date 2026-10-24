@@ -129,6 +129,39 @@ def _capitalize_like(new_text: str, orig_text: str) -> str:
     return new_text
 
 
+def filler_view(segments: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """What «Без запинок» hides when the text is shown, without changing it: per segment id the
+    indices of its words to hide (segments with word timings) or the text to show (without them).
+    `count` is the number of fillers, `seconds` the time their words take."""
+    out: Dict[str, Dict[str, Any]] = {}
+    count, seconds = 0, 0.0
+    for seg in segments:
+        words = list(seg.get("words") or [])
+        orig_text = str(seg.get("text") or "").strip()
+        if words:
+            tagged = [dict(w, _vi=i) for i, w in enumerate(words)]
+            kept, removed = _clean_words(tagged)
+            if not removed:
+                continue
+            keep = {w["_vi"] for w in kept}
+            drop = [i for i in range(len(words)) if i not in keep]
+            count += removed
+            seconds += sum(max(0.0, float(words[i].get("end") or 0) - float(words[i].get("start") or 0)) for i in drop)
+            text = "".join(str(w.get("word", "")) for w in kept).strip()
+            out[str(seg.get("id"))] = {"drop": drop, "text": _capitalize_like(text, orig_text)}
+        else:
+            new_text, n = orig_text, 0
+            for pattern, repl in _TEXT_FILLER_PATTERNS:
+                new_text, k = pattern.subn(repl, new_text)
+                n += k
+            if not n:
+                continue
+            count += n
+            new_text = _capitalize_like(re.sub(r"\s{2,}", " ", new_text).strip(" ,;-"), orig_text)
+            out[str(seg.get("id"))] = {"drop": [], "text": new_text}
+    return {"segments": out, "count": count, "seconds": round(seconds, 1)}
+
+
 def clean_filler_words_in_segments(
     segments: List[Dict[str, Any]],
 ) -> Tuple[List[Dict[str, Any]], int]:

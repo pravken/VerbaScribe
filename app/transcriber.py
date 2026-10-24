@@ -1091,12 +1091,8 @@ def _process_meeting_job(meeting_id: int) -> None:
         # The transcript of another model stays among the versions (the dropdown above the text)
         stash_transcript_for(meeting_id, model_name)
         save_segments_backup(meeting_id, [])  # a backup of the previous run does not belong to this one
-        if processing.get("clean_fillers", True):
-            cleaned_segments, removed = clean_filler_words_in_segments(merged_segments)
-            if removed:
-                # Keep the unmodified recognition result so the cleanup can be undone
-                save_segments_backup(meeting_id, merged_segments)
-            merged_segments = cleaned_segments
+        # Fillers stay in the text: «Без запинок» hides them only when the text is shown
+        # (text_utils.filler_view); the setting clean_fillers turns that view on by default
 
         if mixed:
             # Each phrase keeps its own language: shown in the transcript, used by translation
