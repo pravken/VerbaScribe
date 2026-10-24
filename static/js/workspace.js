@@ -46,6 +46,7 @@ async function selectMeeting(id, reloadPlayer = true) {
   renderTranslationControls();
   renderChaptersBar();
   renderTranscript();
+  rpRender();  // the speaker under the player and the colours of the wave follow the text (deleted, a new model)
   renderSummaryPanel();
   renderMeetingsSidebar();
   if (state.activeWorkspaceTab === 'info' && (prevId !== m.id || reloadPlayer)) loadMeetingInfo();
@@ -309,7 +310,7 @@ function updateProcessingBanner(m) {
     const failed = m.status === 'failed';
     // the reason in words; the server's technical text (an exception, a path) only behind «Подробнее»
     const err = humanError(m.error_message || '');
-    document.getElementById('workspace-stage-text').textContent = m.status === 'cleared' ? t('statusCleared')
+    document.getElementById('workspace-stage-text').textContent = m.status === 'cleared' ? t(Object.keys(m.summaries || {}).length ? 'statusNoText' : 'statusCleared')
       : (failed ? t('statusFailed') : t('statusCancelled')) + (m.error_message ? `: ${err.short}` : m.stage_text ? `: ${serverText(m.stage_text)}` : '');
     document.getElementById('workspace-stage-text').title = m.error_message ? err.short : '';
     document.getElementById('workspace-stage-text').classList.toggle('truncate', !failed);  // a reason is read in full
@@ -1390,7 +1391,8 @@ function renderTranscript() {
   if (filtered.length === 0) {
     const m = state.activeMeeting || {};
     const why = segments.length ? 'emptyTxFiltered'
-      : m.status === 'cleared' ? 'emptyTxCleared'
+      // the only transcript deleted with «Очистить»: the analysis made from it stays
+      : m.status === 'cleared' ? (Object.keys(m.summaries || {}).length ? 'emptyTxAnalysisKept' : 'emptyTxCleared')
       : ['failed', 'cancelled'].includes(m.status) ? 'emptyTxFailed'
       : DONE_STATUSES.includes(m.status) ? 'emptyTxNoSpeech' : 'emptyTxProcessing';
     container.innerHTML = `<div class="py-20 text-center text-xs text-apple-tertiary">${escapeHtml(t(why))}</div>`;
