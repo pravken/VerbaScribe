@@ -571,7 +571,7 @@ def _pick_path_native(mode: str, directory: Path, filename: str = "", fmt: str =
 
 # --- The endpoints, one router per part of the program, in the order they were written (the order of
 # routes matters: "/api/meetings/search" before "/api/meetings/{meeting_id}") ---
-from app.api import analysis, cloud, export, library, media, recording, system  # noqa: E402
+from app.api import analysis, cloud, export, library, media, recording, system, tasks  # noqa: E402
 
-for _part in (system, library, recording, analysis, media, export, cloud):
+for _part in (system, library, recording, analysis, media, export, cloud, tasks):
     app.include_router(_part.router)
