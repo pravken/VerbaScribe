@@ -105,6 +105,15 @@ class TasksTest(unittest.TestCase):
         left = {x["what"] for x in commitments.for_meetings([self.m["id"]])}
         self.assertEqual(left, {"проверит реквизиты", "Позвонить подрядчику"})
 
+    def test_a_reworded_task_is_not_found_twice(self):
+        """The user rewrote a task's text: a new extraction finds it again by its quote and moment."""
+        from app import commitments
+
+        items = {x["who"]: x for x in self._extract(self.ANSWER)}
+        commitments.update(items["Анна"]["id"], {"what": "Сделать презентацию для встречи"})
+        again = self._extract(self.ANSWER)
+        self.assertEqual(sorted(x["what"] for x in again), ["Сделать презентацию для встречи", "проверит реквизиты"])
+
     def test_create_update_delete(self):
         from app import commitments
 

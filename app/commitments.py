@@ -235,12 +235,17 @@ def extract(meeting_id: int, model_name: Optional[str] = None) -> List[Dict[str,
         conn = get_connection()
         done = {r["what"].casefold() for r in conn.execute(
             "SELECT what FROM commitments WHERE meeting_id = ? AND status = 'done'", (meeting_id,)).fetchall()}
-        # What the user added or changed by hand stays as they left it
-        kept = {r["what"].casefold() for r in conn.execute(
-            "SELECT what FROM commitments WHERE meeting_id = ? AND (source = 'manual' OR edited = 1)", (meeting_id,)).fetchall()}
+        # What the user added or changed by hand stays as they left it; a task they reworded is still
+        # the one the model finds again by its words in the recording (the quote) or its moment
+        rows = conn.execute("SELECT what, quote, at, source FROM commitments WHERE meeting_id = ? AND (source = 'manual' OR edited = 1)",
+                            (meeting_id,)).fetchall()
+        kept = {r["what"].casefold() for r in rows}
+        kept_quotes = {(r["quote"] or "").strip().casefold() for r in rows} - {""}
+        kept_at = [r["at"] for r in rows if r["source"] != "manual" and r["at"] is not None]
         conn.execute("DELETE FROM commitments WHERE meeting_id = ? AND source != 'manual' AND edited = 0", (meeting_id,))
         for x in items:
-            if x["what"].casefold() in kept:
+            if (x["what"].casefold() in kept or (x["quote"] or "").strip().casefold() in kept_quotes
+                    or (x["at"] is not None and any(abs(x["at"] - a) <= 1 for a in kept_at))):
                 continue
             status = "done" if x["what"].casefold() in done else "open"
             kind = "part" if x["who"].casefold() in speaking else x["kind"]
