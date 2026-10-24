@@ -115,7 +115,7 @@ function openRecordBarMenu(e) {
   const r = e.currentTarget.getBoundingClientRect();
   const at = (fn) => () => { state.contextMeetingId = m.id; fn(); };
   openTextMenuAt([
-    { label: t('tbRecInfo'), key: 'Ctrl+I', run: () => openRecordTab('info') },
+    { label: t('tbRecInfo'), key: 'Ctrl+I', run: () => rpOpenInfo() },
     { label: t('ctxRename'), key: 'F2', run: at(ctxRenameRecording) },
     { label: t('tbRecMove'), run: () => openMoveRecordMenu(m, r) },
     { label: t('ctxReveal'), run: at(ctxRevealInExplorer) },

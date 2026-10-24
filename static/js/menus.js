@@ -45,6 +45,7 @@ function renderExportMenu() {
   let html = '';
   if (busy) html += note(t('exportWhileProcessing'), 'text-apple-amber');
   html += header(t('exportGroupDoc'));
+  html += rpExportOptionsHtml();  // time stamps, names, without fillers: the text files take them (redesign_player.js)
   html += item({ kind: 'doc', fmt: 'docx' }, 'Word', 'DOCX') + item({ kind: 'doc', fmt: 'md' }, 'Markdown', 'MD')
     + item({ kind: 'doc', fmt: 'txt' }, t('exportPlainText'), 'TXT') + item({ kind: 'doc', fmt: 'json' }, 'JSON', 'JSON');
 
