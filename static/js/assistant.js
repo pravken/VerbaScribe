@@ -164,7 +164,7 @@ function assistantModelIsCloud(model) {
 
 function assistantModelName(model) {
   const s = assistantSettings();
-  if (assistantModelIsCloud(model)) return s.llm_cloud_model || t('rdSasCloudModel');
+  if (assistantModelIsCloud(model)) return cloudLlmChoice()?.label || t('rdSasCloudModel');
   const tag = model || s.ollama_model || '';
   return tag ? formatModelName(tag) : t('rdSasNoModel');
 }
@@ -227,13 +227,14 @@ document.addEventListener('click', ev => {
 
 function assistantModelMenu(e) {
   const chat = currentChat() || (() => { const c = newChatObject(); ASSIST.chats.unshift(c); ASSIST.chatId = c.id; return c; })();
-  const s = assistantSettings();
   const local = ((state.system?.ollama?.catalog) || []).filter(m => m.installed).map(m => m.id);
   const pick = (model) => () => { chat.model = model; renderAssistantHead(); assistantSaveSoon(); };
   const items = [{ head: t('rdSasWhoAnswers') },
     { label: t('rdSasModelDefault'), note: assistantModelName(''), on: !chat.model, onClick: pick('') }];
   local.forEach(id => items.push({ label: formatModelName(id), note: t('rdSasLocal'), on: chat.model === id, onClick: pick(id) }));
-  if (s.llm_cloud_model) items.push({ label: s.llm_cloud_model, note: t('rdSasCloud'), on: chat.model === 'cloud', onClick: pick('cloud') });
+  // the cloud model as Settings → AI analysis sets it (a provider, its model, a saved key, the consent)
+  const cloud = cloudLlmChoice();
+  if (cloud) items.push({ label: cloud.label, note: t('rdSasCloud'), on: chat.model === 'cloud', onClick: pick('cloud') });
   items.push('sep', { label: t('rdSasModelsKeys'), onClick: () => openModal('settings', 'analysis') });
   assistantMenu(e, items, 290);
 }
