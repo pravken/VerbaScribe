@@ -1531,7 +1531,7 @@ function transcriptSegmentHtml(seg, idx) {
             </button>
           </div>
         </div>
-        <div id="seg-text-${seg.id}" class="text-[13.5px] text-apple-label/90 leading-relaxed" data-dblclick="openInlineSegmentEditor" data-dblclick-args='[${Number(seg.id)}]'>
+        <div id="seg-text-${seg.id}" class="text-[13.5px] text-apple-label/90 leading-relaxed">
           ${bodyHtml}
         </div>
       </div>
