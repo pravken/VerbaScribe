@@ -82,14 +82,16 @@ def api_calendar_day(start: str, end: str, refresh: bool = False) -> Dict[str, A
     for m in list_meetings():
         at = str(m.get("recorded_at") or "")
         try:
-            t = datetime.fromisoformat(at.replace("Z", "")) if at else None
+            t = datetime.fromisoformat(at.replace("Z", "+00:00")) if at else None
         except ValueError:
             t = None
+        if t and t.tzinfo:  # a time with its zone (an imported recording): the local time, as the day is
+            t = t.astimezone().replace(tzinfo=None)
         if t and a <= t <= b:
             made.append((t, m))
     for it in items:
         s, e = datetime.fromisoformat(it["start"]), datetime.fromisoformat(it["end"])
-        hit = next((m for t, m in made if s.replace(second=0) <= t.replace(tzinfo=None) < e), None)
+        hit = next((m for t, m in made if s.replace(second=0) <= t < e), None)
         it["recording"] = {"id": hit["id"], "status": hit.get("status"), "progress": hit.get("progress")} if hit else None
     return {"configured": bool((get_all_settings().get("calendar_ics") or "").strip()), "events": items,
             **calendar_ics.status()}

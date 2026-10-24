@@ -138,6 +138,19 @@ class HomeApiTest(unittest.TestCase):
         self.assertIsNone(evs[1]["recording"])
         self.assertEqual(c.get("/api/calendar/day", params={"start": "2026-10-24T18:00", "end": "2026-10-24T09:00"}).status_code, 400)
 
+    def test_a_recording_time_with_a_zone_does_not_break_the_day(self):
+        """An imported recording may carry «+03:00»: compared as local time, not with a 500."""
+        from datetime import datetime
+
+        c = self._client()
+        local = datetime(2026, 10, 24, 10, 5).astimezone()  # 10:05 here, written with this computer's zone
+        m = database.create_meeting(title="С зоной", filename="z.wav", media_path="z.wav", recorded_at=local.isoformat())
+        with mock.patch.object(calendar_ics, "events", return_value=calendar_ics.parse(ICS)):
+            r = c.get("/api/calendar/day", params={"start": "2026-10-24T09:00", "end": "2026-10-24T18:00"})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertIsNotNone(r.json()["events"][0]["recording"])  # it (or another 10:05 recording) is the meeting's
+        self.assertTrue(m["id"])
+
     def test_dictation_of_the_page_is_not_typed(self):
         from app import dictation
 
