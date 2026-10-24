@@ -1,8 +1,81 @@
-<!-- The status bar under the whole window (renderStatusbar in static/js/shell.js): part of static/index.html -->
+<!-- The status bar under the whole window (renderStatusbar in static/js/shell.js): part of static/index.html.
+     A click on the load opens the details: the processor, memory and video card, the models in memory
+     (the hardware block, updated by static/js/settings.js). Above it: the question before an in-person
+     meeting and the dictation of the home page (static/js/home.js). -->
   <footer id="app-statusbar" class="statusbar" role="status">
-    <span class="sb-item" data-i18n-title="tipCpuUsage" title="Загрузка процессора всеми программами"><span class="sb-chip">CPU</span><span id="sb-cpu">—</span></span>
-    <span class="sb-item" id="sb-gpu-item"><span class="sb-chip">GPU</span><span id="sb-gpu">—</span></span>
-    <span class="sb-item"><span class="sb-chip">RAM</span><span id="sb-ram">—</span></span>
+    <button data-click="sbToggleHw" data-click-args='[{"$": "event"}]' class="sb-load" data-i18n-title="sbHwTip" title="Процессор, память, видеокарта и модели в памяти">
+      <span class="sb-item"><span class="sb-chip">CPU</span><span id="sb-cpu">—</span></span>
+      <span class="sb-item" id="sb-gpu-item"><span class="sb-chip">GPU</span><span id="sb-gpu">—</span></span>
+      <span class="sb-item"><span class="sb-chip">RAM</span><span id="sb-ram">—</span></span>
+    </button>
     <span class="flex-1"></span>
     <button data-click="openStatusbarQueue" id="sb-queue" class="sb-queue"></button>
   </footer>
+
+  <!-- The details of the load: the hardware and the models in memory -->
+  <div id="sb-hw-pop" class="sb-hw-pop hidden" data-click="stopEvent" data-click-args='[{"$": "event"}]'>
+    <div class="sb-hw-title" data-i18n="sbHwTitle">Компьютер и модели</div>
+        <!-- Hardware: the processor, memory and video card, then the models in a frame of their own,
+             split by where they run (renderVram in static/js/settings.js) -->
+        <div id="hw-block" class="hw-block">
+          <div id="sys-row" class="hidden space-y-1">
+            <div class="hw-row" data-i18n-title="tipCpuUsage" title="Загрузка процессора всеми программами" id="cpu-cell">
+              <span class="hw-label"><svg class="hw-icon" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 002.25-2.25V6.75a2.25 2.25 0 00-2.25-2.25H6.75A2.25 2.25 0 004.5 6.75v10.5a2.25 2.25 0 002.25 2.25zm.75-12h9v9h-9v-9z"/></svg>CPU</span>
+              <span id="cpu-name" class="hw-name truncate"></span>
+              <span class="hw-bar"><span id="cpu-bar" class="bg-apple-green/70" style="width: 0%"></span></span>
+              <span id="cpu-text" class="hw-value"></span>
+            </div>
+            <div class="hw-row" id="ram-cell">
+              <span class="hw-label"><svg class="hw-icon" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7.5h18v8.25H3V7.5zM6.75 10.5v2.25m3.75-2.25v2.25m3.75-2.25v2.25m3.75-2.25v2.25M6 15.75v2.25m4-2.25v2.25m4-2.25v2.25m4-2.25v2.25"/></svg>RAM</span>
+              <span id="ram-name" class="hw-name truncate"></span>
+              <span class="hw-bar"><span id="ram-bar" class="bg-apple-amber/70" style="width: 0%"></span></span>
+              <span id="ram-text" class="hw-value"></span>
+            </div>
+          </div>
+          <button data-click="openModal" data-click-args='["settings", "recognition"]' class="hw-row hw-row-btn" data-i18n-title="tipHwStatus" title="Открыть настройки оборудования и моделей ИИ">
+            <span class="hw-label"><svg class="hw-icon" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 6.75h19.5v10.5H2.25V6.75zM4.5 17.25v2.25M9 13.875a1.875 1.875 0 100-3.75 1.875 1.875 0 000 3.75zM14.25 9.75h4.5m-4.5 2.25h4.5m-4.5 2.25h4.5"/></svg>GPU</span>
+            <span class="hw-name"><span id="hw-dot" class="w-1.5 h-1.5 rounded-full bg-apple-green shrink-0"></span><span id="hw-text" class="truncate">…</span></span>
+            <span class="hw-bar"><span id="vram-bar" class="bg-apple-blue/70" style="width: 0%"></span></span>
+            <span id="vram-text" class="hw-value"></span>
+          </button>
+          <div id="vram-row" class="hidden hw-models">
+            <div id="hw-models-gpu">
+              <div class="hw-models-head"><span data-i18n="hwModelsGpu">Модели на видеокарте</span><span id="hw-models-gpu-count" class="hw-models-count"></span></div>
+              <div id="vram-chips" class="flex flex-wrap gap-1"></div>
+            </div>
+            <div id="hw-models-cpu">
+              <div class="hw-models-head"><span data-i18n="hwModelsCpu">Модели на процессоре</span><span id="hw-models-cpu-count" class="hw-models-count"></span></div>
+              <div id="vram-chips-cpu" class="flex flex-wrap gap-1"></div>
+            </div>
+          </div>
+        </div>
+  </div>
+
+  <!-- Before an in-person meeting with the automatic recording on: record it from the microphone? -->
+  <div id="hm-ask" class="hm-ask hidden" role="alertdialog" aria-labelledby="hm-ask-title">
+    <div class="flex items-start gap-3">
+      <span class="hm-ask-icon" aria-hidden="true"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg></span>
+      <span class="flex-1 flex flex-col gap-1 min-w-0">
+        <b id="hm-ask-title" class="text-[13.5px] font-semibold text-white"></b>
+        <span id="hm-ask-text" class="text-[12.5px] leading-snug text-apple-label"></span>
+      </span>
+      <button data-click="hmAskAnswer" data-click-args='[null]' class="hm-x" data-i18n-title="tipCloseModal" title="Закрыть окно">✕</button>
+    </div>
+    <div class="flex gap-2">
+      <button data-click="hmAskAnswer" data-click-args='[true]' class="hm-ask-yes" data-i18n="hmAskRecord">● Записать</button>
+      <button data-click="hmAskAnswer" data-click-args='[false]' class="hm-ask-no" data-i18n="hmAskNotNow">Не сейчас</button>
+    </div>
+    <span class="text-[11.5px] text-apple-tertiary" data-i18n="hmAskWarn">Предупредите участников, что идёт запись.</span>
+  </div>
+
+  <!-- Dictation from the home page: while it listens, then the text it heard -->
+  <div id="hm-dict" class="hm-dict hidden" role="status">
+    <span id="hm-dict-lvl" class="hm-lvl" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+    <span class="flex flex-col gap-0.5 min-w-0">
+      <b id="hm-dict-title" class="text-[13.5px] font-semibold text-white"></b>
+      <span id="hm-dict-text" class="hm-dict-text"></span>
+    </span>
+    <button id="hm-dict-done" data-click="hmDictToggle" class="hm-ask-yes hm-dict-btn" data-i18n="hmDictDone">Готово</button>
+    <button id="hm-dict-copy" data-click="hmDictCopy" class="hm-ask-yes hm-dict-btn hidden" data-i18n="hmDictCopy">Копировать</button>
+    <button id="hm-dict-cancel" data-click="hmDictCancel" class="hm-ask-no hm-dict-btn" data-i18n="cancel">Отмена</button>
+  </div>

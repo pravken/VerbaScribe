@@ -1,3 +1,104 @@
-<!-- The import window with its processing (package B, static/js/importdlg.js): part of static/index.html.
-     Empty until the redesign fills it in; the current import window is #modal-import (parts/modals.html). -->
-  <div id="import-dialog-root"></div>
+<!-- The import window (package B, static/js/importdlg.js): part of static/index.html. The files, links and
+     paths to add, the model, what is done to the sound before recognition and to the text after it. -->
+  <div id="modal-import" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4" data-click="closeModalOnBackdrop" data-click-args='[{"$": "event"}, "import"]'>
+    <div class="imp-card modal-card" aria-labelledby="imp-title">
+      <div class="imp-head">
+        <h3 id="imp-title" class="imp-title" data-i18n="impTitle">Импорт</h3>
+        <span id="imp-summary" class="imp-summary"></span>
+        <span class="flex-1"></span>
+        <button data-click="closeModal" data-click-args='["import"]' class="imp-x" data-i18n-title="tipCloseModal" title="Закрыть окно">✕</button>
+      </div>
+
+      <div class="imp-body">
+        <!-- What is added: files (dropped or chosen), links, paths on the disk -->
+        <div class="imp-files" data-dragover="preventEvent" data-dragover-args='[{"$": "event"}]' data-drop="impDropFiles" data-drop-args='[{"$": "event"}]'>
+          <input id="file-input" type="file" multiple accept="video/*,audio/*,.mkv,.webm,.mov,.mp4,.mp3,.wav,.m4a,.ogg,.flac" class="hidden" data-change="handleFileSelect" data-change-args='[{"$": "files"}]' data-i18n-title="impPickFiles" title="Выбрать файлы" />
+          <div id="imp-list" class="flex flex-col gap-0.5"></div>
+          <div id="imp-empty" class="imp-empty" data-click="clickElement" data-click-args='["file-input"]'>
+            <span data-i18n="dropFilesHere">Нажмите для выбора файлов или перетащите их сюда</span>
+            <span class="imp-empty-sub">MP4, MKV, MOV, WEBM, MP3, WAV, M4A</span>
+          </div>
+          <div id="imp-link-row" class="imp-inline hidden">
+            <input id="url-import-input" type="url" data-keydown="onEnter" data-keydown-args='[{"$": "event"}, "impAddLink"]' placeholder="https://…" class="imp-input" data-i18n-title="impLinkTitle" title="Ссылка на видео или подкаст" />
+            <button data-click="impAddLink" class="imp-btn imp-btn-primary" data-i18n="addBtnText">Добавить</button>
+          </div>
+          <div id="imp-path-row" class="imp-inline hidden">
+            <input id="local-path-input" type="text" data-keydown="onEnter" data-keydown-args='[{"$": "event"}, "impAddPath"]' data-i18n-placeholder="impPathPlaceholder" placeholder="Полный путь к файлу или папке" class="imp-input" data-i18n-title="tipLocalPathInput" title="Укажите полный путь к файлу или папке на диске" />
+            <button data-click="impAddPath" class="imp-btn imp-btn-primary" data-i18n="addBtnText">Добавить</button>
+          </div>
+          <div class="imp-adders">
+            <button data-click="clickElement" data-click-args='["file-input"]' class="imp-btn" data-i18n="impAddFiles">+ Файлы…</button>
+            <button data-click="impShowRow" data-click-args='["link"]' class="imp-btn" data-i18n="impPasteLink">Вставить ссылку</button>
+            <button data-click="impShowRow" data-click-args='["path"]' class="imp-btn" data-i18n-title="impPathTitle" title="Файл или папка на диске добавляются без копирования" data-i18n="impPath">Путь на диске</button>
+            <span class="flex-1"></span>
+            <span class="imp-hint" data-i18n="impOrDrop">или перетащите сюда</span>
+          </div>
+          <p id="imp-link-note" class="imp-hint hidden" data-i18n="urlImportHint">Скачивается только звук. Используйте для записей, которые вы вправе скачивать.</p>
+        </div>
+
+        <section class="imp-sec">
+          <div class="imp-sec-head">
+            <span class="imp-sec-title" data-i18n="impRecognition">Распознавание</span>
+            <span class="flex-1"></span>
+            <span id="imp-eta" class="imp-eta hidden" data-i18n-title="impEtaTip" title="Оценка по скорости этого компьютера. Зависит от модели и от того, что ещё в очереди">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+              <span id="imp-eta-text"></span>
+            </span>
+          </div>
+          <div class="imp-grid3">
+            <label class="imp-field"><span data-i18n="modelLabel">Модель распознавания</span>
+              <select id="upload-model" data-change="impOnModel" class="imp-select" data-i18n-title="tipSelectWhisper" title="Выберите модель для распознавания речи">
+                <option value="large-v3-turbo">Whisper Turbo</option>
+                <option value="large-v3">Whisper Pro</option>
+              </select>
+              <span id="upload-model-hint" class="hidden imp-hint"></span>
+            </label>
+            <label class="imp-field"><span data-i18n="speechLangLabel">Язык речи</span>
+              <select id="upload-language" class="imp-select" data-i18n-title="tipSelectSpeechLang" title="Выберите язык разговора или оставьте автоопределение">
+                <option value="auto" data-i18n="impLangAuto">Определить сам</option>
+                <option value="mixed" data-i18n="langMixed">Несколько языков (RU + EN вперемешку)</option>
+                <option value="ru">Русский (RU)</option>
+                <option value="en">English (EN)</option>
+              </select>
+            </label>
+            <label class="imp-field"><span data-i18n="speakersCountLabel">Число участников</span>
+              <select id="upload-speakers" class="imp-select" data-i18n-title="tipSelectSpeakersCount" title="Укажите точное число участников или оставьте Auto">
+                <option value="0" data-i18n="impLangAuto">Определить сам</option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+                <option value="6">6</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section class="imp-sec">
+          <div class="imp-sec-head">
+            <span class="imp-sec-title" data-i18n="impSound">Звук перед распознаванием</span>
+            <span class="imp-hint" data-i18n="impSoundNote">только для копии, которую слушает модель; сами файлы не меняются</span>
+            <span class="flex-1"></span>
+            <button id="imp-reset" data-click="impResetSound" class="imp-link hidden" data-i18n="impAsSettings">Как в настройках</button>
+          </div>
+          <div id="imp-sound" class="imp-grid2"></div>
+        </section>
+
+        <section class="imp-sec">
+          <div class="imp-sec-head"><span class="imp-sec-title" data-i18n="impAfter">После распознавания</span></div>
+          <div id="imp-after" class="imp-grid2"></div>
+        </section>
+      </div>
+
+      <div class="imp-foot">
+        <label class="imp-check" data-i18n-title="impRememberTip" title="Эти параметры сохранятся в настройках и будут выбраны при следующем импорте">
+          <input id="imp-remember" type="checkbox" /> <span data-i18n="impRemember">Запомнить для следующих импортов</span></label>
+        <label class="imp-check" data-i18n-title="impNoAskTip" title="Импорт будет начинаться сразу. Это окно открывается из меню кнопки «Импорт» → «С параметрами…»">
+          <input id="imp-noask" type="checkbox" /> <span data-i18n="impNoAsk">Больше не спрашивать</span></label>
+        <span class="flex-1"></span>
+        <button data-click="closeModal" data-click-args='["import"]' class="imp-btn imp-btn-lg" data-i18n="cancel">Отмена</button>
+        <button id="imp-go" data-click="impSubmit" class="imp-btn imp-btn-lg imp-btn-primary"></button>
+      </div>
+    </div>
+  </div>
