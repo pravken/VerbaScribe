@@ -730,7 +730,7 @@ function meetingRowHtml(m, depth) {
         class="w-12 h-[27px] rounded object-cover bg-black/60 shrink-0 border border-white/10" />`
     : '';
   const status = m.status === 'failed' ? t('statusFailed') : m.status === 'cancelled' ? t('statusCancelled') : m.status === 'cleared' ? t('statusClearedShort')
-    : `${spkCount || 1} ${t('spkShort')} · ${(m.language || 'ru').toUpperCase()}`;
+    : [spkCount ? `${spkCount} ${t('spkShort')}` : '', m.language && m.language !== 'auto' ? m.language.toUpperCase() : ''].filter(Boolean).join(' · ');
   return `
     <div data-click="libRowClick" data-click-args='[{"$": "event"}, ${m.id}]' data-mid="${m.id}" tabindex="0" role="button"
          data-contextmenu="openRecordingContextMenu" data-contextmenu-args='[{"$": "event"}, ${m.id}]'

@@ -1495,7 +1495,7 @@ function renderMeetingInfo(info) {
 
   html += card(t('infoProcessing'),
     row(t('infoStatus'), tMaybe(`status_${info.status}`) || info.status)
-    + row(t('infoModel'), formatModelName(info.model_name))
+    + row(t('infoModel'), formatModelName(info.transcript_model || info.model_name))
     + row(t('infoLanguage'), !info.language ? '' : info.language === 'auto' ? t('studioSpeechAuto')
       : `${langName(info.language)} (${String(info.language).toUpperCase()})`)
     + row(t('infoCounts'), t('infoCountsValue').replace('{spk}', () => info.speakers).replace('{seg}', () => info.segments).replace('{words}', () => info.words))

@@ -664,7 +664,7 @@ function renderAssistantEmpty() {
   const total = state.meetings.length;
   const hours = state.meetings.reduce((a, m) => a + (Number(m.duration) || 0), 0) / 3600;
   const amount = hours >= 1 ? `${hours >= 10 ? Math.round(hours) : hours.toFixed(1)} ${t('unitH')}` : `${Math.max(1, Math.round(hours * 60))} ${t('unitMin')}`;
-  const lib = t('rdSasLibrarySize').replace('{n}', () => total).replace('{amount}', () => amount);
+  const lib = total ? t('rdSasLibrarySize').replace('{n}', () => total).replace('{amount}', () => amount) : t('rdSasLibraryEmpty');
   return `<div class="as-empty">
     <h3 class="as-empty-title">${escapeHtml(t('rdSasEmptyTitle'))}</h3>
     <p class="as-empty-sub">${escapeHtml(t('rdSasEmptySub'))} · ${escapeHtml(lib)}</p>

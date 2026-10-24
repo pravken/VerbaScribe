@@ -995,6 +995,7 @@ function renderNewTask() {
     return `<button type="button" class="tk-chip${on ? ' tk-on' : ''}" aria-pressed="${on}" ${pageCall('click', 'pickNewTaskDue', [iso])}>${escapeHtml(label)}${iso && ![tkToday(), tkAddDays(tkToday(), 1)].includes(iso) ? ` <span class="tk-chip-n">${escapeHtml(tkShortDate(iso))}</span>` : ''}</button>`;
   }).join('');
   document.getElementById('tk-n-date').value = cur;
+  syncDateField(document.getElementById('tk-n-date'));
   document.getElementById('tk-n-at').disabled = !TKN.rec;
   document.getElementById('tk-n-at').style.opacity = TKN.rec ? '1' : '0.4';
   renderNewTaskFoot();

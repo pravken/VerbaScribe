@@ -57,16 +57,16 @@
       <span class="st-label" data-i18n="rdSasPresets">Готовые настройки</span>
       <div id="st-preset-chips" class="flex items-center gap-1.5 flex-wrap"></div>
         <div class="flex items-center gap-1 st-preset-tools">
-          <select id="record-preset-select" data-i18n-title="recPresetLabel" title="Пресет" data-change="applyRecordPreset" data-change-args='[{"$": "value"}]'
+          <select id="record-preset-select" data-i18n-title="recPresetLabel" title="Набор настроек" data-change="applyRecordPreset" data-change-args='[{"$": "value"}]'
             class="hidden flex-1 min-w-0 h-8 bg-apple-card border apple-border rounded-lg px-2 text-xs text-white focus:outline-none"></select>
-          <button data-click="setDefaultRecordPreset" id="rec-preset-default-btn" class="ui-btn ui-btn-subtle h-8 !px-2" data-i18n-title="tipPresetDefault" title="Сделать пресетом по умолчанию для кнопки «Запись»">★</button>
-          <button data-click="saveRecordPresetAs" class="ui-btn ui-btn-subtle h-8 !px-2" data-i18n-title="tipPresetSaveAs" title="Сохранить текущие параметры как новый пресет">
+          <button data-click="setDefaultRecordPreset" id="rec-preset-default-btn" class="ui-btn ui-btn-subtle h-8 !px-2" data-i18n-title="tipPresetDefault" title="Сделать набором по умолчанию для кнопки «Запись»">★</button>
+          <button data-click="saveRecordPresetAs" class="ui-btn ui-btn-subtle h-8 !px-2" data-i18n-title="tipPresetSaveAs" title="Сохранить текущие параметры как новый набор">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
           </button>
-          <button data-click="updateRecordPreset" id="rec-preset-update-btn" class="ui-btn ui-btn-subtle h-8 !px-2" data-i18n-title="tipPresetUpdate" title="Записать текущие параметры в выбранный пресет">
+          <button data-click="updateRecordPreset" id="rec-preset-update-btn" class="ui-btn ui-btn-subtle h-8 !px-2" data-i18n-title="tipPresetUpdate" title="Записать текущие параметры в выбранный набор">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
           </button>
-          <button data-click="deleteRecordPreset" id="rec-preset-delete-btn" class="ui-btn ui-btn-subtle h-8 !px-2 text-apple-red" data-i18n-title="tipPresetDelete" title="Удалить пресет">
+          <button data-click="deleteRecordPreset" id="rec-preset-delete-btn" class="ui-btn ui-btn-subtle h-8 !px-2 text-apple-red" data-i18n-title="tipPresetDelete" title="Удалить набор">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
           </button>
         </div>
@@ -140,7 +140,7 @@
           class="w-full h-8 bg-apple-card border apple-border rounded-lg px-3 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
         <div id="studio-upcoming" class="hidden"></div>
       <div class="text-[11.5px] text-apple-tertiary leading-snug space-y-1">
-        <p id="record-save-hint" class="break-all"></p>
+        <p id="record-save-hint" class="break-words"></p>
         <button data-click="openModal" data-click-args='["settings", "record"]' class="vs-link text-apple-blue hover:underline" data-i18n="recordChangeFolder">Изменить папку для записей…</button>
       </div>
       </section>
@@ -291,6 +291,7 @@
       <div class="studio-focus-only px-5 py-1.5 flex items-center gap-2 border-b apple-border shrink-0 bg-apple-bg/95">
         <span class="text-[11px] font-mono text-apple-tertiary shrink-0">VRAM</span>
         <div id="studio-vram-chips" class="flex flex-wrap gap-1"></div>
+        <button data-click="toggleStudioFocus" data-click-args='[false]' class="ui-btn ui-btn-subtle h-8 ml-auto shrink-0" data-i18n="studioFocusExitEsc">Свернуть (Esc)</button>
       </div>
       <div id="studio-captions" class="flex-1 min-h-0 overflow-y-auto px-8 py-6">
         <div id="studio-captions-inner" class="max-w-6xl mx-auto">

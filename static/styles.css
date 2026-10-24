@@ -679,6 +679,13 @@ html :is(div[role="button"], .segment-row):not(.rp-scrub):focus-visible { outlin
 .sb-about { min-height: 24px; }
 .vs-link { display: inline-flex; align-items: center; min-height: 24px; }
 label:has(> .vs-switch.vs-sm) { min-height: 24px; }
+/* --- A date field shown in the interface language (core.js enhanceDateInput): the native field under its button --- */
+.vs-date { position: relative; display: inline-flex; }
+.vs-date > input[type="date"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; pointer-events: none; }
+.vs-date-btn { display: inline-flex; align-items: center; text-align: left; cursor: pointer; font-variant-numeric: tabular-nums; }
+/* --- The import window stays where it opened: anchored at the top, a long list scrolls --- */
+#modal-import { align-items: flex-start; padding-top: max(16px, 8vh); }
+#imp-list { max-height: 30vh; overflow-y: auto; }
 /* --- The one on/off switch of the page: a native checkbox (role="switch") drawn as a toggle. For a setting
    that applies at once; a checkbox stays a checkbox where several items are picked for one action.
    <label class="vs-row"><span class="vs-text">…label, hint…</span><input type="checkbox" role="switch" class="vs-switch"></label>

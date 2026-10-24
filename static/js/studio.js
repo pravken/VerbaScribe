@@ -372,7 +372,7 @@ function presetFromForm(base) {
 }
 
 async function saveRecordPresetAs() {
-  const name = (await askText(t('presetNamePrompt'), '') || '').trim();
+  const name = (await askText(t('presetNamePrompt'), '', { title: t('presetNewTitle'), ok: t('save') }) || '').trim();
   if (!name) return;
   const own = recordPresets().filter(p => !p.builtin);
   const preset = presetFromForm({ id: `p${Date.now().toString(36)}`, name: name.slice(0, 60) });
@@ -674,7 +674,9 @@ function saveRecordVideoPref() {
 
 function renderRecordSaveHint() {
   const dir = state.system && state.system.paths && state.system.paths.recordings;
-  document.getElementById('record-save-hint').textContent = dir ? t('recordSaveHint').replace('{dir}', () => dir) : '';
+  // only the path may break anywhere, not the words around it
+  document.getElementById('record-save-hint').innerHTML = dir
+    ? escapeHtml(t('recordSaveHint')).replace('{dir}', () => `<span class="break-all">${escapeHtml(dir)}</span>`) : '';
 }
 
 // --- Live captions while recording ---

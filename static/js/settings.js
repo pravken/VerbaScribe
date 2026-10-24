@@ -1036,7 +1036,9 @@ const CALL_APP_NAMES = { zoom: 'Zoom', teams: 'Microsoft Teams', telegram: 'Tele
 
 async function fillCallSettings(s) {
   const st = await fetch('/api/calls/status').then(r => r.json()).catch(() => ({ supported: false }));
-  document.getElementById('call-record-block').classList.toggle('hidden', !st.supported);
+  const callBlock = document.getElementById('call-record-block');
+  callBlock.classList.toggle('hidden', !st.supported);
+  callBlock.closest('.settings-card')?.classList.toggle('hidden', !st.supported);  // no empty «Звонки» card
   document.getElementById('set-call-record').checked = s.call_auto_record === 'true';
   const chosen = new Set((s.call_apps || 'zoom,teams,telegram').split(','));
   document.getElementById('call-apps').innerHTML = Object.entries(CALL_APP_NAMES).map(([id, name]) =>

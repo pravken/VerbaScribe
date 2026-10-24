@@ -166,6 +166,48 @@ function tMaybe(key) {
   return (I18N[state.uiLang] && I18N[state.uiLang][key]) || I18N.ru[key] || undefined;
 }
 
+// --- Dates in the interface language: a native date field writes its date the way the browser's own
+// locale does (10/25/2026 in a Russian interface). Each one gets a button over it with the date as the
+// interface writes it (25.10.2026); the button opens the field's own calendar. ---
+function uiDateText(iso) {
+  if (!iso) return t('pickDate');
+  const d = new Date(`${iso}T00:00`);
+  return isNaN(d) ? iso : d.toLocaleDateString(state.uiLang === 'en' ? 'en-US' : 'ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+function syncDateField(input) {
+  const btn = input && input.parentElement && input.parentElement.querySelector(':scope > .vs-date-btn');
+  if (btn) btn.textContent = uiDateText(input.value);
+}
+function enhanceDateInput(input) {
+  if (input.dataset.vsDate) return;
+  input.dataset.vsDate = '1';
+  const wrap = document.createElement('span');
+  wrap.className = 'vs-date';
+  input.replaceWith(wrap);
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = `${input.className} vs-date-btn`;
+  btn.title = input.title;
+  btn.addEventListener('click', () => { try { input.showPicker(); } catch (e) { input.focus(); } });
+  input.tabIndex = -1;
+  input.setAttribute('aria-hidden', 'true');
+  input.addEventListener('change', () => syncDateField(input));
+  wrap.append(input, btn);
+  syncDateField(input);
+}
+function enhanceDateInputs(root) {
+  if (root.matches && root.matches('input[type="date"]')) enhanceDateInput(root);
+  if (root.querySelectorAll) root.querySelectorAll('input[type="date"]').forEach(enhanceDateInput);
+}
+(function watchDateInputs() {
+  const start = () => {
+    enhanceDateInputs(document.body);
+    new MutationObserver(list => list.forEach(m => m.addedNodes.forEach(n => { if (n.nodeType === 1) enhanceDateInputs(n); })))
+      .observe(document.body, { childList: true, subtree: true });
+  };
+  if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+})();
+
 function setUILanguage(lang) {
   state.uiLang = lang;
   document.documentElement.lang = lang;
@@ -214,7 +256,9 @@ function setUILanguage(lang) {
     renderSummaryPanel();
   }
   // Texts the scripts wrote (not data-i18n): drawn again in the new language
-  loadSystemInfo().catch(() => {});
+  document.querySelectorAll('.vs-date > input').forEach(syncDateField);
+  if (typeof renderStatusbar === 'function') renderStatusbar();
+  loadSystemInfo().then(() => { if (typeof renderStatusbar === 'function') renderStatusbar(); }).catch(() => {});
   if (typeof scheduleVramRefresh === 'function') scheduleVramRefresh(50);  // the memory badges
   if (typeof renderUpdateStatus === 'function') renderUpdateStatus();
   renderQueuePanel();
@@ -262,18 +306,19 @@ function askConfirm(text, danger = false) {
   return confirmDialog(t('confirmTitle'), text, t('ok'), danger);
 }
 
-function askText(label, value = '') {
+function askText(label, value = '', opts = {}) {
   return new Promise(resolve => {
     const wrap = document.createElement('div');
     wrap.className = 'fixed inset-0 modal-backdrop z-[70] flex items-center justify-center p-4';
     wrap.setAttribute('role', 'dialog');
     wrap.setAttribute('aria-modal', 'true');
     wrap.innerHTML = `<form class="w-full max-w-md bg-apple-card border apple-border rounded-2xl shadow-2xl p-5 space-y-4 modal-card">
+      ${opts.title ? `<div class="text-sm font-semibold text-white">${escapeHtml(opts.title)}</div>` : ''}
       <label class="block text-xs text-apple-label leading-relaxed whitespace-pre-line">${escapeHtml(label)}</label>
       <input type="text" class="w-full h-9 bg-apple-sidebar border apple-border rounded-lg px-3 text-sm text-white focus:outline-none focus:border-apple-blue" />
       <div class="flex justify-end gap-2">
         <button type="button" data-a="no" class="ui-btn ui-btn-subtle">${escapeHtml(t('cancel'))}</button>
-        <button type="submit" class="ui-btn ui-btn-primary">${escapeHtml(t('ok'))}</button>
+        <button type="submit" class="ui-btn ui-btn-primary">${escapeHtml(opts.ok || t('ok'))}</button>
       </div></form>`;
     const input = wrap.querySelector('input');
     input.value = value || '';
@@ -490,7 +535,11 @@ function openModal(name, tab) {
   }
   modal.classList.remove('hidden');
   if (name === 'settings' && state.appView !== 'settings') switchAppView('settings');
-  setTimeout(() => { if (!modal.contains(document.activeElement)) (focusablesIn(modal)[0] || modal).focus(); }, 60);
+  setTimeout(() => {
+    if (modal.contains(document.activeElement)) return;
+    const first = name === 'settings' ? document.getElementById('settings-search') : null;  // the search, not «Закрыть»
+    (first || focusablesIn(modal)[0] || modal).focus();
+  }, 60);
   if (name === 'import') onImportDialogOpen();  // importdlg.js: the list, the processing from the settings
   if (name === 'settings') {
     let last = null;

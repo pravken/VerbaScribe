@@ -275,6 +275,7 @@ def api_meeting_info(meeting_id: int) -> Dict[str, Any]:
         "status": m.get("status"),
         "language": m.get("language"),
         "model_name": m.get("model_name"),
+        "transcript_model": m.get("transcript_model") or "",  # the model of the text shown (as in the header)
         "speakers": len(m.get("speakers") or {}),
         "segments": len(m.get("segments") or []),
         "words": words,

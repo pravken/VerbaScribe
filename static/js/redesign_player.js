@@ -902,7 +902,7 @@ function rpRenderFillerButton() {
   btn.classList.toggle('ui-btn-subtle', !on);
   const label = btn.querySelector('.tx-tool-label');
   const f = rp.fillers;
-  if (label) label.textContent = on && f && f.count ? `${t('rdPlyrNoFillers')} · ${f.count}` : t('rdPlyrNoFillers');
+  if (label) label.textContent = on && f && f.count ? `${t('rdPlyrNoFillers')} · ${t('rdPlyrHiddenN').replace('{n}', () => f.count)}` : t('rdPlyrNoFillers');
   btn.title = t('rdPlyrNoFillersTip');
   const m = state.activeMeeting;
   document.getElementById('rp-restore-fillers')?.classList.toggle('hidden', !(m && m.has_segments_backup));

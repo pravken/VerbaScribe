@@ -144,12 +144,12 @@
           <div class="flex items-center gap-2">
             <select id="set-idle-unload" data-i18n-title="a11yIdleUnload" title="Выгружать модели из памяти через" class="h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
               <option value="0" data-i18n="idleUnloadNever">Не выгружать</option>
-              <option value="1">1 min</option>
-              <option value="5">5 min</option>
-              <option value="10">10 min</option>
-              <option value="15">15 min</option>
-              <option value="30">30 min</option>
-              <option value="60">60 min</option>
+              <option value="1" data-i18n="idleMin1">1 мин</option>
+              <option value="5" data-i18n="idleMin5">5 мин</option>
+              <option value="10" data-i18n="idleMin10">10 мин</option>
+              <option value="15" data-i18n="idleMin15">15 мин</option>
+              <option value="30" data-i18n="idleMin30">30 мин</option>
+              <option value="60" data-i18n="idleMin60">60 мин</option>
             </select>
             <button data-click="unloadAllModelsNow" class="ui-btn ui-btn-subtle h-8 px-3 text-[11.5px]" data-i18n="idleUnloadNow">Выгрузить сейчас</button>
             <span id="idle-unload-status" class="text-[11.5px] text-apple-tertiary"></span>
@@ -281,7 +281,7 @@
               <div id="call-apps" class="flex flex-wrap gap-x-4 gap-y-1.5"></div>
               <div id="call-mic-now" class="text-[11.5px] text-apple-tertiary"></div>
               <div class="flex items-center gap-2">
-                <span id="lbl-call-preset" class="text-[11.5px] text-apple-secondary" data-i18n="callPresetLabel">Пресет записи</span>
+                <span id="lbl-call-preset" class="text-[11.5px] text-apple-secondary" data-i18n="callPresetLabel">Набор настроек записи</span>
                 <select id="set-call-preset" aria-labelledby="lbl-call-preset" class="h-7 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none"></select>
               </div>
             </div>
@@ -539,7 +539,7 @@
             <input id="custom-ollama-model-input" type="text"
               data-i18n-title="tipCustomOllamaInput"
               title="Введите название любой модели из каталога Ollama"
-              placeholder="Или введите имя любой модели из библиотеки Ollama (напр. mistral:7b)…"
+              data-i18n-placeholder="phCustomOllama" placeholder="Или введите имя любой модели из библиотеки Ollama (напр. mistral:7b)…"
               class="flex-1 h-8 bg-apple-sidebar border apple-border rounded-lg px-3 text-xs text-white placeholder-apple-tertiary focus:outline-none" />
             <button data-click="pullCustomOllamaModel"
               data-i18n-title="tipPullCustomOllama"
