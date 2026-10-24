@@ -55,6 +55,14 @@ class ProcessingTest(unittest.TestCase):
         self.assertFalse(p["vad"])
         self.assertNotIn("unknown", p)
 
+    def test_switches_given_as_words(self):
+        """A form may send the switches as words: "false" is off, not a non-empty string."""
+        database.init_db()
+        m = database.create_meeting(title="Слова", filename="w.wav", media_path="w.wav")
+        database.set_meeting_processing(m["id"], {"denoise": "false", "vad": "true", "summary": 0})
+        p = database.effective_processing(database.get_meeting(m["id"]).get("processing"), {})
+        self.assertEqual((p["denoise"], p["vad"], p["summary"]), (False, True, False))
+
     def test_home_settings_are_checked(self):
         self.assertEqual(settings_schema.clean("work_day_end", "30"), "24")
         self.assertEqual(settings_schema.clean("ask_import_params", "false"), "false")

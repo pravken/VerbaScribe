@@ -1557,8 +1557,15 @@ def effective_processing(stored: Optional[Dict[str, Any]], settings: Optional[Di
     return out
 
 
+def _flag(v: Any) -> bool:
+    """A switch of the processing: true/false, or the words of a form ("false" is off, not a non-empty string)."""
+    if isinstance(v, str):
+        return v.strip().lower() in ("true", "1", "yes", "on")
+    return bool(v)
+
+
 def set_meeting_processing(meeting_id: int, processing: Dict[str, Any]) -> None:
-    clean = {k: bool(v) for k, v in (processing or {}).items() if k in PROCESSING_KEYS}
+    clean = {k: _flag(v) for k, v in (processing or {}).items() if k in PROCESSING_KEYS}
     with _db_lock:
         conn = get_connection()
         conn.execute("UPDATE meetings SET processing_json = ? WHERE id = ?", (json.dumps(clean), meeting_id))
