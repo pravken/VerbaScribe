@@ -775,12 +775,27 @@
       <footer id="player-footer" class="rp-footer shrink-0 z-20 flex flex-col">
 
         <!-- Attached Video Frame (Directly connected to player controls below) -->
-        <div id="video-drawer" class="hidden border-b apple-border bg-black/95 py-3 px-6">
+        <div id="video-drawer" class="hidden relative border-b apple-border bg-black/95 py-3 px-6">
           <div id="video-expanded-slot" class="max-w-xl mx-auto relative">
             <video id="media-player" crossorigin="anonymous" data-click="onVideoClick"
               data-i18n-title="tipVideoCanvas"
               title="Нажмите на видео для воспроизведения / паузы"
               class="w-full max-h-56 rounded-xl bg-black mx-auto cursor-pointer shadow-2xl border border-white/10"></video>
+          </div>
+          <!-- How the video is shown: smaller (in the player bar), theatre, a window over the other programs -->
+          <div id="video-tools" class="video-tools" role="group" data-i18n-aria="rdPlyrVideo" aria-label="Видео">
+            <button data-click="rpSetVideo" data-click-args='["mini"]' class="video-tool" data-i18n-title="tipVideoCollapse" title="Свернуть видео в маленькое превью в панели плеера (выбор запоминается)">
+              <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25"/></svg>
+              <span class="video-tool-label" data-i18n="vtMini">Уменьшить</span>
+            </button>
+            <button data-click="rpSetVideo" data-click-args='["theatre"]' class="video-tool" data-i18n-title="tipTheatre" title="Режим кинотеатра: большое видео и текст рядом (Esc — выход)">
+              <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.75" y="4.75" width="18.5" height="12.5" rx="2"/><path stroke-linecap="round" d="M8 20.25h8"/></svg>
+              <span class="video-tool-label" data-i18n="vtTheatre">Кинотеатр</span>
+            </button>
+            <button data-click="rpSetVideo" data-click-args='["window"]' id="video-tool-window" class="video-tool" data-i18n-title="tipVideoPip" title="Открыть видео в отдельном окне поверх других программ">
+              <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.75" y="4.75" width="18.5" height="14.5" rx="2"/><rect x="12" y="11.5" width="7" height="5.5" rx="1" fill="currentColor" stroke="none"/></svg>
+              <span class="video-tool-label" data-i18n="vtWindow">В отдельном окне</span>
+            </button>
           </div>
         </div>
 
@@ -844,17 +859,12 @@
             </div>
 
             <div class="rp-right">
-              <!-- How the video is shown: in the panel, small, theatre, separate window -->
-              <div class="rp-anchor hidden" id="rp-video-anchor">
-                <button id="rp-video-btn" class="rp-chip" data-click="rpTogglePop" data-click-args='["video"]' aria-expanded="false"></button>
-                <div id="rp-pop-video" class="rp-pop rp-menu hidden" role="menu"></div>
-              </div>
               <!-- The sound while listening: studio voice, skipping silence, the track -->
               <div class="rp-anchor">
                 <button id="rp-sound-btn" class="rp-chip" data-click="rpTogglePop" data-click-args='["sound"]' aria-expanded="false"
                   data-i18n-title="rdPlyrTipSound" title="Как звучит запись сейчас: студийный голос, пропуск тишины, дорожка">
                   <svg class="tb-ai" width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2l1.9 5.6 5.6 1.9-5.6 1.9L10 17l-1.9-5.6-5.6-1.9 5.6-1.9z"/><path d="M18.5 13l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/></svg>
-                  <span data-i18n="rdPlyrSound">Звук</span><span id="rp-sound-n" class="rp-badge hidden"></span>
+                  <span class="rp-chip-label" data-i18n="rdPlyrSound">Звук</span><span id="rp-sound-n" class="rp-badge hidden"></span>
                 </button>
                 <div id="rp-pop-sound" class="rp-pop rp-pop-sound hidden" role="dialog" data-i18n-aria="rdPlyrSoundTitle" aria-label="Звук при прослушивании"></div>
               </div>

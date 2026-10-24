@@ -910,6 +910,17 @@ label:has(> .vs-switch.vs-sm) { min-height: 24px; }
 .rp-anchor.hidden { display: none; }
 .rp-chip { height: 28px; min-width: 44px; padding: 0 9px; gap: 6px; border-radius: 7px; border: 1px solid rgba(255, 255, 255, 0.12); color: #C7C7CC; font-size: 12px; white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; }
 .rp-chip:hover, .rp-chip[aria-expanded="true"] { background: rgba(255, 255, 255, 0.07); color: #F5F5F7; }
+.rp-tight .rp-chip-label { display: none; }
+.rp-tight { gap: 8px; }
+.rp-tight input[type="range"].rp-volume { width: 48px; }
+/* still too wide: the right side takes what it needs and the caption on the left gets shorter */
+.rp-row2:has(.rp-crowded) { grid-template-columns: minmax(0, 1fr) auto auto; }
+/* The video's buttons on the black panel, to the right of the picture; only icons when the panel is narrow */
+.video-tools { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 6px; }
+.video-tool { height: 28px; padding: 0 10px; gap: 7px; border-radius: 7px; border: 1px solid rgba(255, 255, 255, 0.12); background: rgba(255, 255, 255, 0.04); color: #C7C7CC; font-size: 12px; white-space: nowrap; display: inline-flex; align-items: center; transition: background-color .15s ease, color .15s ease; }
+.video-tool:hover { background: rgba(255, 255, 255, 0.1); color: #F5F5F7; }
+.video-tool.hidden { display: none; }
+@media (max-width: 1180px) { .video-tool-label { display: none; } .video-tool { padding: 0 6px; } .video-tools { right: 10px; } }
 .rp-chip-on { border-color: rgba(10, 132, 255, 0.55); background: rgba(10, 132, 255, 0.08); color: #8CC4FF; }
 .rp-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12.5px; color: #E5E5EA; }
 .rp-badge { min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box; border-radius: 8px; background: #0A84FF; color: #fff; font-size: 11px; font-weight: 700; line-height: 16px; text-align: center; }

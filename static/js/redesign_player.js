@@ -14,7 +14,7 @@ const rp = {
   pauses: [],       // [start, end] without speech («Пропускать тишину»)
   pauseSec: 0,
   fillers: null,    // what «Без запинок» hides (text_utils.filler_view)
-  open: null,       // the open popover: 'video' | 'sound' | 'speed' | 'more'
+  open: null,       // the open popover: 'sound' | 'speed' | 'more'
   remain: false,    // the end time shows what is left
   loopSeg: null,    // the phrase played in a loop
   ab: null,         // { a, b }: A–B repeat (b null while only A is set)
@@ -684,14 +684,14 @@ function rpClosePop() {
 }
 
 function rpRenderPop() {
-  ['video', 'sound', 'speed', 'more'].forEach(k => {
+  ['sound', 'speed', 'more'].forEach(k => {
     const pop = document.getElementById(`rp-pop-${k}`);
-    const btn = document.getElementById({ video: 'rp-video-btn', sound: 'rp-sound-btn', speed: 'speed-cycle-btn', more: 'rp-more-btn' }[k]);
+    const btn = document.getElementById({ sound: 'rp-sound-btn', speed: 'speed-cycle-btn', more: 'rp-more-btn' }[k]);
     const on = rp.open === k;
     if (btn) btn.setAttribute('aria-expanded', String(on));
     if (!pop) return;
     pop.classList.toggle('hidden', !on);
-    if (on) pop.innerHTML = { video: rpVideoMenuHtml, sound: rpSoundHtml, speed: rpSpeedHtml, more: rpMoreHtml }[k]();
+    if (on) pop.innerHTML = { sound: rpSoundHtml, speed: rpSpeedHtml, more: rpMoreHtml }[k]();
   });
 }
 
@@ -850,26 +850,32 @@ function rpSaveClean() {
   requestCut('clean');
 }
 
-// «Видео: …»: in the panel, small, theatre, a window over the other programs
-function rpVideoModeKey() {
-  const p = rpPlayer();
-  if (document.pictureInPictureElement && document.pictureInPictureElement === p) return 'window';
-  if (state.theatre) return 'theatre';
-  return state.videoMode === 'mini' ? 'mini' : 'panel';
-}
-
+// The video's own buttons sit on the black panel beside it (static/parts/workspace.html #video-tools):
+// smaller, theatre, a window over the other programs; the small one opens back with a click
 function rpRenderVideoButton() {
-  const anchor = document.getElementById('rp-video-anchor');
-  const btn = document.getElementById('rp-video-btn');
-  if (!anchor || !btn) return;
-  anchor.classList.toggle('hidden', !state.hasVideo && !state.theatre);
-  btn.textContent = `${t('rdPlyrVideo')}: ${t(`rdPlyrVideo_${rpVideoModeKey()}`)}`;
+  document.getElementById('video-tool-window')?.classList.toggle('hidden', !document.pictureInPictureEnabled);
+  rpFitRight();
 }
 
-function rpVideoMenuHtml() {
-  const cur = rpVideoModeKey();
-  const item = (k, key) => rpItem(t(`rdPlyrVideo_${k}`), 'rpSetVideo', [k], { role: 'menuitemradio', checked: cur === k, mark: cur === k ? '✓' : '', key });
-  return item('panel', '') + item('mini', '') + item('theatre', 'F') + (document.pictureInPictureEnabled ? item('window', '') : '');
+// The chips on the right keep only their icons (their tooltips name them) and the volume gets
+// shorter when the row would run into the transport buttons in the middle
+let rpRightObserver = null;
+function rpFitRight() {
+  const right = document.querySelector('.rp-right');
+  if (!right) return;
+  if (!rpRightObserver && window.ResizeObserver) {
+    rpRightObserver = new ResizeObserver(() => rpFitRight());
+    rpRightObserver.observe(right.parentElement);
+  }
+  // flex-end: what does not fit runs out on the left, where scrollWidth does not count it
+  const over = () => {
+    const kids = [...right.children].filter(el => el.offsetWidth);
+    const gap = parseFloat(getComputedStyle(right).columnGap) || 0;
+    return kids.reduce((n, el) => n + el.offsetWidth, 0) + gap * Math.max(0, kids.length - 1) > right.clientWidth + 1;
+  };
+  right.classList.remove('rp-tight', 'rp-crowded');
+  if (over()) right.classList.add('rp-tight');
+  if (over()) right.classList.add('rp-crowded');
 }
 
 async function rpSetVideo(k) {

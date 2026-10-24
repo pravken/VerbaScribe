@@ -60,6 +60,8 @@ function applyVideoLayout() {
   pipBtn.classList.toggle('ui-btn-active', inPip);
   pipBtn.classList.toggle('ui-btn-subtle', !inPip);
   pipBtn.title = t(inPip ? 'tipVideoPipExit' : 'tipVideoPip');
+
+  if (typeof rpRenderVideoButton === 'function') rpRenderVideoButton();
 }
 
 // --- Theatre mode: large video with the transcript beside or below it ---
