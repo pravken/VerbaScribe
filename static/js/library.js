@@ -491,8 +491,8 @@ function openDigestMenu(e) {
   });
   document.body.appendChild(menu);
   const r = e.currentTarget.getBoundingClientRect();
-  menu.style.left = `${Math.min(r.left, window.innerWidth - 232)}px`;
-  menu.style.top = `${r.bottom + 4}px`;
+  menu.style.left = `${Math.min(zpx(r.left), viewW() - 232)}px`;
+  menu.style.top = `${zpx(r.bottom) + 4}px`;
 }
 
 document.addEventListener('click', () => document.getElementById('digest-menu')?.remove());
@@ -779,8 +779,8 @@ function openFolderMenu(e, id) {
   document.getElementById('fctx-local').disabled = inherited;
   document.getElementById('fctx-local').style.opacity = inherited ? '.5' : '';
   menu.classList.remove('hidden');
-  menu.style.left = `${Math.min(e.clientX, window.innerWidth - 230)}px`;
-  menu.style.top = `${Math.min(e.clientY, window.innerHeight - 190)}px`;
+  menu.style.left = `${Math.min(zpx(e.clientX), viewW() - 230)}px`;
+  menu.style.top = `${Math.min(zpx(e.clientY), viewH() - 190)}px`;
 }
 
 function hideFolderMenu() {
@@ -1149,8 +1149,8 @@ function openLibViewMenu(e) {
   });
   document.body.appendChild(menu);
   const r = e.currentTarget.getBoundingClientRect();
-  menu.style.left = `${Math.min(r.left, window.innerWidth - 232)}px`;
-  menu.style.top = `${r.bottom + 4}px`;
+  menu.style.left = `${Math.min(zpx(r.left), viewW() - 232)}px`;
+  menu.style.top = `${zpx(r.bottom) + 4}px`;
 }
 
 function closeLibViewMenu() {
@@ -1725,7 +1725,7 @@ const MAIN_MIN = 800;  // the recording toolbar and the player need this much ne
 function setSidebarWidth(w, save) {
   const aside = document.getElementById('app-sidebar');
   if (!aside) return;
-  w = Math.round(Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, Math.min(w, window.innerWidth - MAIN_MIN))));
+  w = Math.round(Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, Math.min(w, viewW() - MAIN_MIN))));
   aside.style.width = `${w}px`;
   if (save) try { localStorage.setItem('verbascribe_sidebar_width', String(w)); } catch (e) {}
 }
@@ -1747,9 +1747,9 @@ function setSidebarWidth(w, save) {
     handle.classList.add('dragging');
     document.body.classList.add('sidebar-dragging');
     const left = document.getElementById('app-sidebar').getBoundingClientRect().left;
-    const move = (ev) => setSidebarWidth(ev.clientX - left, false);
+    const move = (ev) => setSidebarWidth(zpx(ev.clientX - left), false);
     const up = (ev) => {
-      setSidebarWidth(ev.clientX - left, true);
+      setSidebarWidth(zpx(ev.clientX - left), true);
       handle.classList.remove('dragging');
       document.body.classList.remove('sidebar-dragging');
       handle.removeEventListener('pointermove', move);

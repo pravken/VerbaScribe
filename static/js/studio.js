@@ -833,8 +833,8 @@ function openQuickLangMenu(e, index) {
     closeQuickLangMenu();
   });
   document.body.appendChild(menu);
-  menu.style.left = `${Math.min(e.clientX, window.innerWidth - 236)}px`;
-  menu.style.top = `${Math.min(e.clientY, window.innerHeight - 330)}px`;
+  menu.style.left = `${Math.min(zpx(e.clientX), viewW() - 236)}px`;
+  menu.style.top = `${Math.min(zpx(e.clientY), viewH() - 330)}px`;
 }
 
 function closeQuickLangMenu() {

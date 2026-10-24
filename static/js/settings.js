@@ -33,11 +33,35 @@ async function installFfmpeg() {
   }
 }
 
+// Settings → General: the interface scale, applied at once and saved (ui_scale)
+function renderUiScaleButtons() {
+  const cur = String(Math.round(uiZoom() * 100));
+  UI_SCALES.forEach(v => {
+    const b = document.getElementById(`scale-btn-${v}`);
+    if (!b) return;
+    b.className = `apple-segment-btn ${v === cur ? 'apple-segment-active' : 'text-apple-secondary hover:text-white'}`;
+    b.setAttribute('aria-checked', String(v === cur));
+  });
+}
+
+async function setUiScale(v) {
+  applyUiScale(v);
+  renderUiScaleButtons();
+  const res = await fetch('/api/settings', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: { ui_scale: String(v) } }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  if (state.system) state.system.settings = data.settings;
+}
+
 async function loadSystemInfo() {
   try {
     const res = await fetch('/api/system');
     const data = await readJson(res);
     state.system = data;
+    applyUiScale((data.settings || {}).ui_scale);
+    renderUiScaleButtons();
 
     const hw = data.hardware;
     document.getElementById('hw-text').textContent = hw.cuda_available

@@ -74,6 +74,20 @@
           </div>
         </div>
 
+        <!-- Interface scale: CSS zoom on the page (applyUiScale in static/js/core.js) -->
+        <div class="settings-card !space-y-0 flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <h4 class="text-[13px] font-semibold text-white" data-i18n="uiScaleTitle">Масштаб интерфейса</h4>
+            <p class="text-[11px] text-apple-secondary leading-snug mt-0.5" data-i18n="uiScaleDesc">Размер всего в окне: текста, кнопок и списков. Меняется сразу.</p>
+          </div>
+          <div class="apple-segmented shrink-0" role="radiogroup" data-i18n-title="uiScaleTitle" title="Масштаб интерфейса">
+            <button data-click="setUiScale" data-click-args='["75"]' id="scale-btn-75" role="radio" class="apple-segment-btn">75 %</button>
+            <button data-click="setUiScale" data-click-args='["90"]' id="scale-btn-90" role="radio" class="apple-segment-btn">90 %</button>
+            <button data-click="setUiScale" data-click-args='["100"]' id="scale-btn-100" role="radio" class="apple-segment-btn">100 %</button>
+            <button data-click="setUiScale" data-click-args='["115"]' id="scale-btn-115" role="radio" class="apple-segment-btn">115 %</button>
+          </div>
+        </div>
+
         <!-- Version and updates from GitHub Releases (app/updater.py) -->
         <!-- Start with Windows, in the tray (app/autostart.py, run.py --minimized) -->
         <div class="settings-card">

@@ -4,6 +4,8 @@ body {
   background-color: #141416;
   color: #F5F5F7;
   -webkit-font-smoothing: antialiased;
+  /* the page is zoomed (Settings → Interface scale) and 100vh is not: the body fills the window */
+  height: calc(100vh / var(--ui-zoom, 1));
 }
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }

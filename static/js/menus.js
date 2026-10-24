@@ -251,8 +251,8 @@ function openRecordingContextMenu(e, meetingId) {
   const menu = document.getElementById('recording-context-menu');
   menu.classList.remove('hidden');
 
-  const x = Math.min(e.clientX, window.innerWidth - 235);
-  const y = Math.min(e.clientY, window.innerHeight - 265);
+  const x = Math.min(zpx(e.clientX), viewW() - 235);
+  const y = Math.min(zpx(e.clientY), viewH() - 265);
   menu.style.left = `${x}px`;
   menu.style.top = `${y}px`;
 }
@@ -273,8 +273,8 @@ function openBulkMenu(e) {
     window[b.dataset.fn]();
   });
   document.body.appendChild(menu);
-  menu.style.left = `${Math.min(e.clientX, window.innerWidth - 232)}px`;
-  menu.style.top = `${Math.min(e.clientY, window.innerHeight - 140)}px`;
+  menu.style.left = `${Math.min(zpx(e.clientX), viewW() - 232)}px`;
+  menu.style.top = `${Math.min(zpx(e.clientY), viewH() - 140)}px`;
   setTimeout(() => document.addEventListener('click', () => menu.remove(), { once: true }), 0);
 }
 
@@ -362,8 +362,8 @@ async function openSeriesMenu(e) {
     loadSeries();
   });
   document.body.appendChild(menu);
-  menu.style.left = `${Math.min(e.clientX, window.innerWidth - 250)}px`;
-  menu.style.top = `${Math.min(e.clientY, window.innerHeight - 330)}px`;
+  menu.style.left = `${Math.min(zpx(e.clientX), viewW() - 250)}px`;
+  menu.style.top = `${Math.min(zpx(e.clientY), viewH() - 330)}px`;
 }
 
 document.addEventListener('click', () => document.getElementById('series-menu')?.remove());

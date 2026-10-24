@@ -1367,9 +1367,10 @@ function openTextMenuAt(items, x, y) {
     clean[Number(b.dataset.i)].run();
   });
   document.body.appendChild(menu);
+  // x, y are a point of the window (clientX/Y); the menu is placed in the page's own pixels
   const r = menu.getBoundingClientRect();
-  menu.style.left = `${Math.max(4, Math.min(x, window.innerWidth - r.width - 4))}px`;
-  menu.style.top = `${Math.max(4, Math.min(y, window.innerHeight - r.height - 4))}px`;
+  menu.style.left = `${Math.max(4, Math.min(zpx(x), viewW() - zpx(r.width) - 4))}px`;
+  menu.style.top = `${Math.max(4, Math.min(zpx(y), viewH() - zpx(r.height) - 4))}px`;
 }
 document.addEventListener('click', closeTextMenu);
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeTextMenu(); });

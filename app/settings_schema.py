@@ -29,7 +29,7 @@ INTS = {"num_speakers": (0, 20), "idle_unload_minutes": (0, 24 * 60), "media_ret
         "onnx_gpu_batch": (1, 256)}
 FLOATS = {"dub_cfg_weight": (0.0, 2.0), "dub_exaggeration": (0.0, 2.0)}
 CHOICES = {"llm_provider": {"ollama", "cloud"}, "date_folders": {"off", "day", "month", "year_month"},
-           "record_source_mode": {"mic", "system", "both"}}
+           "record_source_mode": {"mic", "system", "both"}, "ui_scale": {"75", "90", "100", "115"}}
 FOLDERS = {"recordings_dir", "export_dir", "obsidian_vault", "watch_folder"}
 
 

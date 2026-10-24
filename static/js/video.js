@@ -332,7 +332,8 @@ function isTypingTarget(el) {
 }
 
 function anyModalOpen() {
-  return [...document.querySelectorAll('[id^="modal-"]')].some(m => !m.classList.contains('hidden'));
+  // the settings are a page of the window (#settings-view), not a dialog over it
+  return [...document.querySelectorAll('[id^="modal-"]')].some(m => !m.classList.contains('hidden') && !m.closest('#settings-view'));
 }
 
 function focusTranscriptSearch() {
@@ -425,8 +426,8 @@ function releaseWillowFluff(count, spread, origin) {
   for (let i = 0; i < count; i++) {
     const el = document.createElement('span');
     el.className = 'willow-fluff';
-    el.style.left = `${r.left + r.width * (0.35 + Math.random() * 0.5)}px`;
-    el.style.top = `${r.top + r.height * (0.15 + Math.random() * 0.5)}px`;
+    el.style.left = `${zpx(r.left + r.width * (0.35 + Math.random() * 0.5))}px`;
+    el.style.top = `${zpx(r.top + r.height * (0.15 + Math.random() * 0.5))}px`;
     // Drift right and up like fluff in a breeze, wider for the burst
     el.style.setProperty('--x', `${(30 + Math.random() * 90) * spread}px`);
     el.style.setProperty('--y', `${(-20 - Math.random() * 70) * spread + Math.random() * 40 * spread}px`);
