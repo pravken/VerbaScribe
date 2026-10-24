@@ -872,9 +872,11 @@ label:has(> .vs-switch.vs-sm) { min-height: 24px; }
 .rp-chapter:hover { color: #F5F5F7; background: rgba(255, 255, 255, 0.06); }
 .rp-chapter-on { color: #F5F5F7; font-weight: 600; }
 .rp-skip-note { position: absolute; top: 34px; z-index: 3; display: inline-flex; align-items: center; gap: 6px; height: 20px; padding: 0 9px; border-radius: 10px; background: rgba(14, 52, 96, 0.95); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45); color: #CFE6FF; font-size: 11.5px; white-space: nowrap; pointer-events: none; }
-.rp-bubble { position: absolute; z-index: 6; top: -19px; left: 0; transform: translateX(-50%); padding: 1px 6px; border-radius: 6px; background: #0A84FF; color: #0E0F12; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; font-weight: 600; white-space: nowrap; pointer-events: none; transition: background 0.15s; }
+.rp-bubble { position: absolute; z-index: 6; top: -19px; left: 0; transform: translateX(-50%); padding: 1px 6px; border-radius: 6px; background: #0A84FF; color: #0E0F12; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; font-weight: 600; white-space: nowrap; cursor: grab; transition: background 0.15s; }
 .rp-bubble-hover { z-index: 7; background: #3A3A3F; color: #F5F5F7; font-weight: 400; }
-.rp-knob { position: absolute; z-index: 6; bottom: -4px; left: 0; width: 8px; height: 8px; margin-left: -4px; border-radius: 4px; background: #fff; box-shadow: 0 0 0 2px #17181B; pointer-events: none; }
+.rp-knob { position: absolute; z-index: 6; bottom: -4px; left: 0; width: 8px; height: 8px; margin-left: -4px; border-radius: 4px; background: #fff; box-shadow: 0 0 0 2px #17181B; cursor: grab; }
+/* the time bubble and the knob are part of the scrub: grab them and drag */
+.rp-scrub:active .rp-bubble, .rp-scrub:active .rp-knob { cursor: grabbing; }
 .rp-row2 { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 20px; }
 .rp-left { min-width: 0; display: flex; align-items: center; gap: 8px; }
 .rp-speaker { max-width: 100%; min-width: 0; display: inline-flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px 0 0; border-radius: 8px; text-align: left; }
