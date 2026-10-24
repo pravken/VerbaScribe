@@ -595,6 +595,7 @@ function openLlmPicker() {
   const rank = m => (m.id === rec ? 0 : llmFits(m, hw) ? 1 : 2);
   const list = catalog.slice().sort((a, b) => rank(a) - rank(b));
   let pick = (list.find(m => m.installed && llmFits(m, hw)) || list[0]).id;
+  let showInfo = false;  // ⓘ: why a model needs more video memory than its file size
   document.getElementById('llm-picker')?.remove();
   const wrap = document.createElement('div');
   wrap.id = 'llm-picker';
@@ -622,7 +623,12 @@ function openLlmPicker() {
     wrap.innerHTML = `<div class="w-full max-w-lg bg-apple-card border apple-border rounded-2xl shadow-2xl p-5 space-y-3 modal-card llm-dialog">
       <div class="text-sm font-semibold text-white">${escapeHtml(t('llmPickTitle'))}</div>
       <p class="text-[11.5px] text-apple-secondary leading-relaxed">${escapeHtml(t('llmPickIntro'))}</p>
-      <div class="text-[11.5px] text-apple-tertiary">${escapeHtml(t('frHardware'))}: <span class="text-apple-label">${escapeHtml(gpuText)}</span></div>
+      <div class="flex items-center gap-1.5 text-[11.5px] text-apple-tertiary">${escapeHtml(t('frHardware'))}: <span class="text-apple-label">${escapeHtml(gpuText)}</span>
+        <button data-a="info" class="llm-info-btn${showInfo ? ' llm-info-btn-on' : ''}" aria-expanded="${showInfo}" title="${escapeHtml(t('llmMemTitle'))}" aria-label="${escapeHtml(t('llmMemTitle'))}">i</button></div>
+      ${showInfo ? `<div class="llm-info"><div class="font-medium text-apple-label">${escapeHtml(t('llmMemTitle'))}</div>
+        <p>${escapeHtml(t('llmMemIntro'))}</p>
+        <ul><li>${escapeHtml(t('llmMemContext'))}</li><li>${escapeHtml(t('llmMemBuffers'))}</li><li>${escapeHtml(t('llmMemOthers'))}</li></ul>
+        <p>${escapeHtml(t('llmMemExample'))}</p><p>${escapeHtml(t('llmMemLess'))}</p></div>` : ''}
       <div class="llm-list" role="radiogroup">${cards}</div>
       <div class="flex items-center gap-2 pt-1">
         <button data-a="cloud" class="ui-btn ui-btn-subtle">${escapeHtml(t('noAiCloud'))}</button>
@@ -641,6 +647,7 @@ function openLlmPicker() {
     const a = e.target.closest('button[data-a]');
     if (e.target === wrap || (a && a.dataset.a === 'no')) { done(); return; }
     if (!a) return;
+    if (a.dataset.a === 'info') { showInfo = !showInfo; draw(); wrap.querySelector('button[data-a="info"]').focus(); return; }
     done();
     if (a.dataset.a === 'cloud') { openModal('settings', 'analysis'); return; }
     const m = list.find(x => x.id === pick);
