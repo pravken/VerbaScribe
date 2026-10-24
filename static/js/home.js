@@ -355,13 +355,16 @@ function renderHomeTasks() {
   const count = document.getElementById('hm-tasks-count');
   count.textContent = String(mine.length);
   count.classList.toggle('hidden', !mine.length);
-  const list = [...mine].sort((x, y) => (x.due ? 0 : 1) - (y.due ? 0 : 1) || String(y.meeting_date).localeCompare(String(x.meeting_date))).slice(0, 5);
+  // by the due date (the one set by hand too), as on the Tasks page; the nearest first, then the ones without one
+  const list = [...mine].sort((x, y) => (x.due_date ? 0 : 1) - (y.due_date ? 0 : 1)
+    || String(x.due_date || '').localeCompare(String(y.due_date || ''))
+    || String(y.meeting_date).localeCompare(String(x.meeting_date))).slice(0, 5);
   document.getElementById('hm-tasks').innerHTML = list.length ? list.map(c => `
       <label class="hm-task">
         <input type="checkbox" ${pageCall('change', 'hmTaskDone', [c.id])} />
         <span class="flex-1 min-w-0 flex flex-col gap-0.5"><span class="hm-task-text">${escapeHtml(c.what)}</span>
           <span class="hm-task-sub">${escapeHtml([names.length ? '' : c.who, c.meeting_title].filter(Boolean).join(' · '))}</span></span>
-        ${c.due ? `<span class="hm-due">${escapeHtml(c.due)}</span>` : ''}
+        ${c.due_date ? `<span class="hm-due ${tkDueTone(c)}">${escapeHtml(tkDueText(c))}</span>` : ''}
       </label>`).join('')
     : `<p class="hm-empty">${escapeHtml(t('tasksEmpty'))}</p>`;
   return mine.length;
