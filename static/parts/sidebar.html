@@ -64,7 +64,8 @@
 
     <!-- Global Full-Text Search Across All Recordings -->
     <div class="px-3 pt-2.5 pb-1">
-      <div class="relative">
+      <div class="flex items-center gap-1.5">
+      <div class="relative flex-1 min-w-0">
         <svg class="w-3.5 h-3.5 text-apple-tertiary absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/>
         </svg>
@@ -76,6 +77,15 @@
           placeholder="Поиск по всем записям…"
           class="w-full h-7 bg-white/5 focus:bg-apple-card border border-transparent focus:border-apple-blue/60 rounded-lg pl-8 pr-6 text-xs text-white placeholder-apple-tertiary focus:outline-none transition" />
       </div>
+      <!-- Filters of the library: type, source, state, what is ready, language (library.js, LIB_FILTERS) -->
+      <button id="lib-filter-btn" data-click="openLibFilterMenu" data-click-args='[{"$": "event"}]'
+        data-i18n-title="tipLibFilter" title="Показать только записи нужного типа, источника, состояния или языка"
+        class="lib-filter-btn" aria-haspopup="true" aria-expanded="false">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 5.25h16.5l-6.4 7.6v5.4l-3.7 1.5v-6.9z"/></svg>
+        <span id="lib-filter-count" class="lib-filter-count hidden"></span>
+      </button>
+      </div>
+      <div id="lib-filter-chips" class="hidden lib-filter-chips"></div>
     </div>
 
     <!-- Processing queue (shown only while something is queued or running) -->

@@ -401,6 +401,29 @@ select option, select optgroup {
 }
 .chapter-all:hover { background: rgba(255, 255, 255, 0.07); color: #fff; }
 
+/* Library filters: the funnel next to the search, its count, the active filters as chips */
+.lib-filter-btn {
+  position: relative; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: 8px; color: #98989d; background: rgba(255, 255, 255, 0.05);
+  border: 1px solid transparent; transition: background-color 0.12s ease, color 0.12s ease;
+}
+.lib-filter-btn:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+.lib-filter-btn.on { color: #8cc4ff; background: rgba(10, 132, 255, 0.14); border-color: rgba(10, 132, 255, 0.4); }
+.lib-filter-count {
+  position: absolute; top: -5px; right: -5px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px;
+  background: #0a84ff; color: #fff; font-size: 10px; font-weight: 700; line-height: 15px; text-align: center;
+}
+.lib-filter-chips { display: flex; flex-wrap: wrap; gap: 4px; padding-top: 6px; }
+.lib-filter-chip {
+  display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 4px 0 8px; border-radius: 11px;
+  font-size: 11.5px; color: #cfe6ff; background: rgba(10, 132, 255, 0.14); border: 1px solid rgba(10, 132, 255, 0.35);
+}
+.lib-filter-chip button { width: 16px; height: 16px; border-radius: 8px; line-height: 16px; color: #8cc4ff; }
+.lib-filter-chip button:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
+.lib-filter-reset { height: 22px; padding: 0 8px; border-radius: 11px; font-size: 11.5px; color: #98989d; }
+.lib-filter-reset:hover { color: #fff; background: rgba(255, 255, 255, 0.07); }
+#lib-filter-menu .macos-menu-item[aria-disabled="true"] { opacity: 0.4; }
+
 /* Citations in library answers */
 .lib-cite {
   display: inline-flex; align-items: center; justify-content: center;

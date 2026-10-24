@@ -962,6 +962,170 @@ function closeLibViewMenu() {
 document.addEventListener('click', closeLibViewMenu);
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLibViewMenu(); });
 
+// --- Filters of the library: within a group any ticked option fits (OR), every group with a tick
+// has to fit (AND). They apply to the folders' list and to the search results, and are kept per
+// viewer in localStorage. The language options are the languages the recordings have.
+const LIB_FILTERS = {
+  kind: { audio: m => !m.is_video, video: m => !!m.is_video },
+  // A link import is stored as an import, so the list cannot tell it apart
+  src: {
+    rec: m => m.source === 'recording' && !m.is_video,
+    screen: m => m.source === 'recording' && !!m.is_video,
+    import: m => m.source === 'import' || m.source === 'local',
+    dict: m => m.source === 'dictation',
+  },
+  state: {
+    busy: m => !DONE_STATUSES.includes(m.status),
+    failed: m => m.status === 'failed',
+    local: m => !!m.local_only || folderLocalOnly(m.folder_id),
+  },
+  has: {
+    summary: m => !!m.has_summary,
+    translation: m => !!(m.translations_langs || []).length,
+    dub: m => !!(m.dub_langs || []).length,
+  },
+};
+const LIB_FILTER_GROUPS = [...Object.keys(LIB_FILTERS), 'lang'];
+const LIB_FILTER_KEY = 'verbascribe_library_filters';
+let _libFilters = null;
+
+function libFilters() {
+  if (_libFilters) return _libFilters;
+  let raw = {};
+  try { raw = JSON.parse(localStorage.getItem(LIB_FILTER_KEY) || '{}') || {}; } catch (e) {}
+  _libFilters = Object.fromEntries(LIB_FILTER_GROUPS.map(g => [g, new Set(Array.isArray(raw[g]) ? raw[g].map(String) : [])]));
+  return _libFilters;
+}
+
+function libFilterCount() {
+  return Object.values(libFilters()).reduce((n, s) => n + s.size, 0);
+}
+
+function libFilterTest(group, id, m) {
+  if (group === 'lang') return (m.language || '') === id;
+  const test = LIB_FILTERS[group] && LIB_FILTERS[group][id];
+  return !!(test && test(m));
+}
+
+function libFilterMatch(m) {
+  for (const [g, ids] of Object.entries(libFilters())) {
+    if (ids.size && ![...ids].some(id => libFilterTest(g, id, m))) return false;
+  }
+  return true;
+}
+
+function libLangOptions() {
+  const langs = new Set(libFilters().lang);
+  for (const m of state.meetings) if (m.language && m.language !== 'auto') langs.add(m.language);
+  return [...langs].sort();
+}
+
+function libFilterLabel(group, id) {
+  if (group !== 'lang') return t(`libFlt_${group}_${id}`);
+  return id === 'mixed' ? t('langMixed') : langName(id);
+}
+
+function libFilterMenuHtml() {
+  const f = libFilters();
+  const groups = [...Object.keys(LIB_FILTERS).map(g => [g, Object.keys(LIB_FILTERS[g])]), ['lang', libLangOptions()]];
+  let html = '';
+  for (const [g, ids] of groups) {
+    if (!ids.length) continue;
+    if (html) html += '<div class="my-1 h-px bg-white/10"></div>';
+    html += `<div class="px-2.5 py-1 text-[11px] text-apple-tertiary">${escapeHtml(t(`libFlt_${g}`))}</div>`;
+    for (const id of ids) {
+      const on = f[g].has(id);
+      const n = state.meetings.filter(m => libFilterTest(g, id, m)).length;
+      html += `<button class="macos-menu-item" role="menuitemcheckbox" aria-checked="${on}"${!n && !on ? ' aria-disabled="true"' : ''} data-g="${g}" data-v="${escapeHtml(id)}">`
+        + `<span class="flex items-center gap-2"><span class="w-3">${on ? '✓' : ''}</span>${escapeHtml(libFilterLabel(g, id))}</span>`
+        + `<span class="text-[11px] opacity-70 font-mono">${n}</span></button>`;
+    }
+  }
+  if (libFilterCount()) {
+    html += `<div class="my-1 h-px bg-white/10"></div><button class="macos-menu-item" data-reset="1"><span>${escapeHtml(t('libFilterResetAll'))}</span><span></span></button>`;
+  }
+  return html;
+}
+
+// The menu stays open while options are ticked: it closes on a click outside, Esc or the funnel
+function openLibFilterMenu(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const had = document.getElementById('lib-filter-menu');
+  closeLibFilterMenu();
+  if (had) return;
+  const menu = document.createElement('div');
+  menu.id = 'lib-filter-menu';
+  menu.setAttribute('role', 'menu');
+  menu.className = 'fixed w-56 macos-menu z-50';
+  menu.innerHTML = libFilterMenuHtml();
+  menu.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    const b = ev.target.closest('button');
+    if (!b) return;
+    if (b.dataset.reset) { resetLibFilters(); return; }
+    if (!b.dataset.g || b.getAttribute('aria-disabled') === 'true') return;
+    const ids = libFilters()[b.dataset.g];
+    if (ids.has(b.dataset.v)) ids.delete(b.dataset.v); else ids.add(b.dataset.v);
+    applyLibFilters();
+  });
+  document.body.appendChild(menu);
+  const btn = e.currentTarget;
+  btn.setAttribute('aria-expanded', 'true');
+  const r = btn.getBoundingClientRect();
+  menu.style.left = `${Math.max(4, Math.min(zpx(r.right) - 224, viewW() - 228))}px`;
+  menu.style.top = `${zpx(r.bottom) + 4}px`;
+  menu.style.maxHeight = `${viewH() - zpx(r.bottom) - 12}px`;
+  menu.style.overflowY = 'auto';
+}
+
+function closeLibFilterMenu() {
+  document.getElementById('lib-filter-menu')?.remove();
+  document.getElementById('lib-filter-btn')?.setAttribute('aria-expanded', 'false');
+}
+
+document.addEventListener('click', closeLibFilterMenu);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLibFilterMenu(); });
+
+function applyLibFilters() {
+  const f = libFilters();
+  try { localStorage.setItem(LIB_FILTER_KEY, JSON.stringify(Object.fromEntries(Object.entries(f).map(([g, s]) => [g, [...s]])))); } catch (e) {}
+  const menu = document.getElementById('lib-filter-menu');
+  if (menu) menu.innerHTML = libFilterMenuHtml();
+  renderLibFilterUi();
+  renderMeetingsSidebar();
+}
+
+function removeLibFilter(group, id) {
+  libFilters()[group]?.delete(id);
+  applyLibFilters();
+}
+
+function resetLibFilters() {
+  for (const s of Object.values(libFilters())) s.clear();
+  applyLibFilters();
+}
+
+// The funnel's count and the active filters as chips under the search
+function renderLibFilterUi() {
+  const n = libFilterCount();
+  document.getElementById('lib-filter-btn')?.classList.toggle('on', n > 0);
+  const count = document.getElementById('lib-filter-count');
+  if (count) { count.textContent = n; count.classList.toggle('hidden', !n); }
+  const box = document.getElementById('lib-filter-chips');
+  if (!box) return;
+  box.classList.toggle('hidden', !n);
+  if (!n) { box.innerHTML = ''; return; }
+  const chips = [];
+  for (const [g, ids] of Object.entries(libFilters())) {
+    for (const id of ids) {
+      chips.push(`<span class="lib-filter-chip">${escapeHtml(libFilterLabel(g, id))}<button ${pageCall('click', 'removeLibFilter', [g, id])}`
+        + ` aria-label="${escapeHtml(t('libFilterRemove'))}" title="${escapeHtml(t('libFilterRemove'))}">×</button></span>`);
+    }
+  }
+  box.innerHTML = chips.join('') + `<button class="lib-filter-reset" ${pageCall('click', 'resetLibFilters')}>${escapeHtml(t('libFilterReset'))}</button>`;
+}
+
 function formatSize(bytes) {
   return bytes ? formatBytes(bytes) : '';
 }
@@ -1205,20 +1369,28 @@ function folderRowHtml(f, depth, collapsed) {
 
 function renderMeetingsSidebar() {
   const listEl = document.getElementById('meetings-list');
+  renderLibFilterUi();
+
+  const filtering = libFilterCount() > 0;
+  const shownIds = filtering ? new Set(state.meetings.filter(libFilterMatch).map(m => m.id)) : null;
+  const filterEmpty = () => `<div class="px-3 py-8 text-center text-xs text-apple-tertiary space-y-2">`
+    + `<div>${escapeHtml(t('libFilterNone'))}</div><button class="lib-filter-reset" ${pageCall('click', 'resetLibFilters')}>${escapeHtml(t('libFilterResetAll'))}</button></div>`;
 
   if (state.globalSearchQuery && state.globalSearchResults) {
+    const results = filtering ? state.globalSearchResults.filter(item => shownIds.has(item.meeting_id)) : state.globalSearchResults;
     const askHtml = `
       <button data-click="askLibraryAboutSearch" title="${escapeHtml(t('tipLibraryAsk'))}"
         class="w-full mb-1.5 px-2.5 py-2 rounded-lg border border-apple-blue/30 bg-apple-blue/10 hover:bg-apple-blue/20 text-left text-[11.5px] text-white transition flex items-center gap-2">
         ${SVG_SPARK}<span class="truncate">${escapeHtml(t('libraryAskFromSearch'))}</span>
       </button>`;
-    if (state.globalSearchResults.length === 0) {
+    if (results.length === 0) {
       listEl._keyed = false;
-      listEl.innerHTML = askHtml + `<div class="px-3 py-8 text-center text-xs text-apple-tertiary">${escapeHtml(t('noMatches'))}</div>`;
+      listEl.innerHTML = askHtml + (filtering && state.globalSearchResults.length ? filterEmpty()
+        : `<div class="px-3 py-8 text-center text-xs text-apple-tertiary">${escapeHtml(t('noMatches'))}</div>`);
       return;
     }
     listEl._keyed = false;
-    listEl.innerHTML = askHtml + state.globalSearchResults.map(item => `
+    listEl.innerHTML = askHtml + results.map(item => `
       <div class="rounded-lg bg-white/[0.03] border apple-border p-2.5 space-y-1.5 mb-1.5">
         <div data-click="openMeeting" data-click-args='[${item.meeting_id}, true]' tabindex="0" role="button"
              title="${escapeHtml(item.title)}"
@@ -1248,9 +1420,15 @@ function renderMeetingsSidebar() {
     return;
   }
 
+  if (filtering && !shownIds.size) {
+    listEl._keyed = false;
+    listEl.innerHTML = filterEmpty();
+    return;
+  }
   const known = new Set(folders.map(f => f.id));
   const byFolder = new Map();
   for (const m of state.meetings) {
+    if (filtering && !shownIds.has(m.id)) continue;
     const key = known.has(m.folder_id) ? m.folder_id : null;
     if (!byFolder.has(key)) byFolder.set(key, []);
     byFolder.get(key).push(m);
@@ -1290,6 +1468,7 @@ function renderMeetingsSidebar() {
     for (const f of sortedFolders(parentId)) {
       // An empty system folder only takes room
       if (f.system_key && !meetingsInFolderTree(f.id).length && !sortedFolders(f.id).length) continue;
+      if (filtering && !meetingsInFolderTree(f.id).some(m => shownIds.has(m.id))) continue;
       parts.push([`f${f.id}`, folderRowHtml(f, depth, collapsed)]);
       if (collapsed.has(f.id)) continue;
       walk(f.id, depth + 1);
