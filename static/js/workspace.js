@@ -89,7 +89,11 @@ function renderTxModelBar() {
   btn.disabled = busy || !!m.media_removed;  // without the sound there is nothing to transcribe
   btn.classList.toggle('opacity-40', btn.disabled);
   btn.classList.toggle('hidden', pick === 'merged');  // the merged text is not made by a model
-  document.getElementById('tx-transcribe-label').textContent = t(pick && pick === shown ? 'txTranscribeAgain' : 'txTranscribe');
+  const again = !!pick && pick === shown;
+  document.getElementById('tx-transcribe-label').textContent = t(again ? 'txTranscribeAgain' : 'txTranscribe');
+  // The next step while the picked model has no text yet: the call to action stands out in blue
+  btn.classList.toggle('ui-btn-primary', !again);
+  btn.classList.toggle('ui-btn-subtle', again);
   // Merging: once two models have transcribed the recording
   const mergeBtn = document.getElementById('tx-merge-btn');
   mergeBtn.classList.toggle('hidden', [...done].filter(x => x !== 'merged').length < 2);
