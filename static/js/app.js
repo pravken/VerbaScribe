@@ -332,18 +332,31 @@ function renderChaptersBar() {
   ).join('');
   document.getElementById('chapters-all').textContent = t('chaptersAll').replace('{n}', () => _chapters.length);
   rpRenderChapters();  // the same chapters as bands of the player's wave
+  updateActiveChapter(document.getElementById('media-player')?.currentTime || 0);
 }
 
 function updateActiveChapter(cur) {
   if (!_chapters.length) return;
-  let idx = -1;
+  let idx = 0;  // before the first one starts, the first is the current one
   for (let i = 0; i < _chapters.length; i++) if (_chapters[i].start <= cur + 0.25) idx = i;
   if (idx === _activeChapter) return;
   document.getElementById(`chapter-${_activeChapter}`)?.classList.remove('chapter-chip-active');
   const el = document.getElementById(`chapter-${idx}`);
   el?.classList.add('chapter-chip-active');
-  el?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   _activeChapter = idx;
+  centerActiveChapter(true);
+}
+
+// The current chapter in the middle of the row: the room before the first and after the last chip
+// lets those be centred too
+function centerActiveChapter(smooth) {
+  const list = document.getElementById('chapters-list');
+  const el = document.getElementById(`chapter-${_activeChapter}`);
+  if (!list || !el || !list.clientWidth) return;
+  const pad = Math.max(0, (list.clientWidth - el.offsetWidth) / 2);
+  list.style.paddingLeft = list.style.paddingRight = `${pad}px`;
+  const left = el.getBoundingClientRect().left - list.getBoundingClientRect().left + list.scrollLeft;
+  list.scrollTo({ left: left - pad, behavior: smooth ? 'smooth' : 'auto' });
 }
 
 // The row shows only the chips that fit: "All chapters" lists them all, the current one ticked
@@ -362,6 +375,10 @@ document.getElementById('chapters-list')?.addEventListener('wheel', (e) => {
   e.preventDefault();
   el.scrollLeft += e.deltaY;
 }, { passive: false });
+// again when the row changes width or comes into view (another tab, the window, the sidebar)
+if (window.ResizeObserver && document.getElementById('chapters-list')) {
+  new ResizeObserver(() => centerActiveChapter(false)).observe(document.getElementById('chapters-list'));
+}
 
 // "Clear" (the section's ⋯): what the open section holds (an analysis, my notes, the promises)
 function setClearSummaryVisible(on) {
