@@ -231,6 +231,34 @@ def delete_ollama_model(name: str) -> None:
     r.raise_for_status()
 
 
+# Models that only turn text into vectors (search by meaning, app/semantic.py): Ollama answers a
+# chat with them by 400 "does not support chat", so they are never picked to write text
+_EMBEDDING_HINTS = ("embed", "bge-", "bge:", "e5-", "minilm", "gte-", "snowflake-arctic")
+
+
+def is_embedding_model(name: str) -> bool:
+    n = str(name or "").lower()
+    semantic = (get_all_settings().get("semantic_model") or "bge-m3").lower().split(":")[0]
+    return n.split(":")[0] == semantic or any(h in n for h in _EMBEDDING_HINTS)
+
+
+def chat_models(models: List[str]) -> List[str]:
+    return [m for m in models if not is_embedding_model(m)]
+
+
+def raise_for_ollama(resp: "httpx.Response") -> None:
+    """Like raise_for_status, with Ollama's own words: its 400 says what is wrong ("model does
+    not support chat"), httpx's message only gives the status and the address."""
+    if resp.status_code < 400:
+        return
+    try:
+        resp.read()
+        err = resp.json().get("error") or resp.text
+    except Exception:
+        err = getattr(resp, "text", "") or ""
+    raise RuntimeError(f"Ollama ответила ошибкой {resp.status_code}: {str(err).strip()[:200]}")
+
+
 def get_ollama_status(base_url: Optional[str] = None) -> Dict[str, Any]:
     settings = get_all_settings()
     if not base_url:
@@ -253,6 +281,15 @@ def get_ollama_status(base_url: Optional[str] = None) -> Dict[str, Any]:
         except Exception:
             running = False
 
+    # The embedding model chosen as the analysis model (it was listed among them before 0.5.1): the
+    # first model that writes text takes its place, once
+    if models and is_embedding_model(active_model):
+        usable = chat_models(models)
+        if usable:
+            active_model = usable[0]
+            update_settings({"ollama_model": active_model})
+            print(f"[ollama] analysis model was an embedding model, now {active_model}", flush=True)
+
     # Build catalog with installed flags
     catalog = []
     installed_set = set(models)
@@ -264,7 +301,7 @@ def get_ollama_status(base_url: Optional[str] = None) -> Dict[str, Any]:
 
     # Also append any other custom models the user has in Ollama
     known_ids = {item["id"] for item in RECOMMENDED_LLM_MODELS}
-    for m in models:
+    for m in chat_models(models):  # an embedding model is not offered as the analysis model
         if m not in known_ids:
             catalog.append(
                 {
@@ -286,6 +323,7 @@ def get_ollama_status(base_url: Optional[str] = None) -> Dict[str, Any]:
         "base_url": base_url,
         "active_model": active_model,
         "models": models,
+        "chat_models": chat_models(models),  # the ones that can write text (not embedding models)
         "catalog": catalog,
         "pull_state": dict(_pull_state),
     }
@@ -640,7 +678,7 @@ def _ollama_chat(base_url: str, model: str, system: str, user: str) -> str:
     payload.update(thinking_off(model))
     with httpx.Client(timeout=600.0) as client:
         resp = client.post(f"{base_url}/api/chat", json=payload)
-        resp.raise_for_status()
+        raise_for_ollama(resp)
         data = resp.json()
         msg = data.get("message") or {}
         return strip_think(str(msg.get("content") or data.get("response") or ""))

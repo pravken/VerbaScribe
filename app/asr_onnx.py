@@ -216,14 +216,47 @@ def _load(model_id: str, gpu: bool = False):
         return _loaded[key]
 
 
+# The commit each repository is downloaded from (onnx-asr itself always takes main): a rewritten or
+# replaced repository does not reach anyone until the commit here is changed and its license checked
+REVISIONS = {
+    "istupakov/gigaam-v3-onnx": "322c3b29492673eb7d0b434bfa9dfb8653e34d02",  # MIT
+    "istupakov/parakeet-tdt-0.6b-v3-onnx": "8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce",  # CC-BY-4.0
+    "istupakov/silero-vad-onnx": "b3e3ee3cce4c11ceb63b1a0b229d916069c1ddf6",  # MIT
+}
+
+
+def _pinned(resolver: Any) -> Any:
+    """onnx-asr's resolver, downloading from the commit in REVISIONS: its download steps are the
+    library's own (onnx-asr 0.12, resolver.py) with revision= added."""
+    from huggingface_hub import hf_hub_download, snapshot_download
+
+    rev = REVISIONS[resolver.repo_id]
+
+    def download_config(*, local_files_only: bool) -> Path:
+        return Path(hf_hub_download(resolver.repo_id, "config.json", revision=rev, local_dir=resolver.local_dir,
+                                    local_files_only=local_files_only))
+
+    def download_model(quantization: Optional[str], *, local_files_only: bool) -> Path:
+        files = list(resolver.model_type._get_model_files(quantization).values())
+        files = [*files, *(f.removeprefix("**/") for f in files if f.startswith("**/"))]
+        files = ["config.json", "config.yaml", *files,
+                 *(str(Path(f).with_suffix(".onnx?data")) for f in files if Path(f).suffix == ".onnx")]
+        return Path(snapshot_download(resolver.repo_id, revision=rev, local_dir=resolver.local_dir,
+                                      local_files_only=local_files_only, allow_patterns=files))
+
+    resolver._download_config = download_config
+    resolver._download_model = download_model
+    return resolver
+
+
 def fetch(model_id: str) -> None:
     """Downloads the missing model files into our models folder. onnx_asr.load_model with a path that
     already exists only looks there and never downloads, so the files are fetched with its resolver
     (offline=False: look in the folder, download from Hugging Face what is not there)."""
     from onnx_asr.loader import create_asr_resolver, create_vad_resolver
 
-    create_asr_resolver(ONNX_MODELS[model_id]["onnx_name"], model_dir(model_id), offline=False).resolve_model()
-    create_vad_resolver(VAD_NAME, _vad_dir(), offline=False).resolve_model()
+    _pinned(create_asr_resolver(ONNX_MODELS[model_id]["onnx_name"], model_dir(model_id), offline=False)).resolve_model()
+    _pinned(create_vad_resolver(VAD_NAME, _vad_dir(), offline=False)).resolve_model()
 
 
 def release(model_id: Optional[str] = None, gpu: Optional[bool] = None) -> None:
@@ -538,7 +571,7 @@ def split_sentences_text(start: float, end: float, text: str) -> List[Tuple[floa
 
 def transcribe(model_id: str, wav_path: Path, total_dur: float, on_progress: Callable[[float], None],
                check_cancel: Callable[[], None], out: Optional[List[Dict[str, Any]]] = None,
-               gpu: bool = False) -> List[Dict[str, Any]]:
+               gpu: bool = False, leveling: bool = True) -> List[Dict[str, Any]]:
     """Segments like faster-whisper's: [{start, end, text, words: [{word, start, end, prob}]}].
     `out` (optional) receives them as they come, for showing the text while it is recognized."""
     import soundfile as sf
@@ -547,7 +580,8 @@ def transcribe(model_id: str, wav_path: Path, total_dur: float, on_progress: Cal
     audio, sr = sf.read(str(wav_path), dtype="float32")  # 16 kHz mono (app/audio_utils.py)
     if getattr(audio, "ndim", 1) > 1:
         audio = audio.mean(axis=1)
-    results: Iterator[Any] = asr.recognize(level(audio, sr), sample_rate=sr)
+    # leveling: quiet parts raised first (chosen per recording, on by default)
+    results: Iterator[Any] = asr.recognize(level(audio, sr) if leveling else audio, sample_rate=sr)
     segments: List[Dict[str, Any]] = out if out is not None else []
     for res in results:
         check_cancel()

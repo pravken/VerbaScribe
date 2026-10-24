@@ -215,7 +215,7 @@ def _ollama_target(model: Optional[str], settings: Dict[str, str], start: bool) 
             "Локальный сервер Ollama не установлен или не запущен. Откройте «Настройки», выберите модель LLM и нажмите "
             "«Скачать» — или включите облачную модель в «Настройки → Анализ»."
         )
-    models = status["models"]
+    models = status.get("chat_models", status["models"])
     if not models:
         raise LlmError(f"В Ollama пока не скачана ни одна модель. Откройте «Настройки» и нажмите «Скачать» напротив {wanted}.")
     if wanted not in models:

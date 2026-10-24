@@ -112,6 +112,113 @@ def api_people() -> List[Dict[str, Any]]:
 
     return people()
 
+# --- The people directory ("Все люди", app/people.py) and the speakers of one recording ---
+class PersonPayload(BaseModel):
+    name: str
+    kind: str = "person"
+
+class PersonUpdatePayload(BaseModel):
+    name: str
+    new_name: Optional[str] = None
+    role: Optional[str] = None
+    kind: Optional[str] = None
+    is_me: Optional[bool] = None
+
+class PeopleMergePayload(BaseModel):
+    names: List[str]
+
+@router.get("/api/people/directory")
+def api_people_directory() -> List[Dict[str, Any]]:
+    from app.people import directory
+
+    return directory()
+
+@router.post("/api/people/directory")
+def api_people_add(payload: PersonPayload) -> Dict[str, Any]:
+    from app.people import add
+
+    try:
+        return add(payload.name, payload.kind)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.patch("/api/people/directory")
+def api_people_update(payload: PersonUpdatePayload) -> Dict[str, Any]:
+    from app.people import update
+
+    try:
+        return update(payload.name, role=payload.role, kind=payload.kind, is_me=payload.is_me, new_name=payload.new_name)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/api/people/merge")
+def api_people_merge(payload: PeopleMergePayload) -> Dict[str, Any]:
+    from app.people import merge
+
+    try:
+        return merge(payload.names)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/api/meetings/{meeting_id}/people")
+def api_meeting_people(meeting_id: int) -> Dict[str, Any]:
+    """For the speakers of a recording: the calendar's invited people, who is mentioned in the text,
+    and the names of the directory (suggestions for a name)."""
+    from app.people import calendar_attendees, directory, mentions
+
+    m = get_meeting(meeting_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    people = directory()
+    speaking = {str((s or {}).get("name") or "").strip().lower() for s in (m.get("speakers") or {}).values()}
+    return {
+        "calendar": [n for n in calendar_attendees(m) if n.lower() not in speaking],
+        "mentions": mentions(m, people),
+        "names": [{"name": p["name"], "kind": p["kind"], "role": p["role"], "is_me": p["is_me"]} for p in people],
+    }
+
+class SpeakerMergePayload(BaseModel):
+    source: str
+    target: str
+
+class SpeakerSplitPayload(BaseModel):
+    speaker_id: str
+    positions: List[int]
+    new_name: str = ""
+
+class SpeakerMetaPayload(BaseModel):
+    speaker_id: str
+    role: Optional[str] = None
+    is_me: Optional[bool] = None
+
+def _speaker_edit(meeting_id: int, run) -> Dict[str, Any]:
+    _ensure_not_transcribing(meeting_id)
+    try:
+        m = run()
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if m is None:
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    return m
+
+@router.post("/api/meetings/{meeting_id}/speakers/merge")
+def api_merge_speakers(meeting_id: int, payload: SpeakerMergePayload) -> Dict[str, Any]:
+    from app.people import merge_speakers
+
+    return _speaker_edit(meeting_id, lambda: merge_speakers(meeting_id, payload.source, payload.target))
+
+@router.post("/api/meetings/{meeting_id}/speakers/split")
+def api_split_speaker(meeting_id: int, payload: SpeakerSplitPayload) -> Dict[str, Any]:
+    from app.people import split_speaker
+
+    return _speaker_edit(meeting_id, lambda: split_speaker(meeting_id, payload.speaker_id, payload.positions, payload.new_name))
+
+@router.patch("/api/meetings/{meeting_id}/speakers/meta")
+def api_speaker_meta(meeting_id: int, payload: SpeakerMetaPayload) -> Dict[str, Any]:
+    from app.people import set_speaker_meta
+
+    return _speaker_edit(meeting_id, lambda: set_speaker_meta(meeting_id, payload.speaker_id, payload.role, payload.is_me))
+
 @router.post("/api/voice-profiles/apply-all")
 def api_voice_profiles_apply_all() -> Dict[str, Any]:
     from app.voice_profiles import apply_to_library
@@ -216,6 +323,50 @@ def api_merge_segment(meeting_id: int, segment_id: int) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail="Встреча не найдена")
     return updated
 
+class UnmergePayload(BaseModel):
+    first: Dict[str, Any]
+    second: Dict[str, Any]
+
+
+@router.post("/api/meetings/{meeting_id}/segments/{segment_id}/unmerge")
+def api_unmerge_segment(meeting_id: int, segment_id: int, payload: UnmergePayload) -> Dict[str, Any]:
+    """«Отменить» after «Объединить»: the merged line (segment_id, the earlier of the two) goes back to the
+    two lines it was made of — only while it is still exactly their join, so a later edit is not undone."""
+    _ensure_not_transcribing(meeting_id)
+    keys = ("start", "end", "text", "speaker", "words", "lang")
+
+    def clean(seg: Dict[str, Any]) -> Dict[str, Any]:
+        out = {k: seg[k] for k in keys if k in seg}
+        out["start"], out["end"] = float(out.get("start", 0.0)), float(out.get("end", 0.0))
+        out["text"] = str(out.get("text") or "").strip()
+        if not isinstance(out.get("words"), list):
+            out["words"] = []
+        return out
+
+    first, second = clean(payload.first), clean(payload.second)
+
+    def change(m: Dict[str, Any]) -> tuple:
+        segments = m.get("segments") or []
+        idx = next((i for i, s in enumerate(segments) if int(s.get("id", -1)) == segment_id), -1)
+        if idx < 0:
+            raise HTTPException(status_code=404, detail="Реплика не найдена")
+        merged = segments[idx]
+        if (merged.get("text") or "").strip() != f"{first['text']} {second['text']}".strip():
+            raise HTTPException(status_code=409, detail="Реплику уже изменили — объединение не отменить")
+        speaker = merged.get("speaker")
+        segments[idx:idx + 1] = [{**merged, **first, "speaker": first.get("speaker", speaker)},
+                                 {**merged, **second, "speaker": second.get("speaker", speaker)}]
+        for i, s in enumerate(segments):
+            s["id"] = i + 1
+        m["segments"] = segments
+        return ("segments",)
+
+    m = edit_meeting(meeting_id, change)
+    if m is None:
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    return m
+
+
 @router.post("/api/meetings/{meeting_id}/clean-fillers")
 def api_clean_fillers(meeting_id: int) -> Dict[str, Any]:
     from app.transcriber import clean_meeting_transcript
@@ -261,19 +412,6 @@ def api_remove_media(meeting_id: int) -> Dict[str, Any]:
     if not get_meeting(meeting_id):
         raise HTTPException(status_code=404, detail="Встреча не найдена")
     remove_media(meeting_id)
-    return get_meeting(meeting_id)
-
-class VerifiedPayload(BaseModel):
-    verified: bool = True
-
-@router.patch("/api/meetings/{meeting_id}/verified")
-def api_set_verified(meeting_id: int, payload: VerifiedPayload) -> Dict[str, Any]:
-    """The user checked the transcript: it is a reference for the model comparison (app/bench.py)."""
-    from app.database import update_meeting_fields
-
-    if not get_meeting(meeting_id):
-        raise HTTPException(status_code=404, detail="Встреча не найдена")
-    update_meeting_fields(meeting_id, transcript_verified=1 if payload.verified else 0)
     return get_meeting(meeting_id)
 
 @router.delete("/api/meetings/{meeting_id}/summaries")
@@ -368,7 +506,7 @@ def api_commitments_export(payload: CommitmentExportPayload) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail="Неизвестный формат")
     items = commitments.for_meetings([payload.meeting_id]) if payload.meeting_id else commitments.all_open()
     if not items:
-        raise HTTPException(status_code=404, detail="Нет обещаний для выгрузки")
+        raise HTTPException(status_code=404, detail="Нет задач для выгрузки")
     text = commitments.export_text(items, payload.fmt, payload.lang)
     m = get_meeting(payload.meeting_id) if payload.meeting_id else None
     ext = "md" if payload.fmt == "md" else "csv"

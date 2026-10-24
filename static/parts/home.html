@@ -1,0 +1,93 @@
+<!-- Home (package B, static/js/home.js): part of static/parts/workspace.html. Today as a calendar page and
+     the greeting, the quick actions, the latest recordings, the meetings of the working day (recorded by
+     themselves when the user wants), what is being processed, the user's open tasks. -->
+    <div id="home-view" class="hidden flex-1 min-h-0 overflow-y-auto bg-apple-bg">
+      <div class="hm-wrap">
+        <div class="hm-head">
+          <div class="hm-hello">
+            <div class="hm-tile" aria-hidden="true"><div id="hm-tile-mon" class="hm-tile-mon"></div><div id="hm-tile-day" class="hm-tile-day"></div></div>
+            <div class="flex flex-col gap-1.5 min-w-0">
+              <span id="hm-weekday" class="hm-weekday"></span>
+              <h1 id="hm-greeting" class="hm-greeting" data-i18n="homeHello">Добрый день</h1>
+              <p id="hm-line" class="hm-line"></p>
+            </div>
+          </div>
+          <div class="flex flex-wrap gap-2.5">
+            <div class="hm-split">
+              <button data-click="openImport" class="hm-qa hm-qa-main">
+                <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15V4M8 8l4-4 4 4M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/></svg>
+                <span class="flex flex-col items-start"><b data-i18n="add">Импорт</b><span class="hm-qa-sub" data-i18n="homeImportSub">файл или ссылка</span></span>
+              </button>
+              <button data-click="openImportMenu" data-click-args='[{"$": "event"}]' class="hm-qa hm-qa-more" data-i18n-title="impMenuTitle" title="Другие способы добавить">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.6" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg>
+              </button>
+            </div>
+            <button id="hm-dict-btn" data-click="hmDictToggle" class="hm-qa" data-i18n-title="hmDictTip" title="Говорите — текст появится здесь и сохранится в «Диктовки»">
+              <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3.5" width="6" height="11" rx="3"/><path stroke-linecap="round" d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5"/></svg>
+              <span class="flex flex-col items-start"><b data-i18n="hmDict">Диктовка</b><span id="hm-dict-key" class="hm-qa-sub hm-mono"></span></span>
+            </button>
+          </div>
+        </div>
+
+        <div class="hm-cols">
+          <section class="hm-card hm-main">
+            <div class="hm-card-head"><h2 data-i18n="homeRecent">Недавние записи</h2><span class="flex-1"></span><span class="hm-note" data-i18n="hmAllInLibrary">все — в медиатеке слева</span></div>
+            <div id="hm-recent" class="flex flex-col"></div>
+          </section>
+
+          <div class="hm-side">
+            <section class="hm-card">
+              <div class="hm-card-head">
+                <h2 data-i18n="hmMeetings">Встречи сегодня</h2><span id="hm-mt-count" class="hm-cnt hidden"></span><span class="flex-1"></span>
+                <div class="relative">
+                  <button id="hm-day-btn" data-click="hmToggleDay" data-click-args='[{"$": "event"}]' class="hm-chip" aria-expanded="false" data-i18n-title="hmDayTip" title="Рабочий день — какие часы показывать">
+                    <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+                    <span id="hm-day-range" class="hm-mono"></span>
+                    <svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                  </button>
+                  <div id="hm-day-pop" class="hm-pop hidden" role="dialog" data-click="stopEvent" data-click-args='[{"$": "event"}]'>
+                    <div class="text-[13px] font-semibold text-white" data-i18n="hmWorkDay">Рабочий день</div>
+                    <div class="flex items-center gap-2 text-[12.5px] text-apple-secondary">
+                      <span data-i18n="hmFrom">с</span>
+                      <select id="hm-day-start" data-change="hmSetDay" class="hm-select" data-i18n-title="hmDayStartTip" title="Начало рабочего дня"></select>
+                      <span data-i18n="hmTo">до</span>
+                      <select id="hm-day-end" data-change="hmSetDay" class="hm-select" data-i18n-title="hmDayEndTip" title="Конец рабочего дня"></select>
+                    </div>
+                    <span id="hm-overnight" class="hm-overnight hidden"></span>
+                    <div id="hm-presets" class="flex flex-wrap gap-1.5"></div>
+                    <label class="hm-check"><input id="hm-fit" type="checkbox" role="switch" class="vs-switch" data-change="hmSetFit" data-change-args='[{"$": "checked"}]' /><span data-i18n="hmFit">Расширять, если встреча выходит за эти часы</span></label>
+                  </div>
+                </div>
+              </div>
+              <div id="hm-cal-off" class="hm-cal-off hidden">
+                <span data-i18n="hmCalOff">Подключите календарь, чтобы видеть встречи дня и записывать их сами собой.</span>
+                <button data-click="openModal" data-click-args='["settings", "calendar"]' class="hm-link" data-i18n="hmCalConnect">Подключить календарь</button>
+              </div>
+              <div id="hm-cal-on">
+                <div id="hm-auto" class="hm-auto">
+                  <button id="hm-auto-sw" role="switch" aria-checked="false" data-click="hmToggleAutoAll" class="vs-track" data-i18n-title="hmAutoAll" title="Автозапись всех встреч"></button>
+                  <span class="flex-1 min-w-0 flex flex-col gap-0.5"><b class="text-[12.5px] font-semibold text-white" data-i18n="hmAutoAll">Автозапись всех встреч</b><span id="hm-auto-sub" class="hm-note"></span></span>
+                  <label id="hm-ask-wrap" class="hm-check hidden" data-i18n-title="hmAskTip" title="Встречи без ссылки на звонок: перед началом программа спросит, записывать ли с микрофона">
+                    <input id="hm-ask-inperson" type="checkbox" role="switch" class="vs-switch" data-change="hmSetAskInPerson" data-change-args='[{"$": "checked"}]' /><span data-i18n="hmAskInPerson">очные — спросить</span></label>
+                </div>
+                <div id="hm-timeline" class="hm-timeline"></div>
+              </div>
+            </section>
+
+            <section id="hm-work-card" class="hm-card">
+              <div class="hm-card-head"><h2 data-i18n="hmInWork">В работе</h2><span class="flex-1"></span><span class="hm-note" data-i18n="hmInWorkNote">идёт и в свёрнутом окне</span></div>
+              <div id="hm-queue" class="flex flex-col"></div>
+            </section>
+
+            <section class="hm-card">
+              <div class="hm-card-head">
+                <h2 id="hm-tasks-title" data-i18n="hmMyTasks">Мои задачи</h2><span id="hm-tasks-count" class="hm-cnt hidden"></span><span class="flex-1"></span>
+                <button data-click="switchAppView" data-click-args='["tasks"]' class="hm-link" data-i18n="hmAllTasks">Все задачи →</button>
+              </div>
+              <div id="hm-tasks" class="flex flex-col"></div>
+              <button id="hm-my-name" data-click="hmSetMyName" class="hm-link hm-myname hidden" data-i18n="hmSetMyName">Укажите своё имя, чтобы видеть только свои задачи</button>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>

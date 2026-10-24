@@ -94,7 +94,9 @@ def _base_url() -> str:
 def installed_models() -> List[str]:
     try:
         with httpx.Client(timeout=2.0) as c:
-            return [m.get("name") for m in c.get(f"{_base_url()}/api/tags").json().get("models") or []]
+            from app.ollama_client import chat_models
+
+            return chat_models([m.get("name") for m in c.get(f"{_base_url()}/api/tags").json().get("models") or []])
     except Exception:
         return []
 
@@ -278,7 +280,9 @@ class LiveTranslator:
         payload.update(thinking_off(payload["model"]))
         with httpx.Client(timeout=timeout) as c:
             r = c.post(f"{_base_url()}/api/chat", json=payload)
-            r.raise_for_status()
+            from app.ollama_client import raise_for_ollama
+
+            raise_for_ollama(r)
             return strip_think(str((r.json().get("message") or {}).get("content") or "")).strip('"«»`')
 
     def _translate_clean(self, text: str, src_lang: Optional[str], timeout: float = 30.0,

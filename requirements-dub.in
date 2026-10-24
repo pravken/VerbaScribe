@@ -1,0 +1,26 @@
+# Optional "Translate & Dub" feature. Installed into a SEPARATE venv (.venv-dub) because
+# chatterbox-tts pins numpy<2 / transformers==5.2.0, which conflict with the main app.
+# Install:  setup_dub.bat (installs requirements-dub.txt, the lock with hashes made from this file;
+# the command that makes it is at the top of requirements-dub.txt).
+#
+# chatterbox-tts itself is installed with --no-deps by setup_dub.bat to skip its demo-only
+# gradio dependency; the runtime deps it needs are listed here explicitly.
+torch==2.6.0+cu124
+torchaudio==2.6.0+cu124
+numpy>=1.24.0,<2.0.0
+librosa==0.11.0
+s3tokenizer
+transformers==5.2.0
+diffusers==0.29.0
+resemble-perth>=1.0.0
+# perth imports pkg_resources (removed in setuptools 81); uv venvs ship without setuptools
+setuptools<81
+conformer==0.3.2
+safetensors==0.5.3
+spacy-pkuseg
+pykakasi==2.3.0
+pyloudnorm
+omegaconf
+soundfile>=0.12.1
+# Background/voice separation (MIT)
+demucs==4.1.0

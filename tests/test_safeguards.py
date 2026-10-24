@@ -141,7 +141,7 @@ class ModelDownloadForJobTest(unittest.TestCase):
     def test_downloads_into_the_app_folder_with_progress(self):
         seen = []
 
-        def download(repo_id, target_dir, label, base_pct, span_pct, on_progress=None):
+        def download(repo_id, revision, target_dir, label, base_pct, span_pct, on_progress=None):
             self.assertTrue(self.mm._setup_state["active"])  # the settings show this download
             on_progress(10.0, 100.0)
 
@@ -149,6 +149,7 @@ class ModelDownloadForJobTest(unittest.TestCase):
                 mock.patch.object(self.mm, "_download_hf_repo_with_progress", side_effect=download) as dl:
             self.mm.ensure_whisper_model("large-v3", lambda mb, total: seen.append((mb, total)))
         self.assertEqual(dl.call_args.kwargs["repo_id"], "Systran/faster-whisper-large-v3")
+        self.assertRegex(dl.call_args.kwargs["revision"], r"^[0-9a-f]{40}$")  # a fixed commit, not main
         self.assertEqual(seen, [(10.0, 100.0)])
         self.assertFalse(self.mm._setup_state["active"])
 

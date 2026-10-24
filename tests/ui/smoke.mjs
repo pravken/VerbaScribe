@@ -11,7 +11,8 @@ const page = await browser.newPage({ viewport: { width: 1300, height: 860 } });
 page.setDefaultTimeout(8000);
 const errors = [];
 page.on('pageerror', e => errors.push(`page: ${e.message}`));
-page.on('console', m => { if (m.type() === 'error' && !/favicon/.test(m.text())) errors.push(`console: ${m.text()}`); });
+// the missing favicon is reported by newer browsers without its address in the text
+page.on('console', m => { if (m.type() === 'error' && !/favicon/.test(`${m.text()} ${m.location()?.url || ''}`)) errors.push(`console: ${m.text()}`); });
 page.on('response', r => { if (r.status() >= 500) errors.push(`HTTP ${r.status()} ${r.url().replace(/\?.*/, '')}`); });
 
 const step = async (name, fn) => {
@@ -21,10 +22,39 @@ const step = async (name, fn) => {
 await page.goto(`${base}/?token=${token}`);
 await page.waitForTimeout(2000);
 await page.evaluate(() => document.getElementById('first-run-wizard')?.remove());
-for (const view of ['studio', 'ask', 'library']) {
+for (const view of ['home', 'tasks', 'studio', 'ask', 'library']) {
   await step(`view ${view}`, () => page.evaluate(v => switchAppView(v), view));
   await page.waitForTimeout(400);
 }
+// Handlers that use their element (event.currentTarget): the view menu is placed under its button,
+// a click on a window's backdrop closes it
+await step('library view menu', async () => {
+  await page.evaluate(() => switchAppView('library'));
+  await page.click('button[data-click="openLibViewMenu"]');
+  await page.waitForTimeout(200);
+  if (!(await page.isVisible('#lib-view-menu'))) throw new Error('not opened');
+  await page.mouse.click(5, 5);
+});
+await step('backdrop closes a window', async () => {
+  await page.evaluate(() => openModal('shortcuts'));
+  await page.waitForTimeout(300);
+  await page.mouse.click(5, 795);
+  await page.waitForTimeout(200);
+  if (!(await page.evaluate(() => document.getElementById('modal-shortcuts').classList.contains('hidden')))) throw new Error('still open');
+});
+// The import window and the details of the status bar open and close
+await step('import window', async () => {
+  await page.evaluate(() => openImportDialog({ row: 'link' }));
+  await page.waitForTimeout(300);
+  if (!(await page.isVisible('#imp-link-row'))) throw new Error('not opened');
+  await page.evaluate(() => closeModal('import'));
+});
+await step('status bar details', async () => {
+  await page.click('.sb-load');
+  await page.waitForTimeout(200);
+  if (!(await page.isVisible('#sb-hw-pop'))) throw new Error('not opened');
+  await page.mouse.click(700, 400);
+});
 await step('settings', () => page.evaluate(() => openModal('settings', 'general')));
 for (const tab of await page.evaluate(() => SETTINGS_TABS)) {
   await step(`settings tab ${tab}`, async () => {
@@ -35,6 +65,11 @@ for (const tab of await page.evaluate(() => SETTINGS_TABS)) {
   });
 }
 await step('close settings', () => page.evaluate(() => closeModal('settings')));
+// The settings are a page of the window: closing it goes back to the view it came from
+await step('settings page returns', async () => {
+  const view = await page.evaluate(() => state.appView);
+  if (view === 'settings') throw new Error('still on the settings page');
+});
 await step('about', async () => {
   await page.evaluate(() => openAbout());
   await page.waitForTimeout(500);

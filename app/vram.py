@@ -217,8 +217,26 @@ def vram_snapshot() -> Dict[str, Any]:
                       "can_unload": False, "can_preload": False})
 
     from app import idle_unload, sysinfo
+    from app.ollama_client import is_embedding_model
 
-    return {"gpu": gpu_memory(), "chips": chips, "busy": busy, "system": sysinfo.snapshot(), "idle": idle_unload.status()}
+    gpu = gpu_memory()
+    onnx_gpu = (settings.get("onnx_gpu") or "true").lower() == "true"
+    for c in chips:
+        # Where the model runs (or will, when it is not loaded): the sidebar shows it under that device
+        if not gpu:
+            c["where"] = "cpu"
+        elif c["kind"] in ("speakers", "dub"):
+            c["where"] = "gpu"
+        elif c["kind"] == "whisper":
+            c["where"] = "gpu" if (c.get("device") or ("cuda" if on_gpu else "cpu")) == "cuda" else "cpu"
+        elif c["kind"] == "live":
+            c["where"] = "gpu" if on_gpu else "cpu"
+        elif c["kind"] == "onnx":
+            c["where"] = "gpu" if (c.get("device") == "cuda" or (not c.get("loaded") and onnx_gpu)) else "cpu"
+        elif c["kind"] == "ollama":
+            c["where"] = "cpu" if c.get("loaded") and not c.get("size_gb") else "gpu"
+            c["embedding"] = is_embedding_model(c["name"])  # the model of search by meaning
+    return {"gpu": gpu, "chips": chips, "busy": busy, "system": sysinfo.snapshot(), "idle": idle_unload.status()}
 
 
 def unload(kind: str, name: str = "") -> Dict[str, Any]:

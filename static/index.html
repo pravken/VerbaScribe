@@ -9,7 +9,7 @@
   <script src="/static/vendor/purify.min.js"></script>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
-<body class="h-screen overflow-hidden flex select-none"
+<body class="overflow-hidden flex flex-col select-none"
       data-dragover="onWindowDragOver" data-dragover-args='[{"$": "event"}]'
       data-drop="handleGlobalDrop" data-drop-args='[{"$": "event"}]'>
 
@@ -25,9 +25,15 @@
   </div>
 
 
+  <!-- The library on the left, the top bar and the views on the right; the status bar under both -->
+  <div id="app-row" class="flex-1 min-h-0 flex">
   <!-- @include parts/sidebar.html -->
 
   <!-- @include parts/workspace.html -->
+  </div>
+  <!-- @include parts/statusbar.html -->
+
+  <!-- @include parts/import.html -->
 
   <!-- @include parts/menus.html -->
 
@@ -38,12 +44,13 @@
   <!-- @include parts/about.html -->
 
   <!-- Minimal Apple Pill Toast -->
-  <div id="toast" class="fixed top-4 left-1/2 -translate-x-1/2 hidden max-w-[80vw] break-words bg-apple-elevated/95 apple-blur border apple-border text-white px-4 py-1.5 rounded-xl shadow-xl text-xs font-medium z-50"></div>
+  <div id="toast" class="fixed left-1/2 -translate-x-1/2 hidden max-w-[80vw] break-words bg-apple-elevated/95 apple-blur border apple-border text-white px-4 py-1.5 rounded-xl shadow-xl text-xs font-medium"></div>
 
   <script src="/static/i18n.js"></script>
   <script src="/static/server_text.js"></script>
   <!-- The page script in parts (static/js), in this order: they share one global scope -->
   <script src="/static/js/core.js"></script>
+  <script src="/static/js/shell.js"></script>
   <script src="/static/js/menus.js"></script>
   <script src="/static/js/settings.js"></script>
   <script src="/static/js/library.js"></script>
@@ -51,6 +58,13 @@
   <script src="/static/js/player.js"></script>
   <script src="/static/js/studio.js"></script>
   <script src="/static/js/video.js"></script>
+  <!-- The redesign packages (docs/redesign-plan.md): each owns its file -->
+  <script src="/static/js/redesign_player.js"></script>
+  <script src="/static/js/home.js"></script>
+  <script src="/static/js/importdlg.js"></script>
+  <script src="/static/js/people.js"></script>
+  <script src="/static/js/tasks.js"></script>
+  <script src="/static/js/assistant.js"></script>
   <script src="/static/js/app.js"></script>
 </body>
 </html>

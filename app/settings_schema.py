@@ -22,13 +22,15 @@ BOOLS = {
     "call_auto_record", "semantic_search", "auto_title", "obsidian_auto", "summary_grounding", "auto_commitments",
     "delete_media_after", "update_auto", "update_beta", "obsidian_summary", "obsidian_tasks", "obsidian_chapters",
     "obsidian_transcript", "obsidian_generate", "llm_cloud_consent", "watch_folder_recursive",
-    "dub_keep_original_track", "dub_denoise", "dub_room_tone", "dub_keep_workdir", "dictation_translate_cloud",
+    "dub_keep_original_track", "dub_denoise", "dub_room_tone", "dub_keep_workdir", "dictation_translate_cloud", "dictation_save",
+    "start_with_windows", "close_to_tray", "ask_import_params", "proc_denoise", "proc_loudnorm", "proc_leveling",
+    "meet_auto_all", "meet_ask_inperson", "work_day_fit",
 }
 INTS = {"num_speakers": (0, 20), "idle_unload_minutes": (0, 24 * 60), "media_retention_days": (0, 3650),
-        "onnx_gpu_batch": (1, 256)}
+        "onnx_gpu_batch": (1, 256), "work_day_start": (0, 23), "work_day_end": (0, 24)}
 FLOATS = {"dub_cfg_weight": (0.0, 2.0), "dub_exaggeration": (0.0, 2.0)}
 CHOICES = {"llm_provider": {"ollama", "cloud"}, "date_folders": {"off", "day", "month", "year_month"},
-           "record_source_mode": {"mic", "system", "both"}}
+           "record_source_mode": {"mic", "system", "both"}, "ui_scale": {"75", "90", "100", "115"}}
 FOLDERS = {"recordings_dir", "export_dir", "obsidian_vault", "watch_folder"}
 
 
@@ -120,7 +122,23 @@ def clean(key: str, value: Any) -> str:
         return _calendar(text_s) if text_s else ""
     if key in FOLDERS:
         return _folder(text_s, key) if text_s else ""
+    if key == "meet_overrides":
+        return _meet_overrides(text_s)
     return text
+
+
+def _meet_overrides(text: str) -> str:
+    """{meeting key: "rec" | "skip"}: the calendar meetings recorded or skipped by hand (home page)."""
+    import json
+
+    try:
+        data = json.loads(text or "{}")
+    except ValueError:
+        raise ValueError("meet_overrides: нужен объект JSON")
+    if not isinstance(data, dict) or len(data) > 500 or \
+            any(not isinstance(k, str) or len(k) > 300 or v not in ("rec", "skip") for k, v in data.items()):
+        raise ValueError("meet_overrides: нужен объект JSON")
+    return json.dumps(data, ensure_ascii=False)
 
 
 def as_int(value: Any, default: int = 0) -> int:

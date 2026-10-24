@@ -4,70 +4,122 @@
        ========================================================================= -->
   <main class="flex-1 flex flex-col overflow-hidden bg-apple-bg select-text relative">
 
-    <!-- The parts of the app (switchAppView in static/js/library.js): the library, the recording studio, the assistant -->
-    <nav id="app-bar" class="app-bar shrink-0" role="tablist">
-      <button data-click="switchAppView" data-click-args='["library"]' id="nav-library" role="tab" class="app-tab app-tab-active" data-i18n-title="tipNavLibrary" title="Расшифровка, анализ и правка выбранной записи (Ctrl+1)">
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"/></svg>
-        <span data-i18n="navLibrary">Редактор</span>
+    <!-- The top bar (static/js/shell.js): record at once, the parts of the app, the open recording -->
+    <nav id="app-bar" class="topbar" data-i18n-aria="navAria" aria-label="Разделы программы">
+      <!-- The gradient of the "AI" marks of the page (fill: url(#vs-ai-grad)) -->
+      <svg width="0" height="0" class="absolute" aria-hidden="true" focusable="false"><defs><linearGradient id="vs-ai-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#D4B3FF"/><stop offset="1" stop-color="#6CC8FF"/></linearGradient></defs></svg>
+      <div class="relative">
+        <button data-click="shellQuickRecord" id="tb-rec" class="tb-rec" data-i18n-title="tipTbRecord" title="Начать запись с последними настройками (Ctrl+Alt+R)">
+          <span id="tb-rec-dot" class="tb-rec-dot"></span><span id="tb-rec-label" class="tb-lbl" data-i18n="tbRecord">Запись</span><span id="tb-rec-clock" class="tb-rec-clock hidden"></span>
+        </button>
+        <div id="tb-rec-done" class="tb-pop hidden" role="status">
+          <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-apple-green shrink-0"></span><b class="text-[14px] font-semibold text-white" data-i18n="tbRecSaved">Запись сохранена</b><span id="tb-rec-saved-time" class="font-mono text-[12.5px] text-apple-secondary"></span>
+            <span class="flex-1"></span><button data-click="hideQuickRecDone" class="tb-pop-x" data-i18n-title="close" title="Закрыть">✕</button></div>
+          <p class="text-[12.5px] leading-snug text-apple-label" data-i18n="tbRecSavedHint">Расшифровка начнётся сама.</p>
+          <div class="flex gap-2">
+            <button data-click="openQuickRecResult" id="tb-rec-open" class="tb-pop-btn tb-pop-primary" data-i18n="tbRecOpen">Открыть запись</button>
+            <button data-click="runAll" data-click-args='[["hideQuickRecDone"], ["switchAppView", "studio"]]' class="tb-pop-btn" data-i18n="tbRecSettings">Настройки записи</button>
+          </div>
+        </div>
+      </div>
+      <span class="tb-sep" aria-hidden="true"></span>
+      <button data-click="switchAppView" data-click-args='["home"]' id="nav-home" class="tb-tab" data-i18n-title="tipNavHome" title="Главная: последние записи, встречи и задачи (Ctrl+1)"><svg class="tb-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11.5 12 5l8 6.5"/><path d="M6.5 10v9h11v-9"/></svg><span class="tb-lbl" data-i18n="navHome">Главная</span></button>
+      <button data-click="switchAppView" data-click-args='["tasks"]' id="nav-tasks" class="tb-tab" data-i18n-title="tipNavTasks" title="Задачи из всех записей (Ctrl+3)"><span data-i18n="navTasks">Задачи</span><span id="nav-tasks-n" class="tb-badge hidden"></span></button>
+      <div id="tb-record" class="tb-group hidden" role="group" data-i18n-aria="tbRecordGroup" aria-label="Открытая запись">
+        <svg class="w-[13px] h-[13px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/></svg>
+        <span id="tb-recname" class="tb-recname"></span><span class="tb-recname-sep tb-recname" aria-hidden="true"></span>
+        <button data-click="openRecordTab" data-click-args='["transcript"]' id="nav-transcript" class="tb-subtab" data-i18n-title="tipTabTranscript" title="Показать полную расшифровку разговора по ролям (Ctrl+2)"><svg class="tb-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h9"/></svg><span class="tb-lbl" data-i18n="tabTranscript">Расшифровка</span></button>
+        <button data-click="openRecordTab" data-click-args='["summary"]' id="nav-summary" class="tb-subtab" data-i18n-title="tipTabSummary" title="Структурированный обзор, задачи и ответы на вопросы по записи"><svg class="tb-ai" aria-hidden="true" viewBox="0 0 24 24"><path d="M10 2l1.9 5.6 5.6 1.9-5.6 1.9L10 17l-1.9-5.6-5.6-1.9 5.6-1.9z"/><path d="M18.5 13l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/></svg><span class="tb-lbl" data-i18n="tabSummary">Анализ</span><span id="nav-summary-n" class="tb-badge hidden"></span></button>
+        <button data-click="openRecordTab" data-click-args='["speakers"]' id="nav-speakers" class="tb-subtab" data-i18n-title="tipTabSpeakers" title="Управление участниками, прослушивание образцов голоса и переименование"><svg class="tb-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="9" cy="8.5" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M15.5 6.2a3 3 0 0 1 0 5.6M17.5 14.4A5.5 5.5 0 0 1 20.5 19"/></svg><span class="tb-lbl" data-i18n="tabSpeakers">Участники</span><span id="nav-speakers-n" class="tb-badge hidden"></span></button>
+        <span class="tb-sep tb-sep-sm" aria-hidden="true"></span>
+        <button data-click="openRecordBarMenu" data-click-args='[{"$": "event"}]' id="tb-recmenu-btn" class="tb-dots" data-i18n-title="tipTbRecMenu" title="Действия с записью" data-i18n-aria="tipTbRecMenu" aria-label="Действия с записью">
+          <svg class="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+        </button>
+      </div>
+      <button data-click="switchAppView" data-click-args='["studio"]' id="nav-studio" class="tb-tab" data-i18n-title="tipNavStudio" title="Запись звука и экрана с субтитрами и переводом в реальном времени (Ctrl+4)">
+        <span id="nav-studio-dot" class="hidden w-2 h-2 rounded-full bg-apple-red animate-pulse"></span><svg class="tb-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5"/></svg><span id="nav-studio-label" class="tb-lbl" data-i18n="navStudio">Студия</span>
       </button>
-      <button data-click="switchAppView" data-click-args='["studio"]' id="nav-studio" role="tab" class="app-tab" data-i18n-title="tipNavStudio" title="Запись звука и экрана с субтитрами и переводом в реальном времени (Ctrl+2)">
-        <span id="nav-studio-dot" class="hidden w-2 h-2 rounded-full bg-apple-red animate-pulse"></span>
-        <svg id="nav-studio-icon" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"/></svg>
-        <span id="nav-studio-label" data-i18n="navStudio">Студия</span>
-      </button>
-      <button data-click="switchAppView" data-click-args='["ask"]' id="nav-ask" role="tab" class="app-tab" data-i18n-title="tipNavAsk" title="Вопросы к одной записи, к папке или ко всей медиатеке (Ctrl+3)">
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
-        <span data-i18n="navAsk">Ассистент</span>
-      </button>
+      <button data-click="switchAppView" data-click-args='["ask"]' id="nav-ask" class="tb-tab" data-i18n-title="tipNavAsk" title="Вопросы к одной записи, к папке или ко всей медиатеке (Ctrl+5)"><svg class="tb-ai" aria-hidden="true" viewBox="0 0 24 24"><path d="M10 2l1.9 5.6 5.6 1.9-5.6 1.9L10 17l-1.9-5.6-5.6-1.9 5.6-1.9z"/><path d="M18.5 13l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/></svg><span class="tb-lbl" data-i18n="navAsk">Ассистент</span></button>
     </nav>
 
+    <!-- The views of the shell (registerView in static/js/shell.js); each lives in its own part -->
+    <!-- @include parts/home.html -->
+    <!-- @include parts/tasks.html -->
+    <div id="settings-view" class="hidden flex-1 min-h-0 flex flex-col overflow-hidden"></div>
+
     <!-- =====================================================================
-         STUDIO: recording with large live captions and their translation (studio* in static/js/studio.js).
-         What is recorded is chosen in the sidebar; how the captions are shown, here.
+         STUDIO: recording, its sources, the text while recording, the user's notes and marks
+         (studio* in static/js/studio.js). Ready-made settings on top, the sources and the meeting on
+         the left, the recording and what goes on in it on the right
          ===================================================================== -->
-    <div id="studio-view" class="hidden flex-1 min-h-0 flex bg-apple-bg">
-<div id="side-studio" class="studio-settings w-[300px] shrink-0 border-r apple-border bg-apple-sidebar/60 overflow-y-auto px-4 py-4 space-y-3.5">
-      <div>
-        <label for="record-preset-select" class="block text-[11px] text-apple-secondary mb-1" data-i18n="recPresetLabel">Пресет</label>
-        <div class="flex items-center gap-1">
-          <select id="record-preset-select" data-change="applyRecordPreset" data-change-args='[{"$": "value"}]'
-            class="flex-1 min-w-0 h-8 bg-apple-card border apple-border rounded-lg px-2 text-xs text-white focus:outline-none"></select>
-          <button data-click="setDefaultRecordPreset" id="rec-preset-default-btn" class="ui-btn ui-btn-subtle h-8 !px-2" data-i18n-title="tipPresetDefault" title="Сделать пресетом по умолчанию для кнопки «Запись»">★</button>
-          <button data-click="saveRecordPresetAs" class="ui-btn ui-btn-subtle h-8 !px-2" data-i18n-title="tipPresetSaveAs" title="Сохранить текущие параметры как новый пресет">
+    <div id="studio-view" class="hidden flex-1 min-h-0 flex flex-col bg-apple-bg">
+    <div class="st-presets studio-settings">
+      <span class="st-label" data-i18n="rdSasPresets">Готовые настройки</span>
+      <div id="st-preset-chips" class="flex items-center gap-1.5 flex-wrap"></div>
+        <div class="flex items-center gap-1 st-preset-tools">
+          <select id="record-preset-select" data-i18n-title="recPresetLabel" title="Набор настроек" data-change="applyRecordPreset" data-change-args='[{"$": "value"}]'
+            class="hidden flex-1 min-w-0 h-8 bg-apple-card border apple-border rounded-lg px-2 text-xs text-white focus:outline-none"></select>
+          <button data-click="setDefaultRecordPreset" id="rec-preset-default-btn" class="ui-btn ui-btn-subtle h-8 !px-2" data-i18n-title="tipPresetDefault" title="Сделать набором по умолчанию для кнопки «Запись»">★</button>
+          <button data-click="saveRecordPresetAs" class="ui-btn ui-btn-subtle h-8 !px-2" data-i18n-title="tipPresetSaveAs" title="Сохранить текущие параметры как новый набор">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
           </button>
-          <button data-click="updateRecordPreset" id="rec-preset-update-btn" class="ui-btn ui-btn-subtle h-8 !px-2" data-i18n-title="tipPresetUpdate" title="Записать текущие параметры в выбранный пресет">
+          <button data-click="updateRecordPreset" id="rec-preset-update-btn" class="ui-btn ui-btn-subtle h-8 !px-2" data-i18n-title="tipPresetUpdate" title="Записать текущие параметры в выбранный набор">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
           </button>
-          <button data-click="deleteRecordPreset" id="rec-preset-delete-btn" class="ui-btn ui-btn-subtle h-8 !px-2 text-apple-red" data-i18n-title="tipPresetDelete" title="Удалить пресет">
+          <button data-click="deleteRecordPreset" id="rec-preset-delete-btn" class="ui-btn ui-btn-subtle h-8 !px-2 text-apple-red" data-i18n-title="tipPresetDelete" title="Удалить набор">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
           </button>
         </div>
-      </div>
-
-      <div>
-        <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="recSourceModeLabel">Источник записи</label>
+      <span class="flex-1"></span>
+      <span class="st-hk"><kbd id="st-hotkey" class="st-kbd">Ctrl+Alt+R</kbd><span data-i18n="rdSasHotkeyAnywhere">запись из любого окна</span></span>
+    </div>
+    <div class="flex-1 min-h-0 flex">
+    <div id="side-studio" class="studio-settings st-side">
+      <section class="st-card">
+        <h3 class="st-card-title" data-i18n="rdSasSources">Источники</h3>
+        <div id="st-source-seg" class="apple-segmented w-full settings-tabs" role="radiogroup" data-i18n-title="tipRecordSourceSelect" title="Выберите источник записи">
+          <button data-click="studioSetSource" data-click-args='["both"]' id="st-src-both" class="apple-segment-btn text-[11.5px]" role="radio" data-i18n="rdSasSrcBoth">Микрофон и ПК</button>
+          <button data-click="studioSetSource" data-click-args='["mic"]' id="st-src-mic" class="apple-segment-btn text-[11.5px]" role="radio" data-i18n="rdSasSrcMic">Микрофон</button>
+          <button data-click="studioSetSource" data-click-args='["system"]' id="st-src-system" class="apple-segment-btn text-[11.5px]" role="radio" data-i18n="rdSasSrcSystem">Звук ПК</button>
+        </div>
         <select id="record-source-select" data-change="syncRecordModalToSettings"
           data-i18n-title="tipRecordSourceSelect" title="Выберите источник записи: микрофон, системный звук (динамики) или оба канала"
-          class="w-full h-8 bg-apple-card border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
+          class="hidden w-full h-8 bg-apple-card border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
           <option value="mic" data-i18n="sourceMic">Только микрофон</option>
           <option value="system" data-i18n="sourceSystem">Системный звук</option>
           <option value="both" data-i18n="sourceBoth">Микрофон и системный звук</option>
         </select>
-      </div>
-
-      <div>
-        <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="recMicDeviceLabel">Микрофон</label>
+        <div class="st-sub">
+          <div class="flex items-center gap-2">
+            <span class="st-sub-title flex-1" data-i18n="recMicDeviceLabel">Микрофон</span>
+            <button id="st-mic-test" data-click="studioMicTest" class="ui-btn ui-btn-subtle h-6 px-2.5 text-[11.5px]" data-i18n-title="rdSasMicTestTip"
+              title="Запишет три секунды с микрофона и сразу проиграет их">
+              <span id="st-mic-test-label" data-i18n="rdSasMicTest">Проверить</span></button>
+          </div>
         <select id="record-mic-select" data-change="syncRecordModalToSettings"
           data-i18n-title="tipRecordMicSelect" title="Выберите микрофон для записи"
           class="w-full h-8 bg-apple-card border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none"></select>
+      <div class="st-meter">
+        <div class="flex items-center justify-between">
+          <div id="record-timer-display" class="text-xl font-mono font-semibold text-white tracking-wider">00:00</div>
+          <div class="flex items-center gap-2">
+            <span id="record-signal-dot" class="signal-dot" data-i18n-title="tipSignalDot" title="Горит зелёным, когда на входе есть звук"></span>
+            <span id="record-db-display" class="text-[11.5px] font-mono text-apple-secondary w-12 text-right">-60 dB</span>
+          </div>
+        </div>
+        <canvas id="record-waveform-canvas" class="w-full h-12 block"></canvas>
+        <div class="w-full h-1.5 bg-black/50 rounded-full overflow-hidden border border-white/5">
+          <div id="record-level-bar" class="h-full bg-apple-green transition-all duration-75" style="width: 2%"></div>
+        </div>
+        <p id="record-status-hint" class="text-[11.5px] text-apple-secondary text-center leading-snug" data-i18n="recordWaveHint">Индикатор показывает уровень сигнала выбранного источника в реальном времени</p>
       </div>
-
-      <div>
-        <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="recVideoLabel">Видео</label>
+        </div>
+        <div>
+          <span class="st-sub-title" data-i18n="recVideoLabel">Видео</span>
+          <div id="st-video-chips" class="flex flex-wrap gap-1.5 mt-1.5"></div>
         <select id="record-video-select" data-change="saveRecordVideoPref" data-i18n-title="tipRecordVideo"
           title="Записывать вместе со звуком экран, окно программы или вкладку браузера"
-          class="w-full h-8 bg-apple-card border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
+          class="hidden w-full h-8 bg-apple-card border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
           <option value="" data-i18n="recVideoNone">Без видео — только звук</option>
           <option value="screen" data-i18n="recVideoScreen">Экран, окно или программа…</option>
           <option value="app_desktop" class="rec-app-video hidden" data-i18n="recVideoAppDesktop">Весь экран (запись приложением)</option>
@@ -76,31 +128,40 @@
         <select id="record-window-select" data-i18n-title="tipRecordWindow" title="Окно, которое записывается"
           class="hidden mt-1.5 w-full h-8 bg-apple-card border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none"></select>
         <video id="record-video-preview" muted autoplay playsinline class="hidden mt-2 w-full rounded-lg bg-black border border-white/10 max-h-40 object-contain"></video>
-      </div>
+        </div>
+      </section>
 
-      <div>
-        <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="recTitleLabel">Название записи</label>
+      <section class="st-card">
+        <h3 class="st-card-title" data-i18n="rdSasMeeting">Встреча</h3>
+        <label for="record-title-input" class="st-sub-title" data-i18n="recTitleLabel">Название записи</label>
         <input id="record-title-input" type="text"
           data-i18n-title="tipRecordTitleInput" title="Введите название для новой записи"
           placeholder="Созвон / Голосовая заметка" data-i18n-placeholder="phRecordTitle"
           class="w-full h-8 bg-apple-card border apple-border rounded-lg px-3 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
+        <div id="studio-upcoming" class="hidden"></div>
+      <div class="text-[11.5px] text-apple-tertiary leading-snug space-y-1">
+        <p id="record-save-hint" class="break-words"></p>
+        <button data-click="openModal" data-click-args='["settings", "record"]' class="vs-link text-apple-blue hover:underline" data-i18n="recordChangeFolder">Изменить папку для записей…</button>
       </div>
+      </section>
 
-      <div class="rounded-xl border apple-border bg-black/20 p-3 space-y-2.5">
-        <div class="flex items-center justify-between">
-          <div id="record-timer-display" class="text-xl font-mono font-semibold text-white tracking-wider">00:00</div>
-          <div class="flex items-center gap-2">
-            <span id="record-signal-dot" class="signal-dot" data-i18n-title="tipSignalDot" title="Горит зелёным, когда на входе есть звук"></span>
-            <span id="record-db-display" class="text-[11px] font-mono text-apple-secondary w-12 text-right">-60 dB</span>
-          </div>
-        </div>
-        <canvas id="record-waveform-canvas" class="w-full h-12 block"></canvas>
-        <div class="w-full h-1.5 bg-black/50 rounded-full overflow-hidden border border-white/5">
-          <div id="record-level-bar" class="h-full bg-apple-green transition-all duration-75" style="width: 2%"></div>
-        </div>
-        <p id="record-status-hint" class="text-[11px] text-apple-secondary text-center leading-snug" data-i18n="recordWaveHint">Индикатор показывает уровень сигнала выбранного источника в реальном времени</p>
-      </div>
+      <section class="st-card">
+        <h3 class="st-card-title" data-i18n="rdSasAuto">Автоматически</h3>
+        <p class="text-[11.5px] text-apple-tertiary leading-snug" data-i18n="rdSasAfterStop">После остановки запись сразу ставится на распознавание.</p>
+        <label class="st-toggle">
+          <span class="min-w-0 flex-1"><span class="block text-[13px] text-white" data-i18n="rdSasAutoAnalysis">✦ Анализ после распознавания</span>
+            <span class="block text-[11.5px] text-apple-tertiary leading-snug" data-i18n="rdSasAutoAnalysisHint">Итоги, решения и задачи появятся сами</span></span>
+          <input type="checkbox" id="st-auto-summary" data-change="studioSetAuto" data-change-args='["auto_summary", {"$": "checked"}]' role="switch" class="vs-switch" />
+        </label>
+        <label class="st-toggle">
+          <span class="min-w-0 flex-1"><span class="block text-[13px] text-white" data-i18n="rdSasAutoCall">Начинать, когда начинается звонок</span>
+            <span class="block text-[11.5px] text-apple-tertiary leading-snug" data-i18n="rdSasAutoCallHint">Запись включится сама и остановится в конце звонка</span></span>
+          <input type="checkbox" id="st-call-record" data-change="studioSetAuto" data-change-args='["call_auto_record", {"$": "checked"}]' role="switch" class="vs-switch" />
+        </label>
+      </section>
 
+      <!-- The old buttons of this column: the scripts still keep them in step, the record card has them now -->
+      <div class="hidden">
       <div class="space-y-2">
         <button id="btn-start-rec" data-click="startLiveRecording"
           data-i18n-title="tipStartRecBtn" title="Начать запись звука с выбранного источника"
@@ -117,26 +178,23 @@
         <button id="btn-cancel-rec" data-click="cancelLiveRecording" data-i18n-title="tipStudioCancel" title="Остановить запись без сохранения"
           class="hidden ui-btn ui-btn-subtle h-8 w-full" data-i18n="studioCancel">Отменить</button>
       </div>
-
-      <div class="text-[11px] text-apple-tertiary leading-snug space-y-1">
-        <p id="record-save-hint" class="break-all"></p>
-        <button data-click="openModal" data-click-args='["settings", "record"]' class="text-apple-blue hover:underline" data-i18n="recordChangeFolder">Изменить папку для записей…</button>
       </div>
     </div>
 
     <div id="studio-stage" class="flex-1 min-w-0 min-h-0 flex flex-col">
-      <div class="h-14 px-5 flex items-center gap-3 xl:gap-4 border-b apple-border shrink-0 bg-apple-sidebar/95 overflow-hidden">
+      <!-- The recording: time, level, start / stop -->
+      <div class="st-rec">
         <span id="studio-rec-dot" class="relative flex w-3 h-3 shrink-0"><span class="studio-ping absolute inset-0 rounded-full bg-apple-red animate-ping opacity-60"></span><span class="relative w-3 h-3 rounded-full bg-apple-red"></span></span>
         <div class="min-w-0 flex-1 xl:flex-none">
           <div id="studio-heading" class="text-[13px] font-semibold text-white leading-tight truncate" data-i18n="studioIdle">Студия записи</div>
-          <div id="studio-source" class="text-[11px] text-apple-secondary truncate"></div>
+          <div id="studio-source" class="text-[11.5px] text-apple-secondary truncate"></div>
         </div>
         <div id="studio-timer" class="text-xl xl:text-2xl font-mono font-semibold text-white tracking-wider shrink-0 whitespace-nowrap">00:00</div>
         <div class="hidden lg:flex flex-1 items-center gap-2 min-w-[70px] max-w-[220px]">
           <div class="flex-1 h-1.5 bg-black/50 rounded-full overflow-hidden border border-white/5">
             <div id="studio-level" class="h-full bg-apple-green transition-all duration-75" style="width: 2%"></div>
           </div>
-          <span id="studio-db" class="text-[11px] font-mono text-apple-secondary w-14 text-right whitespace-nowrap">-60 dB</span>
+          <span id="studio-db" class="text-[11.5px] font-mono text-apple-secondary w-14 text-right whitespace-nowrap">-60 dB</span>
         </div>
         <div class="flex items-center gap-2 shrink-0 ml-auto">
           <button data-click="toggleStudioFocus" id="studio-focus-btn" class="ui-btn ui-btn-subtle h-8" data-i18n-title="tipStudioFocus" title="Субтитры на всё окно (Esc — выход)">
@@ -154,16 +212,31 @@
           </button>
         </div>
       </div>
+      <div class="st-rec-info">
+        <span id="st-disk"></span>
+        <span class="flex-1"></span>
+        <button id="st-mark-btn" data-click="studioMark" class="hidden ui-btn ui-btn-subtle h-7 px-3 text-[11.5px]" data-i18n-title="rdSasMarkTip"
+          title="Поставить отметку в этом месте записи (M)"><span aria-hidden="true">⚑</span><span data-i18n="rdSasMark">Отметить</span></button>
+      </div>
 
+      <!-- What goes on in the recording -->
+      <div class="st-tabs" role="tablist">
+        <button data-click="studioTab" data-click-args='["text"]' id="st-tab-text" class="st-tab" role="tab" data-i18n="rdSasTabText">Текст</button>
+        <button data-click="studioTab" data-click-args='["notes"]' id="st-tab-notes" class="st-tab" role="tab" data-i18n="rdSasTabNotes">Мои заметки</button>
+        <button data-click="studioTab" data-click-args='["ask"]' id="st-tab-ask" class="st-tab" role="tab" data-i18n="rdSasTabAsk">Вопросы</button>
+        <span class="flex-1"></span>
+        <span class="st-keys"><kbd class="st-kbd">M</kbd><span data-i18n="rdSasKeyMark">отметка</span> <kbd class="st-kbd">N</kbd><span data-i18n="rdSasKeyNote">заметка</span></span>
+      </div>
+      <div id="st-pane-text" class="flex-1 min-h-0 flex flex-col">
       <div class="px-5 py-2.5 flex items-center gap-4 flex-wrap border-b apple-border shrink-0 bg-apple-bg/95">
         <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label" data-i18n-title="tipLiveCaptions"
           title="Показывать текст речи во время записи. После остановки запись, как обычно, расшифровывается полностью и точнее">
-          <input type="checkbox" id="live-captions-toggle" data-change="studioToggleCaptions" data-change-args='[{"$": "checked"}]' class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <input type="checkbox" id="live-captions-toggle" data-change="studioToggleCaptions" data-change-args='[{"$": "checked"}]' role="switch" class="vs-switch vs-sm" />
           <span data-i18n="liveCaptionsToggle">Субтитры в реальном времени</span>
         </label>
         <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-secondary" data-i18n-title="tipLiveDraft"
           title="Показывать фразу по мере произнесения, не дожидаясь паузы. Черновик может поправляться, пока фраза не закончится">
-          <input type="checkbox" id="live-draft-toggle" data-change="studioConfigure" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+          <input type="checkbox" id="live-draft-toggle" data-change="studioConfigure" role="switch" class="vs-switch vs-sm" />
           <span data-i18n="liveDraftToggle">Текст по ходу речи</span>
         </label>
         <label class="flex items-center gap-1.5 text-xs text-apple-secondary">
@@ -181,125 +254,157 @@
         <!-- Only while translating: how the translation is shown and which model makes it -->
         <div id="studio-tr-options" class="flex items-center gap-3">
           <div class="apple-segmented" style="height: 26px;">
-            <button data-click="studioSetView" data-click-args='["under"]' id="studio-view-under" class="apple-segment-btn text-[11px]" data-i18n="studioViewUnder">Под фразой</button>
-            <button data-click="studioSetView" data-click-args='["side"]' id="studio-view-side" class="apple-segment-btn text-[11px]" data-i18n="studioViewSide">Рядом</button>
-            <button data-click="studioSetView" data-click-args='["tr"]' id="studio-view-tr" class="apple-segment-btn text-[11px]" data-i18n="studioViewTr">Только перевод</button>
+            <button data-click="studioSetView" data-click-args='["under"]' id="studio-view-under" class="apple-segment-btn text-[11.5px]" data-i18n="studioViewUnder">Под фразой</button>
+            <button data-click="studioSetView" data-click-args='["side"]' id="studio-view-side" class="apple-segment-btn text-[11.5px]" data-i18n="studioViewSide">Рядом</button>
+            <button data-click="studioSetView" data-click-args='["tr"]' id="studio-view-tr" class="apple-segment-btn text-[11.5px]" data-i18n="studioViewTr">Только перевод</button>
           </div>
           <div class="apple-segmented" style="height: 26px;" data-i18n-title="tipStudioSpeed" title="Небольшая модель: быстрее, но перевод проще">
-            <button data-click="studioSetSpeed" data-click-args='["quality"]' id="studio-speed-quality" class="apple-segment-btn text-[11px]" data-i18n="studioSpeedQuality">Качество</button>
-            <button data-click="studioSetSpeed" data-click-args='["fast"]' id="studio-speed-fast" class="apple-segment-btn text-[11px]" data-i18n="studioSpeedFast">Скорость</button>
+            <button data-click="studioSetSpeed" data-click-args='["quality"]' id="studio-speed-quality" class="apple-segment-btn text-[11.5px]" data-i18n="studioSpeedQuality">Качество</button>
+            <button data-click="studioSetSpeed" data-click-args='["fast"]' id="studio-speed-fast" class="apple-segment-btn text-[11.5px]" data-i18n="studioSpeedFast">Скорость</button>
           </div>
           <label class="flex items-center gap-1.5 cursor-pointer text-xs text-apple-label" data-i18n-title="tipLiveDraftTr"
             title="Переводить фразу, пока её произносят, не дожидаясь паузы. Дополнительно нагружает модель перевода">
-            <input type="checkbox" id="live-draft-tr-toggle" data-change="studioConfigure" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <input type="checkbox" id="live-draft-tr-toggle" data-change="studioConfigure" role="switch" class="vs-switch vs-sm" />
             <span data-i18n="liveDraftTrToggle">Перевод по ходу речи</span>
           </label>
         </div>
         <div class="flex items-center gap-1">
-          <button data-click="studioFont" data-click-args='[-2]' class="ui-btn ui-btn-subtle h-7 !px-2 text-[11px]" data-i18n-title="tipStudioFontSmaller" title="Мельче">A−</button>
+          <button data-click="studioFont" data-click-args='[-2]' class="ui-btn ui-btn-subtle h-7 !px-2 text-[11.5px]" data-i18n-title="tipStudioFontSmaller" title="Мельче">A−</button>
           <button data-click="studioFont" data-click-args='[2]' class="ui-btn ui-btn-subtle h-7 !px-2 text-[13px]" data-i18n-title="tipStudioFontLarger" title="Крупнее">A+</button>
         </div>
         <!-- The models writing the captions and the translation now; can be changed by hand -->
         <div id="studio-models" class="hidden flex items-center gap-2 ml-auto">
-          <label class="flex items-center gap-1 text-[11px] text-apple-tertiary">
+          <label class="flex items-center gap-1 text-[11.5px] text-apple-tertiary">
             <span data-i18n="studioModelCaptions">Субтитры</span>
             <select id="studio-cap-model" data-change="studioSetCaptionModel" data-change-args='[{"$": "value"}]' data-i18n-title="tipStudioCapModel" title="Модель, которая пишет субтитры. «Авто» выбирает по языку речи"
-              class="h-6 max-w-[170px] bg-apple-sidebar border apple-border rounded-md px-1.5 text-[11px] text-white focus:outline-none"></select>
+              class="h-6 max-w-[170px] bg-apple-sidebar border apple-border rounded-md px-1.5 text-[11.5px] text-white focus:outline-none"></select>
           </label>
-          <label id="studio-tr-model-wrap" class="flex items-center gap-1 text-[11px] text-apple-tertiary">
+          <label id="studio-tr-model-wrap" class="flex items-center gap-1 text-[11.5px] text-apple-tertiary">
             <span data-i18n="studioModelTranslation">Перевод</span>
             <select id="studio-tr-model" data-change="studioSetTranslateModel" data-change-args='[{"$": "value"}]' data-i18n-title="tipStudioTrModel" title="Модель перевода. «Авто» — по переключателю «Качество / Скорость»"
-              class="h-6 max-w-[170px] bg-apple-sidebar border apple-border rounded-md px-1.5 text-[11px] text-white focus:outline-none"></select>
+              class="h-6 max-w-[170px] bg-apple-sidebar border apple-border rounded-md px-1.5 text-[11.5px] text-white focus:outline-none"></select>
           </label>
         </div>
-        <span id="studio-status" class="text-[11px] text-apple-tertiary"></span>
+        <span id="studio-status" class="text-[11.5px] text-apple-tertiary"></span>
       </div>
-
       <!-- Models in memory: shown here when the studio covers the whole window -->
       <div class="studio-focus-only px-5 py-1.5 flex items-center gap-2 border-b apple-border shrink-0 bg-apple-bg/95">
-        <span class="text-[10px] font-mono text-apple-tertiary shrink-0">VRAM</span>
+        <span class="text-[11px] font-mono text-apple-tertiary shrink-0">VRAM</span>
         <div id="studio-vram-chips" class="flex flex-wrap gap-1"></div>
+        <button data-click="toggleStudioFocus" data-click-args='[false]' class="ui-btn ui-btn-subtle h-8 ml-auto shrink-0" data-i18n="studioFocusExitEsc">Свернуть (Esc)</button>
       </div>
-
       <div id="studio-captions" class="flex-1 min-h-0 overflow-y-auto px-8 py-6">
         <div id="studio-captions-inner" class="max-w-6xl mx-auto">
-          <div id="studio-cap-head" class="hidden grid grid-cols-2 gap-8 text-[11px] uppercase tracking-wider text-apple-tertiary sticky top-0 bg-apple-bg/95 py-1 mb-2 z-10">
+          <div id="studio-cap-head" class="hidden grid grid-cols-2 gap-8 text-[11.5px] uppercase tracking-wider text-apple-tertiary sticky top-0 bg-apple-bg/95 py-1 mb-2 z-10">
             <div id="studio-cap-head-orig"></div><div id="studio-cap-head-tr"></div>
           </div>
           <div id="studio-cap-rows" class="cap-rows"></div>
           <div id="studio-cap-empty" class="text-center text-apple-tertiary text-sm pt-16"></div>
-          <div id="studio-upcoming" class="hidden max-w-xl mx-auto mt-8"></div>
         </div>
       </div>
+      </div>
+      <div id="st-pane-notes" class="hidden flex-1 min-h-0 flex flex-col">
+        <p id="st-notes-idle" class="st-pane-idle" data-i18n="rdSasNotesIdle">Заметки пишутся во время записи: каждая строка получает время записи. Они сохранятся с записью и войдут в анализ.</p>
       <!-- The user's own notes while recording: saved with the recording, every summary takes them in -->
-      <div id="studio-notes" class="hidden shrink-0 border-t apple-border bg-apple-sidebar/95 px-5 py-2">
+      <div id="studio-notes" class="hidden flex-1 min-h-0 flex flex-col px-6 py-4">
         <div class="flex items-center justify-between mb-1">
-          <span class="text-[11px] font-semibold text-apple-secondary" data-i18n="notesTitle">Мои заметки</span>
-          <span class="text-[10.5px] text-apple-tertiary" data-i18n="notesStudioHint">Enter — новая строка с отметкой времени. Заметки сохранятся с записью и войдут в пересказ</span>
+          <span class="text-[11.5px] font-semibold text-apple-secondary" data-i18n="notesTitle">Мои заметки</span>
+          <span class="text-[11px] text-apple-tertiary" data-i18n="notesStudioHint">Enter — новая строка с отметкой времени. Заметки сохранятся с записью и войдут в пересказ</span>
         </div>
-        <textarea id="studio-notes-input" rows="3" data-keydown="studioNotesKey" data-keydown-args='[{"$": "event"}]' data-input="saveStudioNotesDraft"
+        <textarea id="studio-notes-input" rows="12" data-keydown="studioNotesKey" data-keydown-args='[{"$": "event"}]' data-input="saveStudioNotesDraft"
           data-i18n-placeholder="notesPh" placeholder="Главное для вас: решения, вопросы, что не забыть…"
-          class="w-full bg-apple-card border apple-border rounded-lg px-3 py-2 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue resize-y"></textarea>
+          class="w-full bg-apple-card border apple-border rounded-lg px-3 py-2 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue resize-none flex-1 min-h-[160px] text-[13px] leading-relaxed"></textarea>
       </div>
+      </div>
+      <div id="st-pane-ask" class="hidden flex-1 min-h-0 flex flex-col overflow-y-auto">
+        <p id="st-ask-idle" class="st-pane-idle" data-i18n="rdSasAskIdle">Вопросы по разговору работают во время записи, когда включён текст по ходу речи.</p>
       <!-- Questions about what was said so far, while recording (app/live.py ask) -->
-      <div id="studio-ask" class="hidden shrink-0 border-t apple-border bg-apple-sidebar/95 px-5 py-2.5 space-y-2">
-        <div id="studio-ask-answer" class="hidden max-h-48 overflow-y-auto markdown-body text-[13px] text-apple-label"></div>
+      <div id="studio-ask" class="hidden px-6 py-4 space-y-2">
+        <div id="studio-ask-answer" class="hidden max-h-[60vh] overflow-y-auto markdown-body text-[13px] text-apple-label"></div>
         <div class="flex items-center gap-2">
           <input id="studio-ask-input" type="text" data-keydown="onEnter" data-keydown-args='[{"$": "event"}, "studioAsk"]'
-            data-i18n-placeholder="studioAskPh" placeholder="Спросить по разговору: о чём договорились? что он ответил про сроки?"
+            data-i18n-placeholder="studioAskPh" placeholder="Спросить по разговору"
             class="flex-1 h-8 bg-apple-card border apple-border rounded-lg px-3 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
           <button data-click="studioAsk" id="studio-ask-btn" class="ui-btn ui-btn-primary h-8" data-i18n="askBtn">Спросить</button>
         </div>
       </div>
+      </div>
+    </div>
     </div>
     </div>
 
     <!-- =====================================================================
-         QUESTIONS: answers from one recording, a folder or the whole library (ask* in static/js/library.js)
+         ASSISTANT: conversations about the recordings (static/js/assistant.js). Answers come from one
+         recording, a folder, a period or chosen recordings, with numbered links to the moments
          ===================================================================== -->
     <div id="ask-view" class="hidden flex-1 min-h-0 flex bg-apple-bg">
-<div id="side-ask" class="w-[270px] shrink-0 border-r apple-border bg-apple-sidebar/60 overflow-y-auto px-4 py-4 space-y-3">
-      <div>
-        <button data-click="openOpenCommitments" class="w-full mb-3 ui-btn ui-btn-subtle justify-start text-[11.5px]" data-i18n-title="tipOpenCommitments"
-          title="Все обещания из встреч, которые ещё не отмечены выполненными">
-          <span>✓</span><span data-i18n="openCommitmentsBtn">Открытые обещания</span>
+      <!-- The conversations: new, search, grouped by day -->
+      <aside class="as-side">
+        <button data-click="assistantNewChat" class="as-new" data-i18n-title="rdSasTipNewChat" title="Начать новый разговор">
+          <svg aria-hidden="true" class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          <span class="flex-1 text-left" data-i18n="rdSasNewChat">Новый разговор</span>
         </button>
-        <div class="text-[11px] font-semibold text-apple-secondary uppercase tracking-wider mb-1.5" data-i18n="askScopeTitle">Где искать ответ</div>
-        <div id="ask-scope-list" class="space-y-0.5"></div>
-      </div>
-      <div id="ask-series-block" class="hidden">
-        <div class="text-[11px] font-semibold text-apple-secondary uppercase tracking-wider mb-1.5" data-i18n="seriesTitle">Серии встреч</div>
-        <div id="ask-series-list" class="space-y-0.5"></div>
-      </div>
-      <div id="ask-people-block" class="hidden">
-        <div class="text-[11px] font-semibold text-apple-secondary uppercase tracking-wider mb-1.5" data-i18n="peopleTitle">Люди</div>
-        <div id="ask-people-list" class="space-y-0.5"></div>
-      </div>
-      <p class="text-[11px] text-apple-tertiary leading-snug" data-i18n="libraryAskIntro">Ответ формирует локальная модель Ollama только по найденным фрагментам расшифровок. Ссылки в ответе открывают запись на нужном моменте.</p>
-    </div>
+        <label class="as-search">
+          <svg aria-hidden="true" class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
+          <input id="as-chat-search" type="search" data-input="assistantFilterChats" data-input-args='[{"$": "value"}]'
+            data-i18n-placeholder="rdSasFindChat" placeholder="Найти разговор" data-i18n-title="rdSasFindChat" title="Найти разговор"
+            class="flex-1 min-w-0 bg-transparent border-0 text-xs text-white placeholder-apple-tertiary focus:outline-none" />
+        </label>
+        <div id="as-chat-list" class="as-chat-list"></div>
+        <div class="as-side-tools">
+          <button data-click="openOpenCommitments" class="as-tool" data-i18n-title="tipOpenCommitments" title="Все задачи из встреч, которые ещё не отмечены выполненными">
+            <span aria-hidden="true">✓</span><span data-i18n="openCommitmentsBtn">Открытые задачи</span>
+          </button>
+          <button data-click="openDigestMenu" data-click-args='[{"$": "event"}]' id="library-digest-btn" class="as-tool" data-i18n-title="tipDigest"
+            title="Сводка по нескольким записям: главное, решения, задачи и открытые вопросы со ссылками на записи">
+            <span aria-hidden="true">≡</span><span data-i18n="digestBtn">Дайджест</span><span class="opacity-60 ml-auto">▾</span>
+          </button>
+        </div>
+        <p class="as-side-foot" data-i18n="rdSasChatsLocal">Разговоры хранятся только на этом компьютере</p>
+      </aside>
 
-    <div class="flex-1 min-w-0 min-h-0 flex flex-col">
-      <div class="px-6 pt-5 pb-4 border-b apple-border shrink-0 bg-apple-sidebar/60">
-        <div class="max-w-3xl mx-auto space-y-2.5">
-          <div class="flex items-baseline justify-between gap-3">
-            <h2 class="text-[15px] font-semibold text-white" data-i18n="askTitle">Вопросы по записям</h2>
-            <span id="ask-scope-label" class="text-[11px] text-apple-secondary truncate"></span>
+      <div class="flex-1 min-w-0 min-h-0 flex flex-col">
+        <!-- The conversation: its title, the model that answers, where the text goes -->
+        <header class="as-head">
+          <button id="as-title" class="as-title" data-click="assistantRename" data-i18n-title="rdSasTipRename" title="Переименовать разговор"></button>
+          <input id="as-title-input" type="text" class="hidden as-title-input" data-blur="assistantRenameDone" data-keydown="assistantTitleKey" data-keydown-args='[{"$": "event"}]'
+            data-i18n-title="rdSasChatTitle" title="Название разговора" />
+          <button id="as-model-btn" data-click="assistantModelMenu" data-click-args='[{"$": "event"}]' class="as-chip" data-i18n-title="rdSasTipModel" title="Модель, которая отвечает">
+            <svg class="tb-ai" aria-hidden="true" viewBox="0 0 24 24"><path d="M10 2l1.9 5.6 5.6 1.9-5.6 1.9L10 17l-1.9-5.6-5.6-1.9 5.6-1.9z"/><path d="M18.5 13l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/></svg>
+            <span id="as-model-label"></span><span class="opacity-60">▾</span>
+          </button>
+          <span id="as-privacy" class="as-pill"></span>
+          <span class="flex-1"></span>
+          <button data-click="assistantChatMenu" data-click-args='[{"$": "event"}]' class="as-icon-btn" data-i18n-title="rdSasChatActions" title="Действия с разговором">
+            <svg aria-hidden="true" class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+          </button>
+        </header>
+        <!-- Nothing here can answer yet: the same two ways as on the analysis page, before a question is asked -->
+        <div id="as-noai" class="an-noai hidden" role="status">
+          <span class="an-noai-text" data-i18n="rdSasNoAiText">Отвечать пока некому: модель анализа не установлена.</span>
+          <button data-click="pullFirstRunLlm" class="an-noai-main" data-i18n="noAiLocal">Скачать модель</button>
+          <button data-click="openModal" data-click-args='["settings", "analysis"]' class="an-noai-alt" data-i18n="noAiCloud">Подключить облачную</button>
+        </div>
+
+        <div id="library-answer" class="flex-1 min-h-0 overflow-y-auto px-6 py-5">
+          <div id="ask-thread" class="as-thread"></div>
+        </div>
+
+        <!-- The question: where to look, the text, send / stop -->
+        <div class="as-compose">
+          <div class="as-box">
+            <button id="as-scope-btn" data-click="assistantScopeMenu" data-click-args='[{"$": "event"}]' class="as-scope" data-i18n-title="rdSasTipScope" title="Где искать ответ">
+              <svg aria-hidden="true" class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 7.5a2 2 0 0 1 2-2H10l2 2h6.5a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></svg>
+              <span id="ask-scope-label" class="truncate"></span><span class="opacity-60">▾</span>
+            </button>
+            <input id="library-question" type="text" data-keydown="assistantKey" data-keydown-args='[{"$": "event"}]' data-input="assistantSyncSend"
+              data-i18n-placeholder="rdSasAskPh" placeholder="Спросите о своих записях" data-i18n-title="rdSasAskPh" title="Спросите о своих записях"
+              class="flex-1 min-w-0 h-10 bg-transparent border-0 px-2 text-[14px] text-white placeholder-apple-tertiary focus:outline-none" />
+            <button data-click="assistantSendOrStop" id="library-ask-btn" class="as-send"></button>
           </div>
-          <div class="flex items-center gap-2">
-            <input id="library-question" type="text" data-keydown="onEnter" data-keydown-args='[{"$": "event"}, "askLibrary"]'
-              data-i18n-placeholder="libraryAskPlaceholder" placeholder="Например: что решили по срокам релиза?"
-              class="flex-1 h-9 bg-apple-card border apple-border rounded-lg px-3.5 text-[13px] text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
-            <button data-click="askLibrary" id="library-ask-btn" class="ui-btn ui-btn-primary h-9 px-4"><svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg><span data-i18n="askBtn">Спросить</span></button>
-            <button data-click="openDigestMenu" data-click-args='[{"$": "event"}]' id="library-digest-btn" data-i18n-title="tipDigest"
-              title="Сводка по нескольким записям: главное, решения, задачи и открытые вопросы со ссылками на записи"
-              class="ui-btn ui-btn-subtle h-9 px-3.5"><span data-i18n="digestBtn">Дайджест</span><span class="opacity-60 ml-1">▾</span></button>
-          </div>
+          <div id="as-compose-hint" class="as-hint"></div>
         </div>
       </div>
-      <div id="library-answer" class="flex-1 min-h-0 overflow-y-auto px-6 py-5">
-        <div id="ask-thread" class="max-w-3xl mx-auto space-y-4"></div>
-      </div>
-    </div>
     </div>
 
     <div id="library-view" class="flex-1 min-h-0 flex flex-col overflow-hidden">
@@ -330,7 +435,7 @@
         </button>
         </div>
         <p id="workspace-empty-pick" class="hidden text-xs text-apple-label mt-6" data-i18n="emptyPickRecording">Или выберите запись в медиатеке слева</p>
-        <p class="text-[11px] text-apple-tertiary mt-6">
+        <p class="text-[11.5px] text-apple-tertiary mt-6">
           <span data-i18n="emptyShortcutsHint">Горячие клавиши</span> — <kbd class="empty-card-kbd !static">?</kbd>
         </p>
       </div>
@@ -350,14 +455,15 @@
             data-i18n-title="tipRenameInline"
             title="Нажмите, чтобы переименовать запись"
             class="bg-transparent hover:bg-white/5 focus:bg-apple-card focus:outline-none focus:ring-1 focus:ring-apple-blue px-2 h-7 -ml-2 rounded-md text-[14px] font-semibold text-white truncate min-w-[100px] max-w-[320px] transition" />
-          <span id="meeting-meta-badge" class="text-[11px] text-apple-secondary font-mono truncate min-w-0"></span>
+          <span id="meeting-meta-badge" class="text-[11.5px] text-apple-secondary font-mono truncate min-w-0"></span>
           <button data-click="openActiveRecordingMenu" data-click-args='[{"$": "event"}]' data-i18n-title="tipRecordingMore"
             title="Действия с записью: переименовать, серия, нарезка, повторная обработка, удаление"
             class="ui-btn ui-btn-subtle h-7 !px-2 shrink-0">•••</button>
         </div>
 
-        <!-- Center: Primary View Tabs (Separated from transcript tools) -->
-        <div class="apple-segmented shrink-0">
+        <!-- The views of the recording are chosen in the top bar (openRecordTab in static/js/shell.js);
+             these buttons stay for switchWorkspaceTab, out of sight -->
+        <div class="apple-segmented shrink-0 hidden" aria-hidden="true">
           <button data-click="switchWorkspaceTab" data-click-args='["transcript"]' id="wtab-transcript"
             data-i18n-title="tipTabTranscript"
             title="Показать полную расшифровку разговора по ролям"
@@ -396,7 +502,7 @@
               <button data-click="runAll" data-click-args='[["hideTranslateMenu"], ["openDubModal"]]' id="dub-open-btn" data-i18n-title="tipDubOpen"
                 title="Перевести запись и озвучить её голосами участников (бета)" class="macos-menu-item">
                 <span data-i18n="translateMenuDub">Озвучка голосом (дубляж)…</span>
-                <span class="text-[10px] opacity-80" data-i18n="dubProto">(бета)</span>
+                <span class="text-[11px] opacity-80" data-i18n="dubProto">(бета)</span>
               </button>
             </div>
           </div>
@@ -426,12 +532,14 @@
               <span id="workspace-stage-text" class="text-apple-label font-medium truncate">Обработка…</span>
             </span>
             <span class="flex items-center gap-2.5 shrink-0">
-              <span id="workspace-progress-time" class="font-mono text-[11px] text-apple-secondary"></span>
+              <span id="workspace-progress-time" class="font-mono text-[11.5px] text-apple-secondary"></span>
               <span id="workspace-progress-pct" class="font-mono text-apple-blue">0%</span>
+              <button id="workspace-error-more" data-click="showProcessingErrorDetails" data-i18n="errDetails"
+                class="hidden ui-btn ui-btn-subtle h-6 px-2 text-[11.5px]">Подробнее</button>
               <button id="workspace-retry-btn" data-click="retryActiveMeeting" data-i18n="retryBtn"
-                class="hidden ui-btn ui-btn-primary h-6 px-2 text-[11px]">Повторить</button>
+                class="hidden ui-btn ui-btn-primary h-6 px-2 text-[11.5px]">Повторить</button>
               <button id="workspace-cancel-btn" data-click="cancelActiveProcessing" data-i18n-title="tipCancelProcessing" title="Остановить обработку этой записи"
-                class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]" data-i18n="cancelProcessingBtn">Отменить</button>
+                class="ui-btn ui-btn-subtle h-6 px-2 text-[11.5px]" data-i18n="cancelProcessingBtn">Отменить</button>
             </span>
           </div>
           <div class="w-full h-1 bg-white/10 rounded-full overflow-hidden">
@@ -453,6 +561,15 @@
             <select id="tx-model-select" data-change="pickTxModel" data-change-args='[{"$": "el"}]'
               data-i18n-title="tipTxModel" title="Модель распознавания. Текст каждой модели хранится отдельно: выберите модель, чтобы увидеть её расшифровку"
               class="h-7 max-w-[15rem] bg-apple-sidebar border apple-border rounded-[7px] px-2 text-xs text-white focus:outline-none shrink-0"></select>
+            <!-- What is done to the sound before recognition and to the text after it, for this recording -->
+            <div class="relative shrink-0">
+              <button data-click="toggleTxProcMenu" data-click-args='[{"$": "event"}]' id="tx-proc-btn" class="ui-btn ui-btn-subtle"
+                data-i18n-title="tipTxProc" title="Что сделать со звуком перед распознаванием и с текстом после: для этой записи">
+                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75"/></svg>
+                <span class="tx-tool-label" data-i18n="txProcBtn">Параметры</span>
+              </button>
+              <div id="tx-proc-menu" class="hidden absolute left-0 top-full mt-1.5 w-80 macos-menu z-40 p-3 space-y-3" data-click="stopEvent" data-click-args='[{"$": "event"}]'></div>
+            </div>
             <button data-click="transcribeWithPickedModel" id="tx-transcribe-btn" class="ui-btn ui-btn-subtle shrink-0"
               data-i18n-title="tipTxTranscribe" title="Расшифровать запись выбранной моделью. Тексты других моделей остаются">
               <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>
@@ -491,14 +608,21 @@
                 </button>
                 <div id="tx-view-menu" class="hidden absolute right-0 mt-1.5 w-64 macos-menu z-40" data-click="stopEvent" data-click-args='[{"$": "event"}]'></div>
               </div>
-              <button data-click="cleanActiveTranscriptFillers" id="clean-fillers-btn"
-                data-i18n-title="tipCleanSpeech"
-                title="Удалить слова-паразиты («э-э», «ммм», «ну типа») и повторы слов"
+              <!-- «Без запинок»: the text is shown without «э-э», «ну типа» and repeated words; the text
+                   itself is not changed (rpToggleNoFillers in redesign_player.js) -->
+              <button data-click="rpToggleNoFillers" id="clean-fillers-btn" aria-pressed="false"
+                data-i18n-title="rdPlyrNoFillersTip"
+                title="Скрыть «э-э», «ну типа» и повторы слов. Только в показе текста: запись и сам текст не меняются"
                 class="ui-btn ui-btn-subtle">
                 <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/>
                 </svg>
-                <span class="tx-tool-label" data-i18n="cleanSpeechBtn">Очистить текст</span>
+                <span class="tx-tool-label" data-i18n="rdPlyrNoFillers">Без запинок</span>
+              </button>
+              <!-- A recording cleaned the old way (its text was changed): the recognized text can come back -->
+              <button data-click="rpRestoreFillers" id="rp-restore-fillers" class="ui-btn ui-btn-subtle hidden"
+                data-i18n-title="tipFillersRestore" title="Вернуть исходный текст распознавания">
+                <span class="tx-tool-label" data-i18n="rdPlyrRestoreFillers">Вернуть исходный текст</span>
               </button>
 
               <button data-click="toggleAutoScroll" id="autoscroll-btn"
@@ -523,15 +647,6 @@
                   class="w-full h-7 bg-white/5 focus:bg-apple-card border border-transparent focus:border-apple-blue/60 rounded-[7px] pl-8 pr-2.5 text-xs text-white placeholder-apple-tertiary focus:outline-none transition" />
               </div>
 
-              <button data-click="toggleTranscriptVerified" id="tx-verified-btn"
-                data-i18n-title="tipTxVerified"
-                title="Отметьте, когда проверили и исправили расшифровку: она станет эталоном для «Сравнения моделей»"
-                class="hidden ui-btn ui-btn-subtle text-apple-label">
-                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-                <span class="tx-tool-label" id="tx-verified-label" data-i18n="txVerify">Проверено</span>
-              </button>
             </div>
           </div>
         </div>
@@ -539,7 +654,7 @@
         <!-- Chapters (from the "Chapters" analysis): a clickable table of contents above the text -->
         <div id="chapters-bar" class="hidden border-b apple-border bg-apple-bg/95 px-6 py-1.5 shrink-0">
           <div class="max-w-3xl mx-auto flex items-center gap-2 min-w-0">
-            <span class="text-[10.5px] uppercase tracking-wider text-apple-tertiary shrink-0" data-i18n="chaptersLabel">Главы</span>
+            <span class="text-[11px] uppercase tracking-wider text-apple-tertiary shrink-0" data-i18n="chaptersLabel">Главы</span>
             <div id="chapters-list" class="flex items-center gap-1 overflow-x-auto min-w-0 chapters-scroll"></div>
           </div>
         </div>
@@ -552,132 +667,96 @@
         </div>
       </div>
 
-      <!-- TAB 2: AI SUMMARY -->
-      <div id="wview-summary" class="hidden flex-1 overflow-y-auto px-6 py-6 tab-pane-anim">
-        <div class="max-w-3xl mx-auto space-y-5">
-          <div class="flex items-center justify-between border-b apple-border pb-3 gap-3 flex-wrap">
-            <div class="apple-segmented">
-              <button data-click="selectSummaryTab" data-click-args='["protocol"]' id="sumtab-protocol"
-                data-i18n-title="tipSumProtocol"
-                title="Подробный протокол встречи с основными темами и решениями"
-                class="apple-segment-btn apple-segment-active" data-i18n="sumProtocol">Обзор</button>
-              <button data-click="selectSummaryTab" data-click-args='["tasks"]' id="sumtab-tasks"
-                data-i18n-title="tipSumTasks"
-                title="Список задач, поручений и дедлайнов по участникам"
-                class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumTasks">Задачи</button>
-              <button data-click="selectSummaryTab" data-click-args='["tldr"]' id="sumtab-tldr"
-                data-i18n-title="tipSumTldr"
-                title="Краткая выжимка встречи на 30 секунд чтения"
-                class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumTldr">Резюме</button>
-              <button data-click="selectSummaryTab" data-click-args='["chapters"]' id="sumtab-chapters"
-                data-i18n-title="tipSumChapters"
-                title="Смысловые главы записи с отметками времени; по ним над текстом появляется оглавление"
-                class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumChapters">Главы</button>
-              <button data-click="selectSummaryTab" data-click-args='["mynotes"]' id="sumtab-mynotes"
-                data-i18n-title="tipSumMyNotes" title="Ваши заметки к записи: они учитываются в каждом пересказе"
-                class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="notesTitle">Мои заметки</button>
-              <button data-click="selectSummaryTab" data-click-args='["notes"]' id="sumtab-notes"
-                data-i18n-title="tipSumNotes" title="Ваши заметки, развёрнутые по расшифровке: что именно сказано, кем и когда"
-                class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumNotes">По заметкам</button>
-              <button data-click="selectSummaryTab" data-click-args='["since_last"]' id="sumtab-since_last"
-                data-i18n-title="tipSumSinceLast"
-                title="Задачи и договорённости прошлой встречи серии: что выполнено, что в работе, что не обсуждали"
-                class="hidden apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumSinceLast">С прошлого раза</button>
-              <button data-click="selectSummaryTab" data-click-args='["followup"]' id="sumtab-followup"
-                data-i18n-title="tipSumFollowup" title="Черновик письма участникам: договорённости, задачи, следующий шаг"
-                class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumFollowup">Письмо</button>
-              <button data-click="selectSummaryTab" data-click-args='["commitments"]' id="sumtab-commitments"
-                data-i18n-title="tipSumCommitments" title="Кто что пообещал, кому и к какому сроку; отметьте выполненные"
-                class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="sumCommitments">Обещания</button>
-              <!-- The user's own templates (Settings → Analysis) -->
-              <span id="sumtab-user-templates" class="contents"></span>
-              <button data-click="openTemplatesEditor" data-i18n-title="tipTemplatesAdd" title="Свои шаблоны пересказа: 1:1, интервью, планёрка…"
-                class="apple-segment-btn text-apple-secondary hover:text-white">+</button>
+      <!-- TAB 2: ANALYSIS — sections on the left (dots: made or not), the open one on the right (app.js: renderAnalysis) -->
+      <div id="wview-summary" class="hidden flex-1 flex flex-col min-h-0 tab-pane-anim">
+        <div id="an-noai" class="an-noai hidden" role="status">
+          <span class="an-noai-text" data-i18n="anNoAiText">Модель анализа не подключена. Готовые разделы видны и копируются; создать новые или обновить — после подключения.</span>
+          <button data-click="pullFirstRunLlm" class="an-noai-main" data-i18n="noAiLocal">Скачать модель</button>
+          <button data-click="openModal" data-click-args='["settings", "analysis"]' class="an-noai-alt" data-i18n="noAiCloud">Подключить облачную</button>
+        </div>
+        <div class="flex-1 min-h-0 flex">
+          <nav id="an-nav" class="an-nav" aria-label="Разделы анализа" data-i18n-aria="anNavAria"></nav>
+          <div class="flex-1 min-w-0 flex flex-col">
+            <div id="an-main" class="flex-1 min-h-0 overflow-y-auto">
+              <div class="an-wrap">
+                <div class="an-head">
+                  <h2 id="an-title" class="an-title"></h2>
+                  <div class="an-model">
+                    <button id="an-model-btn" data-click="openAnalysisMenu" data-click-args='["model", {"$": "el"}]' class="an-chip"
+                      data-i18n-title="anModelTip" title="Модель, которой создаются и пересоздаются разделы">
+                      <svg class="tb-ai" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2l1.9 5.6 5.6 1.9-5.6 1.9L10 17l-1.9-5.6-5.6-1.9 5.6-1.9z"/><path d="M18.5 13l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/></svg>
+                      <span id="an-model-name">—</span>
+                      <svg class="an-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                    </button>
+                    <!-- The list the chip reads and sets (filled by settings.js) -->
+                    <select id="summary-llm-select" data-change="selectActiveOllamaModel" data-change-args='[{"$": "value"}]'
+                      data-i18n-title="tipSelectLlm" title="Выбрать локальную модель ИИ (Ollama) для генерации протокола" class="hidden">
+                      <option value="qwen2.5:7b">Qwen 7B Standard</option>
+                    </select>
+                  </div>
+                  <span id="an-sub" class="an-sub"></span>
+                  <span class="flex-1"></span>
+                  <button id="an-cfg-btn" data-click="openAnalysisMenu" data-click-args='["cfg", {"$": "el"}]' class="an-btn hidden"
+                    data-i18n-title="anCfgTip" title="Что показывать в обзоре">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+                    <span data-i18n="anCfg">Настроить</span>
+                  </button>
+                  <button id="generate-summary-btn" data-click="generateSummaryForActiveTab" class="an-btn"
+                    data-i18n-title="tipGenerateSummary" title="Сформировать анализ для выбранной вкладки">
+                    <svg class="tb-ai" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2l1.9 5.6 5.6 1.9-5.6 1.9L10 17l-1.9-5.6-5.6-1.9 5.6-1.9z"/><path d="M18.5 13l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/></svg>
+                    <span id="an-gen-label" data-i18n="anRegen">Пересоздать</span>
+                  </button>
+                  <button id="an-copy-btn" data-click="copySummaryText" class="an-btn" data-i18n-title="tipCopySummary" title="Скопировать текст протокола в буфер обмена">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.5"/><path d="M15.5 8.5V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7.5a2 2 0 0 0 2 2h2.5"/></svg>
+                    <span data-i18n="copy">Копировать</span>
+                  </button>
+                  <button id="an-exp-btn" data-click="openAnalysisMenu" data-click-args='["exp", {"$": "el"}]' class="an-btn">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4M8 8l4-4 4 4"/><path d="M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/></svg>
+                    <span data-i18n="anExport">Экспорт</span>
+                    <svg class="an-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                  </button>
+                  <button id="an-dots-btn" data-click="openAnalysisMenu" data-click-args='["dots", {"$": "el"}]' class="an-dots"
+                    data-i18n-title="anMoreTip" title="Ещё действия с разделом" data-i18n-aria="anMoreTip" aria-label="Ещё действия с разделом">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+                  </button>
+                </div>
+                <!-- Where the analysis goes and how big the cloud request is (settings.js) -->
+                <div id="analysis-estimate" class="hidden text-[11.5px] -mt-1 flex items-center gap-1.5"></div>
+                <div id="summary-content" class="an-body"></div>
+              </div>
             </div>
-
-            <div class="flex items-center gap-1.5">
-              <select id="summary-llm-select" data-change="selectActiveOllamaModel" data-change-args='[{"$": "value"}]'
-                data-i18n-title="tipSelectLlm"
-                title="Выбрать локальную модель ИИ (Ollama) для генерации протокола"
-                class="h-7 bg-apple-sidebar border apple-border rounded-[7px] px-2.5 text-xs text-apple-label focus:outline-none">
-                <option value="qwen2.5:7b">Qwen 7B Standard</option>
-                <option value="qwen2.5:14b">Qwen 14B Pro</option>
-                <option value="mistral:7b">Mistral 7B</option>
-                <option value="qwen2.5:1.5b">Qwen Lite</option>
-              </select>
-              <button data-click="openModal" data-click-args='["settings", "analysis"]'
-                data-i18n-title="tipManageLlm"
-                title="Скачать или настроить модели ИИ в настройках"
-                class="ui-btn ui-btn-subtle">
-                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/>
-                </svg>
-                <span>LLM</span>
-              </button>
-              <button data-click="copySummaryText"
-                data-i18n-title="tipCopySummary"
-                title="Скопировать текст протокола в буфер обмена"
-                class="ui-btn ui-btn-subtle text-apple-label">
-                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75"/>
-                </svg>
-                <span data-i18n="copy">Копировать</span>
-              </button>
-              <button data-click="clearSummaryTab" id="clear-summary-btn"
-                data-i18n-title="tipClearSummary" title="Удалить содержимое этой вкладки"
-                class="hidden ui-btn ui-btn-subtle text-apple-label">
-                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/>
-                </svg>
-                <span data-i18n="clearBtn">Очистить</span>
-              </button>
-              <button data-click="generateSummaryForActiveTab" id="generate-summary-btn"
-                data-i18n-title="tipGenerateSummary"
-                title="Сформировать анализ для выбранной вкладки"
-                class="ui-btn ui-btn-primary shadow-sm">
-                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/>
-                </svg>
-                <span data-i18n="generate">Сформировать</span>
-              </button>
+            <div class="an-ask">
+              <input id="custom-summary-prompt" type="text"
+                data-keydown="onEnter" data-keydown-args='[{"$": "event"}, "runCustomQuestion"]'
+                data-i18n-placeholder="anAskPh" placeholder="Спросите о том, что было в этой записи"
+                data-i18n-title="tipAskInput" title="Введите любой вопрос по содержанию встречи"
+                class="an-ask-input" />
+              <button data-click="runCustomQuestion" data-i18n-title="tipAskBtn" title="Отправить вопрос локальной модели ИИ"
+                class="an-ask-btn" data-i18n="askBtn">Спросить</button>
             </div>
-          </div>
-          <!-- Where the analysis goes and how big the cloud request is -->
-          <div id="analysis-estimate" class="hidden text-[11px] -mt-1 flex items-center gap-1.5"></div>
-
-          <!-- Ask AI Input -->
-          <div class="flex gap-2">
-            <input id="custom-summary-prompt" type="text"
-              data-keydown="onEnter" data-keydown-args='[{"$": "event"}, "runCustomQuestion"]'
-              data-i18n-placeholder="askPlaceholder"
-              data-i18n-title="tipAskInput"
-              title="Введите любой вопрос по содержанию встречи"
-              placeholder="Спросить ИИ по тексту встречи (например: О каких сроках договорились?)…"
-              class="flex-1 h-8 bg-apple-sidebar border apple-border focus:border-apple-blue rounded-lg px-3.5 text-xs text-white placeholder-apple-tertiary focus:outline-none" />
-            <button data-click="runCustomQuestion"
-              data-i18n-title="tipAskBtn"
-              title="Отправить вопрос локальной модели ИИ"
-              class="ui-btn ui-btn-subtle h-8 px-4 text-white" data-i18n="askBtn">Спросить</button>
-          </div>
-
-          <div id="summary-content" class="markdown-body text-[13.5px] bg-apple-sidebar/60 border apple-border rounded-2xl p-6">
-            <!-- Populated dynamically -->
           </div>
         </div>
       </div>
 
-      <!-- TAB 3: SPEAKERS INSPECTOR -->
-      <div id="wview-speakers" class="hidden flex-1 overflow-y-auto px-6 py-6 tab-pane-anim">
-        <div class="max-w-2xl mx-auto space-y-4">
-          <div>
-            <h3 class="text-sm font-semibold text-white" data-i18n="speakersTitle">Участники</h3>
-            <p class="text-xs text-apple-secondary mt-0.5" data-i18n="speakersDesc">Прослушайте фрагмент голоса и укажите имя — оно обновится во всех репликах.</p>
-          </div>
-          <div id="speakers-list" class="divide-y divide-white/5 border apple-border rounded-xl bg-apple-sidebar overflow-hidden">
-            <!-- Populated dynamically -->
-          </div>
+      <!-- TAB 3: SPEAKERS — who spoke (people.js: renderSpeakersPanel), how the talk went -->
+      <div id="wview-speakers" class="hidden flex-1 overflow-y-auto tab-pane-anim">
+        <div class="sp-wrap">
+          <section class="sp-col" aria-label="Участники" data-i18n-aria="speakersTitle">
+            <div class="sp-head">
+              <h2 class="sp-h2" data-i18n="spWhoSpoke">Кто говорил</h2>
+              <span class="sp-note" data-i18n="spWhoSpokeNote">Имя меняется во всех репликах сразу</span>
+              <span class="flex-1"></span>
+              <button data-click="openPeopleDirectory" class="an-btn">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 19c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 14.2c3 .2 5.5 2 5.5 4.8"/></svg>
+                <span data-i18n="spAllPeople">Все люди</span>
+              </button>
+            </div>
+            <datalist id="sp-names"></datalist>
+            <div id="speakers-list" class="sp-list"></div>
+            <div id="sp-mentions"></div>
+          </section>
           <!-- Conversation analytics (app/analytics.py) -->
-          <div id="talk-analytics" class="space-y-3"></div>
+          <section id="talk-analytics" class="sp-side" aria-label="Как шёл разговор" data-i18n-aria="spHowTalk"></section>
         </div>
       </div>
 
@@ -687,12 +766,11 @@
       </div>
 
       <!-- =====================================================================
-           UNIFIED BOTTOM MEDIA DOCK:
-           1. Attached Video Frame (directly above transport controls)
-           2. Top Control Row (Video Toggle, Studio Voice, Speed | Play/Skip | Volume Slider)
-           3. Bottom Scrubber Row (SoundCloud Waveform Timeline)
+           THE PLAYER (static/js/redesign_player.js): the wave with the speakers' colours, the
+           chapters and the phrase under the playhead; below it who speaks now, the transport, the
+           sound («Звук»), the speed, the volume and the ⋯ menu. The video frame stays above it.
            ===================================================================== -->
-      <footer id="player-footer" class="border-t apple-border bg-apple-sidebar/95 apple-blur shrink-0 z-20 flex flex-col">
+      <footer id="player-footer" class="rp-footer shrink-0 z-20 flex flex-col">
 
         <!-- Attached Video Frame (Directly connected to player controls below) -->
         <div id="video-drawer" class="hidden border-b apple-border bg-black/95 py-3 px-6">
@@ -704,128 +782,116 @@
           </div>
         </div>
 
-        <!-- Player Controls & Scrubber Container -->
-        <div class="px-6 py-2.5 max-w-4xl w-full mx-auto space-y-2">
+        <div class="rp-body">
+          <!-- Row 1: the time, the wave (click or drag to seek, double click shows the text there), the end -->
+          <div class="rp-row1">
+            <span id="player-current-time" class="rp-now">00:00</span>
+            <div id="player-waveform-wrapper" class="rp-scrub" tabindex="0" role="slider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
+              data-i18n-aria="rdPlyrScrubAria" aria-label="Перемотка: стрелки — на 5 секунд, двойной клик — текст в этом месте"
+              data-i18n-title="rdPlyrScrubTip" title="Двойной клик — показать текст в этом месте"
+              data-keydown="rpScrubKey" data-keydown-args='[{"$": "event"}]'>
+              <div class="rp-track">
+                <canvas id="player-waveform-canvas" class="rp-canvas"></canvas>
+                <div id="rp-chapters" class="rp-chapters"></div>
+                <span id="rp-skip-note" class="rp-skip-note hidden" role="status"></span>
+              </div>
+              <span id="rp-head-bubble" class="rp-bubble" aria-hidden="true">00:00</span>
+              <span id="rp-hover-bubble" class="rp-bubble rp-bubble-hover hidden" aria-hidden="true"></span>
+              <span id="rp-knob" class="rp-knob" aria-hidden="true"></span>
+            </div>
+            <button id="player-total-time" class="rp-end" data-click="rpToggleRemain"
+              data-i18n-title="rdPlyrTipRemain" title="Сколько всего / сколько осталось">00:00</button>
+          </div>
 
-          <!-- Row 1: Controls Above Scrubber (Left: Modes | Center: Transport | Right: Volume) -->
-          <div class="player-bar-row">
-
-            <!-- Left: how the video is shown (preview, expand, theatre, separate window) -->
-            <div class="flex items-center gap-1.5 min-w-0">
+          <!-- Row 2: who speaks now | the transport | the sound, the speed, the volume, the menu -->
+          <div class="rp-row2">
+            <div class="rp-left">
               <!-- Mini video preview: the video is moved here when collapsed, so it never just disappears -->
               <div id="video-mini-slot" data-click="setVideoMode" data-click-args='["expanded"]'
                 data-i18n-title="tipVideoMini" title="Видео записи. Нажмите, чтобы развернуть"
                 class="hidden relative w-20 h-[45px] rounded-md overflow-hidden bg-black border border-white/15 cursor-pointer shrink-0 group mr-1">
                 <span class="absolute inset-0 flex items-center justify-center bg-black/45 text-white opacity-0 group-hover:opacity-100 transition pointer-events-none"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"/></svg></span>
               </div>
-
-              <!-- Label and tooltip are set by applyVideoLayout() -->
-              <button data-click="toggleVideoDrawer" id="video-drawer-btn" class="ui-btn ui-btn-subtle hidden"></button>
-              <button data-click="toggleTheatre" id="theatre-btn" class="ui-btn ui-btn-subtle px-2 hidden"
-                data-i18n-title="tipTheatre" title="Режим кинотеатра: большое видео и текст рядом (Esc — выход)">
-                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
-                  <rect x="2.5" y="4.5" width="19" height="15" rx="2"/><path stroke-linecap="round" d="M14.5 4.5v15"/><path stroke-linecap="round" d="M16.5 9h3M16.5 12h3M16.5 15h2"/>
-                </svg>
-              </button>
-              <button data-click="toggleVideoPip" id="video-pip-btn" class="ui-btn ui-btn-subtle px-2 hidden"
-                title="Открыть видео в отдельном окне поверх других программ">
-                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
-                  <rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="11.5" width="7" height="5.5" rx="1" fill="currentColor" stroke="none"/>
-                </svg>
-              </button>
-
-            </div>
-
-            <!-- Center: Transport Controls (-15s, Play/Pause, +15s) Directly Above Timeline -->
-            <div class="flex items-center justify-center gap-3 shrink-0">
-              <button data-click="skipPlayer" data-click-args='[-15]'
-                data-i18n-title="tipSkipBack"
-                title="Перемотать на 15 секунд назад (Alt + Стрелка влево: -5 сек)"
-                class="p-1.5 rounded-lg text-apple-secondary hover:text-white hover:bg-white/5 active:scale-95 transition">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3"/>
-                </svg>
-              </button>
-
-              <button data-click="togglePlayPause" id="play-pause-btn"
-                data-i18n-title="tipPlayPause"
-                title="Воспроизведение / Пауза (Alt + Пробел)"
-                class="w-9 h-9 rounded-full bg-white text-black hover:scale-105 active:scale-95 transition flex items-center justify-center shadow">
-                <svg id="icon-play" class="w-4 h-4 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M8 5v14l11-7z"/>
-                </svg>
-                <svg id="icon-pause" class="w-4 h-4 hidden" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-                </svg>
-              </button>
-
-              <button data-click="skipPlayer" data-click-args='[15]'
-                data-i18n-title="tipSkipForward"
-                title="Перемотать на 15 секунд вперёд (Alt + Стрелка вправо: +5 сек)"
-                class="p-1.5 rounded-lg text-apple-secondary hover:text-white hover:bg-white/5 active:scale-95 transition">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M15 15l6-6m0 0l-6-6m6 6H9a6 6 0 000 12h3"/>
-                </svg>
+              <button id="rp-speaker" class="rp-speaker hidden" data-click="rpShowPhrase"
+                data-i18n-title="rdPlyrTipShowInText" title="Показать в тексте">
+                <span id="rp-speaker-dot" class="rp-dot"></span><span id="rp-speaker-name" class="rp-speaker-name"></span><span class="rp-sep" aria-hidden="true"></span><span id="rp-caption" class="rp-caption" aria-hidden="true"></span>
               </button>
             </div>
 
-            <!-- Right: everything about the sound (track, noise reduction, speed, volume) -->
-            <div class="flex items-center justify-end gap-1.5 min-w-0">
-              <!-- Audio track (original / AI dubs); filled by renderAudioTrackSwitch() -->
-              <div id="audio-track-switch" class="hidden shrink-0"></div>
-
-              <button data-click="toggleStudioVoiceEnhancer" id="studio-voice-btn"
-                data-i18n-title="tipStudioVoice"
-                title="Включить студийное улучшение голоса и выравнивание громкости в плеере"
-                class="ui-btn ui-btn-subtle">
-                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M9.348 14.651a3.75 3.75 0 010-5.303m5.304 0a3.75 3.75 0 010 5.303m-7.425 2.122a6.75 6.75 0 010-9.546m9.546 0a6.75 6.75 0 010 9.546M5.106 18.894c-3.808-3.808-3.808-9.98 0-13.789m13.788 0c3.808 3.808 3.808 9.981 0 13.79M12 12h.008v.007H12V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"/>
-                </svg>
-                <span class="player-btn-label" data-i18n="studioVoiceBtn">Шумоподавление</span>
+            <div class="rp-center" role="group" data-i18n-aria="rdPlyrTransport" aria-label="Управление">
+              <button class="rp-icon-btn" data-click="rpRepeatPhrase" data-i18n-title="rdPlyrTipRepeat" title="Повторить реплику с начала">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4.5v4.3h4.3"/></svg>
               </button>
-
-              <button data-click="cyclePlaybackSpeed" id="speed-cycle-btn"
-                data-i18n-title="tipSpeedBtn"
-                title="Изменить скорость воспроизведения (1.0x – 2.0x)"
-                class="ui-btn ui-btn-subtle font-mono text-apple-label px-2.5">
-                1.0x
+              <button class="rp-icon-btn" data-click="rpStepPhrase" data-click-args='[-1, {"$": "event"}]' data-i18n-title="rdPlyrTipPrev" title="К предыдущей реплике (Shift — к главе)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M6 5.5v13" stroke-width="2.2" stroke-linecap="round"/><path d="M18.5 6v12L9 12z"/></svg>
               </button>
-              <span class="w-px h-5 bg-white/10 mx-1 shrink-0"></span>
-              <button data-click="toggleMutePlayer" id="mute-btn"
-                data-i18n-title="tipMuteBtn"
-                title="Включить или выключить звук"
-                class="p-1.5 rounded-lg text-apple-secondary hover:text-white hover:bg-white/5 transition">
-                <svg id="icon-vol-on" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z"/>
-                </svg>
-                <svg id="icon-vol-muted" class="w-4 h-4 hidden text-apple-red" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 9.75L19.5 12m0 0l2.25 2.25M19.5 12l2.25-2.25M19.5 12l-2.25 2.25m-10.5-6l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z"/>
-                </svg>
+              <button data-click="togglePlayPause" id="play-pause-btn" class="rp-play"
+                data-i18n-title="tipPlayPause" title="Воспроизведение / Пауза (Alt + Пробел)">
+                <svg class="rp-ring" width="60" height="60" viewBox="0 0 60 60" aria-hidden="true"><circle class="rp-ring-track" cx="30" cy="30" r="28"/><circle id="rp-ring-fill" class="rp-ring-fill" cx="30" cy="30" r="28" stroke-dasharray="0 176"/></svg>
+                <span class="rp-play-core">
+                  <svg id="icon-play" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" class="rp-icon-play" aria-hidden="true"><path d="M7.4 4.5v15L18.9 12z"/></svg>
+                  <svg id="icon-pause" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" class="hidden" aria-hidden="true"><rect x="6.6" y="4.5" width="4.2" height="15" rx="2.1"/><rect x="13.2" y="4.5" width="4.2" height="15" rx="2.1"/></svg>
+                </span>
               </button>
+              <button class="rp-icon-btn" data-click="rpStepPhrase" data-click-args='[1, {"$": "event"}]' data-i18n-title="rdPlyrTipNext" title="К следующей реплике (Shift — к главе)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M18 5.5v13" stroke-width="2.2" stroke-linecap="round"/><path d="M5.5 6v12L15 12z"/></svg>
+              </button>
+              <button id="rp-loop-btn" class="rp-icon-btn" data-click="rpToggleLoop" aria-pressed="false" data-i18n-title="rdPlyrTipLoop" title="Повторять реплику по кругу (L)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3.5l3 3-3 3"/><path d="M4 11.5v-1a4 4 0 0 1 4-4h12"/><path d="M7 20.5l-3-3 3-3"/><path d="M20 12.5v1a4 4 0 0 1-4 4H4"/></svg>
+              </button>
+            </div>
 
-              <input id="player-volume-slider" type="range" min="0" max="100" step="1" value="100"
-                data-input="changePlayerVolume" data-input-args='[{"$": "value"}]'
-                data-i18n-title="tipVolumeSlider"
-                title="Регулировка громкости воспроизведения"
-                class="volume-slider w-24" />
-
-              <span id="player-volume-label" class="text-[10.5px] font-mono text-apple-tertiary w-8 text-right">100%</span>
+            <div class="rp-right">
+              <!-- How the video is shown: in the panel, small, theatre, separate window -->
+              <div class="rp-anchor hidden" id="rp-video-anchor">
+                <button id="rp-video-btn" class="rp-chip" data-click="rpTogglePop" data-click-args='["video"]' aria-expanded="false"></button>
+                <div id="rp-pop-video" class="rp-pop rp-menu hidden" role="menu"></div>
+              </div>
+              <!-- The sound while listening: studio voice, skipping silence, the track -->
+              <div class="rp-anchor">
+                <button id="rp-sound-btn" class="rp-chip" data-click="rpTogglePop" data-click-args='["sound"]' aria-expanded="false"
+                  data-i18n-title="rdPlyrTipSound" title="Как звучит запись сейчас: студийный голос, пропуск тишины, дорожка">
+                  <svg class="tb-ai" width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2l1.9 5.6 5.6 1.9-5.6 1.9L10 17l-1.9-5.6-5.6-1.9 5.6-1.9z"/><path d="M18.5 13l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/></svg>
+                  <span data-i18n="rdPlyrSound">Звук</span><span id="rp-sound-n" class="rp-badge hidden"></span>
+                </button>
+                <div id="rp-pop-sound" class="rp-pop rp-pop-sound hidden" role="dialog" data-i18n-aria="rdPlyrSoundTitle" aria-label="Звук при прослушивании"></div>
+              </div>
+              <div class="rp-anchor">
+                <button id="speed-cycle-btn" class="rp-chip rp-mono" data-click="rpTogglePop" data-click-args='["speed"]' aria-expanded="false"
+                  data-i18n-title="tipSpeedBtn" title="Изменить скорость воспроизведения">1×</button>
+                <div id="rp-pop-speed" class="rp-pop rp-pop-speed hidden" role="dialog" data-i18n-aria="rdPlyrSpeed" aria-label="Скорость"></div>
+              </div>
+              <span class="rp-vol">
+                <button data-click="toggleMutePlayer" id="mute-btn" class="rp-icon-btn rp-icon-sm"
+                  data-i18n-title="tipMuteBtn" title="Включить или выключить звук">
+                  <svg id="icon-vol-on" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4z" fill="currentColor"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+                  <svg id="icon-vol-muted" class="hidden" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4z" fill="currentColor"/><path d="M16 9l5 6M21 9l-5 6"/></svg>
+                </button>
+                <input id="player-volume-slider" type="range" min="0" max="100" step="1" value="100"
+                  data-input="changePlayerVolume" data-input-args='[{"$": "value"}]'
+                  data-i18n-title="tipVolumeSlider" title="Регулировка громкости воспроизведения"
+                  class="rp-volume" />
+              </span>
+              <div class="rp-anchor">
+                <button id="rp-more-btn" class="rp-icon-btn" data-click="rpTogglePop" data-click-args='["more"]' aria-expanded="false"
+                  data-i18n-title="rdPlyrTipMore" title="Ещё о воспроизведении">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+                </button>
+                <div id="rp-pop-more" class="rp-pop rp-menu hidden" role="menu"></div>
+              </div>
             </div>
           </div>
+        </div>
 
-          <!-- Row 2: SoundCloud-Style Interactive Bar Waveform Scrubber -->
-          <div class="flex items-center gap-3">
-            <span id="player-current-time" class="text-[11px] font-mono text-apple-secondary w-11 text-right shrink-0">00:00</span>
-
-            <div class="relative flex-1 h-8 flex items-center cursor-pointer" id="player-waveform-wrapper"
-                 data-i18n-title="tipWaveformScrubber"
-                 title="Звуковая дорожка: нажмите или перетащите для перемотки">
-              <canvas id="player-waveform-canvas" class="w-full h-8 block"></canvas>
-            </div>
-
-            <span id="player-total-time" class="text-[11px] font-mono text-apple-secondary w-11 shrink-0">00:00</span>
-          </div>
-
+        <!-- The parts the older code still updates (video.js applyVideoLayout, the track switch):
+             kept out of sight, the menus above do what they did -->
+        <div class="hidden" aria-hidden="true">
+          <button data-click="toggleVideoDrawer" id="video-drawer-btn" class="ui-btn ui-btn-subtle hidden" tabindex="-1"></button>
+          <button data-click="toggleTheatre" id="theatre-btn" class="ui-btn ui-btn-subtle hidden" tabindex="-1"></button>
+          <button data-click="toggleVideoPip" id="video-pip-btn" class="ui-btn ui-btn-subtle hidden" tabindex="-1"></button>
+          <button data-click="toggleStudioVoiceEnhancer" id="studio-voice-btn" class="ui-btn ui-btn-subtle" tabindex="-1"></button>
+          <div id="audio-track-switch" class="hidden"></div>
+          <span id="player-volume-label">100%</span>
         </div>
       </footer>
 

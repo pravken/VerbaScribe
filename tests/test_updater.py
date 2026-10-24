@@ -470,3 +470,29 @@ class ReleaseSignatureTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AutostartTest(unittest.TestCase):
+    """Start with Windows: the Run key starts run.py --minimized with the environment's pythonw."""
+
+    def test_command_and_sync(self):
+        from app import autostart, database
+
+        cmd = autostart.command()
+        self.assertTrue(cmd.endswith('run.py" --minimized'))
+        self.assertIn("pythonw.exe", cmd)
+        database.init_db()
+        calls = []
+        with mock.patch.object(autostart, "set_enabled", side_effect=calls.append), \
+                mock.patch.object(autostart, "current", return_value='"D:\\old\\pythonw.exe" "D:\\old\\run.py" --minimized'):
+            database.update_settings({"start_with_windows": "true"})
+            autostart.sync()  # the folder moved: the key is set again
+            database.update_settings({"start_with_windows": "false"})
+            autostart.sync()  # turned off: the key goes
+        self.assertEqual(calls, [True, False])
+
+    def test_background_install_restarts_in_the_tray(self):
+        with mock.patch.object(updater, "_state", {"download": {"path": __file__}}), \
+                mock.patch.object(updater.subprocess, "Popen") as popen:
+            updater.launch_installer(restart=True, minimized=True)
+        self.assertIn("--restart-minimized", popen.call_args.args[0])

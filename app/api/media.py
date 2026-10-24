@@ -482,5 +482,109 @@ def api_media_peaks(meeting_id: int, bars: int = 120) -> Dict[str, Any]:
     try:
         kept = json.loads(peaks_file(meeting_id).read_text(encoding="utf-8"))
     except (OSError, ValueError):
+        # No envelope kept: a recording whose own file is a WAV (a dictation) is read directly
+        media = Path(m.get("media_path") or "")
+        if media.suffix.lower() == ".wav" and media.is_file():
+            try:
+                return {"peaks": loudness_peaks(media, bars)}
+            except Exception:
+                pass
         return {"peaks": []}
     return {"peaks": resample_peaks([float(x) for x in kept], bars)}
+
+# --- The player of the redesign: pauses to skip, the text without fillers, saved copies ---
+def _meeting_or_404(meeting_id: int) -> Dict[str, Any]:
+    m = get_meeting(meeting_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    return m
+
+@router.get("/api/meetings/{meeting_id}/pauses")
+def api_meeting_pauses(meeting_id: int) -> Dict[str, Any]:
+    """The pauses without speech that «Пропускать тишину» jumps over while playing."""
+    from app.media_cut import speech_pauses
+
+    m = _meeting_or_404(meeting_id)
+    pauses = speech_pauses(m.get("segments") or [], float(m.get("duration") or 0))
+    return {"pauses": pauses, "seconds": round(sum(b - a for a, b in pauses), 1)}
+
+@router.get("/api/meetings/{meeting_id}/fillers-view")
+def api_fillers_view(meeting_id: int) -> Dict[str, Any]:
+    """What «Без запинок» hides when the text is shown; the text itself does not change."""
+    from app.text_utils import filler_view
+
+    return filler_view(_meeting_or_404(meeting_id).get("segments") or [])
+
+@router.get("/api/meetings/{meeting_id}/copies")
+def api_meeting_copies(meeting_id: int) -> List[Dict[str, Any]]:
+    from app.copies import list_copies
+
+    return list_copies(_meeting_or_404(meeting_id))
+
+@router.delete("/api/meetings/{meeting_id}/copies/{cid}")
+def api_delete_copy(meeting_id: int, cid: str) -> List[Dict[str, Any]]:
+    from app.copies import delete_copy, list_copies
+
+    if not delete_copy(_meeting_or_404(meeting_id), cid):
+        raise HTTPException(status_code=404, detail="Копия не найдена")
+    return list_copies(_meeting_or_404(meeting_id))
+
+@router.post("/api/meetings/{meeting_id}/copies/{cid}/reveal")
+def api_reveal_copy(meeting_id: int, cid: str) -> Dict[str, Any]:
+    import subprocess
+
+    from app.copies import find_copy
+
+    c = find_copy(_meeting_or_404(meeting_id), cid)
+    if not c or not c["exists"]:
+        raise HTTPException(status_code=404, detail="Файл не найден")
+    subprocess.Popen(["explorer.exe", f"/select,{Path(c['path']).resolve()}"])
+    return {"ok": True}
+
+@router.get("/api/meetings/{meeting_id}/copies/{cid}/file")
+def api_copy_file(meeting_id: int, cid: str) -> FileResponse:
+    """A saved copy played in the player («Слушать» in the details)."""
+    from app.copies import find_copy
+
+    c = find_copy(_meeting_or_404(meeting_id), cid)
+    if not c or not c["exists"]:
+        raise HTTPException(status_code=404, detail="Файл не найден")
+    mime_type, _ = mimetypes.guess_type(c["path"])
+    return FileResponse(path=c["path"], media_type=mime_type or "application/octet-stream", filename=c["name"])
+
+class SaveAudioPayload(BaseModel):
+    fmt: str = "mp3"  # "mp3" | "wav"
+
+AUDIO_CODECS = {"mp3": ["-c:a", "libmp3lame", "-q:a", "2"], "wav": ["-c:a", "pcm_s16le"]}
+
+@router.post("/api/meetings/{meeting_id}/save-audio")
+def api_save_audio(meeting_id: int, payload: SaveAudioPayload) -> Dict[str, Any]:
+    """The sound of the recording as MP3 or WAV, saved where the user picks; the recording is untouched."""
+    import subprocess
+
+    from app.ffmpeg_manager import tool_cmd
+    from app.naming import base_name
+
+    m = _meeting_or_404(meeting_id)
+    fmt = payload.fmt.lower()
+    if fmt not in AUDIO_CODECS:
+        raise HTTPException(status_code=400, detail="Неизвестный формат звука")
+    media = Path(m.get("media_path") or "")
+    if not media.is_file():
+        raise HTTPException(status_code=404, detail="Исходный файл не найден")
+    chosen = _pick_export_path(m, f"{base_name(m)}.{fmt}", fmt)
+    if not chosen:
+        return {"ok": False, "cancelled": True}
+    out = Path(chosen)
+    if out.suffix.lower() != f".{fmt}":
+        out = out.with_name(out.name + f".{fmt}")
+    if out.resolve() == media.resolve():
+        raise HTTPException(status_code=400, detail="Нельзя сохранить результат поверх исходного файла")
+    cmd = [tool_cmd("ffmpeg"), "-y", "-hide_banner", "-loglevel", "error", "-i", str(media), "-vn", *AUDIO_CODECS[fmt], str(out)]
+    res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    if res.returncode != 0 or not out.is_file():
+        out.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail="Не удалось сохранить звук")
+    _remember_export(meeting_id, out)
+    return {"ok": True, "path": str(out), "filename": out.name, "folder": str(out.parent)}

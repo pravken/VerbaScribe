@@ -32,17 +32,38 @@ def safe_title(m: Dict[str, Any]) -> str:
     return base_name(m)
 
 
+# The formats «Без запинок» applies to: the JSON file is the full transcript (a copy of the data) and
+# always keeps every word
+NOFILL_FORMATS = ("docx", "md", "txt", "srt", "vtt")
+
+
+def with_options(m: Dict[str, Any], opts: Optional[Dict[str, Any]], fmt: str = "") -> Dict[str, Any]:
+    """The export options of the «Экспорт» window, applied to the exported file only: `nofill`
+    leaves the fillers out of the text (not of JSON), `times` and `names` keep the time stamps and
+    the names."""
+    opts = opts or {}
+    out = dict(m, _export={"times": opts.get("times", True) is not False, "names": opts.get("names", True) is not False})
+    if opts.get("nofill") and fmt in NOFILL_FORMATS:
+        from app.text_utils import clean_filler_words_in_segments
+
+        out["segments"], _ = clean_filler_words_in_segments(m.get("segments") or [])
+    return out
+
+
 def build_export_bytes(
-    m: Dict[str, Any], fmt: str, lang: Optional[str] = None, variant: str = "translated"
+    m: Dict[str, Any], fmt: str, lang: Optional[str] = None, variant: str = "translated",
+    opts: Optional[Dict[str, Any]] = None,
 ) -> Tuple[bytes, str, str]:
     """(content, media type, file name)."""
     fmt = fmt.lower()
+    m = with_options(m, opts, fmt)
     if lang and fmt == "json":
         raise ValueError("Перевод экспортируется в DOCX, MD, TXT, SRT или VTT")
     if lang and variant == "bilingual" and fmt not in ("srt", "vtt", "docx"):
         raise ValueError("Двуязычный экспорт доступен в SRT, VTT и DOCX")
     try:
         src, suffix = export_source(m, lang, variant)
+        src = dict(src, _export=m["_export"])
     except ValueError as e:
         if lang and variant in EXPORT_VARIANTS:
             raise LookupError(str(e)) from e
@@ -59,7 +80,7 @@ def build_export_bytes(
         # proportion to its length; the original names the speaker at the start of each phrase
         cues = build_cues(
             m.get("segments") or [], (m.get("translations") or {}).get(lang) if lang else None,
-            variant=variant if lang else "original", speakers=m.get("speakers"), with_speaker=not lang,
+            variant=variant if lang else "original", speakers=m.get("speakers"), with_speaker=not lang and m["_export"]["names"],
         )
         if fmt == "vtt":
             return cues_to_vtt(cues).encode("utf-8"), "text/vtt; charset=utf-8", f"{base}.vtt"

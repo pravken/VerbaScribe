@@ -142,6 +142,7 @@ def init_db() -> None:
             "vad_filter": "true",
             "audio_enhance": "true",
             "clean_fillers": "true",
+            "ui_scale": "75",  # the interface scale of the page, % (static/js/core.js applyUiScale)
             "record_source_mode": "both",
             "record_mic_device": "",
             "batched_inference": "true",  # faster-whisper BatchedInferencePipeline on GPU
@@ -159,6 +160,9 @@ def init_db() -> None:
             "dictation_language": "auto",
             "dictation_translate_hotkey": "Ctrl+Alt+T",  # dictation typed in another language; empty: off
             "dictation_translate_to": "en",
+            "dictation_save": "true",
+            "start_with_windows": "false",  # in the tray, without a window, when the user signs in (app/autostart.py)
+            "close_to_tray": "false",  # closing the window keeps the app in the tray (quit from its menu)  # each dictation is kept in the library, folder "Dictations"
             "dictation_translate_cloud": "false",  # dictation is translated by the local model unless allowed
             "quiet_mode": "false",  # no tray notifications (run.py TrayController)
             "call_auto_record": "false",  # record calls by themselves (app/call_watch.py)
@@ -189,6 +193,13 @@ def init_db() -> None:
             "llm_provider": "ollama",  # analysis: "ollama" (local) or "cloud" (app/llm.py)
             "llm_cloud_provider": "openai",
             "llm_cloud_consent": "false",  # the user agreed that transcripts are sent to the cloud service
+            "ask_import_params": "true",  # the import window asks the processing of new files (static/js/importdlg.js)
+            "work_day_start": "9",  # the working day of the home page, hours; an end before the start runs past midnight
+            "work_day_end": "18",
+            "work_day_fit": "true",  # ...stretched for a meeting that runs a little past its edges
+            "meet_auto_all": "false",  # record every calendar meeting by itself (static/js/home.js)
+            "meet_ask_inperson": "true",  # ...but ask first for a meeting without a link to a call
+            "meet_overrides": "{}",  # per meeting of the calendar: "rec" (record it) or "skip", JSON
         }
 
         for k, v in default_settings.items():
@@ -294,6 +305,7 @@ _MEETING_EXTRA_COLUMNS = {
     "has_summary": "INTEGER DEFAULT 0",
     # The model the transcript shown was made with, and when (the transcripts of other models are in
     # transcript_versions)
+    "processing_json": "TEXT DEFAULT '{}'",  # what is done to the sound and text when transcribed (see effective_processing)
     "transcript_model": "TEXT DEFAULT ''",
     "transcript_at": "TEXT DEFAULT ''",
 }
@@ -391,7 +403,7 @@ def _move_segments_to_table(conn: sqlite3.Connection) -> int:
     return len(ids)
 
 
-SYSTEM_FOLDERS = {"recordings": "Записи", "imports": "Импорт"}
+SYSTEM_FOLDERS = {"recordings": "Записи", "imports": "Импорт", "dictations": "Диктовки"}
 _VIDEO_EXTS = {".mp4", ".mkv", ".mov", ".avi", ".m4v", ".webm", ".wmv", ".flv", ".mpg", ".mpeg", ".ts", ".mts", ".3gp"}
 
 
@@ -400,6 +412,11 @@ def _ensure_system_folders(cur: sqlite3.Cursor) -> None:
     for key, name in SYSTEM_FOLDERS.items():
         if not cur.execute("SELECT 1 FROM folders WHERE system_key = ?", (key,)).fetchone():
             cur.execute("INSERT INTO folders (name, parent_id, system_key, created_at) VALUES (?, NULL, ?, ?)", (name, key, now))
+            if key == "dictations":  # they can hold anything said (a password too): never sent to a cloud model
+                try:
+                    cur.execute("UPDATE folders SET local_only = 1 WHERE system_key = 'dictations'")
+                except sqlite3.OperationalError:
+                    pass  # a library from before local_only (the column comes with its migration)
 
 
 def _sort_existing_meetings(cur: sqlite3.Cursor) -> None:
@@ -603,7 +620,7 @@ def create_meeting(
         cur = conn.cursor()
         if folder_id is None or not cur.execute("SELECT 1 FROM folders WHERE id = ?", (folder_id,)).fetchone():
             # New recordings land in the system folder of their kind
-            key = "recordings" if source == "recording" else "imports"
+            key = {"recording": "recordings", "dictation": "dictations"}.get(source, "imports")
             row = cur.execute("SELECT id FROM folders WHERE system_key = ?", (key,)).fetchone()
             folder_id = row[0] if row else None
         cur.execute(
@@ -1517,6 +1534,45 @@ def clear_results(meeting_id: int) -> bool:
     return True
 
 
+# What is done to a recording when it is transcribed, chosen per recording above the text (the
+# "Recognition" row); what a recording has not chosen comes from the settings
+# (fillers are no longer taken out of the text: «Без запинок» is a view, so there is no switch for them)
+PROCESSING_KEYS = ("denoise", "loudnorm", "leveling", "vad", "diarization", "summary")
+
+
+def effective_processing(stored: Optional[Dict[str, Any]], settings: Optional[Dict[str, str]] = None) -> Dict[str, bool]:
+    s = settings if settings is not None else get_all_settings()
+    on = lambda key: (s.get(key) or "true").lower() == "true"  # noqa: E731
+    # proc_*: one switch each, saved by the import window; without them both follow audio_enhance
+    sound = lambda key: on(key) if s.get(key) else on("audio_enhance")  # noqa: E731
+    out = {
+        "denoise": sound("proc_denoise"),  # FFmpeg: hiss and hum, clicks, the voice band
+        "loudnorm": sound("proc_loudnorm"),  # FFmpeg: loudness levelled over time
+        "leveling": on("proc_leveling"),  # quiet parts raised before GigaAM / Parakeet (asr_onnx.level)
+        "vad": on("vad_filter"),  # Whisper skips the silence
+        "diarization": on("diarization_enabled"),
+        "summary": on("auto_summary"),  # the analysis right after the transcript
+    }
+    out.update({k: bool(v) for k, v in (stored or {}).items() if k in PROCESSING_KEYS})
+    return out
+
+
+def _flag(v: Any) -> bool:
+    """A switch of the processing: true/false, or the words of a form ("false" is off, not a non-empty string)."""
+    if isinstance(v, str):
+        return v.strip().lower() in ("true", "1", "yes", "on")
+    return bool(v)
+
+
+def set_meeting_processing(meeting_id: int, processing: Dict[str, Any]) -> None:
+    clean = {k: _flag(v) for k, v in (processing or {}).items() if k in PROCESSING_KEYS}
+    with _db_lock:
+        conn = get_connection()
+        conn.execute("UPDATE meetings SET processing_json = ? WHERE id = ?", (json.dumps(clean), meeting_id))
+        conn.commit()
+        conn.close()
+
+
 def _deserialize_meeting(d: Dict[str, Any], conn: sqlite3.Connection) -> Dict[str, Any]:
     d["has_segments_backup"] = bool(d.pop("segments_backup_json", ""))
     d["pending_exports"] = _loads_list(d.pop("pending_exports_json", None))
@@ -1545,6 +1601,7 @@ def _deserialize_meeting(d: Dict[str, Any], conn: sqlite3.Connection) -> Dict[st
 
     d["translations"] = resolve_all(d["segments"], _loads_dict(d.pop("translations_json", None)))
     d["transcript_versions"] = transcript_versions(conn, d["id"])
+    d["processing"] = effective_processing(_loads_dict(d.pop("processing_json", None)))
     return d
 
 

@@ -4,8 +4,9 @@ microphone; the same keys again stop it, the speech is recognized and the text i
 window that has the focus (through the clipboard and Ctrl+V; the clipboard is put back after).
 
 Recognition uses the models already downloaded: GigaAM v3 for Russian, Parakeet for other
-languages (both on the CPU, a second or two), otherwise the live-caption Whisper worker. Nothing is
-saved in the library.
+languages (both on the CPU, a second or two), otherwise the live-caption Whisper worker. Each
+dictation is also kept in the library (folder "Dictations", local analysis only): the sound, the
+text and its translation; off in Settings ("dictation_save").
 
 Dictation with translation has a hotkey of its own (Ctrl+Alt+T by default): the recognized text is
 translated into the chosen language before it is typed. The local Ollama model translates; a cloud
@@ -25,11 +26,12 @@ import numpy as np
 SR = 16000
 MAX_SEC = 300  # a forgotten dictation stops by itself
 
-_state: Dict[str, Any] = {"active": False, "error": "", "last_text": "", "started_at": 0.0, "translate_to": ""}
+_state: Dict[str, Any] = {"active": False, "busy": False, "error": "", "last_text": "", "started_at": 0.0, "translate_to": ""}
 TRANSLATE_TIMEOUT_SEC = 30.0  # the first translation may wait for Ollama to load its model
 _lock = threading.Lock()
 _chunks: List[np.ndarray] = []
 _thread: Optional[threading.Thread] = None
+_finish_args: Dict[str, Any] = {"notify": None, "type_out": True}  # how the dictation started: used when MAX_SEC ends it
 
 
 def status() -> Dict[str, Any]:
@@ -37,16 +39,29 @@ def status() -> Dict[str, Any]:
         return dict(_state)
 
 
-def toggle(notify=None, translate: bool = False) -> str:
+def toggle(notify=None, translate: bool = False, type_out: bool = True) -> str:
     """Starts or stops (and types) a dictation; returns "started" or "stopped". `translate`: the
-    dictation with translation (its own hotkey); either hotkey stops a running dictation."""
+    dictation with translation (its own hotkey); either hotkey stops a running dictation.
+    `type_out=False` (the button of the home page): the text is only kept, not typed, since the
+    window with the focus is VerbaScribe itself; the page shows it (status()["last_text"])."""
     with _lock:
         active = _state["active"]
     if active:
-        threading.Thread(target=_finish, args=(notify,), daemon=True, name="dictation_finish").start()
+        threading.Thread(target=_finish, args=(notify, type_out), daemon=True, name="dictation_finish").start()
         return "stopped"
+    _finish_args.update(notify=notify, type_out=type_out)
     _start(translate_target() if translate else "")
     return "started"
+
+
+def cancel() -> None:
+    """Stops a dictation and throws its sound away: nothing is recognized, typed or kept."""
+    with _lock:
+        _state.update(active=False, error="")
+    if _thread is not None:
+        _thread.join(timeout=2)
+    with _lock:
+        _chunks.clear()
 
 
 def translate_target() -> str:
@@ -59,7 +74,7 @@ def _start(translate_to: str = "") -> None:
     global _thread
     with _lock:
         _chunks.clear()
-        _state.update(active=True, error="", started_at=time.time(), translate_to=translate_to)
+        _state.update(active=True, error="", last_text="", busy=False, started_at=time.time(), translate_to=translate_to)
     _thread = threading.Thread(target=_record, daemon=True, name="dictation_mic")
     _thread.start()
 
@@ -72,8 +87,12 @@ def _record() -> None:
         with mic.recorder(samplerate=SR, channels=1, blocksize=SR // 10) as rec:
             while True:
                 with _lock:
-                    if not _state["active"] or time.time() - _state["started_at"] > MAX_SEC:
-                        _state["active"] = False
+                    if not _state["active"]:
+                        break
+                    if time.time() - _state["started_at"] > MAX_SEC:
+                        # a forgotten dictation: what was said is recognized as if the keys were pressed again
+                        _state.update(active=False, busy=True)
+                        threading.Thread(target=_finish, kwargs=dict(_finish_args), daemon=True, name="dictation_finish").start()
                         break
                 block = rec.record(numframes=SR // 10)
                 with _lock:
@@ -84,9 +103,9 @@ def _record() -> None:
             _state.update(active=False, error=f"Микрофон: {str(e)[:200]}")
 
 
-def _finish(notify=None) -> None:
+def _finish(notify=None, type_out: bool = True) -> None:
     with _lock:
-        _state["active"] = False
+        _state.update(active=False, busy=True)
     if _thread is not None:
         _thread.join(timeout=2)
     with _lock:
@@ -94,14 +113,18 @@ def _finish(notify=None) -> None:
         _chunks.clear()
         translate_to = _state.get("translate_to") or ""
     try:
-        text = recognize(audio) if audio.size > SR // 2 else ""
-        note = ""
+        text, model = recognize(audio) if audio.size > SR // 2 else ("", "")
+        original, note = text, ""
         if text and translate_to:
             text, note = translate(text, translate_to)
         with _lock:
-            _state.update(last_text=text, error="" if text else "Речь не распознана")
+            _state.update(last_text=text, busy=False, error="" if text else "Речь не распознана")
         if text:
-            type_text(text)
+            if type_out:
+                type_text(text)
+            # After the typing, so the text is not held up; the translation is kept only when it is one
+            threading.Thread(target=save_to_library, args=(audio, original, model, translate_to if text != original else "", text),
+                             daemon=True, name="dictation_save").start()
         if notify:
             if not text:
                 notify("Диктовка", "Речь не распознана")
@@ -112,7 +135,7 @@ def _finish(notify=None) -> None:
     except Exception as e:
         traceback.print_exc()
         with _lock:
-            _state["error"] = str(e)[:200]
+            _state.update(error=str(e)[:200], busy=False)
         if notify:
             notify("Диктовка", f"Не получилось: {str(e)[:120]}")
 
@@ -169,17 +192,68 @@ def _language() -> Optional[str]:
     return None if lang in ("", "auto") else lang
 
 
-def recognize(audio: np.ndarray) -> str:
+def recognize(audio: np.ndarray) -> "tuple[str, str]":
+    """(text, the model that made it)."""
     from app import asr_onnx, live
     from app.database import get_all_settings
+    from app.hardware import get_hardware_info
 
     lang = _language()
-    model = live.caption_onnx_model({**get_all_settings(), "live_whisper_model": "auto"}, lang)
+    settings = get_all_settings()
+    model = live.caption_onnx_model({**settings, "live_whisper_model": "auto"}, lang)
     if model:
         parts = asr_onnx.recognize_array(model, audio)
-        return " ".join(t for _, _, t in parts).strip()
+        return " ".join(t for _, _, t in parts).strip(), model
     segs, _lang, _prob = live._caption_worker().transcribe(audio, lang)
-    return " ".join(s.text.strip() for s in segs).strip()
+    return " ".join(s.text.strip() for s in segs).strip(), live.caption_model(settings, get_hardware_info())
+
+
+def save_to_library(audio: np.ndarray, text: str, model: str, translated_to: str = "", translation: str = "") -> Optional[int]:
+    """Keeps a dictation as a recording of the library, in its folder "Dictations": the sound
+    (16 kHz WAV), the recognized text and, for a dictation with translation, the typed translation as
+    the recording's translation. Returns its id (None when it is off or failed: the typing is done)."""
+    import uuid
+    import wave
+    from datetime import datetime
+
+    from app.database import (create_meeting, get_all_settings, save_meeting_results, save_meeting_translation,
+                              update_meeting_progress)
+    from app.naming import in_date_folder
+    from app.paths import recordings_dir
+
+    settings = get_all_settings()
+    if (settings.get("dictation_save") or "true").lower() != "true" or not text or not audio.size:
+        return None
+    try:
+        now = datetime.now()
+        folder = in_date_folder(recordings_dir(settings.get("recordings_dir") or ""), now)
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / f"{uuid.uuid4().hex[:8]}_dictation_{now:%Y%m%d_%H%M%S}.wav"
+        pcm = (np.clip(audio, -1.0, 1.0) * 32767).astype("<i2").tobytes()
+        with wave.open(str(path), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(SR)
+            w.writeframes(pcm)
+        words = text.split()
+        title = "Диктовка: " + " ".join(words[:6]) + ("…" if len(words) > 6 else "")
+        lang = _language() or ""
+        m = create_meeting(title=title, filename=path.name, media_path=str(path), language=lang or "auto", model_name=model,
+                           source="dictation", owns_media=True, recorded_at=now.strftime("%Y-%m-%d %H:%M:%S"), has_video=False)
+        duration = round(audio.size / SR, 2)
+        segments = [{"id": 0, "start": 0.0, "end": duration, "speaker": "SPEAKER_00", "text": text}]
+        save_meeting_results(m["id"], speakers={"SPEAKER_00": {"name": "Я", "color": "#0A84FF"}}, segments=segments,
+                             language=lang or None, transcript_model=model)
+        if translated_to and translation:
+            from app.translation import merge_translated_items
+
+            save_meeting_translation(m["id"], translated_to, merge_translated_items(
+                None, segments, {0: translation}, model="dictation", source_lang=lang or "auto"))
+        update_meeting_progress(m["id"], status="completed", progress=100, stage_text="", duration=duration)
+        return m["id"]
+    except Exception:
+        traceback.print_exc()
+        return None
 
 
 # ---- typing into the focused window (Windows) ----

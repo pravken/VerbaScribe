@@ -1,84 +1,14 @@
-// VerbaScribe page script, part 6 of 9: The player: waveform, transport, volume and voice enhancer.
+// VerbaScribe page script, part 6 of 9: The player: transport, volume and voice enhancer (the wave: redesign_player.js).
 // The parts are classic scripts sharing one global scope, loaded in order by index.html.
 
-// =========================================================================
-// SOUNDCLOUD-STYLE WAVEFORM VISUALIZER FOR BOTTOM PLAYER BAR
-// =========================================================================
+// The wave of the player is drawn by redesign_player.js (rpRender): these two names stay for the
+// places that call them (opening a recording, its processing finishing, the video layout)
 async function buildPlayerWaveformEnvelope(meeting) {
-  // Flat placeholder until the real loudness envelope of the recording is loaded
-  state.playerPeaks = new Array(120).fill(0.14);
-  renderPlayerWaveform(0);
-  if (!meeting || !meeting.audio_path) return;
-  try {
-    const res = await fetch(`/api/meetings/${meeting.id}/peaks?bars=120`);
-    if (!res.ok) return;
-    const data = await readJson(res);
-    if (!state.activeMeeting || state.activeMeeting.id !== meeting.id) return;
-    if (Array.isArray(data.peaks) && data.peaks.length > 0) {
-      state.playerPeaks = data.peaks.map(v => Math.max(0.08, Number(v) || 0));
-      const player = document.getElementById('media-player');
-      const dur = (player && player.duration) || meeting.duration || 1;
-      renderPlayerWaveform(((player && player.currentTime) || 0) / dur);
-    }
-  } catch (e) {}
+  await rpLoadMeeting(meeting);
 }
 
-function renderPlayerWaveform(progressRatio = 0) {
-  const canvas = document.getElementById('player-waveform-canvas');
-  if (!canvas) return;
-  const rect = canvas.getBoundingClientRect();
-  const dpr = window.devicePixelRatio || 1;
-  const w = Math.max(200, rect.width || 540);
-  const h = Math.max(24, rect.height || 32);
-
-  if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
-    canvas.width = Math.round(w * dpr);
-    canvas.height = Math.round(h * dpr);
-  }
-
-  const ctx = canvas.getContext('2d');
-  ctx.save();
-  ctx.scale(dpr, dpr);
-  ctx.clearRect(0, 0, w, h);
-
-  const peaks = state.playerPeaks.length ? state.playerPeaks : new Array(110).fill(0.25);
-  const n = peaks.length;
-  const gap = 2;
-  const barW = Math.max(2, (w - gap * (n - 1)) / n);
-  const centerY = h * 0.58;
-  const maxTop = h * 0.50;
-  const maxBot = h * 0.28;
-
-  for (let i = 0; i < n; i++) {
-    const x = i * (barW + gap);
-    const barRatio = i / n;
-    const amp = Math.max(0.10, Math.min(1.0, peaks[i]));
-    const topH = Math.max(2, amp * maxTop);
-    const botH = Math.max(1.5, amp * maxBot * 0.65);
-
-    let topColor = 'rgba(255, 255, 255, 0.24)';
-    let botColor = 'rgba(255, 255, 255, 0.11)';
-
-    if (barRatio <= progressRatio) {
-      topColor = '#0A84FF';
-      botColor = 'rgba(10, 132, 255, 0.42)';
-    } else if (state.playerHoverRatio >= 0 && barRatio <= state.playerHoverRatio) {
-      topColor = 'rgba(10, 132, 255, 0.65)';
-      botColor = 'rgba(10, 132, 255, 0.25)';
-    }
-
-    ctx.fillStyle = topColor;
-    ctx.beginPath();
-    ctx.roundRect(x, centerY - topH, barW, topH, 1.5);
-    ctx.fill();
-
-    ctx.fillStyle = botColor;
-    ctx.beginPath();
-    ctx.roundRect(x, centerY + 1.5, barW, botH, 1);
-    ctx.fill();
-  }
-
-  ctx.restore();
+function renderPlayerWaveform() {
+  rpRender();
 }
 
 // --- Player Transport, Volume Control & Studio Voice Enhancer ---
@@ -144,7 +74,7 @@ function updateVolumeUI() {
   const iconMuted = document.getElementById('icon-vol-muted');
 
   const effectiveVol = state.muted ? 0 : state.volume;
-  if (slider) slider.value = effectiveVol;
+  if (slider) { slider.value = effectiveVol; slider.style.setProperty('--v', `${effectiveVol}%`); }
   if (label) label.textContent = `${effectiveVol}%`;
   if (iconOn && iconMuted) {
     iconOn.classList.toggle('hidden', effectiveVol === 0);
@@ -154,13 +84,11 @@ function updateVolumeUI() {
 
 function cyclePlaybackSpeed() {
   state.speedIndex = (state.speedIndex + 1) % state.playbackSpeeds.length;
-  const rate = state.playbackSpeeds[state.speedIndex];
-  const player = document.getElementById('media-player');
-  if (player) player.playbackRate = rate;
-  document.getElementById('speed-cycle-btn').textContent = `${rate.toFixed(rate % 1 === 0 ? 1 : 2)}x`;
+  rpSetSpeed(state.playbackSpeeds[state.speedIndex]);
 }
 
-function toggleStudioVoiceEnhancer() {
+// «Студийный голос» in «Звук»: the sound while listening only; the file is not changed
+function toggleStudioVoiceEnhancer(quiet) {
   const player = document.getElementById('media-player');
   if (!player) return;
 
@@ -224,15 +152,6 @@ function toggleStudioVoiceEnhancer() {
     source.connect(ctx.destination);
   }
 
-  const btn = document.getElementById('studio-voice-btn');
-  if (btn) {
-    btn.className = state.studioVoiceActive
-      ? 'ui-btn ui-btn-active'
-      : 'ui-btn ui-btn-subtle';
-  }
-  showToast(
-    state.studioVoiceActive
-      ? t('uiStudioVoiceEnabled')
-      : t('uiOriginalAudio')
-  );
+  rpRenderSoundChip();
+  if (quiet !== true) showToast(state.studioVoiceActive ? t('uiStudioVoiceEnabled') : t('uiOriginalAudio'));
 }

@@ -21,7 +21,7 @@
       </div>
       <div id="about-caption" class="about-caption px-7"></div>
       <!-- Credits the model licenses ask for (CC-BY-4.0: Parakeet); the full table is in the README -->
-      <p class="px-7 pt-1 text-[11px] leading-relaxed text-apple-secondary">
+      <p class="px-7 pt-1 text-[11.5px] leading-relaxed text-apple-secondary">
         <span data-i18n="aboutModels">Распознавание речи:</span> Whisper (OpenAI, MIT) · GigaAM v3 (Sber, MIT) ·
         <button data-click="openExternal" data-click-args='["https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3"]' class="text-apple-blue hover:underline">Parakeet TDT 0.6B v3 by NVIDIA</button>
         (<button data-click="openExternal" data-click-args='["https://creativecommons.org/licenses/by/4.0/"]' class="text-apple-blue hover:underline">CC-BY-4.0</button>) ·
@@ -36,9 +36,10 @@
         <button data-click="openExternal" data-click-args='["https://github.com/pravken/VerbaScribe/releases"]' class="ui-btn ui-btn-subtle h-9 px-4" data-i18n="aboutWhatsNew">Что нового</button>
         <button data-click="closeModal" data-click-args='["about"]' class="ui-btn ui-btn-primary h-9 px-6">OK</button>
       </div>
-      <!-- The big easter egg: the room, transcribed -->
-      <div id="about-egg" class="about-egg hidden" data-click="endAboutEgg">
-        <div class="flex items-center gap-2 text-[11px] font-mono text-apple-red"><span class="about-rec-dot"></span><span>REC</span><span id="about-egg-timer">00:00</span></div>
+      <!-- The big easter egg: the room, transcribed. Plays to its end (a click does not stop it; it
+           closes by itself, or with the window) -->
+      <div id="about-egg" class="about-egg hidden">
+        <div class="flex items-center gap-2 text-[11.5px] font-mono text-apple-red"><span class="about-rec-dot"></span><span>REC</span><span id="about-egg-timer">00:00</span></div>
         <div id="about-egg-lines" class="mt-3 space-y-1.5 font-mono text-[12px]"></div>
       </div>
     </div>

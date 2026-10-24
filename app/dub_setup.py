@@ -24,9 +24,10 @@ from app.pyenv import ensure_pip, find_uv as _find_uv
 DUB_VENV = APP_DIR / ".venv-dub"
 DUB_PYTHON = DUB_VENV / "Scripts" / "python.exe" if sys.platform == "win32" else DUB_VENV / "bin" / "python"
 DUB_READY_MARKER = DUB_VENV / "verbascribe-dub-ready.txt"
+# Both are locks with hashes (pip --require-hashes): a package changed on PyPI after the lock is refused
 REQUIREMENTS = APP_DIR / "requirements-dub.txt"
+CHATTERBOX_REQUIREMENTS = APP_DIR / "requirements-dub-chatterbox.txt"  # installed with --no-deps
 TORCH_INDEX = "https://download.pytorch.org/whl/cu124"
-CHATTERBOX_PIN = "chatterbox-tts==0.1.7"
 DOWNLOAD_SIZE_GB = 6
 MIN_FREE_GB = 9  # packages (~6 GB) plus room for the model weights downloaded on the first dub
 
@@ -62,7 +63,8 @@ def _set(**kw: Any) -> None:
 
 def _requirements_hash() -> str:
     try:
-        return hashlib.sha256(REQUIREMENTS.read_bytes()).hexdigest()
+        # The same as app/updater.py _dub_requirements_hash
+        return hashlib.sha256(b"".join(f.read_bytes() for f in (REQUIREMENTS, CHATTERBOX_REQUIREMENTS) if f.is_file())).hexdigest()
     except OSError:
         return ""
 
@@ -189,7 +191,7 @@ def _install() -> None:
         _set(step="packages", progress=8)
         if uv:
             rc = _run(
-                [uv, "pip", "install", "--python", str(DUB_PYTHON), "-r", str(REQUIREMENTS),
+                [uv, "pip", "install", "--python", str(DUB_PYTHON), "--require-hashes", "-r", str(REQUIREMENTS),
                  "--extra-index-url", TORCH_INDEX, "--index-strategy", "unsafe-best-match"],
                 8, 85, env,
             )
@@ -197,7 +199,8 @@ def _install() -> None:
             ensure_pip(str(DUB_PYTHON))
             _run([str(DUB_PYTHON), "-m", "pip", "install", "--upgrade", "pip"], 8, 10, env)
             rc = _run(
-                [str(DUB_PYTHON), "-m", "pip", "install", "-r", str(REQUIREMENTS), "--extra-index-url", TORCH_INDEX],
+                [str(DUB_PYTHON), "-m", "pip", "install", "--require-hashes", "-r", str(REQUIREMENTS),
+                 "--extra-index-url", TORCH_INDEX],
                 10, 85, env,
             )
         if rc != 0:
@@ -205,9 +208,10 @@ def _install() -> None:
 
         _set(step="chatterbox", progress=85)
         cmd = (
-            [uv, "pip", "install", "--python", str(DUB_PYTHON), "--no-deps", CHATTERBOX_PIN]
+            [uv, "pip", "install", "--python", str(DUB_PYTHON), "--no-deps", "--require-hashes",
+             "-r", str(CHATTERBOX_REQUIREMENTS)]
             if uv
-            else [str(DUB_PYTHON), "-m", "pip", "install", "--no-deps", CHATTERBOX_PIN]
+            else [str(DUB_PYTHON), "-m", "pip", "install", "--no-deps", "--require-hashes", "-r", str(CHATTERBOX_REQUIREMENTS)]
         )
         if _run(cmd, 85, 92, env) != 0:
             raise RuntimeError("Не удалось установить chatterbox-tts (подробности в журнале)")

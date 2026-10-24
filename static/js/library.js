@@ -7,6 +7,7 @@ async function loadMeetingsList() {
   const list = await readJson(res);
   if (!res.ok || !Array.isArray(list)) return;  // the list shown stays (a lost session reloads the page)
   state.meetings = list;
+  onLibraryChanged();
   // The empty editor points to the list on the left when there is something in it
   document.getElementById('workspace-empty-pick')?.classList.toggle('hidden', !list.length);
   if (!state.globalSearchQuery) {
@@ -147,6 +148,7 @@ async function loadQueue() {
   if (!res.ok) return;
   state.queue = await readJson(res);
   renderQueuePanel();
+  renderStatusbar();
 }
 
 function queueKindLabel(q) {
@@ -184,7 +186,7 @@ function renderQueuePanel() {
           <button data-click="stopThen" data-click-args='[{"$": "event"}, "cancelProcessing", ${Number(q.id) || 0}]' title="${escapeHtml(t('tipQueueCancel'))}"
             class="shrink-0 text-apple-tertiary hover:text-apple-red opacity-80 group-hover:opacity-100 transition ${q.cancelling ? 'hidden' : ''}">${SVG_ICONS.closeX}</button>
         </div>
-        <div class="flex items-center justify-between gap-2 text-[10.5px] mt-0.5">
+        <div class="flex items-center justify-between gap-2 text-[11px] mt-0.5">
           <span class="${q.kind === 'transcribe' ? 'text-apple-secondary' : 'text-apple-amber'} shrink-0">${escapeHtml(queueKindLabel(q))}</span>
           <span class="text-apple-tertiary truncate font-mono">${running && !q.cancelling ? `${escapeHtml(timing)}${timing ? ' · ' : ''}${pct}%` : escapeHtml(detail)}</span>
         </div>
@@ -268,51 +270,16 @@ function rerunGlobalSearch() {
   if (state.globalSearchQuery) runGlobalSearch(state.globalSearchQuery);
 }
 
-// --- App parts: library, recording studio, questions ---
-const APP_VIEWS = ['library', 'studio', 'ask'];
-state.appView = 'library';
-
-function switchAppView(view) {
-  if (!APP_VIEWS.includes(view)) view = 'library';
-  if (state.theatre && view !== 'library') exitTheatre();
-  state.appView = view;
-  // The sidebar always shows the library; the main area shows the chosen part
-  for (const v of APP_VIEWS) {
-    document.getElementById(`${v}-view`).classList.toggle('hidden', v !== view);
-    const tab = document.getElementById(`nav-${v}`);
-    tab.classList.toggle('app-tab-active', v === view);
-    tab.setAttribute('aria-selected', String(v === view));
-  }
-  if (view === 'ask') loadPeople();
-  hideContextMenu();
-  hideFolderMenu();
-  if (view === 'studio') {
-    prepareStudio();
-    syncStudioCaptions();
-  } else if (studio.focus) {
-    toggleStudioFocus(false);
-  }
-  if (view === 'ask') {
-    renderAskScope();
-    renderAskThread();
-    setTimeout(() => document.getElementById('library-question').focus(), 30);
-  }
-  updateRecordButtonState();
-}
+// The views of the main area (library, studio, questions…) and switchAppView: static/js/shell.js
 
 // --- Questions: about one recording, a folder (with its subfolders) or the whole library ---
 const SVG_SPARK = '<svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>';
 state.askScope = { type: 'all' };
 const askThread = [];
 let _askSeq = 0;
-
-function openLibraryAsk(question, scope) {
-  if (scope) state.askScope = scope;
-  switchAppView('ask');
-  const input = document.getElementById('library-question');
-  if (question) input.value = question;
-  input.focus();
-}
+// The id of a question, a digest or a brief in the assistant: unique across the saved conversations
+// (they outlive the page), so a source link or «Спросить снова» finds its own item
+function newAskItemId() { return Date.now() * 1000 + (++_askSeq % 1000); }
 
 function folderById(id) {
   return (state.folders || []).find(f => f.id === id) || null;
@@ -369,38 +336,6 @@ function askScopeLabel(scope) {
   return `${t('askScopeAll')} · ${t('askRecordingsCount').replace('{n}', () => state.meetings.length)}`;
 }
 
-function renderAskScope() {
-  if (!askScopeValid(state.askScope)) state.askScope = { type: 'all' };
-  const box = document.getElementById('ask-scope-list');
-  const sc = state.askScope;
-  const item = (scope, label, count, depth, icon) => {
-    const on = scope.type === sc.type && scope.id === sc.id;
-    return `<button data-click="setAskScope" data-click-args='[${jsArg(scope)}]'
-      class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[12px] transition ${on ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'}"
-      style="padding-left:${8 + depth * 14}px">
-      <span class="shrink-0 ${on ? 'text-white' : 'text-apple-tertiary'}">${icon}</span>
-      <span class="truncate flex-1">${escapeHtml(label)}</span>
-      ${count != null ? `<span class="text-[10.5px] font-mono ${on ? 'text-white/80' : 'text-apple-tertiary'}">${count}</span>` : ''}
-    </button>`;
-  };
-  let html = item({ type: 'all' }, t('askScopeAll'), state.meetings.length, 0, ICON_LIBRARY);
-  const walk = (parentId, depth) => {
-    for (const f of sortedFolders(parentId)) {
-      html += item({ type: 'folder', id: f.id }, folderName(f), meetingsInFolderTree(f.id).length, depth, folderIcon(f));
-      walk(f.id, depth + 1);
-    }
-  };
-  walk(null, 0);
-  const m = state.activeMeeting;
-  if (m) {
-    html += '<div class="h-px bg-white/10 my-1.5"></div>'
-      + item({ type: 'meeting', id: m.id }, `${t('askScopeMeeting')}: ${m.title}`, null, 0, ICON_FILE);
-  }
-  box.innerHTML = html;
-  document.getElementById('ask-scope-label').textContent = askScopeLabel(sc);
-  renderPeople();
-}
-
 // --- People: everyone named in the library, and the recordings they speak in ---
 state.people = [];
 
@@ -411,51 +346,6 @@ function personByName(name) {
 async function loadPeople() {
   [state.people] = await Promise.all([fetch('/api/people').then(r => r.ok ? r.json() : []).catch(() => []), loadSeries()]);
   if (state.appView === 'ask') renderAskScope();
-}
-
-function formatSpeakingTime(sec) {
-  const min = Math.round(sec / 60);
-  return min >= 60 ? `${Math.floor(min / 60)} ${t('unitH')} ${min % 60} ${t('unitMin')}` : `${Math.max(1, min)} ${t('unitMin')}`;
-}
-
-function renderSeriesScope() {
-  const block = document.getElementById('ask-series-block');
-  const list = state.series || [];
-  block.classList.toggle('hidden', !list.length);
-  const sc = state.askScope;
-  document.getElementById('ask-series-list').innerHTML = list.map(s => {
-    const on = sc.type === 'series' && sc.id === s.id;
-    return `<button data-click="setAskScope" data-click-args='[${jsArg({ type: 'series', id: s.id })}]'
-      class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[12px] transition ${on ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'}">
-      <span class="shrink-0 ${on ? 'text-white' : 'text-apple-tertiary'}">↻</span><span class="truncate flex-1">${escapeHtml(s.name)}</span>
-      <span class="text-[10.5px] font-mono ${on ? 'text-white/80' : 'text-apple-tertiary'}">${s.count}</span></button>`;
-  }).join('');
-}
-
-function renderPeople() {
-  renderSeriesScope();
-  const block = document.getElementById('ask-people-block');
-  const people = state.people || [];
-  block.classList.toggle('hidden', !people.length);
-  if (!people.length) return;
-  const sc = state.askScope;
-  document.getElementById('ask-people-list').innerHTML = people.slice(0, 50).map(p => {
-    const on = sc.type === 'person' && sc.name.toLowerCase() === p.name.toLowerCase();
-    const tip = t('tipPerson').replace('{n}', () => p.recordings.length).replace('{time}', () => formatSpeakingTime(p.total_seconds))
-      + '\n' + p.recordings.slice(0, 12).map(r => `${r.date} · ${r.title} · ${formatSpeakingTime(r.seconds)}`).join('\n');
-    return `<button data-click="setAskScope" data-click-args='[${jsArg({ type: 'person', name: p.name })}]' title="${escapeHtml(tip)}"
-      class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[12px] transition ${on ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'}">
-      <span class="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold ${on ? 'bg-white/25' : 'bg-white/10 text-apple-secondary'}">${escapeHtml(p.name.slice(0, 1).toUpperCase())}</span>
-      <span class="truncate flex-1">${escapeHtml(p.name)}${p.profile ? ` <span class="${on ? 'text-white/70' : 'text-apple-tertiary'}" title="${escapeHtml(t('tipPersonVoice'))}">◉</span>` : ''}</span>
-      <span class="text-[10.5px] font-mono ${on ? 'text-white/80' : 'text-apple-tertiary'}">${p.recordings.length}</span>
-    </button>`;
-  }).join('');
-}
-
-function setAskScope(scope) {
-  state.askScope = scope;
-  renderAskScope();
-  document.getElementById('library-question').focus();
 }
 
 function askScopePayload(scope) {
@@ -478,7 +368,7 @@ function openDigestMenu(e) {
   // Before the next meeting of a series, or with a person
   const brief = scope.type === 'series' || scope.type === 'person'
     ? `<button class="macos-menu-item" data-brief="1"><span>${escapeHtml(t('briefBtn'))}</span></button><div class="my-1 h-px bg-white/10"></div>` : '';
-  menu.innerHTML = brief + `<div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(where)}</div>`
+  menu.innerHTML = brief + `<div class="px-2.5 py-1 text-[11px] text-apple-tertiary">${escapeHtml(where)}</div>`
     + [[7, t('digestWeek')], [30, t('digestMonth')], [0, t('digestEverything')]]
       .map(([d, label]) => `<button class="macos-menu-item" data-days="${d}"><span>${escapeHtml(label)}</span></button>`).join('');
   menu.addEventListener('click', (ev) => {
@@ -491,15 +381,15 @@ function openDigestMenu(e) {
   });
   document.body.appendChild(menu);
   const r = e.currentTarget.getBoundingClientRect();
-  menu.style.left = `${Math.min(r.left, window.innerWidth - 232)}px`;
-  menu.style.top = `${r.bottom + 4}px`;
+  menu.style.left = `${Math.min(zpx(r.left), viewW() - 232)}px`;
+  menu.style.top = `${zpx(r.bottom) + 4}px`;
 }
 
 document.addEventListener('click', () => document.getElementById('digest-menu')?.remove());
 
 async function makeBrief() {
   const scope = { ...state.askScope };
-  const item = { id: ++_askSeq, question: t('briefBtn'), scopeLabel: askScopeLabel(scope), status: 'pending', data: null, error: '' };
+  const item = { id: newAskItemId(), question: t('briefBtn'), scopeLabel: askScopeLabel(scope), status: 'pending', data: null, error: '' };
   askThread.unshift(item);
   renderAskThread();
   try {
@@ -522,7 +412,7 @@ async function makeBrief() {
 async function makeDigest(days) {
   const scope = state.askScope.type === 'folder' ? { ...state.askScope } : { type: 'all' };
   const period = days === 7 ? t('digestWeek') : days === 30 ? t('digestMonth') : t('digestEverything');
-  const item = { id: ++_askSeq, question: `${t('digestBtn')} · ${period}`, scopeLabel: askScopeLabel(scope), status: 'pending', data: null, error: '' };
+  const item = { id: newAskItemId(), question: `${t('digestBtn')} · ${period}`, scopeLabel: askScopeLabel(scope), status: 'pending', data: null, error: '' };
   askThread.unshift(item);
   renderAskThread();
   try {
@@ -540,62 +430,6 @@ async function makeDigest(days) {
     item.status = 'error';
   }
   renderAskThread();
-}
-
-async function askLibrary() {
-  const input = document.getElementById('library-question');
-  const question = input.value.trim();
-  if (!question) return;
-  const btn = document.getElementById('library-ask-btn');
-  const scope = { ...state.askScope };
-  const item = { id: ++_askSeq, question, scopeLabel: askScopeLabel(scope), status: 'pending', data: null, error: '' };
-  askThread.unshift(item);
-  input.value = '';
-  btn.disabled = true;
-  renderAskThread();
-  try {
-    const res = await fetch('/api/library/ask', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question, lang: state.uiLang === 'en' ? 'en' : 'ru', ...askScopePayload(scope) }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || 'Error');
-    item.data = data;
-    item.status = 'done';
-  } catch (e) {
-    item.error = e.message;
-    item.status = 'error';
-  } finally {
-    btn.disabled = false;
-    renderAskThread();
-  }
-}
-
-function renderAskThread() {
-  const box = document.getElementById('ask-thread');
-  if (!askThread.length) {
-    box.innerHTML = `<div class="py-16 text-center text-xs text-apple-tertiary">${escapeHtml(t('askEmpty'))}</div>`;
-    return;
-  }
-  box.innerHTML = askThread.map(item => `
-    <div class="rounded-2xl border apple-border bg-apple-sidebar/60 overflow-hidden" data-ask="${item.id}">
-      <div class="px-5 py-3 border-b apple-border flex items-start justify-between gap-3">
-        <div class="text-[13px] font-semibold text-white min-w-0">${escapeHtml(item.question)}</div>
-        <div class="text-[10.5px] text-apple-tertiary shrink-0 max-w-[45%] truncate" title="${escapeHtml(item.scopeLabel)}">${escapeHtml(item.scopeLabel)}</div>
-      </div>
-      <div class="px-5 py-4 ask-body"></div>
-    </div>`).join('');
-  for (const item of askThread) {
-    const body = box.querySelector(`[data-ask="${item.id}"] .ask-body`);
-    if (item.status === 'pending') {
-      body.innerHTML = `<div class="py-4 text-center text-xs text-apple-secondary animate-pulse">${escapeHtml(t('libraryAskWorking'))}</div>`;
-    } else if (item.status === 'error') {
-      body.innerHTML = `<div class="text-xs text-apple-red">${escapeHtml(item.error)}</div>`;
-    } else {
-      renderLibraryAnswer(body, item);
-    }
-  }
 }
 
 // "[2]" in an answer becomes a button to its source. Text nodes are rewritten, never the sanitized
@@ -627,44 +461,6 @@ function linkifyCitations(root, byN, itemId) {
   }
 }
 
-function renderLibraryAnswer(body, item) {
-  const data = item.data || {};
-  if (!data.found) {
-    body.innerHTML = `<div class="text-xs text-apple-secondary">${escapeHtml(t('libraryAskNothing'))}</div>`;
-    return;
-  }
-  const byN = Object.fromEntries((data.sources || []).map(s => [s.n, s]));
-  const html = sanitizedMarkdown(data.answer || '');
-  // Only the fragments the answer refers to; all of them if it cites none
-  const cited = new Set([...(data.answer || '').matchAll(/\[(\d{1,3})\]/g)].map(x => Number(x[1])));
-  const shown = (data.sources || []).filter(s => !cited.size || cited.has(s.n)).slice(0, 20);
-  const sources = shown.map(s => `
-    <button data-click="openLibrarySource" data-click-args='[${item.id}, ${s.n}]' class="w-full text-left px-2.5 py-1.5 rounded-md hover:bg-white/5 transition">
-      <div class="flex items-center gap-2 text-[11px] min-w-0">
-        <span class="lib-cite">${s.n}</span>
-        <span class="text-white truncate">${escapeHtml(s.title)}</span>
-        <span class="text-apple-tertiary font-mono shrink-0 ml-auto">${escapeHtml(s.date)} · ${formatTime(s.start)}</span>
-      </div>
-      <div class="text-[11px] text-apple-secondary truncate mt-0.5 pl-7">${s.speaker ? escapeHtml(s.speaker) + ': ' : ''}${escapeHtml(s.text)}</div>
-    </button>`).join('');
-  body.innerHTML = `
-    <div class="markdown-body text-[13px]">${html}</div>
-    ${sources ? `<div class="mt-4 pt-3 border-t apple-border">
-      <div class="text-[10.5px] uppercase tracking-wider text-apple-tertiary mb-1">${escapeHtml(t('libraryAskSources'))}</div>
-      ${sources}
-    </div>` : ''}
-    ${data.model ? `<div class="mt-2 text-[10.5px] text-apple-tertiary">${data.cloud ? '☁ ' : ''}${escapeHtml(data.cloud ? data.model : formatModelName(data.model))}${data.mode === 'full' ? ' · ' + escapeHtml(t('askModeFull')) : ''}${data.mode === 'digest' ? ' · ' + escapeHtml(t('digestCount').replace('{n}', () => data.count)) : ''}${data.excluded_local ? ' · ' + escapeHtml(t('askExcludedLocal').replace('{n}', () => data.excluded_local)) : ''}</div>` : ''}`;
-  linkifyCitations(body.querySelector('.markdown-body'), byN, item.id);
-}
-
-function openLibrarySource(itemId, n) {
-  const item = askThread.find(x => x.id === itemId);
-  const s = ((item && item.data && item.data.sources) || []).find(x => x.n === n);
-  if (!s) return;
-  switchAppView('library');
-  selectMeetingAndSeek(s.meeting_id, s.start);
-}
-
 // A click in the library list: the recording opens in the library, whatever part of the app is shown
 function openMeeting(id) {
   if (state.appView !== 'library') switchAppView('library');
@@ -683,17 +479,21 @@ const ICON_FILE = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" st
 const ICON_FOLDER = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>';
 const ICON_MIC = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"/></svg>';
 const ICON_IMPORT = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>';
+const ICON_DICTATION = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z"/></svg>';
+const ICON_FOLD_ALL = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5L12 8.25 15.75 4.5m-7.5 15L12 15.75l3.75 3.75"/></svg>';
+const ICON_UNFOLD_ALL = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9"/></svg>';
 const ICON_CHEVRON = '<svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>';
 
 function folderIcon(f) {
-  return f.system_key === 'recordings' ? ICON_MIC : f.system_key === 'imports' ? ICON_IMPORT : ICON_FOLDER;
+  return f.system_key === 'recordings' ? ICON_MIC : f.system_key === 'imports' ? ICON_IMPORT
+    : f.system_key === 'dictations' ? ICON_DICTATION : ICON_FOLDER;
 }
 
 // System folders first (recordings, then imports), then the user's folders by name
 function sortedFolders(parentId) {
-  const order = { recordings: 0, imports: 1 };
+  const order = { recordings: 0, imports: 1, dictations: 2 };
   return (state.folders || []).filter(f => (f.parent_id ?? null) === parentId).sort((a, b) => {
-    const sa = a.system_key ? order[a.system_key] ?? 2 : 3, sb = b.system_key ? order[b.system_key] ?? 2 : 3;
+    const sa = a.system_key ? order[a.system_key] ?? 3 : 4, sb = b.system_key ? order[b.system_key] ?? 3 : 4;
     return sa - sb || folderName(a).localeCompare(folderName(b), undefined, { numeric: true });
   });
 }
@@ -775,8 +575,8 @@ function openFolderMenu(e, id) {
   document.getElementById('fctx-local').disabled = inherited;
   document.getElementById('fctx-local').style.opacity = inherited ? '.5' : '';
   menu.classList.remove('hidden');
-  menu.style.left = `${Math.min(e.clientX, window.innerWidth - 230)}px`;
-  menu.style.top = `${Math.min(e.clientY, window.innerHeight - 190)}px`;
+  menu.style.left = `${Math.min(zpx(e.clientX), viewW() - 230)}px`;
+  menu.style.top = `${Math.min(zpx(e.clientY), viewH() - 190)}px`;
 }
 
 function hideFolderMenu() {
@@ -897,18 +697,24 @@ const REC_STEP_OF_STATUS = {
 function recordingBadgesHtml(m) {
   const running = REC_STEP_OF_STATUS[m.status];
   const failedStep = m.status === 'failed' ? (m.has_transcript ? null : 'transcript') : null;
+  // Always shown: what needs attention (a step running, a failure, a recording marked local by
+  // itself). What a recording has (analysis, translations, dubs) shows on hover and on the selected
+  // row, or always with "Badges: all" in the view menu; having a transcript is the norm: no badge
   const badge = (kind, done, label, text = '') => {
     const busy = running === kind;
     const fail = failedStep === kind;
+    if (kind === 'transcript' && !busy && !fail) return '';
     if (!done && !busy && !fail) return '';
-    const tip = busy ? `${label} · ${t('recBadgeRunning')}` : fail ? `${t('statusFailed')}${m.error_message ? ': ' + serverText(m.error_message) : ''}` : label;
-    return `<span class="rec-badge ${busy ? 'rec-badge-busy' : ''} ${fail ? 'rec-badge-fail' : ''}" title="${escapeHtml(tip)}">`
+    const extra = !busy && !fail ? 'rec-badge-extra' : '';
+    const tip = busy ? `${label} · ${t('recBadgeRunning')}` : fail ? `${t('statusFailed')}${m.error_message ? ': ' + humanError(m.error_message).short : ''}` : label;
+    return `<span class="rec-badge ${extra} ${busy ? 'rec-badge-busy' : ''} ${fail ? 'rec-badge-fail' : ''}" title="${escapeHtml(tip)}">`
       + `<svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">${REC_BADGE_ICONS[kind]}</svg>`
       + (text ? `<span>${escapeHtml(text)}</span>` : '') + '</span>';
   };
   const trLangs = m.translations_langs || [];
   const dubLangs = m.dub_langs || [];
-  const lock = meetingLocalOnly(m) ? `<span class="rec-badge" title="${escapeHtml(t('tipLocalOnly'))}">${ICON_LOCK}</span>` : '';
+  // The lock of a whole folder is on the folder's row
+  const lock = meetingLocalOnly(m) ? `<span class="rec-badge ${m.local_only ? '' : 'rec-badge-extra'}" title="${escapeHtml(t('tipLocalOnly'))}">${ICON_LOCK}</span>` : '';
   return lock + badge('transcript', m.has_transcript, t('recBadgeTranscript'))
     + badge('summary', m.has_summary, t('recBadgeSummary'))
     + badge('translation', trLangs.length > 0, `${t('recBadgeTranslation')}${trLangs.length ? ': ' + trLangs.map(langName).join(', ') : ''}`, trLangs.map(langCode).join(' '))
@@ -924,7 +730,7 @@ function meetingRowHtml(m, depth) {
         class="w-12 h-[27px] rounded object-cover bg-black/60 shrink-0 border border-white/10" />`
     : '';
   const status = m.status === 'failed' ? t('statusFailed') : m.status === 'cancelled' ? t('statusCancelled') : m.status === 'cleared' ? t('statusClearedShort')
-    : `${spkCount || 1} ${t('spkShort')} · ${(m.language || 'ru').toUpperCase()}`;
+    : [spkCount ? `${spkCount} ${t('spkShort')}` : '', m.language && m.language !== 'auto' ? m.language.toUpperCase() : ''].filter(Boolean).join(' · ');
   return `
     <div data-click="libRowClick" data-click-args='[{"$": "event"}, ${m.id}]' data-mid="${m.id}" tabindex="0" role="button"
          data-contextmenu="openRecordingContextMenu" data-contextmenu-args='[{"$": "event"}, ${m.id}]'
@@ -937,9 +743,9 @@ function meetingRowHtml(m, depth) {
         <div class="flex items-center justify-between gap-2">
           <span title="${escapeHtml(libTitle(m))}" class="text-[12.5px] font-medium leading-snug line-clamp-2 break-words min-w-0">${escapeHtml(libTitle(m))}</span>
           <button data-click="openRecordingContextMenu" data-click-args='[{"$": "event"}, ${m.id}]' title="${escapeHtml(t('tipItemMenu'))}"
-            class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 px-1 rounded hover:bg-black/20 text-xs shrink-0 transition">•••</button>
+            class="row-more opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 px-1 rounded hover:bg-black/20 text-xs shrink-0 transition">•••</button>
         </div>
-        <div class="flex items-center justify-between gap-2 text-[11px] mt-0.5 ${isSelected ? 'text-white/80' : 'text-apple-secondary'}">
+        <div class="flex items-center justify-between gap-2 text-[11.5px] mt-0.5 ${isSelected ? 'text-white/80' : 'text-apple-secondary'}">
           <span class="flex items-center gap-1.5 min-w-0">
             <span class="font-mono shrink-0">${isBusy ? `${m.progress}%` : formatTime(m.duration)}</span>
             <span class="rec-badges">${recordingBadgesHtml(m)}</span>
@@ -978,6 +784,7 @@ function libPrefs() {
     dir: p.dir === 'asc' ? 'asc' : 'desc',
     group: LIB_GROUPS.includes(p.group) ? p.group : 'none',
     names: p.names === 'file' ? 'file' : 'title',
+    badges: p.badges === 'all' ? 'all' : 'smart',
   };
 }
 
@@ -1008,6 +815,46 @@ function libDateLabel(key, group) {
   return named ? `${named} · ${full}` : full;
 }
 
+// Where the open recording is: its folders (with their parents) and its day/month group, marked by a
+// dot on their rows, so it is found even with the groups folded
+function libHere() {
+  const m = state.activeMeeting;
+  const key = m ? `${m.id}:${m.folder_id}:${libPrefs().group}:${m.recorded_at || m.created_at}` : '';
+  if (state._libHere && state._libHere.key === key) return state._libHere;
+  const folders = new Set(), dates = new Set();
+  if (m) {
+    const byId = new Map((state.folders || []).map(f => [f.id, f]));
+    for (let id = m.folder_id, guard = 0; id != null && byId.has(id) && guard < 50; id = byId.get(id).parent_id, guard++) folders.add(id);
+    const group = libPrefs().group;
+    if (group !== 'none') dates.add(`${byId.has(m.folder_id) ? m.folder_id : 'root'}:${libDateKey(m, group)}`);
+  }
+  return state._libHere = { key, folders, dates };
+}
+
+// "Fold all" / "Unfold all" in the library header: folders and day groups together
+function libAnyOpen() {
+  const folders = collapsedFolders();
+  const dates = collapsedDates();
+  return (state.folders || []).some(f => !folders.has(f.id)) || (state._libDateIds || []).some(id => !dates.has(id));
+}
+
+function toggleLibraryFold() {
+  const fold = libAnyOpen();
+  try {
+    localStorage.setItem('verbascribe_folders_collapsed', JSON.stringify(fold ? (state.folders || []).map(f => f.id) : []));
+    localStorage.setItem('verbascribe_dates_collapsed', JSON.stringify(fold ? (state._libDateIds || []).slice(-300) : []));
+  } catch (e) {}
+  renderMeetingsSidebar();
+}
+
+function renderLibFoldButton() {
+  const btn = document.getElementById('lib-fold-btn');
+  if (!btn) return;
+  const fold = libAnyOpen();
+  btn.title = t(fold ? 'tipLibFoldAll' : 'tipLibUnfoldAll');
+  btn.innerHTML = fold ? ICON_FOLD_ALL : ICON_UNFOLD_ALL;
+}
+
 function collapsedDates() {
   try { return new Set(JSON.parse(localStorage.getItem('verbascribe_dates_collapsed') || '[]')); } catch (e) { return new Set(); }
 }
@@ -1025,8 +872,9 @@ function dateRowHtml(id, label, count, depth, open) {
          class="flex items-center gap-1.5 pr-2 py-1 rounded-lg cursor-pointer text-apple-secondary hover:bg-white/5 transition"
          style="padding-left:${6 + depth * 14}px" title="${escapeHtml(label)}">
       <span class="shrink-0 text-apple-tertiary transition-transform ${open ? 'rotate-90' : ''}">${ICON_CHEVRON}</span>
-      <span class="text-[11px] font-semibold truncate flex-1">${escapeHtml(label)}</span>
-      <span class="text-[10.5px] font-mono text-apple-tertiary">${count}</span>
+      <span class="text-[11.5px] font-semibold truncate flex-1">${escapeHtml(label)}</span>
+      ${!open && libHere().dates.has(id) ? `<span class="lib-here-dot" title="${escapeHtml(t('tipLibHere'))}"></span>` : ''}
+      <span class="text-[11px] font-mono text-apple-tertiary">${count}</span>
     </div>`;
 }
 
@@ -1071,20 +919,23 @@ function openLibViewMenu(e) {
   if (had) return;
   const p = libPrefs();
   const item = (key, value, label, on, extra = '') => `<button class="macos-menu-item" data-k="${key}" data-v="${value}">`
-    + `<span>${escapeHtml(label)}</span><span class="text-[10.5px] opacity-70">${on ? (extra || '✓') : ''}</span></button>`;
+    + `<span>${escapeHtml(label)}</span><span class="text-[11px] opacity-70">${on ? (extra || '✓') : ''}</span></button>`;
   const arrow = p.dir === 'asc' ? '↑' : '↓';
   const menu = document.createElement('div');
   menu.id = 'lib-view-menu';
   menu.className = 'fixed w-56 macos-menu z-50';
-  menu.innerHTML = `<div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(t('libView'))}</div>`
+  menu.innerHTML = `<div class="px-2.5 py-1 text-[11px] text-apple-tertiary">${escapeHtml(t('libView'))}</div>`
     + LIB_VIEWS.map(v => item('view', v, t(`libView_${v}`), p.view === v)).join('')
-    + `<div class="my-1 h-px bg-white/10"></div><div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(t('libSort'))}</div>`
+    + `<div class="my-1 h-px bg-white/10"></div><div class="px-2.5 py-1 text-[11px] text-apple-tertiary">${escapeHtml(t('libSort'))}</div>`
     + LIB_SORTS.map(v => item('sort', v, t(`libSort_${v}`), p.sort === v, arrow)).join('')
-    + `<div class="my-1 h-px bg-white/10"></div><div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(t('libGroup'))}</div>`
+    + `<div class="my-1 h-px bg-white/10"></div><div class="px-2.5 py-1 text-[11px] text-apple-tertiary">${escapeHtml(t('libGroup'))}</div>`
     + LIB_GROUPS.map(v => item('group', v, t(`libGroup_${v}`), p.group === v)).join('')
-    + `<div class="my-1 h-px bg-white/10"></div><div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(t('libNames'))}</div>`
+    + `<div class="my-1 h-px bg-white/10"></div><div class="px-2.5 py-1 text-[11px] text-apple-tertiary">${escapeHtml(t('libNames'))}</div>`
     + item('names', 'title', t('libNames_title'), p.names === 'title')
-    + item('names', 'file', t('libNames_file'), p.names === 'file');
+    + item('names', 'file', t('libNames_file'), p.names === 'file')
+    + `<div class="my-1 h-px bg-white/10"></div><div class="px-2.5 py-1 text-[11px] text-apple-tertiary">${escapeHtml(t('libBadges'))}</div>`
+    + item('badges', 'smart', t('libBadges_smart'), p.badges === 'smart')
+    + item('badges', 'all', t('libBadges_all'), p.badges === 'all');
   menu.addEventListener('click', (ev) => {
     const b = ev.target.closest('button[data-k]');
     ev.stopPropagation();
@@ -1094,8 +945,8 @@ function openLibViewMenu(e) {
   });
   document.body.appendChild(menu);
   const r = e.currentTarget.getBoundingClientRect();
-  menu.style.left = `${Math.min(r.left, window.innerWidth - 232)}px`;
-  menu.style.top = `${r.bottom + 4}px`;
+  menu.style.left = `${Math.min(zpx(r.left), viewW() - 232)}px`;
+  menu.style.top = `${zpx(r.bottom) + 4}px`;
 }
 
 function closeLibViewMenu() {
@@ -1170,10 +1021,10 @@ function renderLibSelectionBar() {
     list.parentNode.insertBefore(bar, list);
   }
   bar.innerHTML = `<span class="flex-1 min-w-0 truncate">${escapeHtml(t('libSelected').replace('{n}', () => n))}</span>
-    <button data-click="bulkRename" class="ui-btn ui-btn-subtle h-6 !px-2 text-[11px]" title="${escapeHtml(t('tipBulkRename'))}">${escapeHtml(t('bulkRename'))}</button>
-    <button data-click="bulkAutoTitles" class="ui-btn ui-btn-subtle h-6 !px-2 text-[11px]" title="${escapeHtml(t('tipBulkAutoTitle'))}">${escapeHtml(t('bulkAutoTitle'))}</button>
-    <button data-click="bulkDelete" class="ui-btn h-6 !px-2 text-[11px] bg-apple-red/80 text-white hover:bg-apple-red">${escapeHtml(t('ctxDelete'))}</button>
-    <button data-click="clearLibSelection" class="ui-btn ui-btn-subtle h-6 !px-1.5 text-[11px]" title="${escapeHtml(t('cancel'))} (Esc)">✕</button>`;
+    <button data-click="bulkRename" class="ui-btn ui-btn-subtle h-6 !px-2 text-[11.5px]" title="${escapeHtml(t('tipBulkRename'))}">${escapeHtml(t('bulkRename'))}</button>
+    <button data-click="bulkAutoTitles" class="ui-btn ui-btn-subtle h-6 !px-2 text-[11.5px]" title="${escapeHtml(t('tipBulkAutoTitle'))}">${escapeHtml(t('bulkAutoTitle'))}</button>
+    <button data-click="bulkDelete" class="ui-btn h-6 !px-2 text-[11.5px] bg-apple-red/80 text-white hover:bg-apple-red">${escapeHtml(t('ctxDelete'))}</button>
+    <button data-click="clearLibSelection" class="ui-btn ui-btn-subtle h-6 !px-1.5 text-[11.5px]" title="${escapeHtml(t('cancel'))} (Esc)">✕</button>`;
 }
 
 function libSelectedInOrder() {
@@ -1277,7 +1128,7 @@ document.addEventListener('keydown', e => {
 // "•••" on a row: the same menu as a right click (shown on hover and on keyboard focus)
 function rowMoreButton(m) {
   return `<button data-click="stopThen" data-click-args='[{"$": "event"}, "openRecordingContextMenu", {"$": "event"}, ${Number(m.id) || 0}]' tabindex="-1" aria-label="${escapeHtml(t('tipRecordingMore'))}"
-    title="${escapeHtml(t('tipRecordingMore'))}" class="row-more opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 px-1 rounded hover:bg-black/20 text-[11px] shrink-0 transition">•••</button>`;
+    title="${escapeHtml(t('tipRecordingMore'))}" class="row-more opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 px-1 rounded hover:bg-black/20 text-[11.5px] shrink-0 transition">•••</button>`;
 }
 
 function meetingCompactRowHtml(m, depth) {
@@ -1292,7 +1143,7 @@ function meetingCompactRowHtml(m, depth) {
       <span class="shrink-0 ${isSelected ? 'text-white/80' : 'text-apple-tertiary'}">${m.is_video ? ICON_FILE_VIDEO : ICON_FILE_AUDIO}</span>
       <span class="truncate flex-1 min-w-0">${escapeHtml(libTitle(m))}</span>
       <span class="rec-badges shrink-0 ${isSelected ? 'text-white/80' : 'text-apple-secondary'}">${recordingBadgesHtml(m)}</span>
-      <span class="font-mono text-[10.5px] shrink-0 ${isSelected ? 'text-white/80' : 'text-apple-tertiary'}">${isBusy ? `${m.progress}%` : libPrefs().sort === 'size' ? formatSize(m.size_bytes) : formatTime(m.duration)}</span>
+      <span class="font-mono text-[11px] shrink-0 ${isSelected ? 'text-white/80' : 'text-apple-tertiary'}">${isBusy ? `${m.progress}%` : libPrefs().sort === 'size' ? formatSize(m.size_bytes) : formatTime(m.duration)}</span>
       ${rowMoreButton(m)}
     </div>`;
 }
@@ -1314,7 +1165,7 @@ function meetingTileHtml(m) {
       </div>
       <div class="px-1.5 pt-1 pb-1.5 min-w-0">
         <div class="text-[11.5px] font-medium leading-tight line-clamp-2">${escapeHtml(libTitle(m))}</div>
-        <div class="flex items-center justify-between gap-1 mt-1 text-[10px] ${isSelected ? 'text-white/80' : 'text-apple-secondary'}">
+        <div class="flex items-center justify-between gap-1 mt-1 text-[11px] ${isSelected ? 'text-white/80' : 'text-apple-secondary'}">
           <span class="rec-badges">${recordingBadgesHtml(m)}</span>
           <span class="shrink-0">${escapeHtml(libSortValue(m))}</span>
         </div>
@@ -1337,9 +1188,11 @@ function folderRowHtml(f, depth, collapsed) {
       <span class="shrink-0 text-apple-tertiary transition-transform ${open ? 'rotate-90' : ''}">${ICON_CHEVRON}</span>
       <span class="shrink-0 ${f.system_key ? 'text-apple-blue' : 'text-apple-secondary'}">${folderIcon(f)}</span>
       <span class="text-[12px] font-semibold truncate flex-1">${escapeHtml(folderName(f))}</span>
-      <span class="text-[10.5px] font-mono text-apple-tertiary">${count}</span>
+      ${f.local_only ? `<span class="shrink-0 text-apple-tertiary" title="${escapeHtml(t('tipLocalOnly'))}">${ICON_LOCK}</span>` : ''}
+      ${!open && libHere().folders.has(f.id) ? `<span class="lib-here-dot" title="${escapeHtml(t('tipLibHere'))}"></span>` : ''}
+      <span class="text-[11px] font-mono text-apple-tertiary">${count}</span>
       <button data-click="openFolderMenu" data-click-args='[{"$": "event"}, ${f.id}]' title="${escapeHtml(t('tipFolderMenu'))}"
-        class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 px-1 rounded hover:bg-black/20 text-xs shrink-0 transition">•••</button>
+        class="row-more opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 px-1 rounded hover:bg-black/20 text-xs shrink-0 transition">•••</button>
     </div>`;
 }
 
@@ -1368,8 +1221,8 @@ function renderMeetingsSidebar() {
         ${(item.hits || []).map(h => `
           <div data-click="openLibraryHit" data-click-args='[${Number(item.meeting_id) || 0}, ${Number(h.start) || 0}]' tabindex="0" role="button"
                title="${escapeHtml(t('tipSeekTimestamp'))}"
-               class="px-2 py-1 rounded bg-black/30 hover:bg-apple-blue/20 cursor-pointer text-[11px] transition">
-            <div class="flex items-center justify-between text-[10px] text-apple-blue font-mono">
+               class="px-2 py-1 rounded bg-black/30 hover:bg-apple-blue/20 cursor-pointer text-[11.5px] transition">
+            <div class="flex items-center justify-between text-[11px] text-apple-blue font-mono">
               <span>${escapeHtml(h.speaker)}${h.semantic ? ` <span class="text-apple-tertiary" title="${escapeHtml(t('tipSemanticHit'))}">· ${escapeHtml(t('semanticHit'))}</span>` : ''}</span>
               <span>${formatTime(h.start)}</span>
             </div>
@@ -1400,6 +1253,7 @@ function renderMeetingsSidebar() {
   // Every row is a keyed part: a progress event then replaces only the row that changed
   const parts = [];
   const datesCollapsed = collapsedDates();
+  const dateIds = [];
   const items = (list, depth, groupKey, byDate = prefs.group !== 'none') => {
     if (!list || !list.length) return;
     if (byDate) {
@@ -1411,6 +1265,7 @@ function renderMeetingsSidebar() {
       }
       for (const [k, ms] of buckets) {
         const id = `${groupKey}:${k}`;
+        dateIds.push(id);
         const open = !datesCollapsed.has(id);
         parts.push([`d${id}`, dateRowHtml(id, libDateLabel(k, prefs.group), ms.length, depth, open)]);
         if (open) items(ms, depth + 1, `${groupKey}_${k}`, false);
@@ -1436,7 +1291,11 @@ function renderMeetingsSidebar() {
   };
   walk(null, 0);
   items(byFolder.get(null), 0, 'root');
+  // The day groups of folded folders are not built: the ones seen so far count for "fold all"
+  state._libDateIds = [...new Set([...(state._libDateIds || []), ...dateIds])];
+  listEl.classList.toggle('lib-badges-all', prefs.badges === 'all');
   patchKeyedList(listEl, parts);
+  renderLibFoldButton();
 }
 
 // Updates a list from [key, html] parts, touching only the elements whose html changed and
@@ -1551,38 +1410,17 @@ function handleFileDrop(e) {
   dropMediaFiles(e);
 }
 
-// Sends files to the server; `source` tells a recording made here from an imported file (they go to
-// different folders on disk and in the library). The file dates are sent too: for an imported file
-// the date it was last modified is the closest to when the meeting took place.
-async function submitUrlImport() {
-  const input = document.getElementById('url-import-input');
-  const url = input.value.trim();
-  if (!url || !requireRecognitionModel()) return;
-  const res = await fetch('/api/meetings/url', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      url,
-      model_name: document.getElementById('upload-model').value,
-      language: document.getElementById('upload-language').value,
-      num_speakers: Number(document.getElementById('upload-speakers').value || 0),
-    }),
-  });
-  const data = await readJson(res);
-  if (!res.ok) { showToast(data.detail || 'Error'); return; }
-  input.value = '';
-  closeModal('import');
-  await loadMeetingsList();
-  const m = data.created && data.created[0];
-  if (m) selectMeeting(m.id, true);
-  showToast(t('urlImportStarted'));
-}
-
 function requireRecognitionModel() {
   if (document.getElementById('upload-model').value) return true;
   showToast(t('noModelInstalled'), { label: t('settings'), onClick: () => openModal('settings', 'recognition') });
   return false;
 }
 
+// Sends files to the server; `source` tells a recording made here from an imported file (they go to
+// different folders on disk and in the library). The file dates are sent too: for an imported file
+// the date it was last modified is the closest to when the meeting took place. The import window
+// (importdlg.js) gives its model, language, speakers and processing; without them the defaults of
+// the window's lists are used, and the server takes the processing from the settings.
 async function uploadFiles(fileList, opts = {}) {
   if (opts.source !== 'recording' && !requireRecognitionModel()) return;
   const fd = new FormData();
@@ -1590,68 +1428,35 @@ async function uploadFiles(fileList, opts = {}) {
     fd.append('files', f);
     fd.append('last_modified', String(f.lastModified || 0));
   }
-  fd.append('model_name', document.getElementById('upload-model').value);
-  fd.append('language', document.getElementById('upload-language').value);
-  fd.append('num_speakers', opts.source === 'recording' ? '0' : document.getElementById('upload-speakers').value);
+  fd.append('model_name', opts.model ?? document.getElementById('upload-model').value);
+  fd.append('language', opts.language ?? document.getElementById('upload-language').value);
+  fd.append('num_speakers', opts.source === 'recording' ? '0' : String(opts.speakers ?? document.getElementById('upload-speakers').value));
   fd.append('source', opts.source || 'import');
+  if (opts.processing) fd.append('processing', JSON.stringify(opts.processing));
   if (opts.title) fd.append('title', opts.title);
   if (opts.folderId != null) fd.append('folder_id', String(opts.folderId));
   const res = await fetch('/api/meetings/upload', { method: 'POST', body: fd });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+  if (!res.ok) throw new Error(serverText(data.detail) || `HTTP ${res.status}`);
   return data.created || [];
 }
 
+// Files chosen or dropped: into the open import window, into a new one (it asks the processing), or
+// straight to the queue with the settings when the user said not to ask
 async function handleFileSelect(fileList) {
   if (!fileList || fileList.length === 0) return;
-  const statusEl = document.getElementById('upload-status-text');
-  statusEl.classList.remove('hidden');
-  statusEl.textContent = t('uploadingFiles').replace('{n}', () => fileList.length);
-  switchAppView('library');
-
+  if (impIsOpen()) { impAddFiles(fileList); return; }
+  if (askImportParams()) { openImportDialog({ files: fileList }); return; }
   try {
     const created = await uploadFiles(Array.from(fileList), { source: 'import' });
-    statusEl.classList.add('hidden');
     document.getElementById('file-input').value = '';
-    closeModal('import');
+    if (!created || !created.length) return;
+    switchAppView('library');
     await loadMeetingsList();
-    if (created.length > 0) {
-      await selectMeeting(created[0].id, true);
-      return created;
-    }
+    await selectMeeting(created[0].id, true);
+    return created;
   } catch (err) {
-    statusEl.textContent = 'Error: ' + err.message;
     showToast(String(err.message || err));
-  }
-}
-
-async function submitLocalPath() {
-  const pathInput = document.getElementById('local-path-input');
-  const path = pathInput.value.trim();
-  if (!path || !requireRecognitionModel()) return;
-
-  const res = await fetch('/api/meetings/local-path', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      path,
-      model_name: document.getElementById('upload-model').value,
-      language: document.getElementById('upload-language').value,
-      num_speakers: Number(document.getElementById('upload-speakers').value || 0),
-    })
-  });
-
-  const data = await readJson(res);
-  if (!res.ok) {
-    showAlert(data.detail || 'Error');
-    return;
-  }
-
-  pathInput.value = '';
-  closeModal('import');
-  await loadMeetingsList();
-  if (data.created && data.created.length > 0) {
-    await selectMeeting(data.created[0].id, true);
   }
 }
 
@@ -1662,7 +1467,7 @@ const MAIN_MIN = 800;  // the recording toolbar and the player need this much ne
 function setSidebarWidth(w, save) {
   const aside = document.getElementById('app-sidebar');
   if (!aside) return;
-  w = Math.round(Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, Math.min(w, window.innerWidth - MAIN_MIN))));
+  w = Math.round(Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, Math.min(w, viewW() - MAIN_MIN))));
   aside.style.width = `${w}px`;
   if (save) try { localStorage.setItem('verbascribe_sidebar_width', String(w)); } catch (e) {}
 }
@@ -1684,9 +1489,9 @@ function setSidebarWidth(w, save) {
     handle.classList.add('dragging');
     document.body.classList.add('sidebar-dragging');
     const left = document.getElementById('app-sidebar').getBoundingClientRect().left;
-    const move = (ev) => setSidebarWidth(ev.clientX - left, false);
+    const move = (ev) => setSidebarWidth(zpx(ev.clientX - left), false);
     const up = (ev) => {
-      setSidebarWidth(ev.clientX - left, true);
+      setSidebarWidth(zpx(ev.clientX - left), true);
       handle.classList.remove('dragging');
       document.body.classList.remove('sidebar-dragging');
       handle.removeEventListener('pointermove', move);

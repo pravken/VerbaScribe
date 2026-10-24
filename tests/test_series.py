@@ -60,26 +60,27 @@ class OnnxEnsurePackageTest(unittest.TestCase):
         from pathlib import Path
         from unittest import mock
         from app import asr_onnx
-        from onnx_asr.resolver import Resolver
 
         with tempfile.TemporaryDirectory() as tmp:
             d = Path(tmp) / "gigaam-v3"
             d.mkdir()  # an earlier failed attempt left an empty folder
             calls = []
 
-            def fake_download(self, quantization, *, local_files_only):
-                calls.append(local_files_only)
-                Path(self.local_dir).mkdir(parents=True, exist_ok=True)
-                for f in self.model_type._get_model_files(quantization).values():
-                    p = Path(self.local_dir, f.removeprefix("**/").replace("?", "_"))
-                    p.write_text("x")
-                return self.local_dir
+            def fake_snapshot(repo_id, *, revision, local_dir, local_files_only, allow_patterns):
+                calls.append((repo_id, revision, local_files_only))
+                Path(local_dir).mkdir(parents=True, exist_ok=True)
+                for f in allow_patterns:
+                    if not f.startswith("**/") and "?" not in f:
+                        Path(local_dir, f).write_text("x")
+                return local_dir
 
             with mock.patch.object(asr_onnx, "model_dir", return_value=d), \
                  mock.patch.object(asr_onnx, "_vad_dir", return_value=Path(tmp) / "vad"), \
-                 mock.patch.object(Resolver, "_download_model", fake_download):
+                 mock.patch("huggingface_hub.snapshot_download", fake_snapshot):
                 asr_onnx.fetch("gigaam-v3")
-            self.assertIn(False, calls)
+            # Downloaded (not only looked up) and from the fixed commits, not main
+            for repo in ("istupakov/gigaam-v3-onnx", "istupakov/silero-vad-onnx"):
+                self.assertIn((repo, asr_onnx.REVISIONS[repo], False), calls)
             self.assertTrue(list(d.glob("*.onnx")))
 
 
@@ -574,7 +575,7 @@ class DictationTest(unittest.TestCase):
         init_db()
         with mock.patch.object(live, "caption_onnx_model", return_value="gigaam-v3"), \
              mock.patch.object(asr_onnx, "recognize_array", return_value=[(0, 1, "Привет."), (1, 2, "Как дела?")]):
-            self.assertEqual(dictation.recognize(np.zeros(16000, dtype=np.float32)), "Привет. Как дела?")
+            self.assertEqual(dictation.recognize(np.zeros(16000, dtype=np.float32)), ("Привет. Как дела?", "gigaam-v3"))
         from app.hotkey import parse_hotkey
         self.assertIsNotNone(parse_hotkey("Ctrl+Alt+D"))
 

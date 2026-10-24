@@ -126,6 +126,13 @@ def api_update_settings(payload: SettingsUpdatePayload) -> Dict[str, Any]:
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     updated = update_settings(values)
+    if "start_with_windows" in values:
+        from app import autostart
+
+        try:
+            autostart.set_enabled(values["start_with_windows"] == "true")
+        except OSError as e:
+            raise HTTPException(status_code=500, detail=f"Не удалось изменить автозапуск Windows: {e}")
     if "semantic_search" in payload.settings or "semantic_model" in payload.settings:
         from app import semantic
 

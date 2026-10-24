@@ -16,6 +16,7 @@ async function selectMeeting(id, reloadPlayer = true) {
 
   document.getElementById('workspace-empty').classList.add('hidden');
   document.getElementById('workspace-content').classList.remove('hidden');
+  renderTopbar();
 
   document.getElementById('meeting-title-input').value = m.title;
   document.getElementById('meeting-meta-badge').textContent =
@@ -82,6 +83,8 @@ function renderTxModelBar() {
   sel.value = pick;
   const busy = !DONE_STATUSES.includes(m.status);
   sel.disabled = busy;
+  document.getElementById('tx-proc-btn').classList.toggle('hidden', pick === 'merged');  // not made by a model
+  if (busy) hideTxProcMenu();
   const btn = document.getElementById('tx-transcribe-btn');
   btn.disabled = busy || !!m.media_removed;  // without the sound there is nothing to transcribe
   btn.classList.toggle('opacity-40', btn.disabled);
@@ -194,6 +197,69 @@ async function mergeTranscripts() {
   showToast(t('txMergeStarted'));
 }
 
+// --- What is done to the sound before recognition and to the text after it, for this recording
+// ("Parameters" next to the model). Starts from what the recording used last (database.effective_processing:
+// chosen for it, else the settings) and goes with the next Transcribe
+const TX_PROC_GROUPS = [
+  ['txProcSound', [['denoise', 'txProcDenoise', 'txProcDenoiseHint'], ['loudnorm', 'txProcLoudnorm', 'txProcLoudnormHint'],
+    ['leveling', 'txProcLeveling', 'txProcLevelingHint'], ['vad', 'txProcVad', 'txProcVadHint']]],
+  ['txProcText', [['diarization', 'txProcDiarization', 'txProcDiarizationHint']]],
+];
+
+function txProc(m) {
+  if (!state.txProc || state.txProc.id !== m.id) {
+    state.txProc = { id: m.id, values: { ...(m.processing || {}) }, language: m.language || 'auto', speakers: Number(m.num_speakers_hint || 0) };
+  }
+  return state.txProc;
+}
+
+function renderTxProcMenu() {
+  const m = state.activeMeeting;
+  const box = document.getElementById('tx-proc-menu');
+  if (!m || !box) return;
+  const p = txProc(m);
+  const check = ([key, label, hint]) => `<label class="flex items-start gap-2 cursor-pointer">
+      <input type="checkbox" ${p.values[key] !== false ? 'checked' : ''} data-change="setTxProc" data-change-args='[${jsArg(key)}, {"$": "checked"}]'
+        class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+      <span class="min-w-0"><span class="block text-xs text-apple-label">${escapeHtml(t(label))}</span>
+        <span class="block text-[11px] text-apple-tertiary leading-snug">${escapeHtml(t(hint))}</span></span></label>`;
+  const select = (key, source, value) => `<select data-change="setTxProcValue" data-change-args='[${jsArg(key)}, {"$": "value"}]'
+      class="mt-1 w-full h-7 bg-apple-sidebar border apple-border rounded-[7px] px-2 text-xs text-white focus:outline-none">${document.getElementById(source).innerHTML}</select>`;
+  box.innerHTML = TX_PROC_GROUPS.map(([title, items]) => `<div class="space-y-1.5">
+      <div class="text-[11px] font-semibold uppercase tracking-wider text-apple-tertiary">${escapeHtml(t(title))}</div>${items.map(check).join('')}</div>`).join('')
+    + `<div class="grid grid-cols-2 gap-2">
+        <label class="block text-[11px] text-apple-tertiary">${escapeHtml(t('speechLangLabel'))}${select('language', 'reconfig-language', p.language)}</label>
+        <label class="block text-[11px] text-apple-tertiary">${escapeHtml(t('speakersCountLabel'))}${select('speakers', 'reconfig-speakers', p.speakers)}</label></div>
+      <p class="text-[11px] text-apple-tertiary">${escapeHtml(t('txProcApplies'))}</p>`;
+  const [lang, spk] = box.querySelectorAll('select');
+  lang.value = p.language;
+  if (lang.value !== p.language) lang.value = 'auto';
+  spk.value = String(p.speakers);
+}
+
+function toggleTxProcMenu(e) {
+  e.stopPropagation();
+  const box = document.getElementById('tx-proc-menu');
+  const open = box.classList.contains('hidden');
+  if (open) renderTxProcMenu();
+  box.classList.toggle('hidden', !open);
+}
+
+function hideTxProcMenu() {
+  document.getElementById('tx-proc-menu')?.classList.add('hidden');
+}
+document.addEventListener('click', hideTxProcMenu);
+
+function setTxProc(key, checked) {
+  if (state.activeMeeting) txProc(state.activeMeeting).values[key] = !!checked;
+}
+
+function setTxProcValue(key, value) {
+  if (!state.activeMeeting) return;
+  const p = txProc(state.activeMeeting);
+  if (key === 'speakers') p.speakers = Number(value) || 0; else p.language = value;
+}
+
 async function transcribeWithPickedModel() {
   const m = state.activeMeeting;
   if (!m) return;
@@ -202,9 +268,11 @@ async function transcribeWithPickedModel() {
   if (model === m.transcript_model && (m.segments || []).length
       && !(await confirmDialog(t('txTranscribeAgainTitle'), t('txTranscribeAgainText').replace('{model}', () => formatModelName(model)),
         t('txTranscribeAgain'), false))) return;
+  hideTxProcMenu();
+  const p = txProc(m);
   const res = await fetch(`/api/meetings/${m.id}/reconfigure`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model_name: model, language: m.language || 'auto', num_speakers_hint: Number(m.num_speakers_hint || 0) }),
+    body: JSON.stringify({ model_name: model, language: p.language || 'auto', num_speakers_hint: p.speakers, processing: p.values }),
   });
   const data = await readJson(res);
   if (!res.ok) { showToast(errorText(data, res)); return; }
@@ -227,6 +295,7 @@ function updateProcessingBanner(m) {
   document.getElementById('workspace-live-dot').classList.toggle('hidden', !running);
   document.getElementById('workspace-progress-time').textContent = running ? formatTiming(jobTiming(q, m.progress || 0)) : '';
   if (isBusy) {
+    document.getElementById('workspace-stage-text').classList.add('truncate');
     document.getElementById('workspace-stage-text').textContent = serverText(m.stage_text) || t('processingShort');
     document.getElementById('workspace-progress-pct').textContent = `${m.progress}%`;
     bar.style.background = '';
@@ -234,12 +303,25 @@ function updateProcessingBanner(m) {
   } else {
     // Failed or cancelled: the reason, a red (or grey) bar and Retry, not a "finished" blue bar
     const failed = m.status === 'failed';
+    // the reason in words; the server's technical text (an exception, a path) only behind «Подробнее»
+    const err = humanError(m.error_message || '');
     document.getElementById('workspace-stage-text').textContent = m.status === 'cleared' ? t('statusCleared')
-      : (failed ? t('statusFailed') : t('statusCancelled')) + (m.error_message ? `: ${serverText(m.error_message)}` : m.stage_text ? `: ${serverText(m.stage_text)}` : '');
+      : (failed ? t('statusFailed') : t('statusCancelled')) + (m.error_message ? `: ${err.short}` : m.stage_text ? `: ${serverText(m.stage_text)}` : '');
+    document.getElementById('workspace-stage-text').title = m.error_message ? err.short : '';
+    document.getElementById('workspace-stage-text').classList.toggle('truncate', !failed);  // a reason is read in full
+    document.getElementById('workspace-error-more').classList.toggle('hidden', !(failed && err.tech));
     document.getElementById('workspace-progress-pct').textContent = '';
     bar.style.width = '100%';
     bar.style.background = failed ? 'rgba(255, 69, 58, 0.7)' : 'rgba(255, 255, 255, 0.2)';
   }
+}
+
+function showProcessingErrorDetails() {
+  const m = state.activeMeeting;
+  if (!m || !m.error_message) return;
+  const err = humanError(m.error_message);
+  confirmDialog(t('errDetailsTitle'), `${err.short}\n\n${err.tech}`, t('copy'), false, { cancel: t('close') })
+    .then(ok => { if (ok) copyPlain(err.tech); });
 }
 
 async function retryActiveMeeting() {
@@ -394,7 +476,7 @@ function renderDubSetup(env, prefix = 'dub') {
   const btn = el('setup-btn');
   btn.textContent = env.installed ? t('sdubRepairBtn') : (st.error ? t('dubSetupRetry') : t('dubSetupBtn'));
   btn.title = env.installed ? t('tipSdubRepair') : '';
-  btn.className = `ui-btn ${env.installed ? 'ui-btn-subtle' : 'ui-btn-primary'} h-7 px-3 text-[11px]`;
+  btn.className = `ui-btn ${env.installed ? 'ui-btn-subtle' : 'ui-btn-primary'} h-7 px-3 text-[11.5px]`;
   btn.classList.toggle('hidden', !!st.active);
   el('setup-cancel-btn').classList.toggle('hidden', !st.active);
   el('setup-logs-btn').classList.toggle('hidden', !logs.length);
@@ -488,7 +570,7 @@ function renderDubInfo(info) {
     : info.venv_exists ? [t('sdubPillBroken'), 'bg-apple-amber/15 text-apple-amber']
     : [t('sdubPillMissing'), 'bg-white/5 text-apple-secondary'];
   pill.textContent = pillText;
-  pill.className = `text-[10px] font-mono px-2.5 py-0.5 rounded-full shrink-0 ${pillCls}`;
+  pill.className = `text-[11px] font-mono px-2.5 py-0.5 rounded-full shrink-0 ${pillCls}`;
 
   const detail = [info.venv];
   if (info.verified) detail.push(info.verified.replace(/^Verified/, t('sdubVerifiedAt')));
@@ -520,8 +602,8 @@ function renderDubInfo(info) {
       <div class="min-w-0">
         <div class="flex items-center flex-wrap gap-2">
           <span class="text-xs font-semibold text-white">${escapeHtml(item.name)}</span>
-          <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-apple-secondary">${escapeHtml(item.license)}</span>
-          <span class="text-[10px] text-apple-tertiary">${escapeHtml(size)}</span>
+          <span class="text-[11px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-apple-secondary">${escapeHtml(item.license)}</span>
+          <span class="text-[11px] text-apple-tertiary">${escapeHtml(size)}</span>
         </div>
         <p class="text-[11.5px] text-apple-secondary mt-1 leading-snug">${escapeHtml(t('sdubWeightDesc_' + item.id))}</p>
       </div>
@@ -650,7 +732,7 @@ function renderDubResults() {
   const box = document.getElementById('dub-results');
   const dubs = (m && m.dubs) || [];
   if (!dubs.length) {
-    box.innerHTML = `<div class="text-[11px] text-apple-tertiary">${escapeHtml(t('dubNone'))}</div>`;
+    box.innerHTML = `<div class="text-[11.5px] text-apple-tertiary">${escapeHtml(t('dubNone'))}</div>`;
     return;
   }
   box.innerHTML = dubs.map(d => {
@@ -666,10 +748,10 @@ function renderDubResults() {
       <div class="flex items-center justify-between gap-2">
         <div class="min-w-0">
           <div class="text-xs font-semibold text-white">${escapeHtml(dubLangName(d.lang))} · <span class="text-apple-amber">AI dub</span></div>
-          <div class="text-[10.5px] text-apple-secondary truncate" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
-          <div class="text-[10.5px] text-apple-tertiary">${escapeHtml(meta)}</div>
+          <div class="text-[11px] text-apple-secondary truncate" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
+          <div class="text-[11px] text-apple-tertiary">${escapeHtml(meta)}</div>
         </div>
-        <button data-click="revealDub" data-click-args='[${jsArg(lang)}]' class="ui-btn ui-btn-subtle h-6 px-2 text-[11px] shrink-0">${escapeHtml(t('dubReveal'))}</button>
+        <button data-click="revealDub" data-click-args='[${jsArg(lang)}]' class="ui-btn ui-btn-subtle h-6 px-2 text-[11.5px] shrink-0">${escapeHtml(t('dubReveal'))}</button>
       </div>
       ${isVideo
         ? `<video controls preload="none" class="w-full rounded-md bg-black max-h-56" src="${src}"></video>`
@@ -824,7 +906,7 @@ function renderTranslateResults() {
   const trs = meetingTranslations(m);
   const langs = Object.keys(trs);
   if (!langs.length) {
-    box.innerHTML = `<div class="text-[11px] text-apple-tertiary">${escapeHtml(t('translateNone'))}</div>`;
+    box.innerHTML = `<div class="text-[11.5px] text-apple-tertiary">${escapeHtml(t('translateNone'))}</div>`;
     return;
   }
   box.innerHTML = langs.map(lang => {
@@ -835,14 +917,14 @@ function renderTranslateResults() {
       <div class="flex items-center justify-between gap-2">
         <div class="min-w-0">
           <div class="text-xs font-semibold text-white">${escapeHtml(langName(lang))} (${escapeHtml(lang.toUpperCase())})</div>
-          <div class="text-[10.5px] text-apple-tertiary truncate">${escapeHtml(meta)}</div>
-          ${outdated ? `<div class="text-[10.5px] text-apple-amber">${escapeHtml(t('translateOutdated').replace('{stale}', () => r.stale || 0).replace('{missing}', () => r.missing || 0))}</div>` : ''}
+          <div class="text-[11px] text-apple-tertiary truncate">${escapeHtml(meta)}</div>
+          ${outdated ? `<div class="text-[11px] text-apple-amber">${escapeHtml(t('translateOutdated').replace('{stale}', () => r.stale || 0).replace('{missing}', () => r.missing || 0))}</div>` : ''}
         </div>
         <div class="flex items-center gap-1.5 shrink-0">
-          <button data-click="showTranslation" data-click-args='[${jsArg(lang)}]' class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]">${escapeHtml(t('translateShow'))}</button>
-          ${outdated ? `<button data-click="startTranslation" data-click-args='[true, ${jsArg(lang)}]' class="ui-btn ui-btn-primary h-6 px-2 text-[11px]" title="${escapeHtml(t('tipTranslateUpdate'))}">${escapeHtml(t('translateUpdate'))}</button>` : ''}
-          <button data-click="startTranslation" data-click-args='[false, ${jsArg(lang)}]' class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]" title="${escapeHtml(t('tipTranslateRedo'))}">${escapeHtml(t('translateRedo'))}</button>
-          <button data-click="deleteTranslation" data-click-args='[${jsArg(lang)}]' class="ui-btn ui-btn-subtle h-6 px-1.5 text-[11px] hover:text-apple-red" title="${escapeHtml(t('tipTranslateDelete'))}">${SVG_ICONS.trash}</button>
+          <button data-click="showTranslation" data-click-args='[${jsArg(lang)}]' class="ui-btn ui-btn-subtle h-6 px-2 text-[11.5px]">${escapeHtml(t('translateShow'))}</button>
+          ${outdated ? `<button data-click="startTranslation" data-click-args='[true, ${jsArg(lang)}]' class="ui-btn ui-btn-primary h-6 px-2 text-[11.5px]" title="${escapeHtml(t('tipTranslateUpdate'))}">${escapeHtml(t('translateUpdate'))}</button>` : ''}
+          <button data-click="startTranslation" data-click-args='[false, ${jsArg(lang)}]' class="ui-btn ui-btn-subtle h-6 px-2 text-[11.5px]" title="${escapeHtml(t('tipTranslateRedo'))}">${escapeHtml(t('translateRedo'))}</button>
+          <button data-click="deleteTranslation" data-click-args='[${jsArg(lang)}]' class="ui-btn ui-btn-subtle h-6 px-1.5 text-[11.5px] hover:text-apple-red" title="${escapeHtml(t('tipTranslateDelete'))}">${SVG_ICONS.trash}</button>
         </div>
       </div>
     </div>`;
@@ -893,32 +975,6 @@ async function startTranslation(onlyChanged, lang) {
   closeModal('translate');
   showToast(t('translateQueued'));
   await loadMeetingsList();
-}
-
-// "Checked": the user corrected the transcript, so the model comparison can use it as the reference
-function renderVerifiedButton() {
-  const m = state.activeMeeting;
-  const btn = document.getElementById('tx-verified-btn');
-  if (!btn) return;
-  btn.classList.toggle('hidden', !(m && m.status === 'completed' && (m.segments || []).length));
-  const on = !!(m && m.transcript_verified);
-  btn.className = `${btn.classList.contains('hidden') ? 'hidden ' : ''}ui-btn ${on ? 'ui-btn-active' : 'ui-btn-subtle text-apple-label'}`;
-  document.getElementById('tx-verified-label').textContent = t(on ? 'txVerified' : 'txVerify');
-}
-
-async function toggleTranscriptVerified() {
-  const m = state.activeMeeting;
-  if (!m) return;
-  const res = await fetch(`/api/meetings/${m.id}/verified`, {
-    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ verified: !m.transcript_verified }),
-  });
-  const data = await readJson(res);
-  if (!res.ok) { showToast(data.detail || 'Error'); return; }
-  m.transcript_verified = data.transcript_verified;
-  const row = state.meetings.find(x => x.id === m.id);
-  if (row) row.transcript_verified = data.transcript_verified;
-  renderVerifiedButton();
-  showToast(t(m.transcript_verified ? 'txVerifiedToast' : 'txUnverifiedToast'));
 }
 
 async function deleteTranslation(lang) {
@@ -1033,7 +1089,6 @@ function renderTranslationControls() {
   // Clearing: one translation, or everything the processing made
   if (langs.length) html += sep + langs.map(c => item(['deleteTranslationFromMenu', c], '✕', `${t('txDeleteTr')}: ${langName(c)}`)).join('');
   document.getElementById('tx-view-menu').innerHTML = html;
-  renderVerifiedButton();
   renderExportTranslatedMenu();
 }
 
@@ -1118,7 +1173,7 @@ async function cancelProcessing(id) {
     showToast(data.detail || 'Error');
     return;
   }
-  showToastt('uiCancelling');
+  showToast(t('uiCancelling'));
   await loadMeetingsList();
 }
 
@@ -1158,7 +1213,7 @@ function renderSpeakerPillsBar() {
     const active = state.speakerFilter === spkId;
     const named = !/^(Участник|Speaker|SPEAKER)[ _]?\d+$/i.test(s.name || '');
     const label = named ? (s.name || '?').trim().slice(0, 1).toUpperCase() : String(i + 1);
-    return `<button data-click="filterBySpeaker" data-click-args='[${jsArg(spkId)}]' data-contextmenu="preventThen" data-contextmenu-args='[{"$": "event"}, "previewSpeakerVoice", ${Number(s.sample_start) || 0}, ${Number(s.sample_end) || 5}]'
+    return `<button data-click="filterBySpeaker" data-click-args='[${jsArg(spkId)}]' data-contextmenu="openSpeakerChipMenu" data-contextmenu-args='[{"$": "event"}, ${jsArg(spkId)}]'
       title="${escapeHtml(`${s.name}\n${t('tipFilterSpeaker')} · ${t('tipSpeakerChipVoice')}`)}"
       class="spk-chip ${active ? 'spk-chip-on' : ''}" style="--spk:${s.color}">${escapeHtml(label)}</button>`;
   }).join('');
@@ -1184,78 +1239,7 @@ function fitTranscriptToolbar() {
   if (crowded || bar.scrollWidth > bar.clientWidth + 1) bar.classList.add('tx-compact');
 }
 
-async function renderTalkAnalytics() {
-  const box = document.getElementById('talk-analytics');
-  const m = state.activeMeeting;
-  if (!box || !m || !(m.segments || []).length) { if (box) box.innerHTML = ''; return; }
-  const a = await fetch(`/api/meetings/${m.id}/analytics`).then(r => r.ok ? r.json() : null).catch(() => null);
-  if (!a || state.activeMeeting !== m) return;
-  const min = s => s >= 60 ? `${Math.floor(s / 60)} ${t('unitMin')} ${Math.round(s % 60)} ${t('unitSec')}` : `${Math.round(s)} ${t('unitSec')}`;
-  const stat = (label, value) => `<div class="rounded-lg bg-white/[0.03] border apple-border px-3 py-2"><div class="text-[10.5px] text-apple-tertiary">${escapeHtml(label)}</div><div class="text-sm font-semibold text-white mt-0.5">${escapeHtml(value)}</div></div>`;
-  box.innerHTML = `
-    <h3 class="text-sm font-semibold text-white">${escapeHtml(t('analyticsTitle'))}</h3>
-    <div class="grid grid-cols-3 gap-2">${stat(t('analyticsTalk'), min(a.talk_seconds))}${stat(t('analyticsSilence'), `${a.silence_share}%`)}${stat(t('analyticsTurns'), `${a.turns} · ${t('analyticsAvg')} ${min(a.avg_turn)}`)}</div>
-    <div class="space-y-2.5 border apple-border rounded-xl bg-apple-sidebar p-3">
-      ${a.speakers.map(r => `<div>
-        <div class="flex items-center justify-between text-xs"><span class="font-medium" style="color:${r.color}">${escapeHtml(r.name)}</span><span class="font-mono text-apple-secondary">${r.share}% · ${min(r.seconds)}</span></div>
-        <div class="h-1.5 rounded-full bg-white/5 mt-1 overflow-hidden"><div class="h-full rounded-full" style="width:${r.share}%;background:${r.color}"></div></div>
-        <div class="text-[10.5px] text-apple-tertiary mt-1">${escapeHtml([
-          `${r.turns} ${t('turns')}`, r.wpm ? `${r.wpm} ${t('analyticsWpm')}` : '', `${t('analyticsLongest')} ${min(r.longest)}`,
-          r.questions ? `${r.questions} ${t('analyticsQuestions')}` : '', r.interruptions ? `${t('analyticsInterruptions')}: ${r.interruptions}` : '',
-        ].filter(Boolean).join(' · '))}</div></div>`).join('')}
-    </div>
-    ${a.longest_monologues.length ? `<div class="text-[11px] text-apple-secondary">${escapeHtml(t('analyticsMonologues'))}: ${a.longest_monologues.map(x =>
-      `<button data-click="seekPlayer" data-click-args='[${Number(x.start) || 0}]' class="text-apple-blue hover:underline font-mono">${formatTime(x.start)}</button> ${escapeHtml(x.name)} (${min(x.seconds)})`).join(' · ')}</div>` : ''}`;
-}
-
-function renderSpeakersPanel() {
-  renderTalkAnalytics();
-  const box = document.getElementById('speakers-list');
-  const speakers = (state.activeMeeting && state.activeMeeting.speakers) || {};
-  const keys = Object.keys(speakers);
-
-  if (keys.length === 0) {
-    box.innerHTML = `<div class="p-6 text-xs text-apple-tertiary text-center">${escapeHtml(t('emptySpeakers'))}</div>`;
-    return;
-  }
-
-  box.innerHTML = keys.map(spkId => {
-    const s = speakers[spkId];
-    const turnCount = (state.activeMeeting.segments || []).filter(seg => seg.speaker === spkId).length;
-
-    return `
-      <div class="px-4 py-3 flex items-center gap-3">
-        <input type="color" value="${escapeHtml(s.color || '#0A84FF')}"
-          title="${escapeHtml(t('tipSpeakerColor'))}"
-          data-change="updateSpeaker" data-change-args='[${jsArg(spkId)}, null, {"$": "value"}]'
-          class="w-4 h-4 rounded-full cursor-pointer bg-transparent border-0 shrink-0" />
-
-        <input type="text" value="${escapeHtml(s.name)}"
-          title="${escapeHtml(t('tipSpeakerNameInput'))}"
-          data-blur="updateSpeaker" data-blur-args='[${jsArg(spkId)}, {"$": "value"}, null]'
-          data-keydown="blurOnEnter" data-keydown-args='[{"$": "event"}, {"$": "el"}]'
-          class="flex-1 bg-transparent hover:bg-white/5 focus:bg-apple-card focus:outline-none px-2.5 py-1 rounded-md text-xs font-medium text-white" />
-
-        ${s.voice_profile ? `<span class="text-[10.5px] px-1.5 py-0.5 rounded bg-apple-blue/15 text-apple-blue shrink-0"
-          title="${escapeHtml(t('tipVoiceRecognised'))}">${escapeHtml(t('voiceRecognisedBadge'))}</span>` : ''}
-        ${s.voice_suggest ? `<span class="flex items-center gap-1 shrink-0 text-[11px] px-1.5 py-0.5 rounded bg-apple-amber/15 text-apple-amber"
-            title="${escapeHtml(t('tipVoiceSuggest'))}">${escapeHtml(t('voiceSuggest').replace('{name}', () => s.voice_suggest.name))}
-            <button data-spk="${escapeHtml(spkId)}" data-name="${escapeHtml(s.voice_suggest.name)}" data-click="updateSpeaker" data-click-args='[{"$": "data", "k": "spk"}, {"$": "data", "k": "name"}, null]'
-              class="px-1.5 rounded bg-apple-amber/25 hover:bg-apple-amber/40 text-white">${escapeHtml(t('voiceSuggestYes'))}</button>
-            <button data-spk="${escapeHtml(spkId)}" data-click="dismissVoiceSuggestion" data-click-args='[{"$": "data", "k": "spk"}]' class="px-1 hover:text-white">${escapeHtml(t('voiceSuggestNo'))}</button>
-          </span>` : ''}
-        <span class="text-[11px] text-apple-secondary font-mono">${turnCount} ${t('turns')}</span>
-
-        <button data-click="previewSpeakerVoice" data-click-args='[${Number(s.sample_start) || 0}, ${Number(s.sample_end) || 5}]'
-          title="${escapeHtml(t('tipPlayVoiceSample'))}"
-          class="ui-btn ui-btn-subtle text-apple-label">
-          ${SVG_ICONS.playMini}
-          <span>${t('listenBtn')}</span>
-        </button>
-      </div>
-    `;
-  }).join('');
-}
+// The speakers tab (cards, how the talk went): people.js, renderSpeakersPanel and renderTalkAnalytics
 
 async function dismissVoiceSuggestion(speakerId) {
   const m = state.activeMeeting;
@@ -1282,6 +1266,63 @@ function filterBySpeaker(spkId) {
   state.speakerFilter = (state.speakerFilter === spkId) ? null : spkId;
   renderSpeakerPillsBar();
   renderTranscript();
+}
+
+// Right click on a speaker circle: rename, hear the voice, show only their lines
+function openSpeakerChipMenu(e, spkId) {
+  e.preventDefault();
+  e.stopPropagation();
+  const s = ((state.activeMeeting && state.activeMeeting.speakers) || {})[spkId];
+  if (!s) return;
+  openTextMenuAt([
+    { label: t('spkRename'), run: () => renameSpeakerPrompt(spkId) },
+    { label: t('listenBtn'), run: () => previewSpeakerVoice(Number(s.sample_start) || 0, Number(s.sample_end) || 5) },
+    { label: state.speakerFilter === spkId ? t('spkShowAll') : t('spkShowOnly'), run: () => filterBySpeaker(state.speakerFilter === spkId ? null : spkId) },
+  ], e.clientX, e.clientY);
+}
+
+// The speaker's name in every line, the speakers tab and exports (one name per speaker of a recording)
+async function renameSpeakerPrompt(spkId) {
+  const m = state.activeMeeting;
+  const s = ((m && m.speakers) || {})[spkId];
+  if (!s) return;
+  // in place at the first shown line of this speaker, as from the line itself
+  const seg = (m.segments || []).find(x => x.speaker === spkId && document.getElementById(`seg-${x.id}`));
+  if (seg) {
+    document.getElementById(`seg-${seg.id}`).scrollIntoView({ block: 'center' });
+    startInlineSpeakerRename(seg.id);
+    return;
+  }
+  const name = await askText(t('spkRenameLabel').replace('{name}', () => s.name || spkId), s.name || '');
+  if (name === null || !name.trim() || name.trim() === s.name) return;
+  await renameSpeaker(spkId, name);
+}
+
+// One rename for every place a speaker is renamed: the new name in this recording, then — when the
+// old name still speaks in other recordings — «the same person?»: yes makes the old name a variant
+// of the new one in «Все люди» (one row, its recordings and tasks together); the toast undoes it here
+async function renameSpeaker(spkId, value) {
+  const m = state.activeMeeting;
+  const s = ((m && m.speakers) || {})[spkId];
+  const name = String(value || '').trim();
+  if (!s || !name || name === s.name) return;
+  const old = s.name || spkId;
+  await updateSpeaker(spkId, name, null);
+  const now = state.activeMeeting;  // updateSpeaker puts the saved recording in its place
+  if (!now || now.id !== m.id || ((now.speakers || {})[spkId] || {}).name !== name) return;
+  const elsewhere = await fetch('/api/people/directory').then(r => r.ok ? r.json() : []).catch(() => [])
+    .then(list => list.find(p => p.name.toLowerCase() === old.toLowerCase() && p.recordings > 0));
+  if (elsewhere && old.toLowerCase() !== name.toLowerCase()) {
+    const same = await confirmDialog(t('spSameTitle').replace('{old}', () => old),
+      t('spSameText').replaceAll('{old}', () => old).replace('{name}', () => name).replace('{n}', () => String(elsewhere.recordings)),
+      t('spSameYes'), false, { cancel: t('spSameNo') });
+    if (same) {
+      const res = await fetch('/api/people/merge', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ names: [name, old] }) });
+      if (!res.ok) showToast(errorText(await readJson(res), res));
+      if (typeof spCtx !== 'undefined') spCtx.data = null;
+    }
+  }
+  showToast(t('spRenamed').replace('{name}', () => name), { label: t('spUndo'), onClick: () => updateSpeaker(spkId, old, null) });
 }
 
 async function updateSpeaker(speakerId, newName, newColor) {
@@ -1370,6 +1411,7 @@ function renderTranscript() {
     chunkEls.forEach(el => tx.observer.observe(el));
   }
   rebuildPlaybackIndex();
+  rpOnTranscript();
 }
 
 function estimateChunkHeight(k) {
@@ -1413,11 +1455,13 @@ function transcriptSegmentHtml(seg, idx) {
   const speakers = tx.speakers;
   const query = tx.query;
   const speakerOptionsHtml = (currentSpk) => Object.keys(speakers).map(k =>
-    `<option value="${k}" ${k === currentSpk ? 'selected' : ''} class="bg-apple-card text-white">${escapeHtml(speakers[k].name)}</option>`
+    `<option value="${escapeHtml(k)}" ${k === currentSpk ? 'selected' : ''} class="bg-apple-card text-white">${escapeHtml(speakers[k].name)}</option>`
   ).join('');
 
   const spk = speakers[seg.speaker] || { name: seg.speaker || 'Speaker', color: '#0A84FF' };
   const words = seg.words || [];
+  const quiet = rpHiddenWords(seg);  // «Без запинок»: the words it hides, or the text it shows
+  const hidden = new Set((quiet && quiet.drop) || []);
 
   let bodyHtml = '';
   const tr = activeSegmentTranslation(seg);
@@ -1426,13 +1470,17 @@ function transcriptSegmentHtml(seg, idx) {
     bodyHtml = translationHtml(seg, tr, query, false);
   } else {
     if (words.length > 0 && !query) {
-      bodyHtml = words.map((w, wi) => (w.alts && w.alts.length)
+      // the first word shown after hidden ones starts the phrase: a capital letter, as the text has it
+      const lead = hidden.has(0) && /^\s*\p{Lu}/u.test(seg.text || '') ? words.findIndex((_, wi) => !hidden.has(wi)) : -1;
+      const cap = (wi, word) => (wi === lead ? String(word).replace(/^(\s*)(\p{Ll})/u, (_, sp, c) => sp + c.toUpperCase()) : word);
+      bodyHtml = words.map((w, wi) => hidden.has(wi) ? '' : (w.alts && w.alts.length)
         // A place the models heard differently (a merged transcript): a click shows the variants
-        ? `<span class="word-token word-disputed cursor-pointer" data-start="${Number(w.start) || 0}" data-end="${Number(w.end) || 0}" title="${escapeHtml(disputeTitle(w))}" data-click="openWordAlts" data-click-args='[{"$": "event"}, ${Number(seg.id)}, ${wi}]'>${escapeHtml(w.word)}</span>`
-        : `<span class="word-token cursor-pointer" data-start="${Number(w.start) || 0}" data-end="${Number(w.end) || 0}" data-click="seekPlayer" data-click-args='[${Number(w.start) || 0}]'>${escapeHtml(w.word)}</span>`
+        ? `<span class="word-token word-disputed cursor-pointer" data-start="${Number(w.start) || 0}" data-end="${Number(w.end) || 0}" title="${escapeHtml(disputeTitle(w))}" data-click="openWordAlts" data-click-args='[{"$": "event"}, ${Number(seg.id)}, ${wi}]'>${escapeHtml(cap(wi, w.word))}</span>`
+        : `<span class="word-token cursor-pointer" data-start="${Number(w.start) || 0}" data-end="${Number(w.end) || 0}" data-click="seekPlayer" data-click-args='[${Number(w.start) || 0}]'>${escapeHtml(cap(wi, w.word))}</span>`
       ).join('');
     } else {
-      bodyHtml = `<span class="cursor-pointer" data-click="seekPlayer" data-click-args='[${Number(seg.start) || 0}]'>${highlightSearch(escapeHtml(seg.text), query)}</span>`;
+      const shown = quiet && !(words.length && !query) && typeof quiet.text === 'string' ? quiet.text : seg.text;
+      bodyHtml = `<span class="cursor-pointer" data-click="seekPlayer" data-click-args='[${Number(seg.start) || 0}]'>${highlightSearch(escapeHtml(shown), query)}</span>`;
     }
     if (tr) bodyHtml += translationHtml(seg, tr, query, true);
   }
@@ -1440,7 +1488,7 @@ function transcriptSegmentHtml(seg, idx) {
   const mergeBtnHtml = idx > 0 ? `
     <button data-click="mergeSegmentWithPrevious" data-click-args='[${seg.id}]'
       title="${escapeHtml(t('tipMergeSegment'))}"
-      class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 inline-flex items-center gap-1 text-[11px] text-apple-tertiary hover:text-apple-blue transition">
+      class="seg-merge-btn opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 inline-flex items-center gap-1 text-[11.5px] text-apple-tertiary hover:text-apple-blue transition">
       ${SVG_ICONS.mergeUp}
       <span>${t('mergeBtn')}</span>
     </button>
@@ -1451,30 +1499,33 @@ function transcriptSegmentHtml(seg, idx) {
       class="segment-row group px-3.5 py-2.5 flex items-baseline gap-4 hover:bg-white/[0.02]">
       <button data-click="seekPlayer" data-click-args='[${Number(seg.start) || 0}]'
         title="${escapeHtml(t('tipSeekTimestamp'))}"
-        class="text-[11px] font-mono text-apple-tertiary hover:text-apple-blue shrink-0 w-12 text-right transition">
+        class="seg-time text-[11.5px] font-mono text-apple-tertiary hover:text-apple-blue shrink-0 w-12 text-right transition">
         ${formatTime(seg.start)}
       </button>
 
       <div class="flex-1 min-w-0">
         <div class="flex items-center justify-between mb-0.5">
+          <div class="flex items-center min-w-0">
           <select data-change="changeSegmentSpeaker" data-change-args='[${seg.id}, {"$": "value"}]'
             title="${escapeHtml(t('tipChangeSegSpeaker'))}"
             style="color: ${spk.color}"
-            class="bg-transparent text-xs font-semibold focus:outline-none cursor-pointer">
+            class="seg-spk bg-transparent text-xs font-semibold focus:outline-none cursor-pointer">
             ${speakerOptionsHtml(seg.speaker)}
           </select>
+          ${speakers[seg.speaker] ? `<button data-click="startInlineSpeakerRename" data-click-args='[${Number(seg.id)}]' class="seg-icon-btn"
+            title="${escapeHtml(t('spkRenameOption').replace('{name}', () => speakers[seg.speaker].name))}" aria-label="${escapeHtml(t('spkRenameOption').replace('{name}', () => speakers[seg.speaker].name))}">${SVG_ICONS.pencil}</button>` : ''}
           ${seg.lang && state.activeMeeting && seg.lang !== state.activeMeeting.language
-            ? `<span class="ml-2 mr-auto text-[10px] font-mono px-1 rounded bg-white/10 text-apple-secondary" title="${escapeHtml(t('tipSegLang'))}">${escapeHtml(String(seg.lang).toUpperCase())}</span>` : ''}
+            ? `<span class="ml-2 text-[11px] font-mono px-1 rounded bg-white/10 text-apple-secondary" title="${escapeHtml(t('tipSegLang'))}">${escapeHtml(String(seg.lang).toUpperCase())}</span>` : ''}
+          </div>
           <div class="flex items-center gap-2.5">
             ${mergeBtnHtml}
             <button data-click="openInlineSegmentEditor" data-click-args='[${seg.id}]'
-              title="${escapeHtml(t('tipEditSegment'))}"
-              class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 text-[11px] text-apple-tertiary hover:text-white transition">
-              ${t('editBtn')}
+              title="${escapeHtml(t('tipEditSegment'))}" class="seg-edit-btn">
+              ${SVG_ICONS.pencil}<span>${t('editBtn')}</span>
             </button>
           </div>
         </div>
-        <div id="seg-text-${seg.id}" class="text-[13.5px] text-apple-label/90 leading-relaxed">
+        <div id="seg-text-${seg.id}" class="text-[13.5px] text-apple-label/90 leading-relaxed" data-dblclick="openInlineSegmentEditor" data-dblclick-args='[${Number(seg.id)}]'>
           ${bodyHtml}
         </div>
       </div>
@@ -1537,7 +1588,7 @@ function translationWordsHtml(seg, text) {
 
 function translationHtml(seg, tr, query, secondary) {
   const staleBadge = tr.stale
-    ? ` <span class="text-[10px] text-apple-amber align-middle" title="${escapeHtml(t('tipTranslationStale'))}">${escapeHtml(t('translationStale'))}</span>`
+    ? ` <span class="text-[11px] text-apple-amber align-middle" title="${escapeHtml(t('tipTranslationStale'))}">${escapeHtml(t('translationStale'))}</span>`
     : '';
   // Without a search the words are separate spans, so playback can follow them (see updatePlaybackHighlight)
   const body = !tr.text
@@ -1648,56 +1699,77 @@ function highlightSearch(safeText, query) {
 }
 
 async function mergeSegmentWithPrevious(segId) {
-  if (!state.activeMeeting) return;
-  const res = await fetch(`/api/meetings/${state.activeMeeting.id}/segments/${segId}/merge`, {
+  const m = state.activeMeeting;
+  if (!m) return;
+  // the two lines as they were, for «Отменить»
+  const segs = m.segments || [];
+  const i = segs.findIndex(s => s.id === segId);
+  const pair = i > 0 ? [JSON.parse(JSON.stringify(segs[i - 1])), JSON.parse(JSON.stringify(segs[i]))] : null;
+  const res = await fetch(`/api/meetings/${m.id}/segments/${segId}/merge`, {
     method: 'POST'
   });
-  if (res.ok) {
-    state.activeMeeting = await readJson(res);
+  if (!res.ok) { showToast(errorText(await readJson(res), res)); return; }
+  state.activeMeeting = await readJson(res);
+  renderSpeakerPillsBar();
+  renderSpeakersPanel();
+  renderTranscript();
+  showToast(t('uiSegmentsMerged'), pair ? { label: t('spUndo'), onClick: () => unmergeSegments(m.id, pair) } : undefined);
+}
+
+async function unmergeSegments(meetingId, [first, second]) {
+  const res = await fetch(`/api/meetings/${meetingId}/segments/${first.id}/unmerge`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ first, second }),
+  });
+  const data = await readJson(res);
+  if (!res.ok) { showToast(errorText(data, res)); return; }
+  if (state.activeMeeting && state.activeMeeting.id === meetingId) {
+    state.activeMeeting = data;
     renderSpeakerPillsBar();
     renderSpeakersPanel();
     renderTranscript();
-    showToastt('uiSegmentsMerged');
   }
+}
+
+// The speaker's name of a line, changed in place (as on the Participants page): Enter saves for every
+// line of the recording, Esc puts the name back; the toast offers «Отменить»
+function startInlineSpeakerRename(segId) {
+  const m = state.activeMeeting;
+  const seg = m && (m.segments || []).find(s => s.id === segId);
+  const spk = seg && (m.speakers || {})[seg.speaker];
+  const row = document.getElementById(`seg-${segId}`);
+  const sel = row && row.querySelector('select');
+  if (!spk || !sel) return;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = spk.name || seg.speaker;
+  input.className = 'seg-name-input';
+  input.style.color = spk.color || '';
+  input.setAttribute('aria-label', t('spkRenameOption').replace('{name}', () => spk.name || seg.speaker));
+  sel.replaceWith(input);
+  row.querySelector('[data-click="startInlineSpeakerRename"]')?.classList.add('hidden');
+  input.focus();
+  input.select();
+  let done = false;
+  const finish = async (save) => {
+    if (done) return;
+    done = true;
+    const name = input.value.trim();
+    if (!save || !name || name === (spk.name || seg.speaker)) { renderTranscript(); return; }
+    await renameSpeaker(seg.speaker, name);
+  };
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
+  });
+  input.addEventListener('blur', () => finish(true));
 }
 
 // Filler words: one button that removes them or brings them back. After a cleanup (made
 // automatically after transcription, or by hand) it shows what was cut: "−12 words · −8 s"
-async function cleanActiveTranscriptFillers() {
-  const m = state.activeMeeting;
-  if (!m) return;
-  if (m.has_segments_backup) {
-    await restoreSegments(m.id);
-    renderFillerButton();
-    return;
-  }
-  const res = await fetch(`/api/meetings/${m.id}/clean-fillers`, { method: 'POST' });
-  if (!res.ok) return;
-  const data = await readJson(res);
-  state.activeMeeting = data.meeting;
-  renderTranscript();
-  if (!data.removed_count) showToast(t('fillersNone'));
-  renderFillerButton();
-}
-
-async function renderFillerButton() {
-  const m = state.activeMeeting;
-  const btn = document.getElementById('clean-fillers-btn');
-  if (!btn || !m) return;
-  const label = btn.querySelector('.tx-tool-label');
-  let stats = { cleaned: false };
-  if (m.has_segments_backup) stats = await fetch(`/api/meetings/${m.id}/fillers`).then(r => r.json()).catch(() => stats);
-  if (state.activeMeeting !== m) return;
-  if (stats.cleaned) {
-    const parts = [stats.words ? `−${stats.words} ${t('fillersWordsShort')}` : '', stats.seconds ? `−${Math.round(stats.seconds)} ${t('unitSec')}` : ''].filter(Boolean);
-    label.textContent = `${t('fillersRestore')}${parts.length ? ' · ' + parts.join(' · ') : ''}`;
-    btn.title = t('tipFillersRestore');
-    btn.classList.add('text-apple-blue');
-  } else {
-    label.textContent = t('cleanSpeechBtn');
-    btn.title = t('tipCleanSpeech');
-    btn.classList.remove('text-apple-blue');
-  }
+// «Без запинок» hides fillers only when the text is shown (redesign_player.js): the button follows
+// the open recording
+function renderFillerButton() {
+  rpRenderFillerButton();
 }
 
 function openInlineSegmentEditor(segId) {
@@ -1707,17 +1779,29 @@ function openInlineSegmentEditor(segId) {
   if (!seg) return;
 
   const textBox = document.getElementById(`seg-text-${segId}`);
+  if (!textBox || document.getElementById(`seg-edit-area-${segId}`)) return;
   textBox.innerHTML = `
-    <textarea id="seg-edit-area-${segId}" rows="2"
-      class="w-full bg-apple-sidebar border border-apple-blue rounded-lg p-2 text-xs text-white focus:outline-none mt-1">${escapeHtml(seg.text)}</textarea>
-    <div class="flex justify-end gap-2 mt-1.5">
+    <textarea id="seg-edit-area-${segId}" rows="2" data-keydown="segEditKey" data-keydown-args='[{"$": "event"}, ${Number(segId)}]'
+      class="w-full bg-apple-sidebar border border-apple-blue rounded-lg p-2 text-[13px] text-white focus:outline-none mt-1">${escapeHtml(seg.text)}</textarea>
+    <div class="flex items-center justify-end gap-2 mt-1.5">
+      <span class="mr-auto text-[11.5px] text-apple-secondary">${escapeHtml(t('segEditHint'))}</span>
       <button data-click="renderTranscript" title="${escapeHtml(t('tipCancelBtn'))}" class="ui-btn ui-btn-subtle">${t('cancel')}</button>
       <button data-click="saveSegmentEdit" data-click-args='[${segId}]' title="${escapeHtml(t('tipSaveSettingsBtn'))}" class="ui-btn ui-btn-primary">${t('save')}</button>
     </div>
   `;
+  const area = document.getElementById(`seg-edit-area-${segId}`);
+  area.focus();
+  area.setSelectionRange(area.value.length, area.value.length);
+}
+
+function segEditKey(e, segId) {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveSegmentEdit(segId); }
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); renderTranscript(); }
 }
 
 async function saveSegmentEdit(segId) {
+  const m = state.activeMeeting;
+  const oldText = ((m && m.segments) || []).find(s => s.id === segId)?.text || '';
   const newText = document.getElementById(`seg-edit-area-${segId}`).value.trim();
   const res = await fetch(`/api/meetings/${state.activeMeeting.id}/segments/${segId}`, {
     method: 'PATCH',
@@ -1728,6 +1812,16 @@ async function saveSegmentEdit(segId) {
   if (!res.ok) { showToast(errorText(data, res)); return; }  // the edit box stays open with the text
   state.activeMeeting = data;
   renderTranscript();
+  if (newText !== oldText.trim()) showToast(t('segSaved'), { label: t('spUndo'), onClick: () => restoreSegmentText(m.id, segId, oldText) });
+}
+
+async function restoreSegmentText(meetingId, segId, text) {
+  const res = await fetch(`/api/meetings/${meetingId}/segments/${segId}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }),
+  });
+  const data = await readJson(res);
+  if (!res.ok) { showToast(errorText(data, res)); return; }
+  if (state.activeMeeting && state.activeMeeting.id === meetingId) { state.activeMeeting = data; renderTranscript(); }
 }
 
 async function changeSegmentSpeaker(segId, newSpeaker) {

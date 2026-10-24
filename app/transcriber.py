@@ -421,7 +421,7 @@ def _cut_runner(meeting_id: int, kind: str, intervals: List[Tuple[float, float]]
     media = Path(meeting["media_path"])
     if not media.exists():
         raise RuntimeError(f"Исходный файл не найден: {media}")
-    label = {"highlights": "Нарезка ключевых моментов", "denoise": "Запись без шума"}.get(kind, "Запись без пауз и слов-паразитов")
+    label = {"highlights": "Нарезка ключевых моментов", "denoise": "Запись без шума"}.get(kind, "Запись без запинок и пауз")
     update_meeting_progress(meeting_id, progress=1, stage_text=f"{label}: подготовка...")
     out = run_cut(tool_cmd("ffmpeg"), media, intervals, has_video, Path(out_path),
                   lambda r: update_meeting_progress(meeting_id, progress=max(1, int(99 * r)), stage_text=f"{label}: {int(100 * r)}%"),
@@ -858,7 +858,6 @@ def _process_meeting_job(meeting_id: int) -> None:
         return
     from app.database import update_meeting_fields
 
-    update_meeting_fields(meeting_id, transcript_verified=0)  # a new transcript: nobody has checked it yet
     whisper_model = None
 
     settings = get_all_settings()
@@ -877,14 +876,17 @@ def _process_meeting_job(meeting_id: int) -> None:
 
     try:
         # 1. Extract 16kHz mono WAV + Studio Voice Denoising & Loudness Normalization
-        enhance_audio = settings.get("audio_enhance", "true").lower() == "true"
+        # What is done to the sound and the text: chosen for this recording, else the settings
+        processing = meeting.get("processing") or {}
+        denoise, loudnorm = processing.get("denoise", True), processing.get("loudnorm", True)
         update_meeting_progress(
             meeting_id,
             status="extracting_audio",
             progress=4,
             stage_text=(
-                "Студийная очистка голоса и подавление шума (FFmpeg Denoise + Loudnorm)..."
-                if enhance_audio
+                "Шумоподавление и нормализация громкости (FFmpeg)..." if denoise and loudnorm
+                else "Шумоподавление (FFmpeg)..." if denoise
+                else "Нормализация громкости (FFmpeg)..." if loudnorm
                 else "Извлечение аудиодорожки (FFmpeg 16 kHz mono)..."
             ),
             error_message="",
@@ -892,7 +894,7 @@ def _process_meeting_job(meeting_id: int) -> None:
 
         wav_path = AUDIO_DIR / f"meeting_{meeting_id}.wav"
         _check_cancel(meeting_id)  # cancelled while waiting: do not spend minutes extracting audio
-        extract_audio_16k_mono(media_path, wav_path, enhance_audio=enhance_audio)
+        extract_audio_16k_mono(media_path, wav_path, denoise=denoise, loudnorm=loudnorm)
         duration = get_media_duration(wav_path) or get_media_duration(media_path)
 
         update_meeting_progress(
@@ -914,7 +916,7 @@ def _process_meeting_job(meeting_id: int) -> None:
         # "mixed": people switch languages (Russian and English in one call): detected per window
         mixed = lang_setting == "mixed"
         language = None if lang_setting in ("auto", "mixed", "", None) else lang_setting
-        vad_enabled = settings.get("vad_filter", "true").lower() == "true"
+        vad_enabled = processing.get("vad", True)
 
         _check_cancel(meeting_id)
         from app import asr_onnx
@@ -964,7 +966,8 @@ def _process_meeting_job(meeting_id: int) -> None:
 
             try:
                 raw_segments = asr_onnx.transcribe(model_name, wav_path, total_dur, _onnx_progress_and_partial,
-                                                   lambda: _check_cancel(meeting_id), out=onnx_done, gpu=use_gpu)
+                                                   lambda: _check_cancel(meeting_id), out=onnx_done, gpu=use_gpu,
+                                                   leveling=processing.get("leveling", True))
             except JobCancelled:
                 raise
             except Exception:
@@ -976,7 +979,8 @@ def _process_meeting_job(meeting_id: int) -> None:
                 where["gpu"] = " на процессоре"
                 update_meeting_progress(meeting_id, stage_text="Видеокарта не справилась — распознавание на процессоре")
                 raw_segments = asr_onnx.transcribe(model_name, wav_path, total_dur, _onnx_progress_and_partial,
-                                                   lambda: _check_cancel(meeting_id), out=onnx_done)
+                                                   lambda: _check_cancel(meeting_id), out=onnx_done,
+                                                   leveling=processing.get("leveling", True))
             text_all = " ".join(s["text"] for s in raw_segments)
             detected_lang = language or asr_onnx.guess_language(text_all)
             whisper_model = None
@@ -1050,7 +1054,7 @@ def _process_meeting_job(meeting_id: int) -> None:
         _check_cancel(meeting_id)
 
         # 3. Speaker Diarization (token-free ECAPA-TDNN clustering)
-        diarization_enabled = settings.get("diarization_enabled", "true").lower() == "true"
+        diarization_enabled = processing.get("diarization", True)
         num_speakers_hint = int(meeting.get("num_speakers_hint") or settings.get("num_speakers") or 0)
 
         update_meeting_progress(
@@ -1087,12 +1091,8 @@ def _process_meeting_job(meeting_id: int) -> None:
         # The transcript of another model stays among the versions (the dropdown above the text)
         stash_transcript_for(meeting_id, model_name)
         save_segments_backup(meeting_id, [])  # a backup of the previous run does not belong to this one
-        if settings.get("clean_fillers", "true").lower() == "true":
-            cleaned_segments, removed = clean_filler_words_in_segments(merged_segments)
-            if removed:
-                # Keep the unmodified recognition result so the cleanup can be undone
-                save_segments_backup(meeting_id, merged_segments)
-            merged_segments = cleaned_segments
+        # Fillers stay in the text: «Без запинок» hides them only when the text is shown
+        # (text_utils.filler_view); the setting clean_fillers turns that view on by default
 
         if mixed:
             # Each phrase keeps its own language: shown in the transcript, used by translation
@@ -1116,7 +1116,7 @@ def _process_meeting_job(meeting_id: int) -> None:
         skipped = _cancel_wanted(meeting_id)
 
         # 4. Automatic AI Summary via local Ollama (if enabled and Ollama has a model)
-        auto_summary = settings.get("auto_summary", "true").lower() == "true" and not skipped
+        auto_summary = processing.get("summary", settings.get("auto_summary", "true").lower() == "true") and not skipped
         summaries = meeting.get("summaries") or {}
 
         if auto_summary and merged_segments:

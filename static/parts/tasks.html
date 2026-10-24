@@ -1,0 +1,91 @@
+<!-- Tasks from all recordings (package D, static/js/tasks.js): part of static/parts/workspace.html.
+     A list (by person, by due date, by recording) or a month calendar, with the Summary panel on the right. -->
+    <div id="tasks-view" class="hidden flex-1 min-h-0 tk-view">
+      <header class="tk-head">
+        <div class="tk-head-text">
+          <h1 class="tk-title" data-i18n="navTasks">Задачи</h1>
+          <p id="tk-sub" class="tk-sub"></p>
+        </div>
+        <div class="tk-head-actions">
+          <span id="tk-note" class="tk-note hidden" role="status"></span>
+          <button id="tk-exp-btn" class="tk-btn" data-click="openTasksExportMenu" data-click-args='[{"$": "event"}]'
+                  aria-haspopup="menu" data-i18n-title="tkExportTitle" title="Выгрузить задачи, которые видно сейчас">
+            <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M8 8l4-4 4 4"/><path d="M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/></svg>
+            <span data-i18n="tkExport">Экспорт</span>
+            <svg aria-hidden="true" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <button class="tk-btn tk-btn-primary" data-click="openNewTask" data-i18n="tkNew">+ Задача</button>
+        </div>
+      </header>
+
+      <div class="tk-bar">
+        <div id="tk-views" class="tk-seg" role="radiogroup" data-i18n-title="tkViewLabel" title="Вид"></div>
+        <div id="tk-groups" class="tk-seg" role="radiogroup" data-i18n-title="tkGroupLabel" title="Группировать"></div>
+        <span class="tk-vsep" aria-hidden="true"></span>
+        <div id="tk-filters" class="tk-filters"></div>
+        <span class="tk-vsep" aria-hidden="true"></span>
+        <div class="tk-ppl-wrap">
+          <button id="tk-ppl-btn" class="tk-chip" data-click="openTasksPeopleMenu" data-click-args='[{"$": "event"}]' aria-haspopup="true"></button>
+          <button id="tk-ppl-clear" class="tk-x hidden" data-click="clearTasksPeople" data-i18n-title="tkPeopleClear" title="Сбросить фильтр по людям">✕</button>
+        </div>
+        <span class="tk-grow"></span>
+        <label class="tk-search">
+          <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
+          <input id="tk-q" type="search" data-input="onTasksSearch" data-input-args='[{"$": "value"}]'
+                 data-i18n-placeholder="tkSearch" placeholder="Найти задачу" data-i18n-title="tkSearch" title="Найти задачу">
+        </label>
+      </div>
+
+      <div class="tk-body">
+        <div class="tk-main">
+          <div id="tk-list" class="tk-list"></div>
+          <div id="tk-cal" class="tk-cal hidden"></div>
+        </div>
+        <aside id="tk-rep" class="tk-rep" data-i18n-title="tkRepTitle" title="Сводка по задачам"></aside>
+      </div>
+    </div>
+
+    <!-- «+ Задача»: what, who (from the text too), when, from which recording -->
+    <div id="tk-new" class="tk-veil hidden" data-click="closeNewTaskOnBackdrop" data-click-args='[{"$": "event"}]'>
+      <div class="tk-dlg" role="dialog" aria-modal="true" aria-labelledby="tk-new-title" data-keydown="onNewTaskKey" data-keydown-args='[{"$": "event"}]'>
+        <div class="tk-dlg-head">
+          <h2 id="tk-new-title" data-i18n="tkNewTitle">Новая задача</h2>
+          <button class="tk-x" data-click="closeNewTask" data-i18n-title="tkClose" title="Закрыть">✕</button>
+        </div>
+        <textarea id="tk-n-text" rows="2" class="tk-n-text" data-input="onNewTaskText" data-input-args='[{"$": "value"}]'
+                  data-i18n-placeholder="tkNewPlaceholder" placeholder="Что нужно сделать?" data-i18n-title="tkNewWhat" title="Что сделать"></textarea>
+        <div id="tk-n-guess" class="tk-n-guess hidden"></div>
+        <div class="tk-n-sec">
+          <span class="tk-cap" data-i18n="tkWhoCap">КОМУ</span>
+          <div id="tk-n-who" class="tk-n-chips"></div>
+          <div class="tk-n-other">
+            <input id="tk-n-other" type="text" class="tk-input" data-input="onNewTaskOther" data-input-args='[{"$": "value"}]'
+                   data-i18n-placeholder="tkOtherPlaceholder" placeholder="Или впишите имя, отдел или компанию"
+                   data-i18n-title="tkOtherTitle" title="Другой исполнитель">
+            <div id="tk-n-kinds" class="tk-n-chips"></div>
+          </div>
+        </div>
+        <div class="tk-n-sec">
+          <span class="tk-cap" data-i18n="tkDueCap">СРОК</span>
+          <div class="tk-n-chips">
+            <div id="tk-n-due" class="tk-n-chips"></div>
+            <input id="tk-n-date" type="date" class="tk-input tk-date" data-change="onNewTaskDate" data-change-args='[{"$": "value"}]'
+                   data-i18n-title="tkOtherDate" title="Другая дата">
+          </div>
+        </div>
+        <div class="tk-n-sec">
+          <span class="tk-cap"><span data-i18n="tkRecCap">ИЗ КАКОЙ ЗАПИСИ</span> <span class="tk-cap-note" data-i18n="tkOptional">· необязательно</span></span>
+          <div class="tk-n-rec">
+            <select id="tk-n-rec" class="tk-input" data-change="onNewTaskRec" data-change-args='[{"$": "value"}]' data-i18n-title="tkRecTitle" title="Запись"></select>
+            <input id="tk-n-at" type="text" class="tk-input tk-at" data-input="onNewTaskAt" data-input-args='[{"$": "value"}]'
+                   placeholder="00:00" data-i18n-title="tkAtTitle" title="Место в записи (мм:сс)">
+          </div>
+        </div>
+        <div class="tk-dlg-foot">
+          <span class="tk-hint" data-i18n="tkNewHint">Ctrl+Enter — добавить</span>
+          <span class="tk-grow"></span>
+          <button class="tk-btn" data-click="closeNewTask" data-i18n="tkCancel">Отмена</button>
+          <button id="tk-n-add" class="tk-btn tk-btn-primary" data-click="addNewTask" data-i18n="tkAdd" disabled>Добавить</button>
+        </div>
+      </div>
+    </div>

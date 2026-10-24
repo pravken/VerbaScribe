@@ -22,10 +22,10 @@ if not exist "%DUBPY%" (
 
 where uv >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
-    uv pip install --python "%DUBPY%" -r requirements-dub.txt --extra-index-url %TORCH_INDEX% --index-strategy unsafe-best-match && uv pip install --python "%DUBPY%" --no-deps chatterbox-tts==0.1.7 && goto :done
+    uv pip install --python "%DUBPY%" --require-hashes -r requirements-dub.txt --extra-index-url %TORCH_INDEX% --index-strategy unsafe-best-match && uv pip install --python "%DUBPY%" --no-deps --require-hashes -r requirements-dub-chatterbox.txt && goto :done
 )
-"%DUBPY%" -m pip install -r requirements-dub.txt --extra-index-url %TORCH_INDEX%
-"%DUBPY%" -m pip install --no-deps chatterbox-tts==0.1.7
+"%DUBPY%" -m pip install --require-hashes -r requirements-dub.txt --extra-index-url %TORCH_INDEX%
+"%DUBPY%" -m pip install --no-deps --require-hashes -r requirements-dub-chatterbox.txt
 
 :done
 echo.

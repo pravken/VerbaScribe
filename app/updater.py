@@ -188,6 +188,13 @@ def _auto_download(st: Dict[str, Any]) -> None:
             pass
 
 
+def ready_to_install() -> bool:
+    """A downloaded update that automatic updates would install now."""
+    with _lock:
+        done = bool(_state["download"].get("done") and _state["download"].get("path"))
+    return done and auto_enabled() and not is_git_checkout()
+
+
 def install_on_exit() -> bool:
     """Called when the app closes: installs a downloaded update without starting the app again."""
     try:
@@ -305,8 +312,9 @@ def quit_soon(delay: float = 0.8) -> None:
     threading.Thread(target=_quit, daemon=True, name="update_quit").start()
 
 
-def launch_installer(restart: bool = True) -> None:
-    """Starts the updater for the downloaded archive; the caller then quits the app."""
+def launch_installer(restart: bool = True, minimized: bool = False) -> None:
+    """Starts the updater for the downloaded archive; the caller then quits the app. minimized: the
+    app comes back in the tray, without its window (installed in the background, run.py)."""
     from app.paths import APP_DIR, DATA_DIR
 
     with _lock:
@@ -314,7 +322,8 @@ def launch_installer(restart: bool = True) -> None:
     if not path or not Path(path).is_file():
         raise RuntimeError("Архив обновления не скачан")
     cmd = [sys.executable, "-m", "app.updater", "apply", "--zip", path, "--app-dir", str(APP_DIR),
-           "--data-dir", str(DATA_DIR), "--pid", str(os.getpid())] + ([] if restart else ["--no-restart"])
+           "--data-dir", str(DATA_DIR), "--pid", str(os.getpid())] + ([] if restart else ["--no-restart"]) \
+        + (["--restart-minimized"] if restart and minimized else [])
     flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
     subprocess.Popen(cmd, cwd=str(APP_DIR), creationflags=flags, close_fds=True)
 
@@ -322,6 +331,12 @@ def launch_installer(restart: bool = True) -> None:
 # ------------------------------------------------------------------ apply (separate process)
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else ""
+
+
+def _dub_requirements_hash(app_dir: Path) -> str:
+    """The same hash app/dub_setup.py records in its ready mark: both dubbing locks together."""
+    files = [app_dir / "requirements-dub.txt", app_dir / "requirements-dub-chatterbox.txt"]
+    return hashlib.sha256(b"".join(f.read_bytes() for f in files if f.is_file())).hexdigest()
 
 
 class UpdateFailed(RuntimeError):
@@ -430,11 +445,17 @@ def _freeze(py: Path, uv: Optional[str]) -> str:
         return ""
 
 
+# The PyTorch wheels of this version (requirements.txt names its index too) and of the versions before
+# it: putting back the packages of an older version needs that one's (torch 2.6 was cu124)
+TORCH_INDEX = "https://download.pytorch.org/whl/cu126"
+OLDER_TORCH_INDEXES = ["https://download.pytorch.org/whl/cu124"]
+
+
 def _reinstall(py: Path, uv: Optional[str], frozen_file: Path, log_dir: Path) -> None:
-    torch_index = "https://download.pytorch.org/whl/cu124"
+    indexes = [a for url in [TORCH_INDEX, *OLDER_TORCH_INDEXES] for a in ("--extra-index-url", url)]
     cmd = ([uv, "pip", "install", "--python", str(py), "-r", str(frozen_file),
-            "--index-strategy", "unsafe-best-match", "--extra-index-url", torch_index]
-           if uv else [str(py), "-m", "pip", "install", "-r", str(frozen_file), "--extra-index-url", torch_index])
+            "--index-strategy", "unsafe-best-match", *indexes]
+           if uv else [str(py), "-m", "pip", "install", "-r", str(frozen_file), *indexes])
     with open(log_dir / "update.log", "a", encoding="utf-8") as lf:
         subprocess.run(cmd, stdout=lf, stderr=subprocess.STDOUT, creationflags=_NO_WINDOW)
 
@@ -467,7 +488,7 @@ def apply_update(zip_path: Path, app_dir: Path, data_dir: Path, report: Callable
     log_dir.mkdir(parents=True, exist_ok=True)
     backup = data_dir / "updates" / "backup.zip"
     old_req = _sha256(app_dir / "requirements.txt")
-    old_dub_req = _sha256(app_dir / "requirements-dub.txt")
+    old_dub_req = _dub_requirements_hash(app_dir)
     replaced: List[str] = []
     restore_packages: Optional[Callable[[], None]] = None
 
@@ -513,18 +534,17 @@ def apply_update(zip_path: Path, app_dir: Path, data_dir: Path, report: Callable
                     frozen_file = data_dir / "updates" / "packages-before-update.txt"
                     frozen_file.write_text(frozen, encoding="utf-8")
                     restore_packages = (lambda: _reinstall(py, uv, frozen_file, log_dir))
-                torch_index = "https://download.pytorch.org/whl/cu124"
                 cmd = ([uv, "pip", "install", "--python", str(py), "-r", str(app_dir / "requirements.txt"),
-                        "--require-hashes", "--index-strategy", "unsafe-best-match", "--extra-index-url", torch_index]
+                        "--require-hashes", "--index-strategy", "unsafe-best-match", "--extra-index-url", TORCH_INDEX]
                        if uv else
                        [str(py), "-m", "pip", "install", "-r", str(app_dir / "requirements.txt"),
-                        "--require-hashes", "--extra-index-url", torch_index])
+                        "--require-hashes", "--extra-index-url", TORCH_INDEX])
                 with open(log_dir / "update.log", "a", encoding="utf-8") as lf:
                     res = subprocess.run(cmd, cwd=str(app_dir), stdout=lf, stderr=subprocess.STDOUT,
                                          creationflags=_NO_WINDOW)
                 if res.returncode != 0:
                     raise RuntimeError("Не удалось установить библиотеки (подробности в logs\\update.log)")
-            if _sha256(app_dir / "requirements-dub.txt") != old_dub_req:
+            if _dub_requirements_hash(app_dir) != old_dub_req:
                 _mark_dub_outdated(app_dir, old_dub_req)
         except Exception as e:
             report("Ошибка — восстановление прежней версии…")
@@ -562,10 +582,11 @@ def _main(argv: List[str]) -> int:
     ap.add_argument("--data-dir", required=True)
     ap.add_argument("--pid", type=int, default=0)
     ap.add_argument("--no-restart", action="store_true")  # installed on exit: the user closed the app
+    ap.add_argument("--restart-minimized", action="store_true")  # installed in the background: back in the tray
     a = ap.parse_args(argv)
     app_dir, data_dir = Path(a.app_dir), Path(a.data_dir)
 
-    ui = _ProgressWindow()
+    ui = _ProgressWindow(visible=not a.restart_minimized)  # in the background: no window, only a failure is said
     ok, message = True, ""
 
     def work() -> None:
@@ -583,7 +604,10 @@ def _main(argv: List[str]) -> int:
                 lf.write(traceback.format_exc())
         finally:
             launcher = app_dir / "VerbaScribe.exe"
-            if launcher.is_file() and not (a.no_restart and ok):
+            pythonw = app_dir / ".venv" / "Scripts" / "pythonw.exe"
+            if a.restart_minimized and pythonw.is_file():  # after a failure too: the previous version is back
+                subprocess.Popen([str(pythonw), str(app_dir / "run.py"), "--minimized"], cwd=str(app_dir))
+            elif launcher.is_file() and not (a.no_restart and ok):
                 subprocess.Popen([str(launcher)], cwd=str(app_dir))
             ui.close(None if ok else f"Обновление не установлено: {message}")
 
@@ -593,11 +617,15 @@ def _main(argv: List[str]) -> int:
 
 
 class _ProgressWindow:
-    """A small always-on-top window; falls back to nothing if tkinter is unavailable."""
+    """A small always-on-top window; falls back to nothing if tkinter is unavailable. visible=False
+    (installed in the background): no window, a failure is told in a message box."""
 
-    def __init__(self) -> None:
+    def __init__(self, visible: bool = True) -> None:
         self._tk = None
         self._msg = "Обновление VerbaScribe…"
+        self._visible = visible
+        if not visible:
+            return
         try:
             import tkinter as tk
 
@@ -623,6 +651,10 @@ class _ProgressWindow:
 
     def close(self, error: Optional[str]) -> None:
         if self._tk is None:
+            if error and not self._visible and sys.platform == "win32":
+                import ctypes
+
+                ctypes.windll.user32.MessageBoxW(None, error, "VerbaScribe", 0x10 | 0x40000)  # error, on top
             return
 
         def _close() -> None:

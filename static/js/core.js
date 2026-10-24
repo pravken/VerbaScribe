@@ -6,6 +6,26 @@ const DONE_STATUSES = ['completed', 'failed', 'cancelled', 'cleared'];
 // The page opened, so the locked page (app/main.py) may again try one fresh address next time
 try { sessionStorage.removeItem('vs_relocked'); } catch (e) { /* storage off */ }
 
+// --- Interface scale (Settings → Interface, ui_scale): CSS zoom on the page, 75 % by default ---
+// The zoom is on <html>, so the page lays itself out in its own pixels: a point of the window
+// (event.clientX/Y, getBoundingClientRect) is divided by the zoom before it becomes style.left/top.
+const UI_SCALES = ['75', '90', '100', '115'];
+function uiZoom() { return Number(document.documentElement.dataset.zoom) || 1; }
+function zpx(v) { return v / uiZoom(); }
+function viewW() { return window.innerWidth / uiZoom(); }
+function viewH() { return window.innerHeight / uiZoom(); }
+function applyUiScale(pct) {
+  const z = (UI_SCALES.includes(String(pct)) ? Number(pct) : 75) / 100;
+  const root = document.documentElement;
+  root.style.zoom = String(z);
+  root.dataset.zoom = String(z);
+  root.style.setProperty('--ui-zoom', String(z));  // body height: 100vh is not zoomed (styles.css)
+  try { localStorage.setItem('verbascribe_ui_scale', String(Math.round(z * 100))); } catch (e) {}
+  if (typeof scheduleFitTopbar === 'function') scheduleFitTopbar();
+}
+// Before anything is drawn: the last scale, so the window does not jump when the settings arrive
+(() => { let v = null; try { v = localStorage.getItem('verbascribe_ui_scale'); } catch (e) {} applyUiScale(v || '75'); })();
+
 // --- Events without inline handlers ---
 // The page's Content-Security-Policy runs no inline script, so markup does not say onclick="…".
 // An element names a page function in data-<event> and its arguments, as a JSON list, in
@@ -13,13 +33,26 @@ try { sessionStorage.removeItem('vs_relocked'); } catch (e) { /* storage off */ 
 // values go in with jsArg() (or Number()), as before. Placeholders in the list: {"$":"event"},
 // {"$":"el"} (the element), {"$":"value"}, {"$":"checked"}, {"$":"files"} and {"$":"data","k":"x"}
 // (el.dataset.x). A text from a recording can never become a placeholder: jsArg makes it a string.
-const PAGE_EVENTS = ['click', 'change', 'input', 'keydown', 'contextmenu', 'dragstart', 'dragover', 'dragleave', 'drop'];
+const PAGE_EVENTS = ['click', 'dblclick', 'change', 'input', 'keydown', 'contextmenu', 'dragstart', 'dragover', 'dragleave', 'drop'];
 const PAGE_OWN_EVENTS = { focusin: 'focus', focusout: 'blur', error: 'error' };  // of the element itself
+
+// The event as an inline handler saw it: its currentTarget is the element that has the handler
+// (the listener is on the document, so the real one is the document). Methods act on the real event.
+function pageEvent(ev, el) {
+  return new Proxy(ev, {
+    get(target, key) {
+      if (key === 'currentTarget') return el;
+      const value = Reflect.get(target, key, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+    set(target, key, value) { target[key] = value; return true; },
+  });
+}
 
 function pageArg(a, el, ev) {
   if (!a || typeof a !== 'object' || Array.isArray(a) || typeof a.$ !== 'string') return a;
   switch (a.$) {
-    case 'event': return ev;
+    case 'event': return pageEvent(ev, el);
     case 'el': return el;
     case 'value': return el.value;
     case 'checked': return el.checked;
@@ -115,6 +148,7 @@ let state = {
 const ICON_SPEAKERS = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/></svg>';
 
 const SVG_ICONS = {
+  pencil: `<svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></svg>`,
   download: `<svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>`,
   check: `<svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>`,
   trash: `<svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>`,
@@ -131,6 +165,48 @@ function t(key) {
 function tMaybe(key) {
   return (I18N[state.uiLang] && I18N[state.uiLang][key]) || I18N.ru[key] || undefined;
 }
+
+// --- Dates in the interface language: a native date field writes its date the way the browser's own
+// locale does (10/25/2026 in a Russian interface). Each one gets a button over it with the date as the
+// interface writes it (25.10.2026); the button opens the field's own calendar. ---
+function uiDateText(iso) {
+  if (!iso) return t('pickDate');
+  const d = new Date(`${iso}T00:00`);
+  return isNaN(d) ? iso : d.toLocaleDateString(state.uiLang === 'en' ? 'en-US' : 'ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+function syncDateField(input) {
+  const btn = input && input.parentElement && input.parentElement.querySelector(':scope > .vs-date-btn');
+  if (btn) btn.textContent = uiDateText(input.value);
+}
+function enhanceDateInput(input) {
+  if (input.dataset.vsDate) return;
+  input.dataset.vsDate = '1';
+  const wrap = document.createElement('span');
+  wrap.className = 'vs-date';
+  input.replaceWith(wrap);
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = `${input.className} vs-date-btn`;
+  btn.title = input.title;
+  btn.addEventListener('click', () => { try { input.showPicker(); } catch (e) { input.focus(); } });
+  input.tabIndex = -1;
+  input.setAttribute('aria-hidden', 'true');
+  input.addEventListener('change', () => syncDateField(input));
+  wrap.append(input, btn);
+  syncDateField(input);
+}
+function enhanceDateInputs(root) {
+  if (root.matches && root.matches('input[type="date"]')) enhanceDateInput(root);
+  if (root.querySelectorAll) root.querySelectorAll('input[type="date"]').forEach(enhanceDateInput);
+}
+(function watchDateInputs() {
+  const start = () => {
+    enhanceDateInputs(document.body);
+    new MutationObserver(list => list.forEach(m => m.addedNodes.forEach(n => { if (n.nodeType === 1) enhanceDateInputs(n); })))
+      .observe(document.body, { childList: true, subtree: true });
+  };
+  if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+})();
 
 function setUILanguage(lang) {
   state.uiLang = lang;
@@ -156,9 +232,13 @@ function setUILanguage(lang) {
     const key = el.getAttribute('data-i18n-title');
     el.setAttribute('title', t(key));
   });
+  document.querySelectorAll('[data-i18n-aria]').forEach(el => {
+    el.setAttribute('aria-label', t(el.getAttribute('data-i18n-aria')));
+  });
 
   renderMeetingsSidebar();
   loadDictionary();
+  if (typeof scheduleFitTopbar === 'function') scheduleFitTopbar();
   if (state.system) {
     const p = state.system.paths;
     const dirEl = document.getElementById('settings-data-dir');
@@ -176,7 +256,9 @@ function setUILanguage(lang) {
     renderSummaryPanel();
   }
   // Texts the scripts wrote (not data-i18n): drawn again in the new language
-  loadSystemInfo().catch(() => {});
+  document.querySelectorAll('.vs-date > input').forEach(syncDateField);
+  if (typeof renderStatusbar === 'function') renderStatusbar();
+  loadSystemInfo().then(() => { if (typeof renderStatusbar === 'function') renderStatusbar(); }).catch(() => {});
   if (typeof scheduleVramRefresh === 'function') scheduleVramRefresh(50);  // the memory badges
   if (typeof renderUpdateStatus === 'function') renderUpdateStatus();
   renderQueuePanel();
@@ -191,7 +273,8 @@ function setUILanguage(lang) {
 
 // A styled yes/no question (instead of the browser's confirm): resolves true or false.
 // Cancel is focused, so Enter does not confirm by accident.
-function confirmDialog(title, text, okLabel, danger = true) {
+// opts.cancel: the label of the other button; opts.single: one button only (a message, not a question)
+function confirmDialog(title, text, okLabel, danger = true, opts = {}) {
   return new Promise(resolve => {
     const wrap = document.createElement('div');
     wrap.className = 'fixed inset-0 modal-backdrop z-[70] flex items-center justify-center p-4';
@@ -201,7 +284,7 @@ function confirmDialog(title, text, okLabel, danger = true) {
       <div class="text-sm font-semibold text-white">${escapeHtml(title)}</div>
       <p class="text-xs text-apple-secondary leading-relaxed whitespace-pre-line break-words">${escapeHtml(text)}</p>
       <div class="flex justify-end gap-2">
-        <button data-a="no" class="ui-btn ui-btn-subtle">${escapeHtml(t('cancel'))}</button>
+        ${opts.single ? '' : `<button data-a="no" class="ui-btn ui-btn-subtle">${escapeHtml(opts.cancel || t('cancel'))}</button>`}
         <button data-a="yes" class="ui-btn ${danger ? 'bg-apple-red text-white hover:opacity-90' : 'ui-btn-primary'}">${escapeHtml(okLabel)}</button>
       </div></div>`;
     const done = v => { wrap.remove(); document.removeEventListener('keydown', onKey, true); resolve(v); };
@@ -213,7 +296,7 @@ function confirmDialog(title, text, okLabel, danger = true) {
     });
     document.addEventListener('keydown', onKey, true);
     document.body.appendChild(wrap);
-    wrap.querySelector('button[data-a="no"]').focus();
+    wrap.querySelector('button[data-a="no"]') ? wrap.querySelector('button[data-a="no"]').focus() : wrap.querySelector('button[data-a="yes"]').focus();
   });
 }
 
@@ -223,18 +306,19 @@ function askConfirm(text, danger = false) {
   return confirmDialog(t('confirmTitle'), text, t('ok'), danger);
 }
 
-function askText(label, value = '') {
+function askText(label, value = '', opts = {}) {
   return new Promise(resolve => {
     const wrap = document.createElement('div');
     wrap.className = 'fixed inset-0 modal-backdrop z-[70] flex items-center justify-center p-4';
     wrap.setAttribute('role', 'dialog');
     wrap.setAttribute('aria-modal', 'true');
     wrap.innerHTML = `<form class="w-full max-w-md bg-apple-card border apple-border rounded-2xl shadow-2xl p-5 space-y-4 modal-card">
+      ${opts.title ? `<div class="text-sm font-semibold text-white">${escapeHtml(opts.title)}</div>` : ''}
       <label class="block text-xs text-apple-label leading-relaxed whitespace-pre-line">${escapeHtml(label)}</label>
       <input type="text" class="w-full h-9 bg-apple-sidebar border apple-border rounded-lg px-3 text-sm text-white focus:outline-none focus:border-apple-blue" />
       <div class="flex justify-end gap-2">
         <button type="button" data-a="no" class="ui-btn ui-btn-subtle">${escapeHtml(t('cancel'))}</button>
-        <button type="submit" class="ui-btn ui-btn-primary">${escapeHtml(t('ok'))}</button>
+        <button type="submit" class="ui-btn ui-btn-primary">${escapeHtml(opts.ok || t('ok'))}</button>
       </div></form>`;
     const input = wrap.querySelector('input');
     input.value = value || '';
@@ -250,7 +334,53 @@ function askText(label, value = '') {
 }
 
 function showAlert(text) {
-  return confirmDialog(t('attentionTitle'), String(text), t('ok'), false).then(() => {});
+  return confirmDialog(t('attentionTitle'), String(text), t('gotIt'), false, { single: true }).then(() => {});
+}
+
+// The browser's reasons for not giving a microphone or the screen (DOMException names), in words a user
+// can act on; what: 'mic' or 'screen'. Our own messages (a plain Error) are shown as they are.
+function mediaErrorText(err, what = 'mic') {
+  const name = err && err.name;
+  if (what === 'screen') {
+    if (name === 'NotAllowedError' || name === 'SecurityError') return t('recErrScreenDenied');
+    if (name === 'NotFoundError' || name === 'NotReadableError' || name === 'AbortError' || name === 'NotSupportedError') return t('recErrScreenFailed');
+  }
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') return t('recErrMicMissing');
+  if (name === 'NotAllowedError' || name === 'SecurityError') return t('recErrMicDenied');
+  if (name === 'NotReadableError' || name === 'AbortError' || name === 'TrackStartError') return t('recErrMicBusy');
+  if (err && typeof DOMException !== 'undefined' && err instanceof DOMException) return t('recErrUnknown');
+  return serverText((err && err.message) || String(err || '')) || t('recErrUnknown');
+}
+
+// A recording that could not start: the reason and a way to the recording settings (one place for the
+// studio, the red button of the top bar and the microphone tests)
+async function showMediaError(err, what = 'mic') {
+  console.warn('media:', err);
+  const go = await confirmDialog(t('recErrTitle'), mediaErrorText(err, what), t('recErrOpenSettings'), false, { cancel: t('close') });
+  if (go) openModal('settings', 'record');
+}
+
+// A failure as a person reads it: {short} — the cause in words (a lost network, a link that cannot be
+// downloaded, or the server's message without the program's paths and exception names), {tech} — the
+// whole technical text for «Подробнее» ('' when there is nothing more than the short one)
+const NET_ERROR = /403 Forbidden|401 Unauthorized|407 Proxy|ConnectError|ConnectTimeout|ReadTimeout|timed? ?out|Name or service not known|getaddrinfo|Network is unreachable|Connection (refused|reset|aborted)|SSLError|CERTIFICATE_VERIFY|ProxyError|Max retries exceeded|Temporary failure in name resolution/i;
+const LINK_ERROR = /^ERROR: \[|Unable to download webpage|Unsupported URL|Video unavailable|Private video|This video is not available|HTTP Error \d{3}/im;
+function humanError(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return { short: '', tech: '' };
+  const first = text.split(/\n/)[0].trim();
+  let short;
+  const model = first.match(/^Не удалось скачать модель (.+?):/);
+  if (model && NET_ERROR.test(text)) short = t('errModelNoNet').replace('{model}', () => model[1]);
+  else if (LINK_ERROR.test(text)) short = t('errLinkDownload');
+  else if (NET_ERROR.test(text)) short = t('errNoNetwork');
+  else {
+    short = first.replace(/\s*(?:[A-Za-z]:\\|\/)[^\s]*(?:\.py|-packages)[^\s]*/g, '')
+      .replace(/^(?:[A-Za-z_][\w.]*(?:Error|Exception)):\s*/, '').replace(/[:;,]\s*$/, '').trim();
+    short = serverText(short);
+    if (short.length > 180) short = `${short.slice(0, 177)}…`;
+  }
+  return { short: short || t('errUnknown'), tech: text === short ? '' : text };
 }
 
 // A message of the server (always Russian) in the interface language (static/server_text.js)
@@ -264,6 +394,15 @@ function serverText(text) {
     if (m) return en.replace(/\{(\d)\}/g, (_, i) => serverText(m[Number(i) + 1]));
   }
   return text;
+}
+
+// A count with its word, shared by the pages: "1 файл / 2 файла / 5 файлов": the forms are given as "one|few|many" (English: "one|many|many")
+function plural(n, forms) {
+  const [one, few, many] = forms.split('|');
+  const m10 = n % 10, m100 = n % 100;
+  const form = state.uiLang === 'en' ? (n === 1 ? one : many)
+    : m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
+  return `${n} ${form}`;
 }
 
 // What a failed answer says, for a toast: FastAPI's "detail" is a text, or a list of invalid fields
@@ -339,18 +478,23 @@ function formatTime(sec) {
 
 // --- Modals & Menus ---
 // Settings are split into tabs; the last one is remembered
-const SETTINGS_TABS = ['general', 'record', 'recognition', 'analysis', 'export', 'integrations', 'dub', 'bench'];
-
+const SETTINGS_TABS = ['general', 'ui', 'record', 'recognition', 'models', 'analysis', 'calendar', 'hotkeys', 'dictionary',
+  'export', 'privacy', 'updates', 'dub', 'bench', 'about'];
+const SETTINGS_TAB_ALIASES = { integrations: 'export', interface: 'ui', ai: 'analysis', dict: 'dictionary', recog: 'recognition' };
 function selectSettingsTab(name) {
+  name = SETTINGS_TAB_ALIASES[name] || name;
   if (!SETTINGS_TABS.includes(name)) name = 'general';
   document.querySelectorAll('#modal-settings [data-stab]').forEach(el => el.classList.toggle('hidden', el.dataset.stab !== name));
   SETTINGS_TABS.forEach(k => {
     const btn = document.getElementById(`stab-${k}`);
-    if (btn) btn.className = `apple-segment-btn ${k === name ? 'apple-segment-active' : 'text-apple-secondary hover:text-white'}`;
+    if (!btn) return;
+    btn.classList.toggle('is-active', k === name);
+    if (k === name) btn.setAttribute('aria-current', 'page'); else btn.removeAttribute('aria-current');
   });
   document.getElementById('modal-settings').dataset.tab = name;
   try { localStorage.setItem('verbascribe_settings_tab', name); } catch (e) {}
   if (name === 'bench' && typeof loadBench === 'function') loadBench();
+  if (typeof onSettingsTabShown === 'function') onSettingsTabShown(name);  // static/js/settings.js
 }
 
 // Keyboard: an opened window takes the focus, Tab stays inside the top one, and the focus goes back
@@ -382,17 +526,26 @@ document.addEventListener('keydown', e => {
 });
 
 function openModal(name, tab) {
+  if (name === 'settings') mountSettingsPage();  // the settings are a page of the main area (shell.js)
   const modal = document.getElementById(`modal-${name}`);
   _modalReturnFocus[name] = document.activeElement;
-  modal.setAttribute('role', 'dialog');
-  modal.setAttribute('aria-modal', 'true');
+  if (name !== 'settings') {
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+  }
   modal.classList.remove('hidden');
-  setTimeout(() => { if (!modal.contains(document.activeElement)) (focusablesIn(modal)[0] || modal).focus(); }, 60);
-  if (name === 'import') renderModelHints();
+  if (name === 'settings' && state.appView !== 'settings') switchAppView('settings');
+  setTimeout(() => {
+    if (modal.contains(document.activeElement)) return;
+    const first = name === 'settings' ? document.getElementById('settings-search') : null;  // the search, not «Закрыть»
+    (first || focusablesIn(modal)[0] || modal).focus();
+  }, 60);
+  if (name === 'import') onImportDialogOpen();  // importdlg.js: the list, the processing from the settings
   if (name === 'settings') {
     let last = null;
     try { last = localStorage.getItem('verbascribe_settings_tab'); } catch (e) {}
     selectSettingsTab(tab || last || 'general');
+    syncSettingsFormFromState();  // settings.js: what the import window and the home page changed since
     loadVoiceProfiles();
     loadDubInfo();
     populateAudioInputDevices();
@@ -430,7 +583,7 @@ function renderVoiceProfiles(data) {
   const box = document.getElementById('voice-profiles-list');
   const list = (data && data.profiles) || [];
   if (!list.length) {
-    box.innerHTML = `<div class="text-[11px] text-apple-tertiary">${escapeHtml(t('voiceProfilesNone'))}</div>`;
+    box.innerHTML = `<div class="text-[11.5px] text-apple-tertiary">${escapeHtml(t('voiceProfilesNone'))}</div>`;
     return;
   }
   box.innerHTML = list.map(p => `
@@ -438,7 +591,7 @@ function renderVoiceProfiles(data) {
       <span class="text-apple-label truncate">${escapeHtml(p.name)}
         <span class="text-apple-tertiary">· ${escapeHtml(t('voiceProfileSamples').replace('{n}', () => p.samples))}</span></span>
       <button data-click="deleteVoiceProfile" data-click-args='[${Number(p.id)}, {"$": "data", "k": "name"}]' data-name="${escapeHtml(p.name)}"
-        class="ui-btn ui-btn-subtle h-6 px-2 text-[11px] text-apple-red" title="${escapeHtml(t('tipVoiceProfileDelete'))}">${escapeHtml(t('voiceProfileDelete'))}</button>
+        class="ui-btn ui-btn-subtle h-6 px-2 text-[11.5px] text-apple-red" title="${escapeHtml(t('tipVoiceProfileDelete'))}">${escapeHtml(t('voiceProfileDelete'))}</button>
     </div>`).join('');
 }
 
@@ -468,7 +621,10 @@ function closeModal(name) {
   if (name === 'settings') {
     stopSettingsAudioTest();
   }
+  if (name === 'about') endAboutEgg();  // the transcript of the room does not go on unseen
   document.getElementById(`modal-${name}`).classList.add('hidden');
+  // The settings page: back to the view it was opened from
+  if (name === 'settings' && state.appView === 'settings') switchAppView(state.prevView || 'home');
   const back = _modalReturnFocus[name];
   if (back && document.contains(back)) back.focus();
 }
@@ -478,6 +634,7 @@ function closeModalOnBackdrop(e, name) {
 
 function switchWorkspaceTab(tab) {
   state.activeWorkspaceTab = tab;
+  if (typeof renderTopbar === 'function') renderTopbar();
   if (tab === 'info') loadMeetingInfo();
   if (tab === 'summary') renderAnalysisEstimate();
   ['transcript', 'summary', 'speakers', 'info'].forEach(k => {

@@ -43,7 +43,7 @@ if %ERRORLEVEL% EQU 0 (
     )
     echo [2/2] Installing dependencies via uv...
     rem requirements.txt is an exact lock with SHA-256 hashes (see requirements.in)
-    uv pip install --python ".venv\Scripts\python.exe" -r requirements.txt --require-hashes --index-strategy unsafe-best-match --extra-index-url https://download.pytorch.org/whl/cu124
+    uv pip install --python ".venv\Scripts\python.exe" -r requirements.txt --require-hashes --index-strategy unsafe-best-match --extra-index-url https://download.pytorch.org/whl/cu126
     if errorlevel 1 goto :install_failed
     goto :done
 )
@@ -56,7 +56,7 @@ if defined SIGNED_PY (
 )
 echo [2/2] Installing dependencies via pip...
 ".venv\Scripts\python.exe" -m pip install --upgrade pip
-".venv\Scripts\python.exe" -m pip install -r requirements.txt --require-hashes --extra-index-url https://download.pytorch.org/whl/cu124
+".venv\Scripts\python.exe" -m pip install -r requirements.txt --require-hashes --extra-index-url https://download.pytorch.org/whl/cu126
 if errorlevel 1 goto :install_failed
 
 :done

@@ -23,7 +23,7 @@ class StaticUiTest(unittest.TestCase):
     def test_settings_tabs_are_balanced(self):
         """Each settings tab closes every <div> it opens (a lost tag shifts the next tab into it)."""
         for tab in re.finditer(r'<div data-stab="([a-z]+)"', HTML):
-            nxt = re.compile(r'<div data-stab="|<!-- Sticky Modal Footer -->').search(HTML, tab.end())
+            nxt = re.compile(r'<div data-stab="|<!-- Sticky Modal Footer -->|<!-- The end of the settings sections -->').search(HTML, tab.end())
             body = _no_comments(HTML[tab.start():nxt.start()])
             opened, closed = len(re.findall(r"<div\b", body)), len(re.findall(r"</div>", body))
             # the last tab is followed by the closing of the scroll area
@@ -35,8 +35,11 @@ class StaticUiTest(unittest.TestCase):
 
     def test_every_part_is_included(self):
         self.assertNotIn("@include", HTML)
+        # a part is included by the page or by another part (a view inside the workspace)
+        sources = [ROOT / "static" / "index.html", *(ROOT / "static" / "parts").glob("*.html")]
+        text = "\n".join(f.read_text(encoding="utf-8") for f in sources)
         for part in (ROOT / "static" / "parts").glob("*.html"):
-            self.assertIn(f"parts/{part.name}", (ROOT / "static" / "index.html").read_text(encoding="utf-8"), part.name)
+            self.assertIn(f"@include parts/{part.name}", text, part.name)
 
     def test_ids_are_unique(self):
         ids = re.findall(r'\bid="([^"$]+)"', _no_comments(HTML))
@@ -46,7 +49,7 @@ class StaticUiTest(unittest.TestCase):
     def test_every_text_has_both_languages(self):
         en_at = I18N.index("\n  en: {")
         ru, en = _keys(I18N[:en_at]), _keys(I18N[en_at:])
-        used = set(re.findall(r'data-i18n(?:-title|-placeholder)?="([A-Za-z0-9_]+)"', HTML))
+        used = set(re.findall(r'data-i18n(?:-title|-placeholder|-aria)?="([A-Za-z0-9_]+)"', HTML))
         self.assertEqual(sorted(used - ru), [], "no Russian text")
         self.assertEqual(sorted(used - en), [], "no English text")
         self.assertEqual(sorted(ru - en), [], "Russian text without English")
@@ -127,6 +130,17 @@ class StaticUiTest(unittest.TestCase):
         self.assertIn(f"DOMPurify {deps['dompurify']} ", head)
         head = (ROOT / "static" / "vendor" / "marked.min.js").read_text(encoding="utf-8")[:200]
         self.assertIn(f"marked v{deps['marked']} ", head)
+
+    def test_toasts_call_existing_functions(self):
+        """showToastt('…') (a typo of showToast(t('…'))) threw after the action it was to confirm."""
+        defined = set()
+        calls = {}
+        for f in sorted((ROOT / "static" / "js").glob("*.js")):
+            text = f.read_text(encoding="utf-8")
+            defined.update(re.findall(r"^(?:async )?function ([A-Za-z0-9_]+)\(", text, flags=re.M))
+            for m in re.finditer(r"\b(showToast[A-Za-z0-9_]*)\(", text):
+                calls.setdefault(m.group(1), f.name)
+        self.assertEqual(sorted(set(calls) - defined), [])
 
     def test_no_inline_handlers(self):
         """The page's CSP runs no inline script: events are data-<event> (see PAGE_EVENTS in core.js)."""

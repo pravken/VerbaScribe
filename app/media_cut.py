@@ -1,9 +1,9 @@
 """
 Cutting a recording into a shorter file (FFmpeg trim + concat):
 
-- "clean": only the speech, from the word timings of the current transcript. Words removed by the
-  filler cleanup are not there any more, so they are cut out too; a pause longer than MAX_GAP_SEC
-  is shortened to a short breath.
+- "clean": only the speech, from the word timings of the current transcript, without the fillers
+  that «Без запинок» hides (text_utils.filler_view: the text itself keeps them); a pause longer
+  than MAX_GAP_SEC is shortened to a short breath.
 - "highlights": the key moments of the recording (decisions, tasks, conclusions) picked by the
   analysis model from the transcript, each a few tens of seconds, joined into a short reel.
 
@@ -40,17 +40,45 @@ def merge(intervals: List[Interval], join_gap: float = 0.0) -> List[Interval]:
     return out
 
 
-def speech_intervals(segments: List[Dict[str, Any]], duration: float) -> List[Interval]:
-    """What to keep for the "clean" cut: words (or whole segments without word timings), padded,
-    with the gaps between them shorter than MAX_GAP_SEC kept as they are."""
+def _spoken(segments: List[Dict[str, Any]]) -> List[Interval]:
+    """The words of the transcript (whole segments without word timings), fillers left out."""
+    from app.text_utils import clean_filler_words_in_segments
+
+    cleaned, _ = clean_filler_words_in_segments(segments)
     raw: List[Interval] = []
-    for s in segments:
+    for s in cleaned:
         words = [w for w in s.get("words") or [] if str(w.get("word") or "").strip()]
         if words:
             raw.extend((float(w.get("start") or 0), float(w.get("end") or 0)) for w in words)
         elif (s.get("text") or "").strip():
             raw.append((float(s.get("start") or 0), float(s.get("end") or 0)))
-    spans = merge(raw, join_gap=MAX_GAP_SEC)
+    return raw
+
+
+PAUSE_MIN_SEC = 1.5   # a shorter silence is part of speech; the player skips the longer ones
+PAUSE_PAD_SEC = 0.25  # kept before and after the speech around a skipped pause
+
+
+def speech_pauses(segments: List[Dict[str, Any]], duration: float, min_gap: float = PAUSE_MIN_SEC) -> List[Interval]:
+    """The pauses without speech (fillers count as silence) that «Пропускать тишину» jumps over
+    while playing: from the end of the speech before (padded) to the start of the next one."""
+    spans = merge(_spoken(segments))
+    if not spans:  # no words but fillers (or no text): not one long pause over the whole recording
+        return []
+    out: List[Interval] = []
+    prev = 0.0
+    for a, b in spans + [(duration or (spans[-1][1] if spans else 0.0), duration or 0.0)]:
+        start, end = (prev + PAUSE_PAD_SEC if out or prev > 0 else 0.0), a - PAUSE_PAD_SEC
+        if end - start >= min_gap:
+            out.append((round(start, 2), round(end, 2)))
+        prev = max(prev, b)
+    return out
+
+
+def speech_intervals(segments: List[Dict[str, Any]], duration: float) -> List[Interval]:
+    """What to keep for the "clean" cut: words (or whole segments without word timings) without
+    the fillers, padded, with the gaps between them shorter than MAX_GAP_SEC kept as they are."""
+    spans = merge(_spoken(segments), join_gap=MAX_GAP_SEC)
     return merge([(max(0.0, a - PAD_SEC), min(duration or b + PAD_SEC, b + PAD_SEC)) for a, b in spans])
 
 
