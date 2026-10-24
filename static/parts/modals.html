@@ -296,3 +296,13 @@
     </div>
   </div>
 
+  <!-- «Сведения о записи» (Ctrl+I, ⋯ of the record, «Сведения…» in «Звук»): rpOpenInfo in redesign_player.js — here, not in the record view, so it opens over every view -->
+  <div id="modal-recinfo" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4" data-click="closeModalOnBackdrop" data-click-args='[{"$": "event"}, "recinfo"]'>
+    <div class="ri-dialog modal-card">
+      <div class="flex items-center gap-2.5">
+        <h2 class="ri-title" data-i18n="rdPlyrInfoTitle">Сведения о записи</h2>
+        <button data-click="closeModal" data-click-args='["recinfo"]' data-i18n-title="tipCloseModal" title="Закрыть окно" class="rp-icon-btn" data-i18n-aria="tipCloseModal" aria-label="Закрыть окно">✕</button>
+      </div>
+      <div id="recinfo-body" class="ri-scroll"></div>
+    </div>
+  </div>
