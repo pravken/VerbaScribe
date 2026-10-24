@@ -515,6 +515,8 @@ _EXPORT_FILE_TYPES = {
     "mp4": ("Видео MP4 (*.mp4)", "*.mp4", ".mp4"),
     "mkv": ("Видео MKV (*.mkv)", "*.mkv", ".mkv"),
     "m4a": ("Аудио M4A (*.m4a)", "*.m4a", ".m4a"),
+    "mp3": ("Аудио MP3 (*.mp3)", "*.mp3", ".mp3"),
+    "wav": ("Аудио WAV (*.wav)", "*.wav", ".wav"),
 }
 
 
