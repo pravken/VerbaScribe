@@ -133,7 +133,8 @@ function rpOnTranscript() {
   rp.segSig = sig;
   if (first) return;  // rpLoadMeeting asks for them when a recording is opened
   clearTimeout(rp.textTimer);
-  rp.textTimer = setTimeout(() => { if (state.activeMeeting === m) rpLoadTextViews(m); }, 600);
+  // by id: the list's poll may have put a new object of the same recording in its place meanwhile
+  rp.textTimer = setTimeout(() => { if (state.activeMeeting && state.activeMeeting.id === m.id) rpLoadTextViews(state.activeMeeting); }, 600);
 }
 
 // Speech loudness rises and falls gradually: smooth the noise so the wave has soft hills, not steps,
