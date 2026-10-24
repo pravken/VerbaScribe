@@ -36,6 +36,9 @@ class PausesTest(unittest.TestCase):
         self.assertAlmostEqual(pauses[-1][1], 19.75, places=2)
         # 0.4 s between segments 2 and 3 is part of speech
         self.assertFalse(any(a < 10.2 < b for a, b in pauses))
+        # only fillers in the text: nothing is skipped (not one pause over the whole recording)
+        only_fillers = [{"id": 1, "start": 20.0, "end": 21.0, "speaker": "S1", "text": "э-э", "words": [_w(" э-э", 20.0, 21.0)]}]
+        self.assertEqual(speech_pauses(only_fillers, 60.0), [])
 
     def test_no_speech_no_duration(self):
         self.assertEqual(speech_pauses([], 0.0), [])

@@ -63,6 +63,8 @@ def speech_pauses(segments: List[Dict[str, Any]], duration: float, min_gap: floa
     """The pauses without speech (fillers count as silence) that «Пропускать тишину» jumps over
     while playing: from the end of the speech before (padded) to the start of the next one."""
     spans = merge(_spoken(segments))
+    if not spans:  # no words but fillers (or no text): not one long pause over the whole recording
+        return []
     out: List[Interval] = []
     prev = 0.0
     for a, b in spans + [(duration or (spans[-1][1] if spans else 0.0), duration or 0.0)]:
