@@ -610,6 +610,11 @@ label.settings-toggle { display: flex; }
   .tx-toolbar .tx-tool-label, .tx-section-panel .tx-tool-label { display: none; }
 }
 
+/* The recording's name in full: the field is as wide as its text; when the header is short of room
+   the duration and model beside it give way first */
+#meeting-title-input { field-sizing: content; flex: 0 1 auto; max-width: 100%; }
+#meeting-meta-badge { flex-shrink: 4; }
+
 /* Recording header: in a narrow window the Translate and Export buttons keep only their icons
    (their titles explain them) and the view tabs shrink, so the recording title stays readable */
 #workspace-content { container-type: inline-size; }
@@ -793,19 +798,9 @@ label:has(> .vs-switch.vs-sm) { min-height: 24px; }
 .tb-tab.tb-active { background: rgba(255, 255, 255, 0.12); color: #FFFFFF; font-weight: 600; }
 .tb-group.hidden { display: none; }
 .tb-group {
-  display: inline-flex; align-items: center; gap: 2px; height: 42px; padding: 0 4px 0 14px; border-radius: 21px; min-width: 0;
+  display: inline-flex; align-items: center; gap: 2px; height: 42px; padding: 0 4px; border-radius: 21px; min-width: 0;
   background: rgba(255, 255, 255, 0.07); border: 1px solid rgba(255, 255, 255, 0.1);
 }
-.tb-recname {
-  max-width: 200px; margin: 0 4px 0 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-weight: 500; font-size: 13.5px; user-select: none;
-}
-/* The open recording's name: a click finds it in the library */
-.tb-recbtn { display: inline-flex; align-items: center; min-width: 0; height: 34px; margin-left: -8px; padding: 0 4px 0 8px; border-radius: 17px; color: #98989D; transition: background-color .15s ease, color .15s ease; }
-.tb-recbtn:hover { background: rgba(255, 255, 255, 0.07); color: #F5F5F7; }
-.lib-row-flash { animation: lib-row-flash 1.4s ease-out 1; }
-@keyframes lib-row-flash { 0%, 45% { box-shadow: inset 0 0 0 2px rgba(10, 132, 255, 0.9); } 100% { box-shadow: inset 0 0 0 2px rgba(10, 132, 255, 0); } }
-.tb-recname-sep { flex: none; width: 1px; height: 18px; margin: 0 6px 0 8px; background: rgba(255, 255, 255, 0.16); max-width: none; }
 .tb-subtab {
   display: inline-flex; align-items: center; gap: 5px; height: 34px; padding: 0 13px; border-radius: 17px;
   font-size: 14px; color: #AEAEB2; white-space: nowrap; transition: color 0.12s ease, background-color 0.12s ease;
@@ -836,8 +831,6 @@ label:has(> .vs-switch.vs-sm) { min-height: 24px; }
    their icons, and the Record button only its dot. Each button keeps its name in title/aria-label. */
 .tb-group, .tb-tab, .tb-rec { flex-shrink: 0; }
 .tb-ico { display: none; width: 16px; height: 16px; flex: none; }
-.topbar.tb-c1 .tb-recname { display: none; }
-.topbar.tb-c1 .tb-recbtn { padding-right: 8px; }
 .topbar.tb-c2 { gap: 3px; padding: 0 10px; }
 .topbar.tb-c2 .tb-tab { padding: 0 12px; }
 .topbar.tb-c2 .tb-subtab { padding: 0 9px; }
