@@ -84,6 +84,10 @@ class TasksTest(unittest.TestCase):
         self.assertEqual(by_what["проверит реквизиты"]["due_date"], "2026-10-30")
         self.assertIn(manual["id"], [x["id"] for x in again])
         self.assertEqual(len(again), 3)  # the edited one is not found twice
+        # «Очистить» the Promises section: only what the model found and nobody touched goes
+        self.assertEqual(commitments.delete_for_meeting(self.m["id"]), 1)
+        left = {x["what"] for x in commitments.for_meetings([self.m["id"]])}
+        self.assertEqual(left, {"проверит реквизиты", "Позвонить подрядчику"})
 
     def test_create_update_delete(self):
         from app import commitments

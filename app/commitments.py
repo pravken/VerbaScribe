@@ -554,11 +554,13 @@ def set_status(commitment_id: int, status: str) -> None:
 
 
 def delete_for_meeting(meeting_id: int) -> int:
-    """The promises found in one recording (the "Clear" button of its Promises tab)."""
+    """The promises the model found in one recording (the "Clear" button of its Promises section). The
+    tasks added or changed by hand stay, as on a new extraction (extract)."""
     _init()
     with _db_lock:
         conn = get_connection()
-        n = conn.execute("DELETE FROM commitments WHERE meeting_id = ?", (meeting_id,)).rowcount
+        n = conn.execute("DELETE FROM commitments WHERE meeting_id = ? AND source != 'manual' AND edited = 0",
+                         (meeting_id,)).rowcount
         conn.commit()
         conn.close()
     return n
