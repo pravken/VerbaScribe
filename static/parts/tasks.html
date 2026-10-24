@@ -47,7 +47,7 @@
 
     <!-- «+ Задача»: what, who (from the text too), when, from which recording -->
     <div id="tk-new" class="tk-veil hidden" data-click="closeNewTaskOnBackdrop" data-click-args='[{"$": "event"}]'>
-      <div class="tk-dlg" role="dialog" aria-labelledby="tk-new-title" data-keydown="onNewTaskKey" data-keydown-args='[{"$": "event"}]'>
+      <div class="tk-dlg" role="dialog" aria-modal="true" aria-labelledby="tk-new-title" data-keydown="onNewTaskKey" data-keydown-args='[{"$": "event"}]'>
         <div class="tk-dlg-head">
           <h2 id="tk-new-title" data-i18n="tkNewTitle">Новая задача</h2>
           <button class="tk-x" data-click="closeNewTask" data-i18n-title="tkClose" title="Закрыть">✕</button>
