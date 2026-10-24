@@ -911,20 +911,14 @@ function libComparator(prefs) {
   };
 }
 
-function openLibViewMenu(e) {
-  e.preventDefault();
-  e.stopPropagation();
-  const had = document.getElementById('lib-view-menu');
-  closeLibViewMenu();
-  if (had) return;
+// The ⇅ menu: a pick applies at once and the menu stays open (several settings at a time); it
+// closes on a click outside, on Esc or on ⇅ again
+function libViewMenuHtml() {
   const p = libPrefs();
   const item = (key, value, label, on, extra = '') => `<button class="macos-menu-item" data-k="${key}" data-v="${value}">`
     + `<span>${escapeHtml(label)}</span><span class="text-[11px] opacity-70">${on ? (extra || '✓') : ''}</span></button>`;
   const arrow = p.dir === 'asc' ? '↑' : '↓';
-  const menu = document.createElement('div');
-  menu.id = 'lib-view-menu';
-  menu.className = 'fixed w-56 macos-menu z-50';
-  menu.innerHTML = `<div class="px-2.5 py-1 text-[11px] text-apple-tertiary">${escapeHtml(t('libView'))}</div>`
+  return `<div class="px-2.5 py-1 text-[11px] text-apple-tertiary">${escapeHtml(t('libView'))}</div>`
     + LIB_VIEWS.map(v => item('view', v, t(`libView_${v}`), p.view === v)).join('')
     + `<div class="my-1 h-px bg-white/10"></div><div class="px-2.5 py-1 text-[11px] text-apple-tertiary">${escapeHtml(t('libSort'))}</div>`
     + LIB_SORTS.map(v => item('sort', v, t(`libSort_${v}`), p.sort === v, arrow)).join('')
@@ -936,12 +930,24 @@ function openLibViewMenu(e) {
     + `<div class="my-1 h-px bg-white/10"></div><div class="px-2.5 py-1 text-[11px] text-apple-tertiary">${escapeHtml(t('libBadges'))}</div>`
     + item('badges', 'smart', t('libBadges_smart'), p.badges === 'smart')
     + item('badges', 'all', t('libBadges_all'), p.badges === 'all');
+}
+
+function openLibViewMenu(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const had = document.getElementById('lib-view-menu');
+  closeLibViewMenu();
+  if (had) return;
+  const menu = document.createElement('div');
+  menu.id = 'lib-view-menu';
+  menu.className = 'fixed w-56 macos-menu z-50';
+  menu.innerHTML = libViewMenuHtml();
   menu.addEventListener('click', (ev) => {
     const b = ev.target.closest('button[data-k]');
     ev.stopPropagation();
     if (!b) return;
     setLibPref(b.dataset.k, b.dataset.v);
-    closeLibViewMenu();
+    menu.innerHTML = libViewMenuHtml();  // the ticks and the sort arrow move, the menu stays
   });
   document.body.appendChild(menu);
   const r = e.currentTarget.getBoundingClientRect();
@@ -954,6 +960,7 @@ function closeLibViewMenu() {
 }
 
 document.addEventListener('click', closeLibViewMenu);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLibViewMenu(); });
 
 function formatSize(bytes) {
   return bytes ? formatBytes(bytes) : '';
