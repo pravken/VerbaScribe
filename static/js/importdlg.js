@@ -212,15 +212,6 @@ function impSummaryText(items) {
   return plural(items.length, t('impItemsForms')) + len;
 }
 
-// "1 файл / 2 файла / 5 файлов": the forms are given as "one|few|many" (English: "one|many|many")
-function plural(n, forms) {
-  const [one, few, many] = forms.split('|');
-  const m10 = n % 10, m100 = n % 100;
-  const form = state.uiLang === 'en' ? (n === 1 ? one : many)
-    : m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
-  return `${n} ${form}`;
-}
-
 // --- How long it will take: by the length of the files and the speed of this computer ---
 function impEta(items, whisper) {
   const sec = items.reduce((a, x) => a + (x.dur || 0), 0);
