@@ -1295,9 +1295,34 @@ async function renameSpeakerPrompt(spkId) {
   }
   const name = await askText(t('spkRenameLabel').replace('{name}', () => s.name || spkId), s.name || '');
   if (name === null || !name.trim() || name.trim() === s.name) return;
+  await renameSpeaker(spkId, name);
+}
+
+// One rename for every place a speaker is renamed: the new name in this recording, then — when the
+// old name still speaks in other recordings — «the same person?»: yes makes the old name a variant
+// of the new one in «Все люди» (one row, its recordings and tasks together); the toast undoes it here
+async function renameSpeaker(spkId, value) {
+  const m = state.activeMeeting;
+  const s = ((m && m.speakers) || {})[spkId];
+  const name = String(value || '').trim();
+  if (!s || !name || name === s.name) return;
   const old = s.name || spkId;
   await updateSpeaker(spkId, name, null);
-  showToast(t('spRenamed').replace('{name}', () => name.trim()), { label: t('spUndo'), onClick: () => updateSpeaker(spkId, old, null) });
+  const now = state.activeMeeting;  // updateSpeaker puts the saved recording in its place
+  if (!now || now.id !== m.id || ((now.speakers || {})[spkId] || {}).name !== name) return;
+  const elsewhere = await fetch('/api/people/directory').then(r => r.ok ? r.json() : []).catch(() => [])
+    .then(list => list.find(p => p.name.toLowerCase() === old.toLowerCase() && p.recordings > 0));
+  if (elsewhere && old.toLowerCase() !== name.toLowerCase()) {
+    const same = await confirmDialog(t('spSameTitle').replace('{old}', () => old),
+      t('spSameText').replaceAll('{old}', () => old).replace('{name}', () => name).replace('{n}', () => String(elsewhere.recordings)),
+      t('spSameYes'), false, { cancel: t('spSameNo') });
+    if (same) {
+      const res = await fetch('/api/people/merge', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ names: [name, old] }) });
+      if (!res.ok) showToast(errorText(await readJson(res), res));
+      if (typeof spCtx !== 'undefined') spCtx.data = null;
+    }
+  }
+  showToast(t('spRenamed').replace('{name}', () => name), { label: t('spUndo'), onClick: () => updateSpeaker(spkId, old, null) });
 }
 
 async function updateSpeaker(speakerId, newName, newColor) {
@@ -1729,10 +1754,8 @@ function startInlineSpeakerRename(segId) {
     if (done) return;
     done = true;
     const name = input.value.trim();
-    const old = spk.name || seg.speaker;
-    if (!save || !name || name === old) { renderTranscript(); return; }
-    await updateSpeaker(seg.speaker, name, null);
-    showToast(t('spRenamed').replace('{name}', () => name), { label: t('spUndo'), onClick: () => updateSpeaker(seg.speaker, old, null) });
+    if (!save || !name || name === (spk.name || seg.speaker)) { renderTranscript(); return; }
+    await renameSpeaker(seg.speaker, name);
   };
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); finish(true); }

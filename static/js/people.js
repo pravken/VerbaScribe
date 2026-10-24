@@ -159,10 +159,8 @@ async function spRename(id, value) {
   const s = m && (m.speakers || {})[id];
   const name = String(value || '').trim();
   if (!s || !name || name === s.name) return;
-  const old = s.name;
-  await updateSpeaker(id, name, null);
+  await renameSpeaker(id, name);
   loadSpeakersContext(true).then(() => { if (state.activeMeeting === m) renderSpeakersPanel({ background: true }); });
-  showToast(t('spRenamed').replace('{name}', () => name), { label: t('spUndo'), onClick: () => updateSpeaker(id, old, null) });
 }
 
 function spFocusName(id) {
