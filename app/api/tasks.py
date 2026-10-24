@@ -10,9 +10,14 @@ from pydantic import BaseModel
 
 from app.database import get_meeting, is_local_only
 
-from app.main import _pick_export_path  # noqa: E402 - shared helpers live in app/main.py
-
 router = APIRouter()
+
+
+def _pick_export_path(*args: Any, **kwargs: Any) -> Any:
+    # imported when called: app.main imports this router, so a module-level import would be circular
+    from app.main import _pick_export_path as pick
+
+    return pick(*args, **kwargs)
 
 
 def _meetings(tasks: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:

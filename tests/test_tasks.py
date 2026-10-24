@@ -175,5 +175,22 @@ class TasksApiTest(unittest.TestCase):
             self.assertEqual(c.post("/api/tasks/export", json={"fmt": "pdf", "ids": [1]}).status_code, 400)
 
 
+
+class RouterImportTest(unittest.TestCase):
+    @unittest.skipIf(main is None, "app dependencies are not installed")
+    def test_the_tasks_router_imports_before_the_app(self):
+        """app.main imports the routers: the router must not need app.main at import time."""
+        import os
+        import subprocess
+        import sys
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parent.parent
+        env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(root / "tests" / "stubs"), str(root)])}
+        r = subprocess.run([sys.executable, "-c", "import tests, app.api.tasks"], cwd=root, env=env,
+                           capture_output=True, text=True, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stderr[-800:])
+
+
 if __name__ == "__main__":
     unittest.main()
