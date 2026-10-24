@@ -334,4 +334,5 @@ const SERVER_PATTERNS_EN = [
   ["{} готова: {}", "{0} ready: {1}"],
   ["Ошибка: {}", "Error: {0}"],
   ["На раскладке клавиатуры это сочетание (AltGr) печатает «{}» — выберите другое", "On a keyboard layout this combination (AltGr) types “{0}”: choose another one"],
+  ["Микрофон: {}", "Microphone: {0}"],
 ];
