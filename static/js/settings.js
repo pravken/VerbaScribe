@@ -606,8 +606,9 @@ function openLlmPicker() {
     const cur = list.find(m => m.id === pick);
     const cards = list.map(m => {
       const on = m.id === pick;
-      const tag = m.id === rec ? `<span class="llm-tag llm-tag-rec">${escapeHtml(t('frRecommended'))}</span>`
-        : llmFits(m, hw) ? '' : `<span class="llm-tag llm-tag-heavy">${escapeHtml(t('llmPickHeavy'))}</span>`;
+      const need = hw.cuda_available ? t('llmPickNeedVram').replace('{n}', () => m.min_vram_gb) : t('llmPickNeedGpu');
+      const tag = m.id === rec ? `<span class="llm-tag llm-tag-rec">${escapeHtml(t('llmPickRecommended'))}</span>`
+        : llmFits(m, hw) ? '' : `<span class="llm-tag llm-tag-heavy">${escapeHtml(need)}</span>`;
       return `<button data-pick="${escapeHtml(m.id)}" role="radio" aria-checked="${on}" class="llm-card${on ? ' llm-card-on' : ''}">
         <span class="flex items-center flex-wrap gap-1.5">
           <span class="text-xs font-semibold text-white">${escapeHtml(formatModelName(m.id))}</span>
