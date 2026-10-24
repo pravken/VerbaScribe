@@ -1,6 +1,7 @@
 """
 The page: static/index.html with its parts (static/parts/*.html) put in place of their
-<!-- @include parts/<name>.html --> lines. Kept in memory until one of the files changes.
+<!-- @include parts/<name>.html --> lines. A part may include parts of its own (a view of the main
+area in the workspace, for one): up to MAX_DEPTH levels. Kept in memory until one of the files changes.
 """
 
 import re
@@ -9,6 +10,7 @@ from pathlib import Path
 from typing import Dict, Tuple
 
 INCLUDE_RE = re.compile(r"^[ \t]*<!-- @include (parts/[a-z0-9_-]+\.html) -->[ \t]*$", re.M)
+MAX_DEPTH = 3
 _cache: Dict[str, Tuple[tuple, str]] = {}
 _lock = threading.Lock()
 
@@ -32,7 +34,11 @@ def render(static_dir: Path) -> str:
             raise FileNotFoundError(f"static/{m.group(1)} is missing")
         return path.read_text(encoding="utf-8").rstrip("\n")
 
-    html = INCLUDE_RE.sub(part, (static_dir / "index.html").read_text(encoding="utf-8"))
+    html = (static_dir / "index.html").read_text(encoding="utf-8")
+    for _ in range(MAX_DEPTH):
+        if not INCLUDE_RE.search(html):
+            break
+        html = INCLUDE_RE.sub(part, html)
     with _lock:
         _cache[key] = (stamp, html)
     return html

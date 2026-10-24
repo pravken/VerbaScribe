@@ -35,8 +35,11 @@ class StaticUiTest(unittest.TestCase):
 
     def test_every_part_is_included(self):
         self.assertNotIn("@include", HTML)
+        # a part is included by the page or by another part (a view inside the workspace)
+        sources = [ROOT / "static" / "index.html", *(ROOT / "static" / "parts").glob("*.html")]
+        text = "\n".join(f.read_text(encoding="utf-8") for f in sources)
         for part in (ROOT / "static" / "parts").glob("*.html"):
-            self.assertIn(f"parts/{part.name}", (ROOT / "static" / "index.html").read_text(encoding="utf-8"), part.name)
+            self.assertIn(f"@include parts/{part.name}", text, part.name)
 
     def test_ids_are_unique(self):
         ids = re.findall(r'\bid="([^"$]+)"', _no_comments(HTML))
@@ -46,7 +49,7 @@ class StaticUiTest(unittest.TestCase):
     def test_every_text_has_both_languages(self):
         en_at = I18N.index("\n  en: {")
         ru, en = _keys(I18N[:en_at]), _keys(I18N[en_at:])
-        used = set(re.findall(r'data-i18n(?:-title|-placeholder)?="([A-Za-z0-9_]+)"', HTML))
+        used = set(re.findall(r'data-i18n(?:-title|-placeholder|-aria)?="([A-Za-z0-9_]+)"', HTML))
         self.assertEqual(sorted(used - ru), [], "no Russian text")
         self.assertEqual(sorted(used - en), [], "no English text")
         self.assertEqual(sorted(ru - en), [], "Russian text without English")
