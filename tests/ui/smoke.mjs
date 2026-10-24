@@ -11,7 +11,8 @@ const page = await browser.newPage({ viewport: { width: 1300, height: 860 } });
 page.setDefaultTimeout(8000);
 const errors = [];
 page.on('pageerror', e => errors.push(`page: ${e.message}`));
-page.on('console', m => { if (m.type() === 'error' && !/favicon/.test(m.text())) errors.push(`console: ${m.text()}`); });
+// the missing favicon is reported by newer browsers without its address in the text
+page.on('console', m => { if (m.type() === 'error' && !/favicon/.test(`${m.text()} ${m.location()?.url || ''}`)) errors.push(`console: ${m.text()}`); });
 page.on('response', r => { if (r.status() >= 500) errors.push(`HTTP ${r.status()} ${r.url().replace(/\?.*/, '')}`); });
 
 const step = async (name, fn) => {
