@@ -706,7 +706,7 @@ function recordingBadgesHtml(m) {
     if (kind === 'transcript' && !busy && !fail) return '';
     if (!done && !busy && !fail) return '';
     const extra = !busy && !fail ? 'rec-badge-extra' : '';
-    const tip = busy ? `${label} · ${t('recBadgeRunning')}` : fail ? `${t('statusFailed')}${m.error_message ? ': ' + serverText(m.error_message) : ''}` : label;
+    const tip = busy ? `${label} · ${t('recBadgeRunning')}` : fail ? `${t('statusFailed')}${m.error_message ? ': ' + humanError(m.error_message).short : ''}` : label;
     return `<span class="rec-badge ${extra} ${busy ? 'rec-badge-busy' : ''} ${fail ? 'rec-badge-fail' : ''}" title="${escapeHtml(tip)}">`
       + `<svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">${REC_BADGE_ICONS[kind]}</svg>`
       + (text ? `<span>${escapeHtml(text)}</span>` : '') + '</span>';

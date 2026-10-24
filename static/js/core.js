@@ -314,6 +314,29 @@ async function showMediaError(err, what = 'mic') {
   if (go) openModal('settings', 'record');
 }
 
+// A failure as a person reads it: {short} — the cause in words (a lost network, a link that cannot be
+// downloaded, or the server's message without the program's paths and exception names), {tech} — the
+// whole technical text for «Подробнее» ('' when there is nothing more than the short one)
+const NET_ERROR = /403 Forbidden|401 Unauthorized|407 Proxy|ConnectError|ConnectTimeout|ReadTimeout|timed? ?out|Name or service not known|getaddrinfo|Network is unreachable|Connection (refused|reset|aborted)|SSLError|CERTIFICATE_VERIFY|ProxyError|Max retries exceeded|Temporary failure in name resolution/i;
+const LINK_ERROR = /^ERROR: \[|Unable to download webpage|Unsupported URL|Video unavailable|Private video|This video is not available|HTTP Error \d{3}/im;
+function humanError(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return { short: '', tech: '' };
+  const first = text.split(/\n/)[0].trim();
+  let short;
+  const model = first.match(/^Не удалось скачать модель (.+?):/);
+  if (model && NET_ERROR.test(text)) short = t('errModelNoNet').replace('{model}', () => model[1]);
+  else if (LINK_ERROR.test(text)) short = t('errLinkDownload');
+  else if (NET_ERROR.test(text)) short = t('errNoNetwork');
+  else {
+    short = first.replace(/\s*(?:[A-Za-z]:\\|\/)[^\s]*(?:\.py|-packages)[^\s]*/g, '')
+      .replace(/^(?:[A-Za-z_][\w.]*(?:Error|Exception)):\s*/, '').replace(/[:;,]\s*$/, '').trim();
+    short = serverText(short);
+    if (short.length > 180) short = `${short.slice(0, 177)}…`;
+  }
+  return { short: short || t('errUnknown'), tech: text === short ? '' : text };
+}
+
 // A message of the server (always Russian) in the interface language (static/server_text.js)
 function serverText(text) {
   if (state.uiLang !== 'en' || typeof text !== 'string' || !text || typeof SERVER_TEXT_EN === 'undefined') return text;

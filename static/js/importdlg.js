@@ -305,7 +305,7 @@ async function impSubmit() {
       imp.items = imp.items.filter(i => i !== x);  // what went is not sent twice if a later one fails
     }
   } catch (err) {
-    showToast(String(err.message || err));
+    showToast(humanError(err.message || err).short);
     renderImport();
     if (created.length) await loadMeetingsList();
     return;
