@@ -281,51 +281,71 @@
     </div>
 
     <!-- =====================================================================
-         QUESTIONS: answers from one recording, a folder or the whole library (ask* in static/js/library.js)
+         ASSISTANT: conversations about the recordings (static/js/assistant.js). Answers come from one
+         recording, a folder, a period or chosen recordings, with numbered links to the moments
          ===================================================================== -->
     <div id="ask-view" class="hidden flex-1 min-h-0 flex bg-apple-bg">
-<div id="side-ask" class="w-[270px] shrink-0 border-r apple-border bg-apple-sidebar/60 overflow-y-auto px-4 py-4 space-y-3">
-      <div>
-        <button data-click="openOpenCommitments" class="w-full mb-3 ui-btn ui-btn-subtle justify-start text-[11.5px]" data-i18n-title="tipOpenCommitments"
-          title="Все обещания из встреч, которые ещё не отмечены выполненными">
-          <span>✓</span><span data-i18n="openCommitmentsBtn">Открытые обещания</span>
+      <!-- The conversations: new, search, grouped by day -->
+      <aside class="as-side">
+        <button data-click="assistantNewChat" class="as-new" data-i18n-title="rdSasTipNewChat" title="Начать новый разговор">
+          <svg aria-hidden="true" class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          <span class="flex-1 text-left" data-i18n="rdSasNewChat">Новый разговор</span>
         </button>
-        <div class="text-[11px] font-semibold text-apple-secondary uppercase tracking-wider mb-1.5" data-i18n="askScopeTitle">Где искать ответ</div>
-        <div id="ask-scope-list" class="space-y-0.5"></div>
-      </div>
-      <div id="ask-series-block" class="hidden">
-        <div class="text-[11px] font-semibold text-apple-secondary uppercase tracking-wider mb-1.5" data-i18n="seriesTitle">Серии встреч</div>
-        <div id="ask-series-list" class="space-y-0.5"></div>
-      </div>
-      <div id="ask-people-block" class="hidden">
-        <div class="text-[11px] font-semibold text-apple-secondary uppercase tracking-wider mb-1.5" data-i18n="peopleTitle">Люди</div>
-        <div id="ask-people-list" class="space-y-0.5"></div>
-      </div>
-      <p class="text-[11px] text-apple-tertiary leading-snug" data-i18n="libraryAskIntro">Ответ формирует локальная модель Ollama только по найденным фрагментам расшифровок. Ссылки в ответе открывают запись на нужном моменте.</p>
-    </div>
+        <label class="as-search">
+          <svg aria-hidden="true" class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
+          <input id="as-chat-search" type="search" data-input="assistantFilterChats" data-input-args='[{"$": "value"}]'
+            data-i18n-placeholder="rdSasFindChat" placeholder="Найти разговор" data-i18n-title="rdSasFindChat" title="Найти разговор"
+            class="flex-1 min-w-0 bg-transparent border-0 text-xs text-white placeholder-apple-tertiary focus:outline-none" />
+        </label>
+        <div id="as-chat-list" class="as-chat-list"></div>
+        <div class="as-side-tools">
+          <button data-click="openOpenCommitments" class="as-tool" data-i18n-title="tipOpenCommitments" title="Все обещания из встреч, которые ещё не отмечены выполненными">
+            <span aria-hidden="true">✓</span><span data-i18n="openCommitmentsBtn">Открытые обещания</span>
+          </button>
+          <button data-click="openDigestMenu" data-click-args='[{"$": "event"}]' id="library-digest-btn" class="as-tool" data-i18n-title="tipDigest"
+            title="Сводка по нескольким записям: главное, решения, задачи и открытые вопросы со ссылками на записи">
+            <span aria-hidden="true">≡</span><span data-i18n="digestBtn">Дайджест</span><span class="opacity-60 ml-auto">▾</span>
+          </button>
+        </div>
+        <p class="as-side-foot" data-i18n="rdSasChatsLocal">Разговоры хранятся только на этом компьютере</p>
+      </aside>
 
-    <div class="flex-1 min-w-0 min-h-0 flex flex-col">
-      <div class="px-6 pt-5 pb-4 border-b apple-border shrink-0 bg-apple-sidebar/60">
-        <div class="max-w-3xl mx-auto space-y-2.5">
-          <div class="flex items-baseline justify-between gap-3">
-            <h2 class="text-[15px] font-semibold text-white" data-i18n="askTitle">Вопросы по записям</h2>
-            <span id="ask-scope-label" class="text-[11px] text-apple-secondary truncate"></span>
+      <div class="flex-1 min-w-0 min-h-0 flex flex-col">
+        <!-- The conversation: its title, the model that answers, where the text goes -->
+        <header class="as-head">
+          <button id="as-title" class="as-title" data-click="assistantRename" data-i18n-title="rdSasTipRename" title="Переименовать разговор"></button>
+          <input id="as-title-input" type="text" class="hidden as-title-input" data-blur="assistantRenameDone" data-keydown="assistantTitleKey" data-keydown-args='[{"$": "event"}]'
+            data-i18n-title="rdSasChatTitle" title="Название разговора" />
+          <button id="as-model-btn" data-click="assistantModelMenu" data-click-args='[{"$": "event"}]' class="as-chip" data-i18n-title="rdSasTipModel" title="Модель, которая отвечает">
+            <svg class="tb-ai" aria-hidden="true" viewBox="0 0 24 24"><path d="M10 2l1.9 5.6 5.6 1.9-5.6 1.9L10 17l-1.9-5.6-5.6-1.9 5.6-1.9z"/><path d="M18.5 13l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/></svg>
+            <span id="as-model-label"></span><span class="opacity-60">▾</span>
+          </button>
+          <span id="as-privacy" class="as-pill"></span>
+          <span class="flex-1"></span>
+          <button data-click="assistantChatMenu" data-click-args='[{"$": "event"}]' class="as-icon-btn" data-i18n-title="rdSasChatActions" title="Действия с разговором">
+            <svg aria-hidden="true" class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+          </button>
+        </header>
+
+        <div id="library-answer" class="flex-1 min-h-0 overflow-y-auto px-6 py-5">
+          <div id="ask-thread" class="as-thread"></div>
+        </div>
+
+        <!-- The question: where to look, the text, send / stop -->
+        <div class="as-compose">
+          <div class="as-box">
+            <button id="as-scope-btn" data-click="assistantScopeMenu" data-click-args='[{"$": "event"}]' class="as-scope" data-i18n-title="rdSasTipScope" title="Где искать ответ">
+              <svg aria-hidden="true" class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 7.5a2 2 0 0 1 2-2H10l2 2h6.5a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></svg>
+              <span id="ask-scope-label" class="truncate"></span><span class="opacity-60">▾</span>
+            </button>
+            <input id="library-question" type="text" data-keydown="assistantKey" data-keydown-args='[{"$": "event"}]' data-input="assistantSyncSend"
+              data-i18n-placeholder="rdSasAskPh" placeholder="Спросите о своих записях" data-i18n-title="rdSasAskPh" title="Спросите о своих записях"
+              class="flex-1 min-w-0 h-10 bg-transparent border-0 px-2 text-[14px] text-white placeholder-apple-tertiary focus:outline-none" />
+            <button data-click="assistantSendOrStop" id="library-ask-btn" class="as-send"></button>
           </div>
-          <div class="flex items-center gap-2">
-            <input id="library-question" type="text" data-keydown="onEnter" data-keydown-args='[{"$": "event"}, "askLibrary"]'
-              data-i18n-placeholder="libraryAskPlaceholder" placeholder="Например: что решили по срокам релиза?"
-              class="flex-1 h-9 bg-apple-card border apple-border rounded-lg px-3.5 text-[13px] text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
-            <button data-click="askLibrary" id="library-ask-btn" class="ui-btn ui-btn-primary h-9 px-4"><svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg><span data-i18n="askBtn">Спросить</span></button>
-            <button data-click="openDigestMenu" data-click-args='[{"$": "event"}]' id="library-digest-btn" data-i18n-title="tipDigest"
-              title="Сводка по нескольким записям: главное, решения, задачи и открытые вопросы со ссылками на записи"
-              class="ui-btn ui-btn-subtle h-9 px-3.5"><span data-i18n="digestBtn">Дайджест</span><span class="opacity-60 ml-1">▾</span></button>
-          </div>
+          <div id="as-compose-hint" class="as-hint"></div>
         </div>
       </div>
-      <div id="library-answer" class="flex-1 min-h-0 overflow-y-auto px-6 py-5">
-        <div id="ask-thread" class="max-w-3xl mx-auto space-y-4"></div>
-      </div>
-    </div>
     </div>
 
     <div id="library-view" class="flex-1 min-h-0 flex flex-col overflow-hidden">
