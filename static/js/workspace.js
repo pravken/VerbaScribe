@@ -203,7 +203,7 @@ async function mergeTranscripts() {
 const TX_PROC_GROUPS = [
   ['txProcSound', [['denoise', 'txProcDenoise', 'txProcDenoiseHint'], ['loudnorm', 'txProcLoudnorm', 'txProcLoudnormHint'],
     ['leveling', 'txProcLeveling', 'txProcLevelingHint'], ['vad', 'txProcVad', 'txProcVadHint']]],
-  ['txProcText', [['diarization', 'txProcDiarization', 'txProcDiarizationHint'], ['clean_fillers', 'txProcFillers', 'txProcFillersHint']]],
+  ['txProcText', [['diarization', 'txProcDiarization', 'txProcDiarizationHint']]],
 ];
 
 function txProc(m) {
@@ -1433,6 +1433,7 @@ function renderTranscript() {
     chunkEls.forEach(el => tx.observer.observe(el));
   }
   rebuildPlaybackIndex();
+  rpOnTranscript();
 }
 
 function estimateChunkHeight(k) {
@@ -1482,6 +1483,8 @@ function transcriptSegmentHtml(seg, idx) {
 
   const spk = speakers[seg.speaker] || { name: seg.speaker || 'Speaker', color: '#0A84FF' };
   const words = seg.words || [];
+  const quiet = rpHiddenWords(seg);  // «Без запинок»: the words it hides, or the text it shows
+  const hidden = new Set((quiet && quiet.drop) || []);
 
   let bodyHtml = '';
   const tr = activeSegmentTranslation(seg);
@@ -1490,13 +1493,17 @@ function transcriptSegmentHtml(seg, idx) {
     bodyHtml = translationHtml(seg, tr, query, false);
   } else {
     if (words.length > 0 && !query) {
-      bodyHtml = words.map((w, wi) => (w.alts && w.alts.length)
+      // the first word shown after hidden ones starts the phrase: a capital letter, as the text has it
+      const lead = hidden.has(0) && /^\s*\p{Lu}/u.test(seg.text || '') ? words.findIndex((_, wi) => !hidden.has(wi)) : -1;
+      const cap = (wi, word) => (wi === lead ? String(word).replace(/^(\s*)(\p{Ll})/u, (_, sp, c) => sp + c.toUpperCase()) : word);
+      bodyHtml = words.map((w, wi) => hidden.has(wi) ? '' : (w.alts && w.alts.length)
         // A place the models heard differently (a merged transcript): a click shows the variants
-        ? `<span class="word-token word-disputed cursor-pointer" data-start="${Number(w.start) || 0}" data-end="${Number(w.end) || 0}" title="${escapeHtml(disputeTitle(w))}" data-click="openWordAlts" data-click-args='[{"$": "event"}, ${Number(seg.id)}, ${wi}]'>${escapeHtml(w.word)}</span>`
-        : `<span class="word-token cursor-pointer" data-start="${Number(w.start) || 0}" data-end="${Number(w.end) || 0}" data-click="seekPlayer" data-click-args='[${Number(w.start) || 0}]'>${escapeHtml(w.word)}</span>`
+        ? `<span class="word-token word-disputed cursor-pointer" data-start="${Number(w.start) || 0}" data-end="${Number(w.end) || 0}" title="${escapeHtml(disputeTitle(w))}" data-click="openWordAlts" data-click-args='[{"$": "event"}, ${Number(seg.id)}, ${wi}]'>${escapeHtml(cap(wi, w.word))}</span>`
+        : `<span class="word-token cursor-pointer" data-start="${Number(w.start) || 0}" data-end="${Number(w.end) || 0}" data-click="seekPlayer" data-click-args='[${Number(w.start) || 0}]'>${escapeHtml(cap(wi, w.word))}</span>`
       ).join('');
     } else {
-      bodyHtml = `<span class="cursor-pointer" data-click="seekPlayer" data-click-args='[${Number(seg.start) || 0}]'>${highlightSearch(escapeHtml(seg.text), query)}</span>`;
+      const shown = quiet && !(words.length && !query) && typeof quiet.text === 'string' ? quiet.text : seg.text;
+      bodyHtml = `<span class="cursor-pointer" data-click="seekPlayer" data-click-args='[${Number(seg.start) || 0}]'>${highlightSearch(escapeHtml(shown), query)}</span>`;
     }
     if (tr) bodyHtml += translationHtml(seg, tr, query, true);
   }
@@ -1727,41 +1734,10 @@ async function mergeSegmentWithPrevious(segId) {
 
 // Filler words: one button that removes them or brings them back. After a cleanup (made
 // automatically after transcription, or by hand) it shows what was cut: "−12 words · −8 s"
-async function cleanActiveTranscriptFillers() {
-  const m = state.activeMeeting;
-  if (!m) return;
-  if (m.has_segments_backup) {
-    await restoreSegments(m.id);
-    renderFillerButton();
-    return;
-  }
-  const res = await fetch(`/api/meetings/${m.id}/clean-fillers`, { method: 'POST' });
-  if (!res.ok) return;
-  const data = await readJson(res);
-  state.activeMeeting = data.meeting;
-  renderTranscript();
-  if (!data.removed_count) showToast(t('fillersNone'));
-  renderFillerButton();
-}
-
-async function renderFillerButton() {
-  const m = state.activeMeeting;
-  const btn = document.getElementById('clean-fillers-btn');
-  if (!btn || !m) return;
-  const label = btn.querySelector('.tx-tool-label');
-  let stats = { cleaned: false };
-  if (m.has_segments_backup) stats = await fetch(`/api/meetings/${m.id}/fillers`).then(r => r.json()).catch(() => stats);
-  if (state.activeMeeting !== m) return;
-  if (stats.cleaned) {
-    const parts = [stats.words ? `−${stats.words} ${t('fillersWordsShort')}` : '', stats.seconds ? `−${Math.round(stats.seconds)} ${t('unitSec')}` : ''].filter(Boolean);
-    label.textContent = `${t('fillersRestore')}${parts.length ? ' · ' + parts.join(' · ') : ''}`;
-    btn.title = t('tipFillersRestore');
-    btn.classList.add('text-apple-blue');
-  } else {
-    label.textContent = t('cleanSpeechBtn');
-    btn.title = t('tipCleanSpeech');
-    btn.classList.remove('text-apple-blue');
-  }
+// «Без запинок» hides fillers only when the text is shown (redesign_player.js): the button follows
+// the open recording
+function renderFillerButton() {
+  rpRenderFillerButton();
 }
 
 function openInlineSegmentEditor(segId) {

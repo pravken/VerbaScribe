@@ -97,48 +97,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const player = document.getElementById('media-player');
   player.volume = state.volume / 100;
-  const waveCanvas = document.getElementById('player-waveform-canvas');
-
-  if (waveCanvas) {
-    let isDraggingWave = false;
-    const seekFromMouse = (evt) => {
-      const rect = waveCanvas.getBoundingClientRect();
-      const ratio = Math.max(0, Math.min(1, (evt.clientX - rect.left) / Math.max(1, rect.width)));
-      const dur = player.duration || (state.activeMeeting && state.activeMeeting.duration) || 0;
-      if (dur > 0) {
-        player.currentTime = ratio * dur;
-        renderPlayerWaveform(ratio);
-      }
-    };
-
-    waveCanvas.addEventListener('mousedown', (evt) => {
-      isDraggingWave = true;
-      seekFromMouse(evt);
-    });
-    window.addEventListener('mousemove', (evt) => {
-      if (isDraggingWave) {
-        seekFromMouse(evt);
-      }
-    });
-    window.addEventListener('mouseup', () => {
-      isDraggingWave = false;
-    });
-    waveCanvas.addEventListener('mousemove', (evt) => {
-      const rect = waveCanvas.getBoundingClientRect();
-      state.playerHoverRatio = Math.max(0, Math.min(1, (evt.clientX - rect.left) / Math.max(1, rect.width)));
-      const dur = player.duration || (state.activeMeeting && state.activeMeeting.duration) || 1;
-      renderPlayerWaveform((player.currentTime || 0) / dur);
-    });
-    waveCanvas.addEventListener('mouseleave', () => {
-      state.playerHoverRatio = -1;
-      const dur = player.duration || (state.activeMeeting && state.activeMeeting.duration) || 1;
-      renderPlayerWaveform((player.currentTime || 0) / dur);
-    });
-    window.addEventListener('resize', () => {
-      const dur = player.duration || (state.activeMeeting && state.activeMeeting.duration) || 1;
-      renderPlayerWaveform((player.currentTime || 0) / dur);
-    });
-  }
+  // The wave (click, drag, double click, keys) is wired by redesign_player.js (rpInitWave)
 
   player.addEventListener('play', () => {
     document.getElementById('icon-play').classList.add('hidden');
@@ -168,7 +127,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const cur = player.currentTime;
     const dur = player.duration || (state.activeMeeting && state.activeMeeting.duration) || 1;
     document.getElementById('player-current-time').textContent = formatTime(cur);
-    renderPlayerWaveform(Math.min(1, cur / dur));
+    if (player.paused) renderPlayerWaveform(Math.min(1, cur / dur));  // while playing: redesign_player.js rpTick
 
     const follow = state.autoScroll !== false && !player.paused;
     const activeSegEl = updatePlaybackHighlight(cur, follow);
@@ -274,6 +233,7 @@ function renderChaptersBar() {
     `<button data-click="seekPlayer" data-click-args='[${Number(c.start) || 0}]' id="chapter-${i}" title="${escapeHtml(c.desc || c.title)}"
       class="chapter-chip"><span class="font-mono text-apple-tertiary">${formatTime(c.start)}</span> ${escapeHtml(c.title)}</button>`
   ).join('');
+  rpRenderChapters();  // the same chapters as bands of the player's wave
 }
 
 function updateActiveChapter(cur) {
@@ -764,7 +724,12 @@ function copySummaryText() {
 async function exportMeetingById(id, fmt, opts) {
   fmt = (fmt || 'txt').toLowerCase();
   try {
-    const qs = opts && opts.lang ? `?${new URLSearchParams({ lang: opts.lang, variant: opts.variant || 'translated' })}` : '';
+    const params = new URLSearchParams(opts && opts.lang ? { lang: opts.lang, variant: opts.variant || 'translated' } : {});
+    const xo = rpExportOptions();  // the options of the export menu (time stamps, names, without fillers)
+    if (!xo.times) params.set('times', 'false');
+    if (!xo.names) params.set('names', 'false');
+    if (xo.nofill) params.set('nofill', 'true');
+    const qs = params.toString() ? `?${params}` : '';
     const res = await fetch(`/api/meetings/${id}/export/${fmt}${qs}`);
     if (!res.ok) {
       showToast(t('exportFailed'));

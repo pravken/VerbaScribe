@@ -527,14 +527,21 @@
                 </button>
                 <div id="tx-view-menu" class="hidden absolute right-0 mt-1.5 w-64 macos-menu z-40" data-click="stopEvent" data-click-args='[{"$": "event"}]'></div>
               </div>
-              <button data-click="cleanActiveTranscriptFillers" id="clean-fillers-btn"
-                data-i18n-title="tipCleanSpeech"
-                title="Удалить слова-паразиты («э-э», «ммм», «ну типа») и повторы слов"
+              <!-- «Без запинок»: the text is shown without «э-э», «ну типа» and repeated words; the text
+                   itself is not changed (rpToggleNoFillers in redesign_player.js) -->
+              <button data-click="rpToggleNoFillers" id="clean-fillers-btn" aria-pressed="false"
+                data-i18n-title="rdPlyrNoFillersTip"
+                title="Скрыть «э-э», «ну типа» и повторы слов. Только в показе текста: запись и сам текст не меняются"
                 class="ui-btn ui-btn-subtle">
                 <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/>
                 </svg>
-                <span class="tx-tool-label" data-i18n="cleanSpeechBtn">Очистить текст</span>
+                <span class="tx-tool-label" data-i18n="rdPlyrNoFillers">Без запинок</span>
+              </button>
+              <!-- A recording cleaned the old way (its text was changed): the recognized text can come back -->
+              <button data-click="rpRestoreFillers" id="rp-restore-fillers" class="ui-btn ui-btn-subtle hidden"
+                data-i18n-title="tipFillersRestore" title="Вернуть исходный текст распознавания">
+                <span class="tx-tool-label" data-i18n="rdPlyrRestoreFillers">Вернуть исходный текст</span>
               </button>
 
               <button data-click="toggleAutoScroll" id="autoscroll-btn"
@@ -714,12 +721,11 @@
       </div>
 
       <!-- =====================================================================
-           UNIFIED BOTTOM MEDIA DOCK:
-           1. Attached Video Frame (directly above transport controls)
-           2. Top Control Row (Video Toggle, Studio Voice, Speed | Play/Skip | Volume Slider)
-           3. Bottom Scrubber Row (SoundCloud Waveform Timeline)
+           THE PLAYER (static/js/redesign_player.js): the wave with the speakers' colours, the
+           chapters and the phrase under the playhead; below it who speaks now, the transport, the
+           sound («Звук»), the speed, the volume and the ⋯ menu. The video frame stays above it.
            ===================================================================== -->
-      <footer id="player-footer" class="border-t apple-border bg-apple-sidebar/95 apple-blur shrink-0 z-20 flex flex-col">
+      <footer id="player-footer" class="rp-footer shrink-0 z-20 flex flex-col">
 
         <!-- Attached Video Frame (Directly connected to player controls below) -->
         <div id="video-drawer" class="hidden border-b apple-border bg-black/95 py-3 px-6">
@@ -731,130 +737,129 @@
           </div>
         </div>
 
-        <!-- Player Controls & Scrubber Container -->
-        <div class="px-6 py-2.5 max-w-4xl w-full mx-auto space-y-2">
+        <div class="rp-body">
+          <!-- Row 1: the time, the wave (click or drag to seek, double click shows the text there), the end -->
+          <div class="rp-row1">
+            <span id="player-current-time" class="rp-now">00:00</span>
+            <div id="player-waveform-wrapper" class="rp-scrub" tabindex="0" role="slider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
+              data-i18n-aria="rdPlyrScrubAria" aria-label="Перемотка: стрелки — на 5 секунд, двойной клик — текст в этом месте"
+              data-i18n-title="rdPlyrScrubTip" title="Двойной клик — показать текст в этом месте"
+              data-keydown="rpScrubKey" data-keydown-args='[{"$": "event"}]'>
+              <div class="rp-track">
+                <canvas id="player-waveform-canvas" class="rp-canvas"></canvas>
+                <div id="rp-chapters" class="rp-chapters"></div>
+                <span id="rp-skip-note" class="rp-skip-note hidden" role="status"></span>
+              </div>
+              <span id="rp-head-bubble" class="rp-bubble" aria-hidden="true">00:00</span>
+              <span id="rp-hover-bubble" class="rp-bubble rp-bubble-hover hidden" aria-hidden="true"></span>
+              <span id="rp-knob" class="rp-knob" aria-hidden="true"></span>
+            </div>
+            <button id="player-total-time" class="rp-end" data-click="rpToggleRemain"
+              data-i18n-title="rdPlyrTipRemain" title="Сколько всего / сколько осталось">00:00</button>
+          </div>
 
-          <!-- Row 1: Controls Above Scrubber (Left: Modes | Center: Transport | Right: Volume) -->
-          <div class="player-bar-row">
-
-            <!-- Left: how the video is shown (preview, expand, theatre, separate window) -->
-            <div class="flex items-center gap-1.5 min-w-0">
+          <!-- Row 2: who speaks now | the transport | the sound, the speed, the volume, the menu -->
+          <div class="rp-row2">
+            <div class="rp-left">
               <!-- Mini video preview: the video is moved here when collapsed, so it never just disappears -->
               <div id="video-mini-slot" data-click="setVideoMode" data-click-args='["expanded"]'
                 data-i18n-title="tipVideoMini" title="Видео записи. Нажмите, чтобы развернуть"
                 class="hidden relative w-20 h-[45px] rounded-md overflow-hidden bg-black border border-white/15 cursor-pointer shrink-0 group mr-1">
                 <span class="absolute inset-0 flex items-center justify-center bg-black/45 text-white opacity-0 group-hover:opacity-100 transition pointer-events-none"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"/></svg></span>
               </div>
-
-              <!-- Label and tooltip are set by applyVideoLayout() -->
-              <button data-click="toggleVideoDrawer" id="video-drawer-btn" class="ui-btn ui-btn-subtle hidden"></button>
-              <button data-click="toggleTheatre" id="theatre-btn" class="ui-btn ui-btn-subtle px-2 hidden"
-                data-i18n-title="tipTheatre" title="Режим кинотеатра: большое видео и текст рядом (Esc — выход)">
-                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
-                  <rect x="2.5" y="4.5" width="19" height="15" rx="2"/><path stroke-linecap="round" d="M14.5 4.5v15"/><path stroke-linecap="round" d="M16.5 9h3M16.5 12h3M16.5 15h2"/>
-                </svg>
-              </button>
-              <button data-click="toggleVideoPip" id="video-pip-btn" class="ui-btn ui-btn-subtle px-2 hidden"
-                title="Открыть видео в отдельном окне поверх других программ">
-                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
-                  <rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="11.5" width="7" height="5.5" rx="1" fill="currentColor" stroke="none"/>
-                </svg>
-              </button>
-
-            </div>
-
-            <!-- Center: Transport Controls (-15s, Play/Pause, +15s) Directly Above Timeline -->
-            <div class="flex items-center justify-center gap-3 shrink-0">
-              <button data-click="skipPlayer" data-click-args='[-15]'
-                data-i18n-title="tipSkipBack"
-                title="Перемотать на 15 секунд назад (Alt + Стрелка влево: -5 сек)"
-                class="p-1.5 rounded-lg text-apple-secondary hover:text-white hover:bg-white/5 active:scale-95 transition">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3"/>
-                </svg>
-              </button>
-
-              <button data-click="togglePlayPause" id="play-pause-btn"
-                data-i18n-title="tipPlayPause"
-                title="Воспроизведение / Пауза (Alt + Пробел)"
-                class="w-9 h-9 rounded-full bg-white text-black hover:scale-105 active:scale-95 transition flex items-center justify-center shadow">
-                <svg id="icon-play" class="w-4 h-4 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M8 5v14l11-7z"/>
-                </svg>
-                <svg id="icon-pause" class="w-4 h-4 hidden" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-                </svg>
-              </button>
-
-              <button data-click="skipPlayer" data-click-args='[15]'
-                data-i18n-title="tipSkipForward"
-                title="Перемотать на 15 секунд вперёд (Alt + Стрелка вправо: +5 сек)"
-                class="p-1.5 rounded-lg text-apple-secondary hover:text-white hover:bg-white/5 active:scale-95 transition">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M15 15l6-6m0 0l-6-6m6 6H9a6 6 0 000 12h3"/>
-                </svg>
+              <button id="rp-speaker" class="rp-speaker hidden" data-click="rpShowPhrase"
+                data-i18n-title="rdPlyrTipShowInText" title="Показать в тексте">
+                <span id="rp-speaker-dot" class="rp-dot"></span><span id="rp-speaker-name" class="rp-speaker-name"></span><span class="rp-sep" aria-hidden="true"></span><span id="rp-caption" class="rp-caption" aria-hidden="true"></span>
               </button>
             </div>
 
-            <!-- Right: everything about the sound (track, noise reduction, speed, volume) -->
-            <div class="flex items-center justify-end gap-1.5 min-w-0">
-              <!-- Audio track (original / AI dubs); filled by renderAudioTrackSwitch() -->
-              <div id="audio-track-switch" class="hidden shrink-0"></div>
-
-              <button data-click="toggleStudioVoiceEnhancer" id="studio-voice-btn"
-                data-i18n-title="tipStudioVoice"
-                title="Включить студийное улучшение голоса и выравнивание громкости в плеере"
-                class="ui-btn ui-btn-subtle">
-                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M9.348 14.651a3.75 3.75 0 010-5.303m5.304 0a3.75 3.75 0 010 5.303m-7.425 2.122a6.75 6.75 0 010-9.546m9.546 0a6.75 6.75 0 010 9.546M5.106 18.894c-3.808-3.808-3.808-9.98 0-13.789m13.788 0c3.808 3.808 3.808 9.981 0 13.79M12 12h.008v.007H12V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"/>
-                </svg>
-                <span class="player-btn-label" data-i18n="studioVoiceBtn">Шумоподавление</span>
+            <div class="rp-center" role="group" data-i18n-aria="rdPlyrTransport" aria-label="Управление">
+              <button class="rp-icon-btn" data-click="rpRepeatPhrase" data-i18n-title="rdPlyrTipRepeat" title="Повторить реплику с начала (R)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4.5v4.3h4.3"/></svg>
               </button>
-
-              <button data-click="cyclePlaybackSpeed" id="speed-cycle-btn"
-                data-i18n-title="tipSpeedBtn"
-                title="Изменить скорость воспроизведения (1.0x – 2.0x)"
-                class="ui-btn ui-btn-subtle font-mono text-apple-label px-2.5">
-                1.0x
+              <button class="rp-icon-btn" data-click="rpStepPhrase" data-click-args='[-1, {"$": "event"}]' data-i18n-title="rdPlyrTipPrev" title="К предыдущей реплике (Shift — к главе)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M6 5.5v13" stroke-width="2.2" stroke-linecap="round"/><path d="M18.5 6v12L9 12z"/></svg>
               </button>
-              <span class="w-px h-5 bg-white/10 mx-1 shrink-0"></span>
-              <button data-click="toggleMutePlayer" id="mute-btn"
-                data-i18n-title="tipMuteBtn"
-                title="Включить или выключить звук"
-                class="p-1.5 rounded-lg text-apple-secondary hover:text-white hover:bg-white/5 transition">
-                <svg id="icon-vol-on" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z"/>
-                </svg>
-                <svg id="icon-vol-muted" class="w-4 h-4 hidden text-apple-red" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 9.75L19.5 12m0 0l2.25 2.25M19.5 12l2.25-2.25M19.5 12l-2.25 2.25m-10.5-6l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z"/>
-                </svg>
+              <button data-click="togglePlayPause" id="play-pause-btn" class="rp-play"
+                data-i18n-title="tipPlayPause" title="Воспроизведение / Пауза (Alt + Пробел)">
+                <svg class="rp-ring" width="60" height="60" viewBox="0 0 60 60" aria-hidden="true"><circle class="rp-ring-track" cx="30" cy="30" r="28"/><circle id="rp-ring-fill" class="rp-ring-fill" cx="30" cy="30" r="28" stroke-dasharray="0 176"/></svg>
+                <span class="rp-play-core">
+                  <svg id="icon-play" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" class="rp-icon-play" aria-hidden="true"><path d="M7.4 4.5v15L18.9 12z"/></svg>
+                  <svg id="icon-pause" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" class="hidden" aria-hidden="true"><rect x="6.6" y="4.5" width="4.2" height="15" rx="2.1"/><rect x="13.2" y="4.5" width="4.2" height="15" rx="2.1"/></svg>
+                </span>
               </button>
+              <button class="rp-icon-btn" data-click="rpStepPhrase" data-click-args='[1, {"$": "event"}]' data-i18n-title="rdPlyrTipNext" title="К следующей реплике (Shift — к главе)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M18 5.5v13" stroke-width="2.2" stroke-linecap="round"/><path d="M5.5 6v12L15 12z"/></svg>
+              </button>
+              <button id="rp-loop-btn" class="rp-icon-btn" data-click="rpToggleLoop" aria-pressed="false" data-i18n-title="rdPlyrTipLoop" title="Повторять реплику по кругу (L)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3.5l3 3-3 3"/><path d="M4 11.5v-1a4 4 0 0 1 4-4h12"/><path d="M7 20.5l-3-3 3-3"/><path d="M20 12.5v1a4 4 0 0 1-4 4H4"/></svg>
+              </button>
+            </div>
 
-              <input id="player-volume-slider" type="range" min="0" max="100" step="1" value="100"
-                data-input="changePlayerVolume" data-input-args='[{"$": "value"}]'
-                data-i18n-title="tipVolumeSlider"
-                title="Регулировка громкости воспроизведения"
-                class="volume-slider w-24" />
-
-              <span id="player-volume-label" class="text-[10.5px] font-mono text-apple-tertiary w-8 text-right">100%</span>
+            <div class="rp-right">
+              <!-- How the video is shown: in the panel, small, theatre, separate window -->
+              <div class="rp-anchor hidden" id="rp-video-anchor">
+                <button id="rp-video-btn" class="rp-chip" data-click="rpTogglePop" data-click-args='["video"]' aria-expanded="false"></button>
+                <div id="rp-pop-video" class="rp-pop rp-menu hidden" role="menu"></div>
+              </div>
+              <!-- The sound while listening: studio voice, skipping silence, the track -->
+              <div class="rp-anchor">
+                <button id="rp-sound-btn" class="rp-chip" data-click="rpTogglePop" data-click-args='["sound"]' aria-expanded="false"
+                  data-i18n-title="rdPlyrTipSound" title="Как звучит запись сейчас: студийный голос, пропуск тишины, дорожка">
+                  <svg class="tb-ai" width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2l1.9 5.6 5.6 1.9-5.6 1.9L10 17l-1.9-5.6-5.6-1.9 5.6-1.9z"/><path d="M18.5 13l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/></svg>
+                  <span data-i18n="rdPlyrSound">Звук</span><span id="rp-sound-n" class="rp-badge hidden"></span>
+                </button>
+                <div id="rp-pop-sound" class="rp-pop rp-pop-sound hidden" role="dialog" data-i18n-aria="rdPlyrSoundTitle" aria-label="Звук при прослушивании"></div>
+              </div>
+              <div class="rp-anchor">
+                <button id="speed-cycle-btn" class="rp-chip rp-mono" data-click="rpTogglePop" data-click-args='["speed"]' aria-expanded="false"
+                  data-i18n-title="tipSpeedBtn" title="Изменить скорость воспроизведения">1×</button>
+                <div id="rp-pop-speed" class="rp-pop rp-pop-speed hidden" role="dialog" data-i18n-aria="rdPlyrSpeed" aria-label="Скорость"></div>
+              </div>
+              <span class="rp-vol">
+                <button data-click="toggleMutePlayer" id="mute-btn" class="rp-icon-btn rp-icon-sm"
+                  data-i18n-title="tipMuteBtn" title="Включить или выключить звук">
+                  <svg id="icon-vol-on" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4z" fill="currentColor"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+                  <svg id="icon-vol-muted" class="hidden" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4z" fill="currentColor"/><path d="M16 9l5 6M21 9l-5 6"/></svg>
+                </button>
+                <input id="player-volume-slider" type="range" min="0" max="100" step="1" value="100"
+                  data-input="changePlayerVolume" data-input-args='[{"$": "value"}]'
+                  data-i18n-title="tipVolumeSlider" title="Регулировка громкости воспроизведения"
+                  class="rp-volume" />
+              </span>
+              <div class="rp-anchor">
+                <button id="rp-more-btn" class="rp-icon-btn" data-click="rpTogglePop" data-click-args='["more"]' aria-expanded="false"
+                  data-i18n-title="rdPlyrTipMore" title="Ещё о воспроизведении">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+                </button>
+                <div id="rp-pop-more" class="rp-pop rp-menu hidden" role="menu"></div>
+              </div>
             </div>
           </div>
+        </div>
 
-          <!-- Row 2: SoundCloud-Style Interactive Bar Waveform Scrubber -->
-          <div class="flex items-center gap-3">
-            <span id="player-current-time" class="text-[11px] font-mono text-apple-secondary w-11 text-right shrink-0">00:00</span>
-
-            <div class="relative flex-1 h-8 flex items-center cursor-pointer" id="player-waveform-wrapper"
-                 data-i18n-title="tipWaveformScrubber"
-                 title="Звуковая дорожка: нажмите или перетащите для перемотки">
-              <canvas id="player-waveform-canvas" class="w-full h-8 block"></canvas>
-            </div>
-
-            <span id="player-total-time" class="text-[11px] font-mono text-apple-secondary w-11 shrink-0">00:00</span>
-          </div>
-
+        <!-- The parts the older code still updates (video.js applyVideoLayout, the track switch):
+             kept out of sight, the menus above do what they did -->
+        <div class="hidden" aria-hidden="true">
+          <button data-click="toggleVideoDrawer" id="video-drawer-btn" class="ui-btn ui-btn-subtle hidden" tabindex="-1"></button>
+          <button data-click="toggleTheatre" id="theatre-btn" class="ui-btn ui-btn-subtle hidden" tabindex="-1"></button>
+          <button data-click="toggleVideoPip" id="video-pip-btn" class="ui-btn ui-btn-subtle hidden" tabindex="-1"></button>
+          <button data-click="toggleStudioVoiceEnhancer" id="studio-voice-btn" class="ui-btn ui-btn-subtle" tabindex="-1"></button>
+          <div id="audio-track-switch" class="hidden"></div>
+          <span id="player-volume-label">100%</span>
         </div>
       </footer>
+
+      <!-- «Сведения о записи» (Ctrl+I, ⋯ of the record, «Сведения…» in «Звук»): rpOpenInfo in redesign_player.js -->
+      <div id="modal-recinfo" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4" data-click="closeModalOnBackdrop" data-click-args='[{"$": "event"}, "recinfo"]'>
+        <div class="ri-dialog modal-card">
+          <div class="flex items-center gap-2.5">
+            <h2 class="ri-title" data-i18n="rdPlyrInfoTitle">Сведения о записи</h2>
+            <button data-click="closeModal" data-click-args='["recinfo"]' data-i18n-title="tipCloseModal" title="Закрыть окно" class="rp-icon-btn" data-i18n-aria="tipCloseModal" aria-label="Закрыть окно">✕</button>
+          </div>
+          <div id="recinfo-body" class="ri-scroll"></div>
+        </div>
+      </div>
 
     </div>
     </div>

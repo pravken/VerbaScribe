@@ -421,7 +421,7 @@ def _cut_runner(meeting_id: int, kind: str, intervals: List[Tuple[float, float]]
     media = Path(meeting["media_path"])
     if not media.exists():
         raise RuntimeError(f"Исходный файл не найден: {media}")
-    label = {"highlights": "Нарезка ключевых моментов", "denoise": "Запись без шума"}.get(kind, "Запись без пауз и слов-паразитов")
+    label = {"highlights": "Нарезка ключевых моментов", "denoise": "Запись без шума"}.get(kind, "Запись без запинок и пауз")
     update_meeting_progress(meeting_id, progress=1, stage_text=f"{label}: подготовка...")
     out = run_cut(tool_cmd("ffmpeg"), media, intervals, has_video, Path(out_path),
                   lambda r: update_meeting_progress(meeting_id, progress=max(1, int(99 * r)), stage_text=f"{label}: {int(100 * r)}%"),
@@ -1091,12 +1091,8 @@ def _process_meeting_job(meeting_id: int) -> None:
         # The transcript of another model stays among the versions (the dropdown above the text)
         stash_transcript_for(meeting_id, model_name)
         save_segments_backup(meeting_id, [])  # a backup of the previous run does not belong to this one
-        if processing.get("clean_fillers", True):
-            cleaned_segments, removed = clean_filler_words_in_segments(merged_segments)
-            if removed:
-                # Keep the unmodified recognition result so the cleanup can be undone
-                save_segments_backup(meeting_id, merged_segments)
-            merged_segments = cleaned_segments
+        # Fillers stay in the text: «Без запинок» hides them only when the text is shown
+        # (text_utils.filler_view); the setting clean_fillers turns that view on by default
 
         if mixed:
             # Each phrase keeps its own language: shown in the transcript, used by translation

@@ -67,7 +67,14 @@ def _translation_note(meeting: Dict[str, Any], L: Dict[str, str]) -> str:
     return note
 
 
+def _shown(meeting: Dict[str, Any]) -> tuple:
+    """Whether the export shows the time stamps and the names (export_build.with_options)."""
+    opts = meeting.get("_export") or {}
+    return opts.get("times", True), opts.get("names", True)
+
+
 def export_markdown(meeting: Dict[str, Any]) -> str:
+    times, names = _shown(meeting)
     L = _labels(meeting)
     title = meeting.get("title") or L["untitled"]
     created_at = meeting.get("created_at", "")
@@ -123,7 +130,9 @@ def export_markdown(meeting: Dict[str, Any]) -> str:
         spk_name = speakers.get(spk_id, {}).get("name", spk_id)
         ts_start = format_timestamp(seg.get("start", 0.0))
         ts_end = format_timestamp(seg.get("end", 0.0))
-        lines.append(f"**[{ts_start} – {ts_end}] {spk_name}:**")
+        head = " ".join(x for x in (f"[{ts_start} – {ts_end}]" if times else "", spk_name if names else "") if x)
+        if head:
+            lines.append(f"**{head}:**")
         lines.append(f"{seg.get('text', '').strip()}")
         if seg.get("secondary_text"):
             lines.append(f"*{seg['secondary_text'].strip()}*")
@@ -133,6 +142,7 @@ def export_markdown(meeting: Dict[str, Any]) -> str:
 
 
 def export_txt(meeting: Dict[str, Any]) -> str:
+    times, names = _shown(meeting)
     L = _labels(meeting)
     title = meeting.get("title") or L["untitled"]
     created_at = meeting.get("created_at", "")
@@ -169,7 +179,8 @@ def export_txt(meeting: Dict[str, Any]) -> str:
         spk_id = seg.get("speaker", "SPEAKER_00")
         spk_name = speakers.get(spk_id, {}).get("name", spk_id)
         ts_start = format_timestamp(seg.get("start", 0.0))
-        lines.append(f"[{ts_start}] {spk_name}: {seg.get('text', '').strip()}")
+        head = " ".join(x for x in (f"[{ts_start}]" if times else "", f"{spk_name}:" if names else "") if x)
+        lines.append(f"{head} {seg.get('text', '').strip()}".strip())
         if seg.get("secondary_text"):
             lines.append(f"    {seg['secondary_text'].strip()}")
 
@@ -193,6 +204,7 @@ def export_json(meeting: Dict[str, Any]) -> str:
 
 
 def export_docx(meeting: Dict[str, Any]) -> bytes:
+    times, names = _shown(meeting)
     doc = Document()
 
     L = _labels(meeting)
@@ -239,13 +251,15 @@ def export_docx(meeting: Dict[str, Any]) -> bytes:
         ts_start = format_timestamp(seg.get("start", 0.0))
         p = doc.add_paragraph()
 
-        ts_run = p.add_run(f"[{ts_start}] ")
-        ts_run.font.size = Pt(9.5)
-        ts_run.font.color.rgb = RGBColor(120, 120, 130)
+        if times:
+            ts_run = p.add_run(f"[{ts_start}] ")
+            ts_run.font.size = Pt(9.5)
+            ts_run.font.color.rgb = RGBColor(120, 120, 130)
 
-        spk_run = p.add_run(f"{spk_name}: ")
-        spk_run.bold = True
-        spk_run.font.color.rgb = RGBColor(r, g, b)
+        if names:
+            spk_run = p.add_run(f"{spk_name}: ")
+            spk_run.bold = True
+            spk_run.font.color.rgb = RGBColor(r, g, b)
 
         txt_run = p.add_run(seg.get("text", "").strip())
         txt_run.font.size = Pt(11)
