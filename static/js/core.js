@@ -427,7 +427,7 @@ function openModal(name, tab) {
   modal.classList.remove('hidden');
   if (name === 'settings' && state.appView !== 'settings') switchAppView('settings');
   setTimeout(() => { if (!modal.contains(document.activeElement)) (focusablesIn(modal)[0] || modal).focus(); }, 60);
-  if (name === 'import') renderModelHints();
+  if (name === 'import') onImportDialogOpen();  // importdlg.js: the list, the processing from the settings
   if (name === 'settings') {
     let last = null;
     try { last = localStorage.getItem('verbascribe_settings_tab'); } catch (e) {}

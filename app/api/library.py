@@ -301,7 +301,9 @@ async def api_upload_meetings(
     title: str = Form(""),
     folder_id: Optional[int] = Form(None),
     last_modified: List[str] = Form([]),  # File.lastModified of each file, ms since the epoch
+    processing: str = Form(""),  # JSON: the sound and text steps chosen in the import window (database.PROCESSING_KEYS)
 ) -> Dict[str, Any]:
+    chosen_processing = _processing_from_form(processing)
     settings = get_all_settings()
     chosen_model = model_name.strip() or settings.get("whisper_model", "large-v3-turbo")
     chosen_lang = language.strip() or settings.get("language", "auto")
@@ -352,16 +354,40 @@ async def api_upload_meetings(
             recorded_at=recorded_at,
             title_is_default=True,
         )
+        _keep_processing(m["id"], chosen_processing)
         enqueue_meeting_job(m["id"])
         created.append(m)
 
     return {"created": created}
+
+
+def _processing_from_form(text: str) -> Optional[Dict[str, bool]]:
+    import json
+
+    if not text.strip():
+        return None
+    try:
+        data = json.loads(text)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Неверные параметры обработки")
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=400, detail="Неверные параметры обработки")
+    return data
+
+
+def _keep_processing(meeting_id: int, processing: Optional[Dict[str, Any]]) -> None:
+    """What the import window chose for this file, before its job reads it (the rest: the settings)."""
+    if processing:
+        from app.database import set_meeting_processing
+
+        set_meeting_processing(meeting_id, processing)
 
 class UrlImportPayload(BaseModel):
     url: str
     language: str = "auto"
     model_name: str = ""
     num_speakers: int = 0
+    processing: Optional[Dict[str, bool]] = None
 
 @router.post("/api/meetings/url")
 def api_import_url(payload: UrlImportPayload) -> Dict[str, Any]:
@@ -374,6 +400,8 @@ def api_import_url(payload: UrlImportPayload) -> Dict[str, Any]:
                              payload.language or "auto", int(payload.num_speakers or 0))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    # The download takes a while: the choice is stored long before the transcription reads it
+    _keep_processing(m["id"], payload.processing)
     return {"created": [m]}
 
 class LocalPathPayload(BaseModel):
@@ -381,6 +409,7 @@ class LocalPathPayload(BaseModel):
     language: str = "auto"
     model_name: str = ""
     num_speakers: int = 0
+    processing: Optional[Dict[str, bool]] = None
 
 @router.post("/api/meetings/local-path")
 def api_add_local_path(payload: LocalPathPayload) -> Dict[str, Any]:
@@ -429,6 +458,7 @@ def api_add_local_path(payload: LocalPathPayload) -> Dict[str, Any]:
             recorded_at=_file_time(mf),
             title_is_default=True,
         )
+        _keep_processing(m["id"], payload.processing)
         enqueue_meeting_job(m["id"])
         created.append(m)
 

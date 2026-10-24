@@ -1586,38 +1586,17 @@ function handleFileDrop(e) {
   dropMediaFiles(e);
 }
 
-// Sends files to the server; `source` tells a recording made here from an imported file (they go to
-// different folders on disk and in the library). The file dates are sent too: for an imported file
-// the date it was last modified is the closest to when the meeting took place.
-async function submitUrlImport() {
-  const input = document.getElementById('url-import-input');
-  const url = input.value.trim();
-  if (!url || !requireRecognitionModel()) return;
-  const res = await fetch('/api/meetings/url', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      url,
-      model_name: document.getElementById('upload-model').value,
-      language: document.getElementById('upload-language').value,
-      num_speakers: Number(document.getElementById('upload-speakers').value || 0),
-    }),
-  });
-  const data = await readJson(res);
-  if (!res.ok) { showToast(data.detail || 'Error'); return; }
-  input.value = '';
-  closeModal('import');
-  await loadMeetingsList();
-  const m = data.created && data.created[0];
-  if (m) selectMeeting(m.id, true);
-  showToast(t('urlImportStarted'));
-}
-
 function requireRecognitionModel() {
   if (document.getElementById('upload-model').value) return true;
   showToast(t('noModelInstalled'), { label: t('settings'), onClick: () => openModal('settings', 'recognition') });
   return false;
 }
 
+// Sends files to the server; `source` tells a recording made here from an imported file (they go to
+// different folders on disk and in the library). The file dates are sent too: for an imported file
+// the date it was last modified is the closest to when the meeting took place. The import window
+// (importdlg.js) gives its model, language, speakers and processing; without them the defaults of
+// the window's lists are used, and the server takes the processing from the settings.
 async function uploadFiles(fileList, opts = {}) {
   if (opts.source !== 'recording' && !requireRecognitionModel()) return;
   const fd = new FormData();
@@ -1625,68 +1604,35 @@ async function uploadFiles(fileList, opts = {}) {
     fd.append('files', f);
     fd.append('last_modified', String(f.lastModified || 0));
   }
-  fd.append('model_name', document.getElementById('upload-model').value);
-  fd.append('language', document.getElementById('upload-language').value);
-  fd.append('num_speakers', opts.source === 'recording' ? '0' : document.getElementById('upload-speakers').value);
+  fd.append('model_name', opts.model ?? document.getElementById('upload-model').value);
+  fd.append('language', opts.language ?? document.getElementById('upload-language').value);
+  fd.append('num_speakers', opts.source === 'recording' ? '0' : String(opts.speakers ?? document.getElementById('upload-speakers').value));
   fd.append('source', opts.source || 'import');
+  if (opts.processing) fd.append('processing', JSON.stringify(opts.processing));
   if (opts.title) fd.append('title', opts.title);
   if (opts.folderId != null) fd.append('folder_id', String(opts.folderId));
   const res = await fetch('/api/meetings/upload', { method: 'POST', body: fd });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+  if (!res.ok) throw new Error(serverText(data.detail) || `HTTP ${res.status}`);
   return data.created || [];
 }
 
+// Files chosen or dropped: into the open import window, into a new one (it asks the processing), or
+// straight to the queue with the settings when the user said not to ask
 async function handleFileSelect(fileList) {
   if (!fileList || fileList.length === 0) return;
-  const statusEl = document.getElementById('upload-status-text');
-  statusEl.classList.remove('hidden');
-  statusEl.textContent = t('uploadingFiles').replace('{n}', () => fileList.length);
-  switchAppView('library');
-
+  if (impIsOpen()) { impAddFiles(fileList); return; }
+  if (askImportParams()) { openImportDialog({ files: fileList }); return; }
   try {
     const created = await uploadFiles(Array.from(fileList), { source: 'import' });
-    statusEl.classList.add('hidden');
     document.getElementById('file-input').value = '';
-    closeModal('import');
+    if (!created || !created.length) return;
+    switchAppView('library');
     await loadMeetingsList();
-    if (created.length > 0) {
-      await selectMeeting(created[0].id, true);
-      return created;
-    }
+    await selectMeeting(created[0].id, true);
+    return created;
   } catch (err) {
-    statusEl.textContent = 'Error: ' + err.message;
     showToast(String(err.message || err));
-  }
-}
-
-async function submitLocalPath() {
-  const pathInput = document.getElementById('local-path-input');
-  const path = pathInput.value.trim();
-  if (!path || !requireRecognitionModel()) return;
-
-  const res = await fetch('/api/meetings/local-path', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      path,
-      model_name: document.getElementById('upload-model').value,
-      language: document.getElementById('upload-language').value,
-      num_speakers: Number(document.getElementById('upload-speakers').value || 0),
-    })
-  });
-
-  const data = await readJson(res);
-  if (!res.ok) {
-    showAlert(data.detail || 'Error');
-    return;
-  }
-
-  pathInput.value = '';
-  closeModal('import');
-  await loadMeetingsList();
-  if (data.created && data.created.length > 0) {
-    await selectMeeting(data.created[0].id, true);
   }
 }
 

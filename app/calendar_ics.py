@@ -68,14 +68,18 @@ def _parse_dt(value: str, params: str) -> Optional[datetime]:
         return None
 
 
+_LINK_RE = re.compile(r"https?://", re.I)
+
+
 def parse(text: str) -> List[Dict[str, Any]]:
-    """Events as dicts: {uid, title, start, end, attendees, rrule, exdates, all_day}."""
+    """Events as dicts: {uid, title, start, end, attendees, rrule, exdates, all_day, location, online}.
+    `online`: the event has a link (in its place, description or URL): a call, not a room."""
     events: List[Dict[str, Any]] = []
     cur: Optional[Dict[str, Any]] = None
     for line in _unfold(text):
         if line == "BEGIN:VEVENT":
             cur = {"uid": "", "title": "", "start": None, "end": None, "attendees": [], "rrule": "", "exdates": [],
-                   "all_day": False, "status": ""}
+                   "all_day": False, "status": "", "location": "", "online": False}
             continue
         if line == "END:VEVENT":
             if cur and cur["start"] and cur["status"].upper() != "CANCELLED":
@@ -97,6 +101,11 @@ def parse(text: str) -> List[Dict[str, Any]]:
             cur["title"] = _unescape(value).strip()
         elif name == "UID":
             cur["uid"] = value.strip()
+        elif name == "LOCATION":
+            cur["location"] = _unescape(value).strip()[:200]
+            cur["online"] = cur["online"] or bool(_LINK_RE.search(value))
+        elif name in ("DESCRIPTION", "URL") or name.endswith("MEETINGURL") or name == "X-GOOGLE-CONFERENCE":
+            cur["online"] = cur["online"] or bool(_LINK_RE.search(value))
         elif name == "STATUS":
             cur["status"] = value.strip()
         elif name in ("DTSTART", "DTEND"):
@@ -287,6 +296,15 @@ def upcoming(hours: int = 36, limit: int = 8) -> List[Dict[str, Any]]:
     return [{"title": e["title"], "start": e["start"].isoformat(timespec="minutes"), "end": e["end"].isoformat(timespec="minutes"),
              "attendees": e["attendees"][:20]}
             for e in window(now - timedelta(minutes=30), now + timedelta(hours=hours))[:limit] if e["end"] > now]
+
+
+def day(start: datetime, end: datetime) -> List[Dict[str, Any]]:
+    """The meetings between start and end (a working day, maybe past midnight), for the home page.
+    `key` names one meeting of a series: its id and its start."""
+    return [{"key": f"{e['uid'] or e['title']}|{e['start'].isoformat(timespec='minutes')}", "title": e["title"],
+             "start": e["start"].isoformat(timespec="minutes"), "end": e["end"].isoformat(timespec="minutes"),
+             "attendees": e["attendees"][:20], "location": e.get("location", ""), "online": bool(e.get("online"))}
+            for e in window(start, end)]
 
 
 def apply_to_recording(meeting_id: int, started_at: Optional[datetime] = None) -> bool:

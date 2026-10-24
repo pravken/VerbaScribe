@@ -42,6 +42,19 @@ await step('backdrop closes a window', async () => {
   await page.waitForTimeout(200);
   if (!(await page.evaluate(() => document.getElementById('modal-shortcuts').classList.contains('hidden')))) throw new Error('still open');
 });
+// The import window and the details of the status bar open and close
+await step('import window', async () => {
+  await page.evaluate(() => openImportDialog({ row: 'link' }));
+  await page.waitForTimeout(300);
+  if (!(await page.isVisible('#imp-link-row'))) throw new Error('not opened');
+  await page.evaluate(() => closeModal('import'));
+});
+await step('status bar details', async () => {
+  await page.click('.sb-load');
+  await page.waitForTimeout(200);
+  if (!(await page.isVisible('#sb-hw-pop'))) throw new Error('not opened');
+  await page.mouse.click(700, 400);
+});
 await step('settings', () => page.evaluate(() => openModal('settings', 'general')));
 for (const tab of await page.evaluate(() => SETTINGS_TABS)) {
   await step(`settings tab ${tab}`, async () => {
