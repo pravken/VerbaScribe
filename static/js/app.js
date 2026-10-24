@@ -384,7 +384,12 @@ function renderSummaryPanel() {
   renderAnalysisNav();
   renderAnalysisHead();
   if (tab === 'protocol') { renderAnalysisOverview(box); return; }
-  if (tab === 'mynotes') { renderMyNotesEditor(box); return; }
+  if (tab === 'mynotes') {
+    // a section finished in the background re-renders the panel: the notes being typed keep their caret
+    const ed = document.getElementById('my-notes-input');
+    if (!(ed && box.contains(ed) && document.activeElement === ed)) renderMyNotesEditor(box);
+    return;
+  }
   if (tab === 'commitments') { renderCommitments(box); return; }
   const summaries = m.summaries || {};
   const md = summaries[tab] || '';
