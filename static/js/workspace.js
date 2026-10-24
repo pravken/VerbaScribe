@@ -1283,11 +1283,21 @@ function openSpeakerChipMenu(e, spkId) {
 
 // The speaker's name in every line, the speakers tab and exports (one name per speaker of a recording)
 async function renameSpeakerPrompt(spkId) {
-  const s = ((state.activeMeeting && state.activeMeeting.speakers) || {})[spkId];
+  const m = state.activeMeeting;
+  const s = ((m && m.speakers) || {})[spkId];
   if (!s) return;
+  // in place at the first shown line of this speaker, as from the line itself
+  const seg = (m.segments || []).find(x => x.speaker === spkId && document.getElementById(`seg-${x.id}`));
+  if (seg) {
+    document.getElementById(`seg-${seg.id}`).scrollIntoView({ block: 'center' });
+    startInlineSpeakerRename(seg.id);
+    return;
+  }
   const name = await askText(t('spkRenameLabel').replace('{name}', () => s.name || spkId), s.name || '');
   if (name === null || !name.trim() || name.trim() === s.name) return;
+  const old = s.name || spkId;
   await updateSpeaker(spkId, name, null);
+  showToast(t('spRenamed').replace('{name}', () => name.trim()), { label: t('spUndo'), onClick: () => updateSpeaker(spkId, old, null) });
 }
 
 async function updateSpeaker(speakerId, newName, newColor) {
@@ -1421,8 +1431,7 @@ function transcriptSegmentHtml(seg, idx) {
   const query = tx.query;
   const speakerOptionsHtml = (currentSpk) => Object.keys(speakers).map(k =>
     `<option value="${escapeHtml(k)}" ${k === currentSpk ? 'selected' : ''} class="bg-apple-card text-white">${escapeHtml(speakers[k].name)}</option>`
-  ).join('') + (speakers[currentSpk] ? `<option value="__rename:${escapeHtml(currentSpk)}" class="bg-apple-card text-white">✎ ${
-    escapeHtml(t('spkRenameOption').replace('{name}', () => speakers[currentSpk].name))}</option>` : '');
+  ).join('');
 
   const spk = speakers[seg.speaker] || { name: seg.speaker || 'Speaker', color: '#0A84FF' };
   const words = seg.words || [];
@@ -1471,24 +1480,27 @@ function transcriptSegmentHtml(seg, idx) {
 
       <div class="flex-1 min-w-0">
         <div class="flex items-center justify-between mb-0.5">
+          <div class="flex items-center min-w-0">
           <select data-change="changeSegmentSpeaker" data-change-args='[${seg.id}, {"$": "value"}]'
             title="${escapeHtml(t('tipChangeSegSpeaker'))}"
             style="color: ${spk.color}"
             class="bg-transparent text-xs font-semibold focus:outline-none cursor-pointer">
             ${speakerOptionsHtml(seg.speaker)}
           </select>
+          ${speakers[seg.speaker] ? `<button data-click="startInlineSpeakerRename" data-click-args='[${Number(seg.id)}]' class="seg-icon-btn"
+            title="${escapeHtml(t('spkRenameOption').replace('{name}', () => speakers[seg.speaker].name))}" aria-label="${escapeHtml(t('spkRenameOption').replace('{name}', () => speakers[seg.speaker].name))}">${SVG_ICONS.pencil}</button>` : ''}
           ${seg.lang && state.activeMeeting && seg.lang !== state.activeMeeting.language
-            ? `<span class="ml-2 mr-auto text-[10px] font-mono px-1 rounded bg-white/10 text-apple-secondary" title="${escapeHtml(t('tipSegLang'))}">${escapeHtml(String(seg.lang).toUpperCase())}</span>` : ''}
+            ? `<span class="ml-2 text-[10px] font-mono px-1 rounded bg-white/10 text-apple-secondary" title="${escapeHtml(t('tipSegLang'))}">${escapeHtml(String(seg.lang).toUpperCase())}</span>` : ''}
+          </div>
           <div class="flex items-center gap-2.5">
             ${mergeBtnHtml}
             <button data-click="openInlineSegmentEditor" data-click-args='[${seg.id}]'
-              title="${escapeHtml(t('tipEditSegment'))}"
-              class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 text-[11px] text-apple-tertiary hover:text-white transition">
-              ${t('editBtn')}
+              title="${escapeHtml(t('tipEditSegment'))}" class="seg-edit-btn">
+              ${SVG_ICONS.pencil}<span>${t('editBtn')}</span>
             </button>
           </div>
         </div>
-        <div id="seg-text-${seg.id}" class="text-[13.5px] text-apple-label/90 leading-relaxed">
+        <div id="seg-text-${seg.id}" class="text-[13.5px] text-apple-label/90 leading-relaxed" data-dblclick="openInlineSegmentEditor" data-dblclick-args='[${Number(seg.id)}]'>
           ${bodyHtml}
         </div>
       </div>
@@ -1662,17 +1674,71 @@ function highlightSearch(safeText, query) {
 }
 
 async function mergeSegmentWithPrevious(segId) {
-  if (!state.activeMeeting) return;
-  const res = await fetch(`/api/meetings/${state.activeMeeting.id}/segments/${segId}/merge`, {
+  const m = state.activeMeeting;
+  if (!m) return;
+  // the two lines as they were, for «Отменить»
+  const segs = m.segments || [];
+  const i = segs.findIndex(s => s.id === segId);
+  const pair = i > 0 ? [JSON.parse(JSON.stringify(segs[i - 1])), JSON.parse(JSON.stringify(segs[i]))] : null;
+  const res = await fetch(`/api/meetings/${m.id}/segments/${segId}/merge`, {
     method: 'POST'
   });
-  if (res.ok) {
-    state.activeMeeting = await readJson(res);
+  if (!res.ok) { showToast(errorText(await readJson(res), res)); return; }
+  state.activeMeeting = await readJson(res);
+  renderSpeakerPillsBar();
+  renderSpeakersPanel();
+  renderTranscript();
+  showToast(t('uiSegmentsMerged'), pair ? { label: t('spUndo'), onClick: () => unmergeSegments(m.id, pair) } : undefined);
+}
+
+async function unmergeSegments(meetingId, [first, second]) {
+  const res = await fetch(`/api/meetings/${meetingId}/segments/${first.id}/unmerge`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ first, second }),
+  });
+  const data = await readJson(res);
+  if (!res.ok) { showToast(errorText(data, res)); return; }
+  if (state.activeMeeting && state.activeMeeting.id === meetingId) {
+    state.activeMeeting = data;
     renderSpeakerPillsBar();
     renderSpeakersPanel();
     renderTranscript();
-    showToast(t('uiSegmentsMerged'));
   }
+}
+
+// The speaker's name of a line, changed in place (as on the Participants page): Enter saves for every
+// line of the recording, Esc puts the name back; the toast offers «Отменить»
+function startInlineSpeakerRename(segId) {
+  const m = state.activeMeeting;
+  const seg = m && (m.segments || []).find(s => s.id === segId);
+  const spk = seg && (m.speakers || {})[seg.speaker];
+  const row = document.getElementById(`seg-${segId}`);
+  const sel = row && row.querySelector('select');
+  if (!spk || !sel) return;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = spk.name || seg.speaker;
+  input.className = 'seg-name-input';
+  input.style.color = spk.color || '';
+  input.setAttribute('aria-label', t('spkRenameOption').replace('{name}', () => spk.name || seg.speaker));
+  sel.replaceWith(input);
+  row.querySelector('[data-click="startInlineSpeakerRename"]')?.classList.add('hidden');
+  input.focus();
+  input.select();
+  let done = false;
+  const finish = async (save) => {
+    if (done) return;
+    done = true;
+    const name = input.value.trim();
+    const old = spk.name || seg.speaker;
+    if (!save || !name || name === old) { renderTranscript(); return; }
+    await updateSpeaker(seg.speaker, name, null);
+    showToast(t('spRenamed').replace('{name}', () => name), { label: t('spUndo'), onClick: () => updateSpeaker(seg.speaker, old, null) });
+  };
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
+  });
+  input.addEventListener('blur', () => finish(true));
 }
 
 // Filler words: one button that removes them or brings them back. After a cleanup (made
@@ -1690,17 +1756,29 @@ function openInlineSegmentEditor(segId) {
   if (!seg) return;
 
   const textBox = document.getElementById(`seg-text-${segId}`);
+  if (!textBox || document.getElementById(`seg-edit-area-${segId}`)) return;
   textBox.innerHTML = `
-    <textarea id="seg-edit-area-${segId}" rows="2"
-      class="w-full bg-apple-sidebar border border-apple-blue rounded-lg p-2 text-xs text-white focus:outline-none mt-1">${escapeHtml(seg.text)}</textarea>
-    <div class="flex justify-end gap-2 mt-1.5">
+    <textarea id="seg-edit-area-${segId}" rows="2" data-keydown="segEditKey" data-keydown-args='[{"$": "event"}, ${Number(segId)}]'
+      class="w-full bg-apple-sidebar border border-apple-blue rounded-lg p-2 text-[13px] text-white focus:outline-none mt-1">${escapeHtml(seg.text)}</textarea>
+    <div class="flex items-center justify-end gap-2 mt-1.5">
+      <span class="mr-auto text-[11.5px] text-apple-secondary">${escapeHtml(t('segEditHint'))}</span>
       <button data-click="renderTranscript" title="${escapeHtml(t('tipCancelBtn'))}" class="ui-btn ui-btn-subtle">${t('cancel')}</button>
       <button data-click="saveSegmentEdit" data-click-args='[${segId}]' title="${escapeHtml(t('tipSaveSettingsBtn'))}" class="ui-btn ui-btn-primary">${t('save')}</button>
     </div>
   `;
+  const area = document.getElementById(`seg-edit-area-${segId}`);
+  area.focus();
+  area.setSelectionRange(area.value.length, area.value.length);
+}
+
+function segEditKey(e, segId) {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveSegmentEdit(segId); }
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); renderTranscript(); }
 }
 
 async function saveSegmentEdit(segId) {
+  const m = state.activeMeeting;
+  const oldText = ((m && m.segments) || []).find(s => s.id === segId)?.text || '';
   const newText = document.getElementById(`seg-edit-area-${segId}`).value.trim();
   const res = await fetch(`/api/meetings/${state.activeMeeting.id}/segments/${segId}`, {
     method: 'PATCH',
@@ -1711,14 +1789,19 @@ async function saveSegmentEdit(segId) {
   if (!res.ok) { showToast(errorText(data, res)); return; }  // the edit box stays open with the text
   state.activeMeeting = data;
   renderTranscript();
+  if (newText !== oldText.trim()) showToast(t('segSaved'), { label: t('spUndo'), onClick: () => restoreSegmentText(m.id, segId, oldText) });
+}
+
+async function restoreSegmentText(meetingId, segId, text) {
+  const res = await fetch(`/api/meetings/${meetingId}/segments/${segId}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }),
+  });
+  const data = await readJson(res);
+  if (!res.ok) { showToast(errorText(data, res)); return; }
+  if (state.activeMeeting && state.activeMeeting.id === meetingId) { state.activeMeeting = data; renderTranscript(); }
 }
 
 async function changeSegmentSpeaker(segId, newSpeaker) {
-  if (newSpeaker.startsWith('__rename:')) {  // "Rename…" at the end of the speaker list of a line
-    renderTranscript();  // the list shows the speaker again
-    await renameSpeakerPrompt(newSpeaker.slice('__rename:'.length));
-    return;
-  }
   const res = await fetch(`/api/meetings/${state.activeMeeting.id}/segments/${segId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },

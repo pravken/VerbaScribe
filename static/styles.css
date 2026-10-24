@@ -653,6 +653,17 @@ body.sidebar-dragging { cursor: col-resize; user-select: none; }
 /* =========================================================================
    redesign: shell — the top bar, the status bar, the settings page (static/js/shell.js)
    ========================================================================= */
+/* --- A line of the transcript: «Изменить» stays in sight (paler until the line is pointed at or
+   focused), a double click on the text opens the editor; the speaker's pencil renames in place --- */
+.seg-edit-btn { display: inline-flex; align-items: center; gap: 4px; min-height: 24px; padding: 0 6px; border-radius: 6px;
+  font-size: 11.5px; color: #8A8A90; opacity: 0.55; transition: opacity 0.12s ease, color 0.12s ease, background-color 0.12s ease; }
+.segment-row:hover .seg-edit-btn, .seg-edit-btn:focus-visible, .segment-row:focus-within .seg-edit-btn { opacity: 1; }
+.seg-edit-btn:hover { color: #FFFFFF; background: rgba(255, 255, 255, 0.06); }
+.seg-icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; margin-left: 2px; border-radius: 6px;
+  color: #8A8A90; opacity: 0; transition: opacity 0.12s ease; }
+.segment-row:hover .seg-icon-btn, .seg-icon-btn:focus-visible { opacity: 1; }
+.seg-icon-btn:hover { color: #FFFFFF; background: rgba(255, 255, 255, 0.06); }
+.seg-name-input { font-size: 12px; font-weight: 600; background: rgba(0, 0, 0, 0.25); border: 1px solid #0A84FF; border-radius: 6px; padding: 1px 6px; outline: none; min-width: 140px; }
 /* --- The one on/off switch of the page: a native checkbox (role="switch") drawn as a toggle. For a setting
    that applies at once; a checkbox stays a checkbox where several items are picked for one action.
    <label class="vs-row"><span class="vs-text">…label, hint…</span><input type="checkbox" role="switch" class="vs-switch"></label>

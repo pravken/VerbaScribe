@@ -186,6 +186,7 @@ const SERVER_TEXT_EN = {
   "Разговор слишком большой, чтобы его сохранить": "The conversation is too big to save",
   "Разделение участников встречи по голосам...": "Separating the speakers by voice...",
   "Реплика не найдена": "Line not found",
+  "Реплику уже изменили — объединение не отменить": "The line has been changed since — the merge cannot be undone",
   "Речь не распознана": "No speech recognized",
   "Родительская папка не найдена": "Parent folder not found",
   "Сборка итогового файла...": "Building the final file...",

@@ -188,6 +188,28 @@ class ConcurrentEditsTest(unittest.TestCase):
         self.assertEqual(merged["segments"][0]["text"], "реплика 1 реплика 2")
         self.assertEqual(len(merged["segments"]), len(m["segments"]) - 1)
 
+    def test_merge_is_undone_while_the_line_is_unchanged(self):
+        from fastapi import HTTPException
+
+        from app.api.analysis import SegmentUpdatePayload, UnmergePayload, api_unmerge_segment, api_update_segment
+        from app.database import merge_segment_with_previous
+
+        mid = self._meeting()
+        before = main.get_meeting(mid)["segments"]
+        first, second = before[2], before[3]  # lines 3 and 4
+        merge_segment_with_previous(mid, 4)
+        back = api_unmerge_segment(mid, 3, UnmergePayload(first=first, second=second))
+        self.assertEqual([s["text"] for s in back["segments"]], [s["text"] for s in before])
+        self.assertEqual([s["id"] for s in back["segments"]], list(range(1, 31)))
+        self.assertEqual((back["segments"][3]["start"], back["segments"][3]["end"]), (4.0, 5.0))
+        # merged and then edited: «Отменить» no longer applies, nothing changes
+        merge_segment_with_previous(mid, 4)
+        api_update_segment(mid, 3, SegmentUpdatePayload(text="другой текст"))
+        with self.assertRaises(HTTPException) as e:
+            api_unmerge_segment(mid, 3, UnmergePayload(first=first, second=second))
+        self.assertEqual(e.exception.status_code, 409)
+        self.assertEqual(len(main.get_meeting(mid)["segments"]), 29)
+
 
 @unittest.skipIf(main is None, "fastapi and app dependencies not installed")
 class ConnectionResetFilterTest(unittest.TestCase):

@@ -323,6 +323,50 @@ def api_merge_segment(meeting_id: int, segment_id: int) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail="Встреча не найдена")
     return updated
 
+class UnmergePayload(BaseModel):
+    first: Dict[str, Any]
+    second: Dict[str, Any]
+
+
+@router.post("/api/meetings/{meeting_id}/segments/{segment_id}/unmerge")
+def api_unmerge_segment(meeting_id: int, segment_id: int, payload: UnmergePayload) -> Dict[str, Any]:
+    """«Отменить» after «Объединить»: the merged line (segment_id, the earlier of the two) goes back to the
+    two lines it was made of — only while it is still exactly their join, so a later edit is not undone."""
+    _ensure_not_transcribing(meeting_id)
+    keys = ("start", "end", "text", "speaker", "words", "lang")
+
+    def clean(seg: Dict[str, Any]) -> Dict[str, Any]:
+        out = {k: seg[k] for k in keys if k in seg}
+        out["start"], out["end"] = float(out.get("start", 0.0)), float(out.get("end", 0.0))
+        out["text"] = str(out.get("text") or "").strip()
+        if not isinstance(out.get("words"), list):
+            out["words"] = []
+        return out
+
+    first, second = clean(payload.first), clean(payload.second)
+
+    def change(m: Dict[str, Any]) -> tuple:
+        segments = m.get("segments") or []
+        idx = next((i for i, s in enumerate(segments) if int(s.get("id", -1)) == segment_id), -1)
+        if idx < 0:
+            raise HTTPException(status_code=404, detail="Реплика не найдена")
+        merged = segments[idx]
+        if (merged.get("text") or "").strip() != f"{first['text']} {second['text']}".strip():
+            raise HTTPException(status_code=409, detail="Реплику уже изменили — объединение не отменить")
+        speaker = merged.get("speaker")
+        segments[idx:idx + 1] = [{**merged, **first, "speaker": first.get("speaker", speaker)},
+                                 {**merged, **second, "speaker": second.get("speaker", speaker)}]
+        for i, s in enumerate(segments):
+            s["id"] = i + 1
+        m["segments"] = segments
+        return ("segments",)
+
+    m = edit_meeting(meeting_id, change)
+    if m is None:
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    return m
+
+
 @router.post("/api/meetings/{meeting_id}/clean-fillers")
 def api_clean_fillers(meeting_id: int) -> Dict[str, Any]:
     from app.transcriber import clean_meeting_transcript
