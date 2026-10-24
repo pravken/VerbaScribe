@@ -21,6 +21,7 @@ MAX_ITEMS = 100  # questions in one conversation
 MAX_BYTES = 4 * 1024 * 1024  # the whole file
 _lock = threading.Lock()
 
+_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _ITEM_KEYS = {"id", "question", "scope", "scopeLabel", "status", "data", "error", "at"}
 _CHAT_KEYS = {"id", "title", "created", "updated", "model", "items"}
 
@@ -29,6 +30,19 @@ def _clean_item(item: Any) -> Dict[str, Any]:
     if not isinstance(item, dict):
         raise ValueError("Неверный формат разговора")
     out = {k: v for k, v in item.items() if k in _ITEM_KEYS}
+    # the page puts the id and the period into its markup: a number and dates, whatever the file says
+    try:
+        out["id"] = int(out.get("id"))
+    except (TypeError, ValueError):
+        raise ValueError("Неверный формат разговора")
+    scope = out.get("scope")
+    if scope is not None:
+        if not isinstance(scope, dict):
+            scope = {}
+        for k in ("from", "to"):
+            if k in scope and not (isinstance(scope[k], str) and _DATE.match(scope[k])):
+                scope.pop(k)
+        out["scope"] = scope
     out["question"] = str(out.get("question") or "")[:1000]
     # an answer still running is saved as stopped: it never comes back after a restart
     if out.get("status") not in ("done", "error", "stopped"):
@@ -45,7 +59,12 @@ def _clean_chat(chat: Any) -> Dict[str, Any]:
     items = out.get("items") or []
     if not isinstance(items, list):
         raise ValueError("Неверный формат разговора")
-    out["items"] = [_clean_item(i) for i in items[-MAX_ITEMS:]]
+    out["items"] = []
+    for i in items[-MAX_ITEMS:]:  # a broken question is dropped, not the whole conversation
+        try:
+            out["items"].append(_clean_item(i))
+        except ValueError:
+            continue
     return out
 
 

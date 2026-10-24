@@ -43,6 +43,18 @@ class AssistantChatsTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             ac.save_chats([{"title": "no id"}])
 
+    def test_ids_and_periods_are_what_the_page_can_put_in_its_markup(self):
+        """The file is read back into the page's markup: an id that is not a number drops that question,
+        a period that is not dates loses those dates."""
+        ac.save_chats([{"id": "a", "items": [
+            {"id": "1, alert(1)", "question": "плохой", "status": "done"},
+            {"id": 7, "question": "хороший", "status": "done",
+             "scope": {"type": "period", "from": "2026-10-01\"><b>", "to": "2026-10-24"}},
+        ]}])
+        items = ac.load_chats()[0]["items"]
+        self.assertEqual([x["id"] for x in items], [7])
+        self.assertEqual(items[0]["scope"], {"type": "period", "to": "2026-10-24"})
+
     def test_limits(self):
         many = [{"id": str(i), "updated": f"2026-10-{i % 28 + 1:02d}", "items": [{"id": n, "question": "q", "status": "done"} for n in range(150)]}
                 for i in range(250)]

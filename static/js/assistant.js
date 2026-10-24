@@ -396,9 +396,9 @@ function assistantPeriodPanel() {
   const menu = assistantMenu({ stopPropagation() {}, currentTarget: btn }, [
     { head: t('rdSasScopeCustom') },
     { html: `<div class="flex items-center gap-2 px-2.5 py-1.5 text-xs text-apple-label">
-        <input type="date" id="as-period-from" value="${sc ? sc.from : monthAgo}" class="sx-time" title="${escapeHtml(t('rdSasFrom'))}" aria-label="${escapeHtml(t('rdSasFrom'))}">
+        <input type="date" id="as-period-from" value="${escapeHtml(sc ? sc.from : monthAgo)}" class="sx-time" title="${escapeHtml(t('rdSasFrom'))}" aria-label="${escapeHtml(t('rdSasFrom'))}">
         <span>—</span>
-        <input type="date" id="as-period-to" value="${sc ? sc.to : today}" class="sx-time" title="${escapeHtml(t('rdSasTo'))}" aria-label="${escapeHtml(t('rdSasTo'))}">
+        <input type="date" id="as-period-to" value="${escapeHtml(sc ? sc.to : today)}" class="sx-time" title="${escapeHtml(t('rdSasTo'))}" aria-label="${escapeHtml(t('rdSasTo'))}">
       </div>` },
     { label: t('rdSasApply'), onClick: () => {
       const from = document.getElementById('as-period-from')?.value, to = document.getElementById('as-period-to')?.value;
@@ -660,14 +660,14 @@ function renderAssistantEmpty() {
 function renderAssistantItem(item, isLast) {
   const q = `<div class="as-q">
       <div class="as-q-bubble">${escapeHtml(item.question)}</div>
-      <div class="as-q-meta">${escapeHtml(item.scopeLabel || '')} · <button data-click="assistantEditQuestion" data-click-args='[${item.id}]' class="as-link">${escapeHtml(t('rdSasEdit'))}</button></div>
+      <div class="as-q-meta">${escapeHtml(item.scopeLabel || '')} · <button data-click="assistantEditQuestion" data-click-args='[${Number(item.id) || 0}]' class="as-link">${escapeHtml(t('rdSasEdit'))}</button></div>
     </div>`;
   let body;
   if (item.status === 'pending') {
     body = `<div class="as-a"><div class="as-wait"><span class="as-wait-dot"></span>${escapeHtml(t('rdSasSearching'))}</div></div>`;
   } else if (item.status === 'stopped' || item.status === 'error') {
     body = `<div class="as-a"><div class="text-xs ${item.status === 'error' ? 'text-apple-red' : 'text-apple-secondary'}">${escapeHtml(item.status === 'error' ? item.error : t('rdSasStopped'))}</div>
-      <div class="as-actions"><button data-click="assistantRetry" data-click-args='[${item.id}]' class="as-act">${escapeHtml(t('rdSasAskAgain'))}</button></div></div>`;
+      <div class="as-actions"><button data-click="assistantRetry" data-click-args='[${Number(item.id) || 0}]' class="as-act">${escapeHtml(t('rdSasAskAgain'))}</button></div></div>`;
   } else {
     const data = item.data || {};
     if (!data.found) {
@@ -677,19 +677,19 @@ function renderAssistantItem(item, isLast) {
       const shown = (data.sources || []).filter(s => !cited.size || cited.has(s.n)).slice(0, 20);
       const recs = new Set(shown.map(s => s.meeting_id)).size;
       const sources = shown.map(s => `
-        <button data-click="openLibrarySource" data-click-args='[${item.id}, ${s.n}]' class="as-src">
-          <span class="lib-cite">${s.n}</span><span class="as-src-title">${escapeHtml(s.title)}</span>
+        <button data-click="openLibrarySource" data-click-args='[${Number(item.id) || 0}, ${Number(s.n) || 0}]' class="as-src">
+          <span class="lib-cite">${Number(s.n) || 0}</span><span class="as-src-title">${escapeHtml(s.title)}</span>
           <span class="as-src-time">${escapeHtml(formatTime(s.start))}</span>
           <span class="as-src-quote">«${escapeHtml(s.text)}»</span>
         </button>`).join('');
       const model = data.model ? `${data.cloud ? '☁ ' : ''}${escapeHtml(data.cloud ? data.model : formatModelName(data.model))}` : '';
       body = `<div class="as-a">
-        <div class="markdown-body text-[13.5px]" data-as-answer="${item.id}"></div>
+        <div class="markdown-body text-[13.5px]" data-as-answer="${Number(item.id) || 0}"></div>
         ${sources ? `<details class="as-sources"><summary>${escapeHtml(t('rdSasSourcesCount').replace('{r}', () => recs).replace('{n}', () => shown.length))}</summary>${sources}</details>` : ''}
         <div class="as-actions">
-          <button data-click="assistantCopy" data-click-args='[${item.id}, {"$": "el"}]' class="as-act">${escapeHtml(t('rdSasCopy'))}</button>
-          <button data-click="assistantSaveMenu" data-click-args='[{"$": "event"}, ${item.id}]' class="as-act">${escapeHtml(t('rdSasSave'))}</button>
-          <button data-click="assistantRetry" data-click-args='[${item.id}]' class="as-act">${escapeHtml(t('rdSasRegenerate'))}</button>
+          <button data-click="assistantCopy" data-click-args='[${Number(item.id) || 0}, {"$": "el"}]' class="as-act">${escapeHtml(t('rdSasCopy'))}</button>
+          <button data-click="assistantSaveMenu" data-click-args='[{"$": "event"}, ${Number(item.id) || 0}]' class="as-act">${escapeHtml(t('rdSasSave'))}</button>
+          <button data-click="assistantRetry" data-click-args='[${Number(item.id) || 0}]' class="as-act">${escapeHtml(t('rdSasRegenerate'))}</button>
           <span class="flex-1"></span>
           <span class="as-model">${model}${data.excluded_local ? ' · ' + escapeHtml(t('askExcludedLocal').replace('{n}', () => data.excluded_local)) : ''}</span>
         </div>
@@ -735,7 +735,7 @@ function renderAssistant(scrollDown) {
   box.innerHTML = chat.items.map((it, i) => renderAssistantItem(it, i === chat.items.length - 1)).join('');
   // the answers: sanitized markdown, then "[2]" becomes a link with its quote
   for (const item of chat.items) {
-    const el = box.querySelector(`[data-as-answer="${item.id}"]`);
+    const el = box.querySelector(`[data-as-answer="${Number(item.id) || 0}"]`);
     if (!el) continue;
     el.innerHTML = sanitizedMarkdown(item.data?.answer || '');
     const byN = Object.fromEntries((item.data?.sources || []).map(s => [s.n, s]));
