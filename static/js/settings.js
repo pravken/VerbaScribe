@@ -309,13 +309,13 @@ function renderVram(data) {
   // One line per device: its CPU / GPU mark, lit while a model runs there and pulsing while one is
   // at work on a job, then the models that run there
   const mini = c => `<span class="mp-mini ${c.loading ? 'mp-mini-loading' : c.kind === 'dub' ? 'mp-mini-dub' : ''}"><span class="mp-mini-dot"></span><span class="truncate">${escapeHtml(vramChipLabel(c))}</span></span>`;
-  const runningHtml = (gpu ? ['gpu', 'cpu'] : ['cpu']).map(where => {
+  const runningHtml = ['gpu', 'cpu'].map(where => {
     const on = parts[where].filter(([c]) => c.loaded || c.loading);
-    if (where === 'cpu' && gpu && !on.length) return '';  // with a video card the processor line shows only when used
+    const none = where === 'gpu' && !gpu ? t('mpNoGpu') : t('mpDevIdle');  // both lines always, so the two can be compared
     const busy = on.some(([c]) => c.loading || (c.loaded && !c.can_unload));
-    const tip = `${t(where === 'gpu' ? 'hwModelsGpu' : 'hwModelsCpu')}: ${on.length ? on.map(([c]) => vramChipLabel(c)).join(', ') : t('mpDevIdle')}`;
+    const tip = `${t(where === 'gpu' ? 'hwModelsGpu' : 'hwModelsCpu')}: ${on.length ? on.map(([c]) => vramChipLabel(c)).join(', ') : none}`;
     return `<span class="mp-dev-row"><span class="mp-dev ${on.length ? 'mp-dev-on' : ''} ${busy ? 'mp-dev-busy' : ''}" title="${escapeHtml(tip)}">${where.toUpperCase()}</span>${
-      on.length ? on.map(([c]) => mini(c)).join('') : `<span class="mp-dev-none">${escapeHtml(t('mpDevIdle'))}</span>`}</span>`;
+      on.length ? on.map(([c]) => mini(c)).join('') : `<span class="mp-dev-none">${escapeHtml(none)}</span>`}</span>`;
   }).join('');
   const running = document.getElementById('hw-models-running');
   if (running.innerHTML !== runningHtml) running.innerHTML = runningHtml;
