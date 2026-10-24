@@ -846,7 +846,7 @@ label:has(> .vs-switch.vs-sm) { min-height: 24px; }
 .rp-sep { flex: none; width: 1px; height: 14px; background: rgba(255, 255, 255, 0.14); }
 .rp-caption { min-width: 0; font-size: 16px; font-weight: 500; letter-spacing: 0.1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #F5F5F7; }
 .rp-caption .rp-w-past { color: #F5F5F7; }
-.rp-caption .rp-w-next { color: #6E6E73; }
+.rp-caption .rp-w-next { color: #828287; }  /* 4.6:1 on the player, still well apart from the words said */
 .rp-center { display: flex; align-items: center; gap: 6px; }
 .rp-right { min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
 .rp-icon-btn { flex: none; width: 34px; height: 34px; padding: 0; border-radius: 9px; color: #C7C7CC; display: inline-flex; align-items: center; justify-content: center; }
