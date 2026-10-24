@@ -144,8 +144,11 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     loadOnnxGpu();
     document.getElementById('calendar-status').textContent = '';
     fillCallSettings(s);
+    fillWorkdaySettings(s);
+    fillSettingsVersion();
     loadHotkeyStatus();
     renderLiveModelSelect();
+    refreshSettingsChanged();
 
     const srcMode = s.record_source_mode || 'both';
     if (document.getElementById('set-record-source')) {
@@ -1072,7 +1075,7 @@ function captureHotkey(e) {
   e.preventDefault();
   if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return;
   if (e.key === 'Escape') { e.target.blur(); return; }
-  if (e.key === 'Backspace' || e.key === 'Delete') { e.target.value = ''; return; }
+  if (e.key === 'Backspace' || e.key === 'Delete') { e.target.value = ''; scheduleSettingsSave(); refreshSettingsChanged(); return; }
   const mods = [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Win'].filter(Boolean);
   if (!mods.some(m => m !== 'Shift')) {
     document.getElementById('hotkey-status').textContent = t('hotkeyNeedsMod');
@@ -1082,13 +1085,26 @@ function captureHotkey(e) {
   const code = e.code.startsWith('Key') ? e.code.slice(3) : e.code.startsWith('Digit') ? e.code.slice(5)
     : /^F\d{1,2}$/.test(e.code) ? e.code : { Space: 'Space', Pause: 'Pause', Insert: 'Insert', Home: 'Home', End: 'End', PageUp: 'PageUp', PageDown: 'PageDown' }[e.code];
   if (!code) return;
-  e.target.value = [...mods, code].join('+');
-  document.getElementById('hotkey-status').textContent = t('hotkeySaveHint');
+  const combo = [...mods, code].join('+');
+  // One combination for one action: another field already holding it says which
+  const other = ['set-record-hotkey', 'set-dictation-hotkey', 'set-translate-hotkey']
+    .map(id => document.getElementById(id)).find(el => el && el !== e.target && el.value === combo);
+  if (other) {
+    const what = document.querySelector(`label[for="${other.id}"]`)?.textContent.trim() || other.title || '';
+    document.getElementById('hotkey-status').textContent = t('rdSasHotkeyTaken').replace('{what}', () => what);
+    return;
+  }
+  e.target.value = combo;
+  document.getElementById('hotkey-status').textContent = t('rdSasHotkeySaved');
+  scheduleSettingsSave();
+  refreshSettingsChanged();
 }
 
 function clearHotkey() {
   document.getElementById('set-record-hotkey').value = '';
-  document.getElementById('hotkey-status').textContent = t('hotkeySaveHint');
+  document.getElementById('hotkey-status').textContent = t('rdSasHotkeySaved');
+  scheduleSettingsSave();
+  refreshSettingsChanged();
 }
 
 async function loadHotkeyStatus() {
@@ -1606,6 +1622,7 @@ async function saveAllSettings() {
       onnx_gpu: document.getElementById('set-onnx-gpu')?.checked ? 'true' : 'false',
       ...callSettingsPayload(),
       ...dubSettingsPayload(),
+      ...workdaySettingsPayload(),
     }
   };
   // "Saved" only once the server has the settings: on an error the window stays open with them
@@ -1617,17 +1634,21 @@ async function saveAllSettings() {
       body: JSON.stringify(payload)
     });
   } catch (e) {
+    setSettingsSaveState('failed');
     showToast(t('settingsSaveFailed').replace('{why}', () => String(e.message || e)));
     return;
   }
   if (!res.ok) {
     const why = errorText(await readJson(res), res);
+    setSettingsSaveState('failed');
     showToast(t('settingsSaveFailed').replace('{why}', () => why));
     return;
   }
-  closeModal('settings');
-  showToast(t('settingsSaved'));
-  loadSystemInfo().catch(console.error);
+  // The settings page saves each change at once and stays open
+  setSettingsSaveState('saved');
+  const saved = await readJson(res);
+  if (saved?.settings && state.system) state.system.settings = { ...(state.system.settings || {}), ...saved.settings };
+  refreshSettingsChanged();
 }
 
 function pullCustomOllamaModel() {
@@ -1704,6 +1725,7 @@ async function loadDictionary() {
   document.getElementById('dict-clear-btn').classList.toggle('hidden', state.dictionary.length === 0);
   if (state.dictionary.length === 0) {
     box.innerHTML = `<div class="p-6 text-center text-xs text-apple-tertiary">${escapeHtml(t('emptyDictionary'))}</div>`;
+    renderSettingsDictionary();
     return;
   }
 
@@ -1719,6 +1741,7 @@ async function loadDictionary() {
       <button data-click="deleteDictItem" data-click-args='[${item.id}]' title="${escapeHtml(t('tipDeleteDictTerm'))}" class="text-apple-tertiary hover:text-apple-red transition p-1">${SVG_ICONS.closeX}</button>
     </div>
   `).join('');
+  renderSettingsDictionary();
 }
 
 async function addDictionaryItems() {
@@ -1904,4 +1927,343 @@ async function clearBenchHistory() {
 async function benchUse(kind, model) {
   if (kind === 'asr') await selectActiveWhisperModel(model);
   else await selectActiveOllamaModel(model);
+}
+
+// --- The settings page of the redesign: sections, a search, changes saved at once, a reset per section ---
+
+// What "Сбросить раздел" puts back: [element id, setting key, 'check' | 'value']. The default values
+// are those of app/database.init_db (tests/test_settings_page.py keeps them the same)
+const SETTINGS_RESET = {
+  general: [['set-start-with-windows', 'start_with_windows', 'check'], ['set-close-to-tray', 'close_to_tray', 'check'],
+    ['set-idle-unload', 'idle_unload_minutes', 'value'], ['set-quiet-mode', 'quiet_mode', 'check']],
+  record: [['set-record-source', 'record_source_mode', 'value'], ['set-live-model', 'live_whisper_model', 'value'],
+    ['set-call-record', 'call_auto_record', 'check']],
+  recognition: [['set-diarization', 'diarization_enabled', 'check'], ['set-voice-profiles', 'voice_profiles', 'check'],
+    ['set-vad', 'vad_filter', 'check'], ['set-audio-enhance', 'audio_enhance', 'check'], ['set-clean-fillers', 'clean_fillers', 'check'],
+    ['set-onnx-gpu', 'onnx_gpu', 'check']],
+  analysis: [['set-auto-summary', 'auto_summary', 'check'], ['set-auto-title', 'auto_title', 'check'],
+    ['set-summary-grounding', 'summary_grounding', 'check'], ['set-auto-commitments', 'auto_commitments', 'check'],
+    ['set-semantic', 'semantic_search', 'check']],
+  calendar: [['set-workday-start', 'work_day_start', 'value'], ['set-workday-end', 'work_day_end', 'value'],
+    ['set-meetings-autorecord', 'meet_auto_all', 'check'], ['set-meetings-ask-inperson', 'meet_ask_inperson', 'check']],
+  hotkeys: [['set-record-hotkey', 'record_hotkey', 'value'], ['set-dictation-hotkey', 'dictation_hotkey', 'value'],
+    ['set-translate-hotkey', 'dictation_translate_hotkey', 'value'], ['set-dictation-language', 'dictation_language', 'value'],
+    ['set-dictation-save', 'dictation_save', 'check'], ['set-dictation-translate-cloud', 'dictation_translate_cloud', 'check']],
+  export: [['set-file-name-template', 'file_name_template', 'value'], ['set-date-folders', 'date_folders', 'value']],
+  privacy: [['set-delete-media-after', 'delete_media_after', 'check'], ['set-media-retention', 'media_retention_days', 'value']],
+  updates: [['set-update-check', 'update_check', 'check'], ['set-update-auto', 'update_auto', 'check'], ['set-update-beta', 'update_beta', 'check']],
+};
+const SETTINGS_DEFAULTS = {
+  start_with_windows: 'false', close_to_tray: 'false', idle_unload_minutes: '10', quiet_mode: 'false',
+  record_source_mode: 'both', live_whisper_model: 'auto', call_auto_record: 'false',
+  diarization_enabled: 'true', voice_profiles: 'true', vad_filter: 'true', audio_enhance: 'true', clean_fillers: 'true', onnx_gpu: 'true',
+  auto_summary: 'true', auto_title: 'true', summary_grounding: 'true', auto_commitments: 'true', semantic_search: 'false',
+  work_day_start: '09:00', work_day_end: '18:00', meet_auto_all: 'false', meet_ask_inperson: 'true',  // as the controls show them
+  record_hotkey: 'Ctrl+Alt+R', dictation_hotkey: 'Ctrl+Alt+D', dictation_translate_hotkey: 'Ctrl+Alt+T', dictation_language: 'auto',
+  dictation_save: 'true', dictation_translate_cloud: 'false',
+  file_name_template: '{date} {title}', date_folders: 'off',
+  delete_media_after: 'false', media_retention_days: '0',
+  update_check: 'true', update_auto: 'true', update_beta: 'false',
+};
+
+function settingsControlValue([id, , kind]) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  return kind === 'check' ? String(el.checked) : String(el.value);
+}
+
+function setSettingsControl([id, , kind], value) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (kind === 'check') el.checked = value === 'true';
+  else el.value = value;
+}
+
+function settingsSectionChanges(sec) {
+  return (SETTINGS_RESET[sec] || []).filter(c => {
+    const v = settingsControlValue(c);
+    return v !== null && v !== SETTINGS_DEFAULTS[c[1]];
+  }).length;
+}
+
+// The dot of a section that differs from the defaults, and the reset button of the section shown
+function refreshSettingsChanged() {
+  Object.keys(SETTINGS_RESET).forEach(sec => document.getElementById(`stab-${sec}`)?.classList.toggle('sx-changed', settingsSectionChanges(sec) > 0));
+  const sec = document.getElementById('modal-settings')?.dataset.tab;
+  const btn = document.getElementById('settings-reset-btn');
+  if (!btn) return;
+  const n = settingsSectionChanges(sec);
+  btn.classList.toggle('hidden', !n || !!state.settingsQuery);
+  btn.textContent = t('rdSasResetSection').replace('{n}', () => n);
+}
+
+function onSettingsTabShown(name) {
+  if (state.settingsQuery) clearSettingsSearch(true);
+  const main = document.getElementById('settings-main');
+  if (main) main.scrollTop = 0;
+  refreshSettingsChanged();
+}
+
+async function resetSettingsSection() {
+  const sec = document.getElementById('modal-settings').dataset.tab;
+  const controls = SETTINGS_RESET[sec] || [];
+  const before = controls.map(c => [c, settingsControlValue(c)]);
+  controls.forEach(c => setSettingsControl(c, SETTINGS_DEFAULTS[c[1]]));
+  syncVoiceProfilesToggle();
+  syncWorkdayHint();
+  await saveAllSettings();
+  refreshSettingsChanged();
+  showToast(t('rdSasResetDone'), {
+    label: t('rdSasUndo'),
+    onClick: async () => {
+      before.forEach(([c, v]) => { if (v !== null) setSettingsControl(c, v); });
+      syncVoiceProfilesToggle();
+      syncWorkdayHint();
+      await saveAllSettings();
+      refreshSettingsChanged();
+    },
+  });
+}
+
+// --- Saved at once: a change of a control of the page is sent a moment later (several at a time) ---
+let _settingsSaveTimer = null;
+function scheduleSettingsSave(delay = 450) {
+  clearTimeout(_settingsSaveTimer);
+  _settingsSaveTimer = setTimeout(() => { _settingsSaveTimer = null; saveAllSettings(); }, delay);
+}
+
+function setSettingsSaveState(kind) {
+  const el = document.getElementById('settings-save-state');
+  if (!el) return;
+  clearTimeout(setSettingsSaveState.timer);
+  el.classList.toggle('sx-saved', kind === 'saved');
+  el.classList.toggle('sx-failed', kind === 'failed');
+  el.textContent = t(kind === 'saved' ? 'rdSasSaved' : kind === 'failed' ? 'rdSasSaveFailed' : 'rdSasAutoNote');
+  if (kind === 'saved') setSettingsSaveState.timer = setTimeout(() => setSettingsSaveState(''), 1800);
+}
+
+// The controls of the payload of saveAllSettings: their ids start with "set-" (and the list of call apps)
+const SETTINGS_AUTOSAVE_EXTRA = new Set(['call-apps']);
+document.addEventListener('change', (e) => {
+  const el = e.target;
+  if (!el?.id || !el.closest?.('#modal-settings')) return;
+  if (!el.id.startsWith('set-') && !SETTINGS_AUTOSAVE_EXTRA.has(el.id)) return;
+  if (el.id === 'set-workday-start' || el.id === 'set-workday-end') syncWorkdayHint();
+  scheduleSettingsSave();
+  refreshSettingsChanged();
+});
+
+// --- The working day (the home page shows these hours) and the recording of every meeting ---
+function fillWorkdaySettings(s) {
+  // every half hour of the day; a value not on the list (set elsewhere) is added to it
+  const times = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`);  // whole hours, as the home page keeps them
+  const put = (id, v) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (!/^\d{2}:\d{2}$/.test(v)) v = id.endsWith('start') ? '09:00' : '18:00';
+    const list = times.includes(v) ? times : [...times, v].sort();
+    if (el.options.length !== list.length) el.innerHTML = list.map(x => `<option value="${x}">${x}</option>`).join('');
+    el.value = v;
+  };
+  // the working day is kept in whole hours (work_day_start / work_day_end, shared with the home page)
+  const hh = (h, d) => String(Number.isFinite(parseInt(h, 10)) ? parseInt(h, 10) : d).padStart(2, '0') + ':00';
+  put('set-workday-start', hh(s.work_day_start, 9));
+  put('set-workday-end', hh(s.work_day_end, 18));
+  const a = document.getElementById('set-meetings-autorecord');
+  if (a) a.checked = s.meet_auto_all === 'true';
+  const b = document.getElementById('set-meetings-ask-inperson');
+  if (b) b.checked = s.meet_ask_inperson !== 'false';
+  syncWorkdayHint();
+}
+
+function workdaySettingsPayload() {
+  const v = (id, d) => document.getElementById(id)?.value || d;
+  return {
+    work_day_start: String(parseInt(v('set-workday-start', '09:00'), 10)),
+    work_day_end: String(parseInt(v('set-workday-end', '18:00'), 10)),
+    meet_auto_all: String(!!document.getElementById('set-meetings-autorecord')?.checked),
+    meet_ask_inperson: String(document.getElementById('set-meetings-ask-inperson')?.checked !== false),
+  };
+}
+
+function syncWorkdayHint() {
+  const a = document.getElementById('set-workday-start')?.value || '09:00';
+  const b = document.getElementById('set-workday-end')?.value || '18:00';
+  document.getElementById('workday-overnight')?.classList.toggle('hidden', !(b <= a));
+  const ask = document.getElementById('set-meetings-ask-inperson');
+  const all = document.getElementById('set-meetings-autorecord');
+  if (ask && all) {
+    ask.disabled = !all.checked;
+    ask.closest('label').style.opacity = all.checked ? '' : '0.45';
+  }
+}
+
+// --- The search: every card of every section with the words, the sections without them dimmed ---
+function settingsCards(section) {
+  return [...section.children].filter(el => !el.classList.contains('sx-section-head'));
+}
+
+function settingsCardText(card) {
+  const extra = [...card.querySelectorAll('[placeholder],[title]')].map(el => `${el.placeholder || ''} ${el.title || ''}`).join(' ');
+  return `${card.textContent} ${extra}`.toLowerCase().replace(/\s+/g, ' ');
+}
+
+function settingsSearch(value) {
+  const q = String(value || '').trim().toLowerCase();
+  state.settingsQuery = q;
+  const main = document.getElementById('settings-main');
+  const sections = [...document.querySelectorAll('#modal-settings [data-stab]')];
+  if (!q) { clearSettingsSearch(); return; }
+  main.classList.add('sx-searching');
+  let any = 0;
+  sections.forEach(sec => {
+    let hits = 0;
+    settingsCards(sec).forEach(card => {
+      // a card the page hides itself (FFmpeg when it is installed) stays hidden; the search marks its own
+      const hit = settingsCardText(card).includes(q);
+      if (!hit && !card.classList.contains('hidden')) { card.classList.add('hidden'); card.dataset.sxHid = '1'; }
+      if (hit && card.dataset.sxHid === '1') { card.classList.remove('hidden'); delete card.dataset.sxHid; }
+      if (hit && !card.classList.contains('hidden')) hits++;
+    });
+    sec.classList.toggle('hidden', !hits);
+    document.getElementById(`stab-${sec.dataset.stab}`)?.classList.toggle('sx-dim', !hits);
+    any += hits;
+  });
+  document.getElementById('settings-search-empty').classList.toggle('hidden', any > 0);
+  document.getElementById('settings-reset-btn')?.classList.add('hidden');
+  main.scrollTop = 0;
+}
+
+function clearSettingsSearch(keepTab) {
+  state.settingsQuery = '';
+  const input = document.getElementById('settings-search');
+  if (input) input.value = '';
+  document.getElementById('settings-main')?.classList.remove('sx-searching');
+  document.getElementById('settings-search-empty')?.classList.add('hidden');
+  document.querySelectorAll('#modal-settings [data-stab]').forEach(sec => {
+    settingsCards(sec).forEach(card => {
+      if (card.dataset.sxHid === '1') { card.classList.remove('hidden'); delete card.dataset.sxHid; }
+    });
+  });
+  document.querySelectorAll('.sx-nav-btn').forEach(b => b.classList.remove('sx-dim'));
+  if (!keepTab) selectSettingsTab(document.getElementById('modal-settings').dataset.tab || 'general');
+}
+
+function settingsSearchKey(e) {
+  if (e.key === 'Escape') { e.preventDefault(); clearSettingsSearch(); return; }
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const card = [...document.querySelectorAll('#modal-settings [data-stab]:not(.hidden) > :not(.sx-section-head):not(.hidden)')][0];
+  if (!card) return;
+  const sec = card.closest('[data-stab]').dataset.stab;
+  clearSettingsSearch(true);
+  selectSettingsTab(sec);
+  card.scrollIntoView({ block: 'center' });
+  card.classList.add('sx-hit');
+  setTimeout(() => card.classList.remove('sx-hit'), 1600);
+}
+
+// --- A link to a section: #settings/models (and the like) opens the page on it ---
+function openSettingsFromHash() {
+  const m = /^#settings(?:\/([a-z]+))?$/.exec(location.hash || '');
+  if (!m) return;
+  openModal('settings', m[1] || undefined);
+  history.replaceState(null, '', location.pathname + location.search);
+}
+window.addEventListener('hashchange', openSettingsFromHash);
+document.addEventListener('DOMContentLoaded', () => setTimeout(openSettingsFromHash, 0));
+
+// --- The dictionary inside the settings (the same terms as the window «Словарь») ---
+function renderSettingsDictionary() {
+  const box = document.getElementById('settings-dict-list');
+  if (!box) return;
+  const terms = state.dictionary || [];
+  const count = document.getElementById('settings-dict-count');
+  if (count) count.textContent = terms.length ? t('rdSasDictCount').replace('{n}', () => terms.filter(d => d.active).length).replace('{all}', () => terms.length) : '';
+  if (!terms.length) {
+    box.innerHTML = `<div class="p-5 text-center text-xs text-apple-tertiary">${escapeHtml(t('rdSasDictEmpty'))}</div>`;
+    return;
+  }
+  box.innerHTML = terms.map(item => `
+    <div class="flex items-center justify-between gap-2 px-3 py-1.5 text-xs">
+      <label class="flex items-center gap-2.5 min-w-0 cursor-pointer">
+        <input type="checkbox" ${item.active ? 'checked' : ''} data-change="toggleDictItem" data-change-args='[${item.id}, {"$": "checked"}]'
+          class="rounded bg-apple-bg border-white/20 text-apple-blue" />
+        <span class="truncate ${item.active ? 'text-white' : 'text-apple-tertiary line-through'}">${escapeHtml(item.term)}</span>
+        <span class="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-apple-secondary shrink-0">${escapeHtml(item.category)}</span>
+      </label>
+      <button data-click="deleteSettingsDictItem" data-click-args='[${item.id}]' title="${escapeHtml(t('tipDeleteDictTerm'))}" class="text-apple-tertiary hover:text-apple-red transition p-1">${SVG_ICONS.closeX}</button>
+    </div>`).join('');
+}
+
+async function addSettingsDictItem() {
+  const input = document.getElementById('settings-dict-term');
+  const term = input.value.trim();
+  if (!term) return;
+  if ((state.dictionary || []).some(d => d.term.toLowerCase() === term.toLowerCase())) {
+    showToast(t('rdSasDictDup'));
+    return;
+  }
+  const category = document.getElementById('settings-dict-cat').value.trim() || t('rdSasDictCatDefault');
+  await fetch('/api/dictionary', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ term, category }),
+  });
+  input.value = '';
+  input.focus();
+  await loadDictionary();
+}
+
+// Deleted at once, with a way back
+async function deleteSettingsDictItem(id) {
+  const item = (state.dictionary || []).find(d => d.id === id);
+  await deleteDictItem(id);
+  if (!item) return;
+  showToast(t('rdSasDictDeleted').replace('{term}', () => item.term), {
+    label: t('rdSasUndo'),
+    onClick: async () => {
+      await fetch('/api/dictionary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ term: item.term, category: item.category }),
+      });
+      await loadDictionary();
+    },
+  });
+}
+
+// --- The data folder and what to tell when asking for help ---
+async function openDataFolder() {
+  const path = state.system?.paths?.data;
+  if (!path) return;
+  const res = await fetch('/api/reveal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }) });
+  if (!res.ok) showToast(errorText(await readJson(res), res));
+}
+
+async function copySystemInfo() {
+  const sys = state.system || {};
+  const hw = sys.hardware || {};
+  const about = await fetch('/api/about').then(r => r.json()).catch(() => ({}));
+  const lines = [
+    `VerbaScribe ${about.version || ''}`.trim(),
+    `${t('rdSasInfoDevice')}: ${hw.device_name || '—'}${hw.cuda_available ? ` · ${hw.vram_total_gb} GB VRAM` : ''}`,
+    `${t('rdSasInfoModel')}: ${document.getElementById('set-whisper-model')?.value || '—'}`,
+    `${t('dataFolder')}: ${sys.paths?.data || '—'}`,
+    `${t('modelsFolder')}: ${sys.paths?.models || '—'}`,
+  ];
+  try {
+    await navigator.clipboard.writeText(lines.join('\n'));
+    const btn = document.getElementById('settings-copy-info');
+    if (btn) { btn.textContent = t('rdSasCopied'); setTimeout(() => { btn.textContent = t('rdSasCopyInfo'); }, 1800); }
+  } catch (e) {
+    showToast(t('rdSasCopyFailed'));
+  }
+}
+
+async function fillSettingsVersion() {
+  const el = document.getElementById('settings-version');
+  if (!el || el.textContent) return;
+  const d = await fetch('/api/about').then(r => r.json()).catch(() => null);
+  if (d?.version) el.textContent = d.version;
 }

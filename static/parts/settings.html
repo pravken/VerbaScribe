@@ -1,38 +1,92 @@
-<!-- The settings window: part of static/index.html (assembled by app/page.py) -->
-  <!-- =========================================================================
-       MODAL 4: SETTINGS, RECORDING SOURCE, FIRST-RUN WIZARD & MODELS
-       (Outer container is overflow-hidden so scrollbar never clips rounded corners)
-       ========================================================================= -->
+<!-- The settings: part of static/index.html (assembled by app/page.py). A page of the main area
+     (mountSettingsPage in static/js/shell.js): sections on the left, a search, changes saved at once -->
   <div id="modal-settings" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4" data-click="closeModalOnBackdrop" data-click-args='[{"$": "event"}, "settings"]'>
-    <div class="w-full max-w-3xl bg-apple-card border apple-border rounded-2xl shadow-2xl overflow-hidden max-h-[88vh] flex flex-col modal-card" style="height: min(88vh, 820px);">
+    <div class="sx-shell modal-card w-full max-w-5xl" style="height: min(88vh, 820px);">
 
-      <!-- Sticky Modal Header -->
-      <div class="px-6 py-4 border-b apple-border flex items-center justify-between shrink-0 bg-apple-card">
-        <div>
-          <h3 class="text-sm font-semibold text-white" data-i18n="settingsModalTitle">Настройки</h3>
-          <p id="settings-hw-name" class="text-[11px] text-apple-secondary mt-0.5"></p>
-          <p id="settings-data-dir" class="text-[11px] text-apple-tertiary mt-0.5 truncate max-w-[28rem] select-text"></p>
+      <!-- Sections, the search and the note about saving -->
+      <aside class="sx-nav">
+        <div class="flex items-center gap-2 px-2 pt-1 pb-3">
+          <h2 class="flex-1 text-[19px] font-bold text-white" data-i18n="settingsModalTitle">Настройки</h2>
+          <button data-click="closeModal" data-click-args='["settings"]' data-i18n-title="tipCloseModal" title="Закрыть окно настроек"
+            class="ui-btn ui-btn-subtle h-7 !px-2.5 text-[11px]" data-i18n="close">Закрыть</button>
         </div>
-        <button data-click="closeModal" data-click-args='["settings"]' data-i18n-title="tipCloseModal" title="Закрыть окно настроек" class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
-      </div>
+        <label class="sx-search">
+          <svg aria-hidden="true" class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
+          <input id="settings-search" type="search" data-input="settingsSearch" data-input-args='[{"$": "value"}]' data-keydown="settingsSearchKey" data-keydown-args='[{"$": "event"}]'
+            data-i18n-placeholder="rdSasSearchPh" placeholder="Найти настройку" data-i18n-title="rdSasSearchPh" title="Найти настройку"
+            class="flex-1 min-w-0 bg-transparent border-0 text-xs text-white placeholder-apple-tertiary focus:outline-none" />
+        </label>
+        <nav id="settings-nav" class="sx-nav-list">
+          <button data-click="selectSettingsTab" data-click-args='["general"]' id="stab-general" class="sx-nav-btn" type="button">
+            <svg class="sx-nav-ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg>
+            <span class="flex-1 min-w-0 truncate" data-i18n="rdSasNavGeneral">Общие</span><span class="sx-nav-dot" aria-hidden="true"></span>
+          </button>
+          <button data-click="selectSettingsTab" data-click-args='["ui"]' id="stab-ui" class="sx-nav-btn" type="button">
+            <svg class="sx-nav-ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+            <span class="flex-1 min-w-0 truncate" data-i18n="rdSasNavUi">Интерфейс</span><span class="sx-nav-dot" aria-hidden="true"></span>
+          </button>
+          <button data-click="selectSettingsTab" data-click-args='["record"]' id="stab-record" class="sx-nav-btn" type="button">
+            <svg class="sx-nav-ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5"/></svg>
+            <span class="flex-1 min-w-0 truncate" data-i18n="rdSasNavRecord">Запись</span><span class="sx-nav-dot" aria-hidden="true"></span>
+          </button>
+          <button data-click="selectSettingsTab" data-click-args='["recognition"]' id="stab-recognition" class="sx-nav-btn" type="button">
+            <svg class="sx-nav-ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/></svg>
+            <span class="flex-1 min-w-0 truncate" data-i18n="rdSasNavRecognition">Распознавание</span><span class="sx-nav-dot" aria-hidden="true"></span>
+          </button>
+          <button data-click="selectSettingsTab" data-click-args='["models"]' id="stab-models" class="sx-nav-btn" type="button">
+            <svg class="sx-nav-ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/></svg>
+            <span class="flex-1 min-w-0 truncate" data-i18n="rdSasNavModels">Модели</span><span class="sx-nav-dot" aria-hidden="true"></span>
+          </button>
+          <button data-click="selectSettingsTab" data-click-args='["analysis"]' id="stab-analysis" class="sx-nav-btn" type="button">
+            <svg class="sx-nav-ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3l1.6 4.6 4.6 1.6-4.6 1.6L10 15.4l-1.6-4.6L3.8 9.2l4.6-1.6z"/><path d="M18 14l.8 2.2 2.2.8-2.2.8L18 20l-.8-2.2-2.2-.8 2.2-.8z"/></svg>
+            <span class="flex-1 min-w-0 truncate" data-i18n="rdSasNavAnalysis">ИИ-анализ</span><span class="sx-nav-dot" aria-hidden="true"></span>
+          </button>
+          <button data-click="selectSettingsTab" data-click-args='["calendar"]' id="stab-calendar" class="sx-nav-btn" type="button">
+            <svg class="sx-nav-ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
+            <span class="flex-1 min-w-0 truncate" data-i18n="rdSasNavCalendar">Календарь</span><span class="sx-nav-dot" aria-hidden="true"></span>
+          </button>
+          <button data-click="selectSettingsTab" data-click-args='["hotkeys"]' id="stab-hotkeys" class="sx-nav-btn" type="button">
+            <svg class="sx-nav-ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h1M10 10h1M14 10h1M7 14h10"/></svg>
+            <span class="flex-1 min-w-0 truncate" data-i18n="rdSasNavHotkeys">Горячие клавиши</span><span class="sx-nav-dot" aria-hidden="true"></span>
+          </button>
+          <button data-click="selectSettingsTab" data-click-args='["dictionary"]' id="stab-dictionary" class="sx-nav-btn" type="button">
+            <svg class="sx-nav-ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4.5h11a3 3 0 0 1 3 3v12H8a3 3 0 0 1-3-3z"/><path d="M5 16.5a3 3 0 0 1 3-3h11"/></svg>
+            <span class="flex-1 min-w-0 truncate" data-i18n="rdSasNavDictionary">Словарь</span><span class="sx-nav-dot" aria-hidden="true"></span>
+          </button>
+          <button data-click="selectSettingsTab" data-click-args='["export"]' id="stab-export" class="sx-nav-btn" type="button">
+            <svg class="sx-nav-ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3.5M7.5 8L12 3.5 16.5 8"/><path d="M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/></svg>
+            <span class="flex-1 min-w-0 truncate" data-i18n="rdSasNavExport">Экспорт и связи</span><span class="sx-nav-dot" aria-hidden="true"></span>
+          </button>
+          <button data-click="selectSettingsTab" data-click-args='["privacy"]' id="stab-privacy" class="sx-nav-btn" type="button">
+            <svg class="sx-nav-ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.5 3v5.5c0 4.6-3.2 8.2-7.5 9.5-4.3-1.3-7.5-4.9-7.5-9.5V6z"/></svg>
+            <span class="flex-1 min-w-0 truncate" data-i18n="rdSasNavPrivacy">Приватность и хранение</span><span class="sx-nav-dot" aria-hidden="true"></span>
+          </button>
+          <button data-click="selectSettingsTab" data-click-args='["updates"]' id="stab-updates" class="sx-nav-btn" type="button">
+            <svg class="sx-nav-ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4.5V11h-6.5"/></svg>
+            <span class="flex-1 min-w-0 truncate" data-i18n="rdSasNavUpdates">Обновления</span><span class="sx-nav-dot" aria-hidden="true"></span>
+          </button>
+          <button data-click="selectSettingsTab" data-click-args='["dub"]' id="stab-dub" class="sx-nav-btn" type="button">
+            <svg class="sx-nav-ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5v5h3.5L12 19V5L7.5 9.5z"/><path d="M15.5 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"/></svg>
+            <span class="flex-1 min-w-0 truncate" data-i18n="rdSasNavDub">Дубляж</span><span class="sx-nav-dot" aria-hidden="true"></span>
+          </button>
+          <button data-click="selectSettingsTab" data-click-args='["bench"]' id="stab-bench" class="sx-nav-btn" type="button">
+            <svg class="sx-nav-ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></svg>
+            <span class="flex-1 min-w-0 truncate" data-i18n="rdSasNavBench">Сравнение моделей</span><span class="sx-nav-dot" aria-hidden="true"></span>
+          </button>
+          <button data-click="selectSettingsTab" data-click-args='["about"]' id="stab-about" class="sx-nav-btn" type="button">
+            <svg class="sx-nav-ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.6v.4"/></svg>
+            <span class="flex-1 min-w-0 truncate" data-i18n="rdSasNavAbout">О программе</span><span class="sx-nav-dot" aria-hidden="true"></span>
+          </button>
+        </nav>
+        <p id="settings-save-state" class="sx-foot" data-i18n="rdSasAutoNote">Изменения применяются сразу. Всё хранится только на этом компьютере.</p>
+      </aside>
 
-      <!-- Settings sections as tabs (selectSettingsTab in static/js/core.js) -->
-      <div class="px-6 pt-3 pb-3 border-b apple-border shrink-0 bg-apple-card">
-        <div class="apple-segmented w-full settings-tabs">
-          <button data-click="selectSettingsTab" data-click-args='["general"]' id="stab-general" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabGeneral">Общие</button>
-          <button data-click="selectSettingsTab" data-click-args='["record"]' id="stab-record" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabRecord">Запись</button>
-          <button data-click="selectSettingsTab" data-click-args='["recognition"]' id="stab-recognition" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabRecognition">Распознавание</button>
-          <button data-click="selectSettingsTab" data-click-args='["analysis"]' id="stab-analysis" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabAnalysis">Анализ</button>
-          <button data-click="selectSettingsTab" data-click-args='["export"]' id="stab-export" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabExport">Экспорт</button>
-          <button data-click="selectSettingsTab" data-click-args='["integrations"]' id="stab-integrations" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabIntegrations">Интеграции</button>
-          <button data-click="selectSettingsTab" data-click-args='["dub"]' id="stab-dub" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabDub">Дубляж</button>
-          <button data-click="selectSettingsTab" data-click-args='["bench"]' id="stab-bench" class="apple-segment-btn text-apple-secondary hover:text-white" data-i18n="stabBench">Сравнение</button>
-        </div>
-      </div>
-
-      <!-- Scrollable Inner Content -->
-      <div class="p-6 overflow-y-auto flex-1">
-
+      <!-- The section shown (or every match of the search) -->
+      <div id="settings-main" class="sx-main">
+        <div class="sx-inner">
+          <div class="sx-reset-row">
+            <button data-click="resetSettingsSection" id="settings-reset-btn" class="hidden ui-btn ui-btn-subtle h-7 px-3 text-[11px]"></button>
+          </div>
         <!-- Old data folder that was not moved because both folders contain recordings -->
         <div id="legacy-conflict-banner" class="hidden mb-4 rounded-xl bg-apple-amber/15 border border-apple-amber/50 px-3.5 py-2.5 text-xs text-white space-y-1">
           <div class="font-semibold text-apple-amber" data-i18n="legacyConflictTitle">Найдена старая папка с записями</div>
@@ -44,24 +98,13 @@
           <div class="font-semibold text-apple-blue" data-i18n="firstRunTitle">Начальная настройка</div>
           <p class="text-apple-label/90 text-[11.5px]" data-i18n="firstRunText">Модели распознавания не входят в установку, чтобы она занимала меньше места. Скачайте рекомендуемую модель Whisper ниже.</p>
         </div>
+          <div id="settings-search-empty" class="hidden text-center text-xs text-apple-tertiary py-16" data-i18n="rdSasSearchNone">Ничего не нашлось</div>
 
-        <div data-stab="general" class="space-y-4 hidden">
-        <!-- Support the project -->
-        <div class="settings-card">
-          <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0">
-              <h4 class="text-[13px] font-semibold text-white" data-i18n="supportTitle">Поддержать проект</h4>
-              <p class="text-[11px] text-apple-secondary leading-snug mt-0.5" data-i18n="supportDesc">VerbaScribe бесплатна. Если она экономит вам время, можно угостить разработчика кофе.</p>
-            </div>
-            <div class="flex items-center gap-2 shrink-0">
-            <button data-click="openAbout" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px]" data-i18n="aboutBtn">О программе</button>
-            <button data-click="openSupport" class="ui-btn ui-btn-primary h-8 px-3 text-[11px] shrink-0 gap-1.5">
-              <svg class="w-3 h-3 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 2.9 4.5 6.6 4.5c2.1 0 3.6 1.2 4.4 2.5.8-1.3 2.3-2.5 4.4-2.5 3.7 0 5.7 3.9 4.2 7.3C19.5 16.4 12 21 12 21z"/></svg><span data-i18n="supportBtn">Поддержать на Ko-fi</span>
-            </button>
-            </div>
+        <div data-stab="general" class="sx-section space-y-3 hidden">
+          <div class="sx-section-head">
+            <h3 class="sx-section-title" data-i18n="rdSasNavGeneral">Общие</h3>
+            <p class="sx-section-desc" data-i18n="rdSasDescGeneral">Язык, запуск вместе с Windows, трей, память и уведомления.</p>
           </div>
-        </div>
-
         <!-- Interface language (applied at once, remembered in this browser profile) -->
         <div class="settings-card !space-y-0 flex items-center justify-between gap-3">
           <div class="min-w-0">
@@ -74,21 +117,6 @@
           </div>
         </div>
 
-        <!-- Interface scale: CSS zoom on the page (applyUiScale in static/js/core.js) -->
-        <div class="settings-card !space-y-0 flex items-center justify-between gap-3">
-          <div class="min-w-0">
-            <h4 class="text-[13px] font-semibold text-white" data-i18n="uiScaleTitle">Масштаб интерфейса</h4>
-            <p class="text-[11px] text-apple-secondary leading-snug mt-0.5" data-i18n="uiScaleDesc">Размер всего в окне: текста, кнопок и списков. Меняется сразу.</p>
-          </div>
-          <div class="apple-segmented shrink-0" role="radiogroup" data-i18n-title="uiScaleTitle" title="Масштаб интерфейса">
-            <button data-click="setUiScale" data-click-args='["75"]' id="scale-btn-75" role="radio" class="apple-segment-btn">75 %</button>
-            <button data-click="setUiScale" data-click-args='["90"]' id="scale-btn-90" role="radio" class="apple-segment-btn">90 %</button>
-            <button data-click="setUiScale" data-click-args='["100"]' id="scale-btn-100" role="radio" class="apple-segment-btn">100 %</button>
-            <button data-click="setUiScale" data-click-args='["115"]' id="scale-btn-115" role="radio" class="apple-segment-btn">115 %</button>
-          </div>
-        </div>
-
-        <!-- Version and updates from GitHub Releases (app/updater.py) -->
         <!-- Start with Windows, in the tray (app/autostart.py, run.py --minimized) -->
         <div class="settings-card">
           <div>
@@ -103,82 +131,6 @@
             <input type="checkbox" id="set-close-to-tray" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
             <span data-i18n="closeToTray">Закрытие окна оставляет программу в трее (выход — из меню значка)</span>
           </label>
-        </div>
-
-        <div class="settings-card">
-          <div class="flex items-center justify-between gap-3">
-            <div class="min-w-0">
-              <h4 class="text-[13px] font-semibold text-white" data-i18n="updateTitle">Обновления</h4>
-              <p id="update-status-text" class="text-[11px] text-apple-secondary leading-snug"></p>
-            </div>
-            <div class="flex items-center gap-2 shrink-0">
-              <button id="update-install-btn" data-click="installUpdate" class="hidden ui-btn ui-btn-primary h-8 px-3 text-[11px]" data-i18n="updateInstallBtn">Установить</button>
-              <button id="update-check-btn" data-click="checkForUpdates" data-click-args='[true]' class="ui-btn ui-btn-subtle h-8 px-3 text-[11px]" data-i18n="updateCheckBtn">Проверить сейчас</button>
-            </div>
-          </div>
-          <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label">
-            <input type="checkbox" id="set-update-check" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
-            <span data-i18n="updateAutoToggle">Проверять обновления при запуске</span>
-          </label>
-          <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label" data-i18n-title="tipUpdateAutoInstall"
-            title="Новая версия скачивается в фоне и устанавливается, когда вы закрываете программу. Данные, модели и настройки не затрагиваются">
-            <input type="checkbox" id="set-update-auto" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
-            <span data-i18n="updateAutoInstall">Скачивать и устанавливать обновления автоматически</span>
-          </label>
-          <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label" data-i18n-title="tipUpdateBeta"
-            title="Предлагать и бета-версии: в них новое приходит раньше, но оно ещё проверяется. Когда выходит обычная версия, она тоже предлагается">
-            <input type="checkbox" id="set-update-beta" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
-            <span data-i18n="updateBetaToggle">Получать бета-версии</span>
-          </label>
-          <p class="text-[11px] text-apple-tertiary leading-snug" data-i18n="updateHint">Спрашивается только номер последней версии на GitHub. Ваши записи, модели и настройки при обновлении не затрагиваются.</p>
-        </div>
-
-        <!-- Privacy: the sound of recordings, and what went to a cloud model -->
-        <div class="settings-card">
-          <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0">
-              <h4 class="text-[13px] font-semibold text-white" data-i18n="privacyTitle">Приватность</h4>
-              <p class="text-[11px] text-apple-secondary leading-snug mt-0.5" data-i18n="privacyDesc">Сколько хранится звук записей и что отправлялось облачной модели.</p>
-            </div>
-          </div>
-          <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
-            <input type="checkbox" id="set-delete-media-after" class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
-            <span><span data-i18n="deleteMediaAfter">Удалять звук после расшифровки</span>
-              <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="deleteMediaAfterHint">Остаются расшифровка, анализ и заметки. Файлы, добавленные по пути на диске, не трогаются.</span></span>
-          </label>
-          <div class="flex items-center gap-2 text-xs text-apple-label">
-            <span id="lbl-media-retention" data-i18n="retentionLabel">Хранить звук записей</span>
-            <select id="set-media-retention" aria-labelledby="lbl-media-retention" class="h-7 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none">
-              <option value="0" data-i18n="retentionForever">всегда</option>
-              <option value="7" data-i18n="retention7">7 дней</option>
-              <option value="30" data-i18n="retention30">30 дней</option>
-              <option value="90" data-i18n="retention90">90 дней</option>
-              <option value="365" data-i18n="retention365">1 год</option>
-            </select>
-          </div>
-          <button data-click="openCloudLog" class="ui-btn ui-btn-subtle h-7 text-[11px]" data-i18n="cloudLogBtn">Журнал облачных запросов</button>
-        </div>
-
-        <!-- Backup of the library (app/backup.py) -->
-        <div class="settings-card">
-          <div class="min-w-0">
-            <h4 class="text-[13px] font-semibold text-white" data-i18n="backupTitle">Резервная копия</h4>
-            <p class="text-[11px] text-apple-secondary leading-snug mt-0.5" data-i18n="backupDesc">Все записи, расшифровки, анализ, заметки, папки, голоса и настройки в одном файле .zip — перед переустановкой или переездом на другой компьютер. Ключи облачных моделей в копию не попадают.</p>
-          </div>
-          <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label">
-            <input type="checkbox" id="backup-with-media" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
-            <span><span data-i18n="backupWithMedia">Вместе со звуком и видео</span> <span id="backup-media-size" class="text-apple-tertiary"></span></span>
-          </label>
-          <div class="flex items-center gap-2 flex-wrap">
-            <button data-click="makeBackup" id="backup-make-btn" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px]" data-i18n="backupMake">Сохранить копию…</button>
-            <button data-click="restoreBackup" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px]" data-i18n="backupRestore">Восстановить из копии…</button>
-            <span id="backup-status" class="text-[11px] text-apple-tertiary"></span>
-          </div>
-          <!-- Left by a crash, a failed delete or an older version (app/database.orphan_files) -->
-          <div id="orphans-row" class="hidden flex items-center gap-2 flex-wrap text-[11px] text-apple-secondary">
-            <span id="orphans-text"></span>
-            <button data-click="deleteOrphans" id="orphans-btn" class="ui-btn ui-btn-subtle h-7 px-3 text-[11px]" data-i18n="orphansDelete">Освободить место</button>
-          </div>
         </div>
 
         <!-- Memory (app/idle_unload.py) and notifications -->
@@ -217,8 +169,30 @@
           <button id="ffmpeg-download-btn" data-click="installFfmpeg" class="hidden ui-btn ui-btn-primary shrink-0" data-i18n="ffmpegDownloadBtn">Скачать FFmpeg</button>
         </div>
         </div>
-
-        <div data-stab="record" class="space-y-4 hidden">
+        <div data-stab="ui" class="sx-section space-y-3 hidden">
+          <div class="sx-section-head">
+            <h3 class="sx-section-title" data-i18n="rdSasNavUi">Интерфейс</h3>
+            <p class="sx-section-desc" data-i18n="rdSasDescUi">Размер всего интерфейса.</p>
+          </div>
+        <!-- Interface scale: CSS zoom on the page (applyUiScale in static/js/core.js) -->
+        <div class="settings-card !space-y-0 flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <h4 class="text-[13px] font-semibold text-white" data-i18n="uiScaleTitle">Масштаб интерфейса</h4>
+            <p class="text-[11px] text-apple-secondary leading-snug mt-0.5" data-i18n="uiScaleDesc">Размер всего в окне: текста, кнопок и списков. Меняется сразу.</p>
+          </div>
+          <div class="apple-segmented shrink-0" role="radiogroup" data-i18n-title="uiScaleTitle" title="Масштаб интерфейса">
+            <button data-click="setUiScale" data-click-args='["75"]' id="scale-btn-75" role="radio" class="apple-segment-btn">75 %</button>
+            <button data-click="setUiScale" data-click-args='["90"]' id="scale-btn-90" role="radio" class="apple-segment-btn">90 %</button>
+            <button data-click="setUiScale" data-click-args='["100"]' id="scale-btn-100" role="radio" class="apple-segment-btn">100 %</button>
+            <button data-click="setUiScale" data-click-args='["115"]' id="scale-btn-115" role="radio" class="apple-segment-btn">115 %</button>
+          </div>
+        </div>
+        </div>
+        <div data-stab="record" class="sx-section space-y-3 hidden">
+          <div class="sx-section-head">
+            <h3 class="sx-section-title" data-i18n="rdSasNavRecord">Запись</h3>
+            <p class="sx-section-desc" data-i18n="rdSasDescRecord">Источник звука, текст во время записи, звонки и папка для записей.</p>
+          </div>
         <!-- Audio source and level -->
         <div class="settings-card">
           <div>
@@ -275,63 +249,19 @@
           </div>
         </div>
 
-        <!-- System-wide hotkeys (app/tray.py, app/dictation.py) -->
+        <!-- Live captions in the studio -->
         <div class="settings-card">
           <div class="min-w-0">
-            <h4 class="text-[13px] font-semibold text-white" data-i18n="hotkeysTitle">Горячие клавиши</h4>
-            <p class="text-[11px] text-apple-secondary leading-snug mt-0.5" data-i18n="hotkeysDesc">Работают в любой программе, даже когда окно VerbaScribe свёрнуто.</p>
+            <h4 class="text-[13px] font-semibold text-white" data-i18n="liveCapTitle">Субтитры во время записи</h4>
           </div>
           <div>
-            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="hotkeyLabel">Записать встречу</label>
-            <div class="flex items-center gap-2">
-              <input id="set-record-hotkey" type="text" readonly data-keydown="captureHotkey" data-keydown-args='[{"$": "event"}]' data-focus="selectOnFocus" data-focus-args='[{"$": "el"}]'
-                data-i18n-title="tipHotkey" title="Нажмите сочетание клавиш: запись начнётся и остановится из любой программы, окно не разворачивается"
-                class="w-44 h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono focus:outline-none focus:border-apple-blue cursor-pointer" />
-              <button data-click="clearHotkey" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" data-i18n="hotkeyClear">Отключить</button>
-              <span id="hotkey-status" class="text-[11px] text-apple-tertiary"></span>
-            </div>
-            <p class="text-[10.5px] text-apple-tertiary mt-1" data-i18n="hotkeyHint">Начинает и останавливает запись из любой программы, источник — как в студии. Запись попадает в медиатеку и расшифровывается.</p>
-          </div>
-
-          <div>
-            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="dictationLabel">Надиктовать текст</label>
-            <div class="flex items-center gap-2 flex-wrap">
-              <input id="set-dictation-hotkey" type="text" readonly data-keydown="captureHotkey" data-keydown-args='[{"$": "event"}]' data-focus="selectOnFocus" data-focus-args='[{"$": "el"}]'
-                data-i18n-title="tipDictation" title="Нажмите сочетание: начнётся запись микрофона; нажмите ещё раз — текст появится там, где стоит курсор (в любой программе)"
-                class="w-44 h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono focus:outline-none focus:border-apple-blue cursor-pointer" />
-              <button data-click="clearField" data-click-args='["set-dictation-hotkey"]' class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" data-i18n="hotkeyClear">Отключить</button>
-              <select id="set-dictation-language" data-i18n-title="a11yDictationLang" title="Язык диктовки" class="h-7 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none">
-                <option value="auto" data-i18n="studioSpeechAuto">Авто</option>
-                <option value="ru">Русский</option>
-                <option value="en">English</option>
-              </select>
-            </div>
-            <p class="text-[10.5px] text-apple-tertiary mt-1" data-i18n="dictationHint">Нажмите и говорите, нажмите ещё раз — текст напечатается там, где стоит курсор, в любой программе. Только микрофон, в медиатеку ничего не сохраняется.</p>
-          </div>
-
-          <div>
-            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="dictTrLabel">Надиктовать с переводом</label>
-            <div class="flex items-center gap-2 flex-wrap">
-              <input id="set-translate-hotkey" type="text" readonly data-keydown="captureHotkey" data-keydown-args='[{"$": "event"}]' data-focus="selectOnFocus" data-focus-args='[{"$": "el"}]'
-                data-i18n-title="tipDictTr" title="Нажмите сочетание: говорите на своём языке, а в программу вставится перевод"
-                class="w-44 h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono focus:outline-none focus:border-apple-blue cursor-pointer" />
-              <button data-click="clearField" data-click-args='["set-translate-hotkey"]' class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" data-i18n="hotkeyClear">Отключить</button>
-              <label for="set-dictation-translate-to" class="text-[11px] text-apple-secondary" data-i18n="dictTrTo">на</label>
-              <select id="set-dictation-translate-to" class="h-7 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none">
-                <option value="en">English</option>
-              </select>
-              <span id="translate-hotkey-status" class="text-[11px] text-apple-tertiary"></span>
-            </div>
-            <label class="flex items-center gap-2 cursor-pointer text-[11px] text-apple-label mt-1.5">
-              <input type="checkbox" id="set-dictation-translate-cloud" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
-              <span data-i18n="dictTrCloud">Разрешить облачную модель для перевода диктовки</span>
-            </label>
-            <p class="text-[10.5px] text-apple-tertiary mt-1" data-i18n="dictTrHint">Говорите на любом языке — вставится перевод. Переводит локальная модель Ollama; облачная — только если отмечено выше и облако включено в «Анализе». Если перевод не удался, вставляется исходный текст.</p>
-            <label class="flex items-center gap-2 cursor-pointer text-[11px] text-apple-label mt-2.5" data-i18n-title="tipDictSave"
-              title="Звук, текст и перевод каждой диктовки сохраняются записью в папке «Диктовки» медиатеки. Эта папка только для локального анализа: в облако её записи не отправляются">
-              <input type="checkbox" id="set-dictation-save" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
-              <span data-i18n="dictSave">Сохранять диктовки в медиатеку (папка «Диктовки»)</span>
-            </label>
+            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="liveModelLabel">Модель для субтитров во время записи</label>
+            <select id="set-live-model" data-i18n-title="tipLiveModel"
+              title="Субтитры в студии нужны, чтобы следить за речью; после записи файл всё равно расшифровывается основной моделью"
+              class="w-full h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
+              <option value="auto" data-i18n="liveModelAuto">Авто</option>
+            </select>
+            <p class="text-[10.5px] text-apple-tertiary mt-1" data-i18n="liveModelHint">Авто: для русской речи — GigaAM, для других европейских языков и автоопределения — Parakeet (если скачаны; работают на процессоре и не занимают видеокарту). Иначе Whisper Turbo (или основная модель, если Turbo не скачана)</p>
           </div>
 
         </div>
@@ -359,23 +289,6 @@
 
         </div>
 
-        <!-- Live captions in the studio -->
-        <div class="settings-card">
-          <div class="min-w-0">
-            <h4 class="text-[13px] font-semibold text-white" data-i18n="liveCapTitle">Субтитры во время записи</h4>
-          </div>
-          <div>
-            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="liveModelLabel">Модель для субтитров во время записи</label>
-            <select id="set-live-model" data-i18n-title="tipLiveModel"
-              title="Субтитры в студии нужны, чтобы следить за речью; после записи файл всё равно расшифровывается основной моделью"
-              class="w-full h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
-              <option value="auto" data-i18n="liveModelAuto">Авто</option>
-            </select>
-            <p class="text-[10.5px] text-apple-tertiary mt-1" data-i18n="liveModelHint">Авто: для русской речи — GigaAM, для других европейских языков и автоопределения — Parakeet (если скачаны; работают на процессоре и не занимают видеокарту). Иначе Whisper Turbo (или основная модель, если Turbo не скачана)</p>
-          </div>
-
-        </div>
-
         <!-- Where recordings made in the app are kept -->
         <div class="settings-card">
           <div>
@@ -390,47 +303,12 @@
           </div>
           <p id="set-imports-dir" class="text-[11px] text-apple-tertiary break-all"></p>
         </div>
-
         </div>
-
-        <div data-stab="recognition" class="space-y-4 hidden">
-        <!-- Section 2: Whisper Speech Recognition Models -->
-        <div class="settings-card">
-          <div class="flex items-center justify-between gap-2">
-            <div>
-              <h4 class="text-[13px] font-semibold text-white" data-i18n="whisperSectionTitle">Распознавание речи и участников</h4>
-              <p class="text-[11px] text-apple-secondary" data-i18n="whisperSectionDesc">Выберите модель под вашу видеокарту или процессор</p>
-            </div>
-            <span id="diarizer-status-pill" class="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-white/5 text-apple-secondary shrink-0"></span>
+        <div data-stab="recognition" class="sx-section space-y-3 hidden">
+          <div class="sx-section-head">
+            <h3 class="sx-section-title" data-i18n="rdSasNavRecognition">Распознавание</h3>
+            <p class="sx-section-desc" data-i18n="rdSasDescRecognition">Устройство, обработка звука перед распознаванием, разделение по голосам и показ текста.</p>
           </div>
-
-          <input id="set-whisper-model" type="hidden" value="large-v3-turbo" />
-
-          <div id="whisper-catalog-list" class="space-y-2">
-            <!-- Populated dynamically -->
-          </div>
-
-          <!-- Live Whisper & Diarizer Download Progress Window -->
-          <div id="whisper-download-panel" class="hidden rounded-xl bg-apple-bg border border-apple-blue/40 p-3.5 space-y-2.5">
-            <div class="flex items-center justify-between gap-2 text-xs">
-              <span id="whisper-pull-status" class="font-medium text-white truncate" data-i18n="dlPreparing">Подготовка к загрузке…</span>
-              <div class="flex items-center gap-2 shrink-0">
-                <span id="whisper-pull-pct" class="font-mono text-apple-blue font-semibold">0%</span>
-                <button data-click="closeModal" data-click-args='["settings"]'
-                  data-i18n-title="tipMinimizeBg"
-                  title="Закрыть настройки и продолжить работу — загрузка продолжится в боковой панели"
-                  class="px-2 py-0.5 rounded bg-apple-blue/15 hover:bg-apple-blue/25 text-apple-blue text-[11px] font-medium transition"
-                  data-i18n="minimizeBgBtn">Продолжить в фоне</button>
-              </div>
-            </div>
-            <div class="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
-              <div id="whisper-pull-bar" class="h-full bg-apple-blue transition-all duration-300" style="width: 0%"></div>
-            </div>
-            <div id="whisper-pull-logs" class="max-h-28 overflow-y-auto overflow-x-hidden break-all whitespace-pre-wrap font-mono text-[11px] text-apple-secondary space-y-0.5 bg-black/40 rounded-lg p-2.5 border apple-border">
-            </div>
-          </div>
-        </div>
-
         <!-- Compute Device & Precision -->
         <div class="settings-card">
           <div class="min-w-0">
@@ -501,14 +379,60 @@
             <input type="checkbox" id="set-audio-enhance" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
             <span data-i18n="audioEnhanceToggle">Шумоподавление и выравнивание громкости</span>
           </label>
-          <label class="settings-toggle flex items-center gap-2.5 cursor-pointer text-xs text-apple-label" data-i18n-title="tipCleanFillersToggle" title="Автоматически убирать звуки «э-э», «ммм», «ну типа» и повторы при расшифровке">
+          <label class="settings-toggle flex items-center gap-2.5 cursor-pointer text-xs text-apple-label" data-i18n-title="rdSasTipFillersView" title="Скрывать «э-э», «ммм» и повторы слов при показе текста">
             <input type="checkbox" id="set-clean-fillers" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
-            <span data-i18n="cleanFillersToggle">Удалять слова-паразиты и запинки</span>
+            <span><span data-i18n="rdSasFillersView">Показывать текст без запинок</span>
+              <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="rdSasFillersViewHint">Только показ: запись и сам текст не меняются. На странице записи — кнопка «Без запинок».</span></span>
           </label>
         </div>
         </div>
+        <div data-stab="models" class="sx-section space-y-3 hidden">
+          <div class="sx-section-head">
+            <h3 class="sx-section-title" data-i18n="rdSasNavModels">Модели</h3>
+            <p class="sx-section-desc" data-i18n="rdSasDescModels">Модели распознавания речи на этом компьютере: скачать, выбрать основную, удалить.</p>
+          </div>
+        <!-- Section 2: Whisper Speech Recognition Models -->
+        <div class="settings-card">
+          <div class="flex items-center justify-between gap-2">
+            <div>
+              <h4 class="text-[13px] font-semibold text-white" data-i18n="whisperSectionTitle">Распознавание речи и участников</h4>
+              <p class="text-[11px] text-apple-secondary" data-i18n="whisperSectionDesc">Выберите модель под вашу видеокарту или процессор</p>
+            </div>
+            <span id="diarizer-status-pill" class="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-white/5 text-apple-secondary shrink-0"></span>
+          </div>
 
-        <div data-stab="analysis" class="space-y-4 hidden">
+          <input id="set-whisper-model" type="hidden" value="large-v3-turbo" />
+
+          <div id="whisper-catalog-list" class="space-y-2">
+            <!-- Populated dynamically -->
+          </div>
+
+          <!-- Live Whisper & Diarizer Download Progress Window -->
+          <div id="whisper-download-panel" class="hidden rounded-xl bg-apple-bg border border-apple-blue/40 p-3.5 space-y-2.5">
+            <div class="flex items-center justify-between gap-2 text-xs">
+              <span id="whisper-pull-status" class="font-medium text-white truncate" data-i18n="dlPreparing">Подготовка к загрузке…</span>
+              <div class="flex items-center gap-2 shrink-0">
+                <span id="whisper-pull-pct" class="font-mono text-apple-blue font-semibold">0%</span>
+                <button data-click="closeModal" data-click-args='["settings"]'
+                  data-i18n-title="tipMinimizeBg"
+                  title="Закрыть настройки и продолжить работу — загрузка продолжится в боковой панели"
+                  class="px-2 py-0.5 rounded bg-apple-blue/15 hover:bg-apple-blue/25 text-apple-blue text-[11px] font-medium transition"
+                  data-i18n="minimizeBgBtn">Продолжить в фоне</button>
+              </div>
+            </div>
+            <div class="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+              <div id="whisper-pull-bar" class="h-full bg-apple-blue transition-all duration-300" style="width: 0%"></div>
+            </div>
+            <div id="whisper-pull-logs" class="max-h-28 overflow-y-auto overflow-x-hidden break-all whitespace-pre-wrap font-mono text-[11px] text-apple-secondary space-y-0.5 bg-black/40 rounded-lg p-2.5 border apple-border">
+            </div>
+          </div>
+        </div>
+        </div>
+        <div data-stab="analysis" class="sx-section space-y-3 hidden">
+          <div class="sx-section-head">
+            <h3 class="sx-section-title" data-i18n="rdSasNavAnalysis">ИИ-анализ</h3>
+            <p class="sx-section-desc" data-i18n="rdSasDescAnalysis">Где работает анализ, локальные модели и что делать после распознавания.</p>
+          </div>
         <!-- Where analysis runs: the local Ollama or a cloud model over its API (app/llm.py) -->
         <div class="settings-card">
           <div>
@@ -666,8 +590,149 @@
           <div id="semantic-status" class="pl-6 text-[11px] text-apple-secondary"></div>
         </div>
         </div>
+        <div data-stab="calendar" class="sx-section space-y-3 hidden">
+          <div class="sx-section-head">
+            <h3 class="sx-section-title" data-i18n="rdSasNavCalendar">Календарь</h3>
+            <p class="sx-section-desc" data-i18n="rdSasDescCalendar">Встречи для названий и участников записей, рабочий день и автозапись.</p>
+          </div>
+        <!-- The user's calendar (app/calendar_ics.py) -->
+        <div class="settings-card">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <h4 class="text-[13px] font-semibold text-white" data-i18n="calendarTitle">Календарь</h4>
+              <p class="text-[11px] text-apple-secondary leading-snug mt-0.5" data-i18n="calendarDesc">Outlook на этом компьютере (кнопка «Из Outlook»: Microsoft 365, Exchange, Outlook.com — там же встречи Teams), файл .ics или ссылка на календарь (Outlook в браузере: «Опубликовать календарь», Google: «Секретный адрес в формате iCal»). Запись во время встречи получит её название и участников, а в студии видны ближайшие встречи со справкой. Календарь только читается и никуда не отправляется.</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <input id="set-calendar-ics" type="text" spellcheck="false" placeholder="outlook · C:\Users\…\calendar.ics · https://…/basic.ics"
+              class="flex-1 min-w-0 h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono focus:outline-none focus:border-apple-blue" />
+            <button data-click="useOutlookCalendar" id="calendar-outlook-btn" class="hidden ui-btn ui-btn-subtle h-8 shrink-0" data-i18n-title="tipCalendarOutlook"
+              title="Читать календарь из Outlook на этом компьютере (Microsoft 365, Exchange, Outlook.com — там же встречи Teams). Без ссылок и входа" data-i18n="calendarOutlook">Из Outlook</button>
+            <button data-click="checkCalendar" class="ui-btn ui-btn-subtle h-8" data-i18n="calendarCheck">Проверить</button>
+          </div>
+          <div id="calendar-status" class="text-[11px] text-apple-tertiary"></div>
+        </div>
 
-        <div data-stab="export" class="space-y-4 hidden">
+        <!-- The working day of «Встречи сегодня» on the home page and the recording of every meeting -->
+        <div class="settings-card">
+          <div class="min-w-0">
+            <h4 class="text-[13px] font-semibold text-white" data-i18n="rdSasWorkdayTitle">Рабочий день и автозапись</h4>
+            <p class="text-[11px] text-apple-secondary leading-snug mt-0.5" data-i18n="rdSasWorkdayDesc">Какие часы показывать в «Встречи сегодня» на главной. Конец раньше начала — день идёт через полночь.</p>
+          </div>
+          <div class="flex items-center gap-2 text-xs text-apple-label flex-wrap">
+            <label for="set-workday-start" data-i18n="rdSasWorkdayFrom">С</label>
+            <select id="set-workday-start" class="sx-time"><option value="09:00">09:00</option></select>
+            <label for="set-workday-end" data-i18n="rdSasWorkdayTo">до</label>
+            <select id="set-workday-end" class="sx-time"><option value="18:00">18:00</option></select>
+            <span id="workday-overnight" class="hidden text-[11px] text-apple-amber" data-i18n="rdSasWorkdayOvernight">через полночь</span>
+          </div>
+          <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
+            <input type="checkbox" id="set-meetings-autorecord" class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <span><span data-i18n="rdSasAutorecordAll">Записывать все встречи из календаря</span>
+              <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="rdSasAutorecordAllHint">Запись начнётся в начале встречи и закончится вместе с ней. Отдельные встречи можно пропустить на главной.</span></span>
+          </label>
+          <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label ml-6">
+            <input type="checkbox" id="set-meetings-ask-inperson" checked class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <span><span data-i18n="rdSasAskInPerson">Перед очными встречами спрашивать</span>
+              <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="rdSasAskInPersonHint">Встреча без ссылки на видеозвонок: за минуту до начала придёт вопрос, записывать ли её.</span></span>
+          </label>
+        </div>
+        </div>
+        <div data-stab="hotkeys" class="sx-section space-y-3 hidden">
+          <div class="sx-section-head">
+            <h3 class="sx-section-title" data-i18n="rdSasNavHotkeys">Горячие клавиши</h3>
+            <p class="sx-section-desc" data-i18n="rdSasDescHotkeys">Сочетания клавиш, которые работают в любой программе.</p>
+          </div>
+        <!-- System-wide hotkeys (app/tray.py, app/dictation.py) -->
+        <div class="settings-card">
+          <div class="min-w-0">
+            <h4 class="text-[13px] font-semibold text-white" data-i18n="hotkeysTitle">Горячие клавиши</h4>
+            <p class="text-[11px] text-apple-secondary leading-snug mt-0.5" data-i18n="hotkeysDesc">Работают в любой программе, даже когда окно VerbaScribe свёрнуто.</p>
+          </div>
+          <div>
+            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="hotkeyLabel">Записать встречу</label>
+            <div class="flex items-center gap-2">
+              <input id="set-record-hotkey" type="text" readonly data-keydown="captureHotkey" data-keydown-args='[{"$": "event"}]' data-focus="selectOnFocus" data-focus-args='[{"$": "el"}]'
+                data-i18n-title="tipHotkey" title="Нажмите сочетание клавиш: запись начнётся и остановится из любой программы, окно не разворачивается"
+                class="w-44 h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono focus:outline-none focus:border-apple-blue cursor-pointer" />
+              <button data-click="clearHotkey" class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" data-i18n="hotkeyClear">Отключить</button>
+              <span id="hotkey-status" class="text-[11px] text-apple-tertiary"></span>
+            </div>
+            <p class="text-[10.5px] text-apple-tertiary mt-1" data-i18n="hotkeyHint">Начинает и останавливает запись из любой программы, источник — как в студии. Запись попадает в медиатеку и расшифровывается.</p>
+          </div>
+
+          <div>
+            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="dictationLabel">Надиктовать текст</label>
+            <div class="flex items-center gap-2 flex-wrap">
+              <input id="set-dictation-hotkey" type="text" readonly data-keydown="captureHotkey" data-keydown-args='[{"$": "event"}]' data-focus="selectOnFocus" data-focus-args='[{"$": "el"}]'
+                data-i18n-title="tipDictation" title="Нажмите сочетание: начнётся запись микрофона; нажмите ещё раз — текст появится там, где стоит курсор (в любой программе)"
+                class="w-44 h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono focus:outline-none focus:border-apple-blue cursor-pointer" />
+              <button data-click="clearField" data-click-args='["set-dictation-hotkey"]' class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" data-i18n="hotkeyClear">Отключить</button>
+              <select id="set-dictation-language" data-i18n-title="a11yDictationLang" title="Язык диктовки" class="h-7 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none">
+                <option value="auto" data-i18n="studioSpeechAuto">Авто</option>
+                <option value="ru">Русский</option>
+                <option value="en">English</option>
+              </select>
+            </div>
+            <p class="text-[10.5px] text-apple-tertiary mt-1" data-i18n="dictationHint">Нажмите и говорите, нажмите ещё раз — текст напечатается там, где стоит курсор, в любой программе. Только микрофон, в медиатеку ничего не сохраняется.</p>
+          </div>
+
+          <div>
+            <label class="block text-[11px] text-apple-secondary mb-1" data-i18n="dictTrLabel">Надиктовать с переводом</label>
+            <div class="flex items-center gap-2 flex-wrap">
+              <input id="set-translate-hotkey" type="text" readonly data-keydown="captureHotkey" data-keydown-args='[{"$": "event"}]' data-focus="selectOnFocus" data-focus-args='[{"$": "el"}]'
+                data-i18n-title="tipDictTr" title="Нажмите сочетание: говорите на своём языке, а в программу вставится перевод"
+                class="w-44 h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono focus:outline-none focus:border-apple-blue cursor-pointer" />
+              <button data-click="clearField" data-click-args='["set-translate-hotkey"]' class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" data-i18n="hotkeyClear">Отключить</button>
+              <label for="set-dictation-translate-to" class="text-[11px] text-apple-secondary" data-i18n="dictTrTo">на</label>
+              <select id="set-dictation-translate-to" class="h-7 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none">
+                <option value="en">English</option>
+              </select>
+              <span id="translate-hotkey-status" class="text-[11px] text-apple-tertiary"></span>
+            </div>
+            <label class="flex items-center gap-2 cursor-pointer text-[11px] text-apple-label mt-1.5">
+              <input type="checkbox" id="set-dictation-translate-cloud" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+              <span data-i18n="dictTrCloud">Разрешить облачную модель для перевода диктовки</span>
+            </label>
+            <p class="text-[10.5px] text-apple-tertiary mt-1" data-i18n="dictTrHint">Говорите на любом языке — вставится перевод. Переводит локальная модель Ollama; облачная — только если отмечено выше и облако включено в «Анализе». Если перевод не удался, вставляется исходный текст.</p>
+            <label class="flex items-center gap-2 cursor-pointer text-[11px] text-apple-label mt-2.5" data-i18n-title="tipDictSave"
+              title="Звук, текст и перевод каждой диктовки сохраняются записью в папке «Диктовки» медиатеки. Эта папка только для локального анализа: в облако её записи не отправляются">
+              <input type="checkbox" id="set-dictation-save" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+              <span data-i18n="dictSave">Сохранять диктовки в медиатеку (папка «Диктовки»)</span>
+            </label>
+          </div>
+
+        </div>
+        </div>
+        <div data-stab="dictionary" class="sx-section space-y-3 hidden">
+          <div class="sx-section-head">
+            <h3 class="sx-section-title" data-i18n="rdSasNavDictionary">Словарь</h3>
+            <p class="sx-section-desc" data-i18n="rdSasDescDictionary">Подсказки для распознавания: как правильно пишутся слова и названия.</p>
+          </div>
+        <!-- The dictionary of names and terms (the same list as the window «Словарь») -->
+        <div class="settings-card">
+          <div class="min-w-0">
+            <h4 class="text-[13px] font-semibold text-white" data-i18n="rdSasDictTitle">Слова и названия</h4>
+            <p class="text-[11px] text-apple-secondary leading-snug mt-0.5" data-i18n="rdSasDictDesc">Имена, термины и названия, которые модель должна писать правильно. Подсказки применяются ко всем новым распознаваниям.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <input id="settings-dict-term" type="text" data-keydown="onEnter" data-keydown-args='[{"$": "event"}, "addSettingsDictItem"]'
+              data-i18n-placeholder="rdSasDictTermPh" placeholder="Слово или фраза" data-i18n-title="rdSasDictTermPh" title="Слово или фраза"
+              class="flex-1 min-w-0 h-8 bg-apple-sidebar border apple-border rounded-lg px-3 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
+            <input id="settings-dict-cat" type="text" data-keydown="onEnter" data-keydown-args='[{"$": "event"}, "addSettingsDictItem"]'
+              data-i18n-placeholder="rdSasDictCatPh" placeholder="Группа" data-i18n-title="rdSasDictCatPh" title="Группа"
+              class="w-36 h-8 bg-apple-sidebar border apple-border rounded-lg px-3 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
+            <button data-click="addSettingsDictItem" class="ui-btn ui-btn-primary h-8 px-3 text-[11px]" data-i18n="rdSasDictAdd">Добавить</button>
+          </div>
+          <div id="settings-dict-list" class="rounded-lg border apple-border divide-y divide-white/5 max-h-[420px] overflow-y-auto"></div>
+          <div id="settings-dict-count" class="text-[11px] text-apple-tertiary"></div>
+        </div>
+        </div>
+        <div data-stab="export" class="sx-section space-y-3 hidden">
+          <div class="sx-section-head">
+            <h3 class="sx-section-title" data-i18n="rdSasNavExport">Экспорт и связи</h3>
+            <p class="sx-section-desc" data-i18n="rdSasDescExport">Имена файлов, папка экспорта, папка автоимпорта и заметки.</p>
+          </div>
         <!-- File names of recordings and exports (app/naming.py) -->
         <div class="settings-card">
           <div>
@@ -690,6 +755,7 @@
           </div>
           <div class="text-[11px] text-apple-tertiary font-mono break-all" id="file-name-preview"></div>
         </div>
+
         <!-- Export Folder -->
         <div class="settings-card">
           <div>
@@ -703,27 +769,6 @@
             <button data-click="openExportDir" data-i18n-title="tipExportDirOpen" title="Открыть папку экспорта в проводнике"
               class="ui-btn ui-btn-subtle h-8 px-3 text-[11px] shrink-0" data-i18n="exportDirOpenBtn">Открыть</button>
           </div>
-        </div>
-
-        </div>
-
-        <div data-stab="integrations" class="space-y-4 hidden">
-        <!-- The user's calendar (app/calendar_ics.py) -->
-        <div class="settings-card">
-          <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0">
-              <h4 class="text-[13px] font-semibold text-white" data-i18n="calendarTitle">Календарь</h4>
-              <p class="text-[11px] text-apple-secondary leading-snug mt-0.5" data-i18n="calendarDesc">Outlook на этом компьютере (кнопка «Из Outlook»: Microsoft 365, Exchange, Outlook.com — там же встречи Teams), файл .ics или ссылка на календарь (Outlook в браузере: «Опубликовать календарь», Google: «Секретный адрес в формате iCal»). Запись во время встречи получит её название и участников, а в студии видны ближайшие встречи со справкой. Календарь только читается и никуда не отправляется.</p>
-            </div>
-          </div>
-          <div class="flex items-center gap-2">
-            <input id="set-calendar-ics" type="text" spellcheck="false" placeholder="outlook · C:\Users\…\calendar.ics · https://…/basic.ics"
-              class="flex-1 min-w-0 h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono focus:outline-none focus:border-apple-blue" />
-            <button data-click="useOutlookCalendar" id="calendar-outlook-btn" class="hidden ui-btn ui-btn-subtle h-8 shrink-0" data-i18n-title="tipCalendarOutlook"
-              title="Читать календарь из Outlook на этом компьютере (Microsoft 365, Exchange, Outlook.com — там же встречи Teams). Без ссылок и входа" data-i18n="calendarOutlook">Из Outlook</button>
-            <button data-click="checkCalendar" class="ui-btn ui-btn-subtle h-8" data-i18n="calendarCheck">Проверить</button>
-          </div>
-          <div id="calendar-status" class="text-[11px] text-apple-tertiary"></div>
         </div>
 
         <!-- Auto-import folder (app/watch_folder.py) -->
@@ -794,8 +839,109 @@
           </div>
         </div>
         </div>
+        <div data-stab="privacy" class="sx-section space-y-3 hidden">
+          <div class="sx-section-head">
+            <h3 class="sx-section-title" data-i18n="rdSasNavPrivacy">Приватность и хранение</h3>
+            <p class="sx-section-desc" data-i18n="rdSasDescPrivacy">Где хранятся данные, сколько хранится звук и резервная копия.</p>
+          </div>
+        <!-- Where the library lives -->
+        <div class="settings-card">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <h4 class="text-[13px] font-semibold text-white" data-i18n="rdSasDataTitle">Папка данных</h4>
+              <p id="settings-data-dir" class="text-[11px] text-apple-secondary mt-0.5 truncate max-w-[34rem] select-text"></p>
+            </div>
+            <button data-click="openDataFolder" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px] shrink-0" data-i18n="rdSasOpenFolder">Открыть</button>
+          </div>
+        </div>
 
-        <div data-stab="dub" class="space-y-4 hidden">
+        <!-- Privacy: the sound of recordings, and what went to a cloud model -->
+        <div class="settings-card">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <h4 class="text-[13px] font-semibold text-white" data-i18n="privacyTitle">Приватность</h4>
+              <p class="text-[11px] text-apple-secondary leading-snug mt-0.5" data-i18n="privacyDesc">Сколько хранится звук записей и что отправлялось облачной модели.</p>
+            </div>
+          </div>
+          <label class="settings-toggle flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
+            <input type="checkbox" id="set-delete-media-after" class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <span><span data-i18n="deleteMediaAfter">Удалять звук после расшифровки</span>
+              <span class="block text-[11px] text-apple-tertiary leading-snug mt-0.5" data-i18n="deleteMediaAfterHint">Остаются расшифровка, анализ и заметки. Файлы, добавленные по пути на диске, не трогаются.</span></span>
+          </label>
+          <div class="flex items-center gap-2 text-xs text-apple-label">
+            <span id="lbl-media-retention" data-i18n="retentionLabel">Хранить звук записей</span>
+            <select id="set-media-retention" aria-labelledby="lbl-media-retention" class="h-7 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none">
+              <option value="0" data-i18n="retentionForever">всегда</option>
+              <option value="7" data-i18n="retention7">7 дней</option>
+              <option value="30" data-i18n="retention30">30 дней</option>
+              <option value="90" data-i18n="retention90">90 дней</option>
+              <option value="365" data-i18n="retention365">1 год</option>
+            </select>
+          </div>
+          <button data-click="openCloudLog" class="ui-btn ui-btn-subtle h-7 text-[11px]" data-i18n="cloudLogBtn">Журнал облачных запросов</button>
+        </div>
+
+        <!-- Backup of the library (app/backup.py) -->
+        <div class="settings-card">
+          <div class="min-w-0">
+            <h4 class="text-[13px] font-semibold text-white" data-i18n="backupTitle">Резервная копия</h4>
+            <p class="text-[11px] text-apple-secondary leading-snug mt-0.5" data-i18n="backupDesc">Все записи, расшифровки, анализ, заметки, папки, голоса и настройки в одном файле .zip — перед переустановкой или переездом на другой компьютер. Ключи облачных моделей в копию не попадают.</p>
+          </div>
+          <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label">
+            <input type="checkbox" id="backup-with-media" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <span><span data-i18n="backupWithMedia">Вместе со звуком и видео</span> <span id="backup-media-size" class="text-apple-tertiary"></span></span>
+          </label>
+          <div class="flex items-center gap-2 flex-wrap">
+            <button data-click="makeBackup" id="backup-make-btn" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px]" data-i18n="backupMake">Сохранить копию…</button>
+            <button data-click="restoreBackup" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px]" data-i18n="backupRestore">Восстановить из копии…</button>
+            <span id="backup-status" class="text-[11px] text-apple-tertiary"></span>
+          </div>
+          <!-- Left by a crash, a failed delete or an older version (app/database.orphan_files) -->
+          <div id="orphans-row" class="hidden flex items-center gap-2 flex-wrap text-[11px] text-apple-secondary">
+            <span id="orphans-text"></span>
+            <button data-click="deleteOrphans" id="orphans-btn" class="ui-btn ui-btn-subtle h-7 px-3 text-[11px]" data-i18n="orphansDelete">Освободить место</button>
+          </div>
+        </div>
+        </div>
+        <div data-stab="updates" class="sx-section space-y-3 hidden">
+          <div class="sx-section-head">
+            <h3 class="sx-section-title" data-i18n="rdSasNavUpdates">Обновления</h3>
+            <p class="sx-section-desc" data-i18n="rdSasDescUpdates">Новые версии программы и бета-версии.</p>
+          </div>
+        <!-- Version and updates from GitHub Releases (app/updater.py) -->
+        <div class="settings-card">
+          <div class="flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <h4 class="text-[13px] font-semibold text-white" data-i18n="updateTitle">Обновления</h4>
+              <p id="update-status-text" class="text-[11px] text-apple-secondary leading-snug"></p>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <button id="update-install-btn" data-click="installUpdate" class="hidden ui-btn ui-btn-primary h-8 px-3 text-[11px]" data-i18n="updateInstallBtn">Установить</button>
+              <button id="update-check-btn" data-click="checkForUpdates" data-click-args='[true]' class="ui-btn ui-btn-subtle h-8 px-3 text-[11px]" data-i18n="updateCheckBtn">Проверить сейчас</button>
+            </div>
+          </div>
+          <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label">
+            <input type="checkbox" id="set-update-check" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <span data-i18n="updateAutoToggle">Проверять обновления при запуске</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label" data-i18n-title="tipUpdateAutoInstall"
+            title="Новая версия скачивается в фоне и устанавливается, когда вы закрываете программу. Данные, модели и настройки не затрагиваются">
+            <input type="checkbox" id="set-update-auto" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <span data-i18n="updateAutoInstall">Скачивать и устанавливать обновления автоматически</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer text-xs text-apple-label" data-i18n-title="tipUpdateBeta"
+            title="Предлагать и бета-версии: в них новое приходит раньше, но оно ещё проверяется. Когда выходит обычная версия, она тоже предлагается">
+            <input type="checkbox" id="set-update-beta" class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
+            <span data-i18n="updateBetaToggle">Получать бета-версии</span>
+          </label>
+          <p class="text-[11px] text-apple-tertiary leading-snug" data-i18n="updateHint">Спрашивается только номер последней версии на GitHub. Ваши записи, модели и настройки при обновлении не затрагиваются.</p>
+        </div>
+        </div>
+        <div data-stab="dub" class="sx-section space-y-3 hidden">
+          <div class="sx-section-head">
+            <h3 class="sx-section-title" data-i18n="rdSasNavDub">Дубляж</h3>
+            <p class="sx-section-desc" data-i18n="rdSasDescDub">Синтез речи для озвучки записей на другом языке.</p>
+          </div>
         <!-- Section 4: Speech synthesis for the AI dub (optional .venv-dub environment) -->
         <div id="settings-dub-section" class="settings-card">
           <div class="flex items-center justify-between gap-2">
@@ -906,9 +1052,12 @@
           </div>
         </div>
         </div>
-
+        <div data-stab="bench" class="sx-section space-y-3 hidden">
+          <div class="sx-section-head">
+            <h3 class="sx-section-title" data-i18n="rdSasNavBench">Сравнение моделей</h3>
+            <p class="sx-section-desc" data-i18n="rdSasDescBench">Какая модель лучше справляется с вашими записями.</p>
+          </div>
         <!-- Model comparison on the user's recordings (app/bench.py) -->
-        <div data-stab="bench" class="space-y-4 hidden">
         <div class="settings-card">
           <div>
             <h4 class="text-[13px] font-semibold text-white" data-i18n="benchTitle">Сравнение моделей на ваших записях</h4>
@@ -937,24 +1086,41 @@
           <div id="bench-history" class="space-y-1"></div>
         </div>
         </div>
+        <div data-stab="about" class="sx-section space-y-3 hidden">
+          <div class="sx-section-head">
+            <h3 class="sx-section-title" data-i18n="rdSasNavAbout">О программе</h3>
+            <p class="sx-section-desc" data-i18n="rdSasDescAbout">Версия, компьютер и поддержка проекта.</p>
+          </div>
+        <!-- The version and the computer -->
+        <div class="settings-card">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <h4 class="text-[13px] font-semibold text-white">VerbaScribe <span id="settings-version" class="text-apple-secondary font-normal"></span></h4>
+              <p id="settings-hw-name" class="text-[11px] text-apple-secondary mt-0.5"></p>
+            </div>
+            <button data-click="copySystemInfo" id="settings-copy-info" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px] shrink-0" data-i18n="rdSasCopyInfo">Копировать сведения</button>
+          </div>
+        </div>
 
-      </div>
-
-      <!-- Sticky Modal Footer -->
-      <div class="px-6 py-3.5 border-t apple-border flex items-center justify-between shrink-0 bg-apple-card">
-        <span class="text-[11px] text-apple-secondary" data-i18n="bgDownloadNote">Скачивание моделей продолжается в фоне при закрытии окна</span>
-        <div class="flex items-center gap-2">
-          <button data-click="closeModal" data-click-args='["settings"]'
-            data-i18n-title="tipCloseModal"
-            title="Закрыть окно настроек"
-            class="ui-btn ui-btn-subtle h-8 px-4" data-i18n="close">Закрыть</button>
-          <button data-click="saveAllSettings"
-            data-i18n-title="tipSaveSettingsBtn"
-            title="Сохранить все настройки приложения и закрыть окно"
-            class="ui-btn ui-btn-primary h-8 px-5" data-i18n="save">Сохранить</button>
+        <!-- Support the project -->
+        <div class="settings-card">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <h4 class="text-[13px] font-semibold text-white" data-i18n="supportTitle">Поддержать проект</h4>
+              <p class="text-[11px] text-apple-secondary leading-snug mt-0.5" data-i18n="supportDesc">VerbaScribe бесплатна. Если она экономит вам время, можно угостить разработчика кофе.</p>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+            <button data-click="openAbout" class="ui-btn ui-btn-subtle h-8 px-3 text-[11px]" data-i18n="aboutBtn">О программе</button>
+            <button data-click="openSupport" class="ui-btn ui-btn-primary h-8 px-3 text-[11px] shrink-0 gap-1.5">
+              <svg class="w-3 h-3 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 2.9 4.5 6.6 4.5c2.1 0 3.6 1.2 4.4 2.5.8-1.3 2.3-2.5 4.4-2.5 3.7 0 5.7 3.9 4.2 7.3C19.5 16.4 12 21 12 21z"/></svg><span data-i18n="supportBtn">Поддержать на Ko-fi</span>
+            </button>
+            </div>
+          </div>
+        </div>
+        </div>
+          <!-- The end of the settings sections -->
+          <p class="text-[11px] text-apple-tertiary pt-4 pb-2" data-i18n="bgDownloadNote">Скачивание моделей продолжается в фоне при закрытии окна</p>
         </div>
       </div>
     </div>
   </div>
-
-

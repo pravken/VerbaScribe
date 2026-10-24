@@ -353,6 +353,7 @@ function applyRecordPreset(id) {
   document.getElementById('live-translate-select').value = p.translate || '';
   saveLiveCaptionPrefs();
   renderRecordPresetSelect(p.id);
+  renderStudioExtras();
 }
 
 function presetFromForm(base) {
@@ -600,6 +601,8 @@ async function prepareStudio(presetId) {
   renderStudioState();
   setTimeout(() => drawIdleSoundCloudBars('record-waveform-canvas'), 40);
   loadUpcomingMeetings();
+  studioRenderDisk();
+  studioFillAuto();
 }
 
 // --- The next meetings of the user's calendar (app/calendar_ics.py), shown while the studio is idle ---
@@ -614,33 +617,39 @@ async function loadUpcomingMeetings() {
 function renderUpcomingMeetings() {
   const box = document.getElementById('studio-upcoming');
   if (!box) return;
-  const show = _upcoming.length && !isRecording() && !(capView.rows.size > 0);
+  // the card «Встреча» of the studio: the meetings of the calendar, one click takes the title
+  const show = _upcoming.length && !isRecording();
   box.classList.toggle('hidden', !show);
   if (!show) return;
   const now = new Date();
   const today = now.toDateString();
-  const rows = _upcoming.map((e, i) => {
+  const loc = state.uiLang === 'en' ? 'en-GB' : 'ru-RU';
+  const title = (document.getElementById('record-title-input')?.value || '').trim();
+  const rows = _upcoming.slice(0, 5).map((e, i) => {
     const start = new Date(e.start), end = new Date(e.end);
-    const time = start.toLocaleTimeString(state.uiLang === 'en' ? 'en-US' : 'ru-RU', { hour: '2-digit', minute: '2-digit' });
-    const day = start.toDateString() === today ? '' : `${start.toLocaleDateString(state.uiLang === 'en' ? 'en-US' : 'ru-RU', { weekday: 'short', day: 'numeric', month: 'short' })} · `;
+    const time = `${start.toLocaleTimeString(loc, { hour: '2-digit', minute: '2-digit' })}–${end.toLocaleTimeString(loc, { hour: '2-digit', minute: '2-digit' })}`;
+    const day = start.toDateString() === today ? '' : `${start.toLocaleDateString(loc, { weekday: 'short', day: 'numeric', month: 'short' })} · `;
     const live = start <= now && now < end;
-    const people = e.attendees.length ? `<div class="text-[11px] text-apple-tertiary truncate">${escapeHtml(e.attendees.slice(0, 6).join(', '))}${e.attendees.length > 6 ? ` +${e.attendees.length - 6}` : ''}</div>` : '';
+    const on = !!e.title && e.title === title;
+    const people = e.attendees.length ? `${escapeHtml(e.attendees.slice(0, 4).join(', '))}${e.attendees.length > 4 ? ` +${e.attendees.length - 4}` : ''}` : '';
     const brief = e.series_id || e.person
-      ? `<button data-click="upcomingBrief" data-click-args='[${i}]' class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" title="${escapeHtml(t('tipUpcomingBrief'))}">${escapeHtml(t('briefBtn'))}</button>` : '';
-    return `<div class="flex items-center gap-3 px-3 py-2 rounded-lg ${live ? 'bg-apple-red/10' : 'hover:bg-white/5'}">
-      <div class="w-32 shrink-0 text-[11px] font-mono whitespace-nowrap ${live ? 'text-apple-red' : 'text-apple-secondary'}">${escapeHtml(day + time)}</div>
-      <div class="flex-1 min-w-0"><div class="text-[13px] text-white truncate">${escapeHtml(e.title || '—')}</div>${people}</div>
-      ${brief}
-      <button data-click="upcomingUseTitle" data-click-args='[${i}]' class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11px]" title="${escapeHtml(t('tipUpcomingTitle'))}">${escapeHtml(t('upcomingUseTitle'))}</button>
+      ? `<button data-click="upcomingBrief" data-click-args='[${i}]' class="st-link" title="${escapeHtml(t('tipUpcomingBrief'))}">${escapeHtml(t('briefBtn'))}</button>` : '';
+    return `<div class="st-meet ${on ? 'is-on' : ''} ${live ? 'is-live' : ''}">
+      <button data-click="upcomingUseTitle" data-click-args='[${i}]' class="st-meet-main" title="${escapeHtml(t('tipUpcomingTitle'))}">
+        <span class="st-meet-time">${escapeHtml(day + time)}${live ? ` · ${escapeHtml(t('rdSasNow'))}` : ''}</span>
+        <span class="st-meet-title">${escapeHtml(e.title || '—')}</span>
+        ${people ? `<span class="st-meet-people">${people}</span>` : ''}
+      </button>${brief}
     </div>`;
   }).join('');
-  box.innerHTML = `<div class="text-[11px] uppercase tracking-wider text-apple-tertiary mb-1.5 px-3">${escapeHtml(t('upcomingTitle'))}</div>${rows}`;
+  box.innerHTML = `<div class="st-sub-title mt-1">${escapeHtml(t('upcomingTitle'))}</div>${rows}`;
 }
 
 function upcomingUseTitle(i) {
   const e = _upcoming[i];
   if (!e) return;
   document.getElementById('record-title-input').value = e.title || '';
+  renderUpcomingMeetings();
   showToast(t('upcomingTitleSet'));
 }
 
@@ -1047,6 +1056,7 @@ function renderStudioState() {
   }
   document.getElementById('rec-dot-indicator').classList.toggle('animate-ping', rec);
   updateRecordButtonState();
+  renderStudioExtras();
 }
 
 function toggleStudioFocus(on) {
@@ -1615,4 +1625,226 @@ async function stopAndTranscribeRecording(opts) {
     first ? { label: t('recordOpen'), title: first.media_path || '', onClick: () => { switchAppView('library'); selectMeeting(first.id, true); } } : undefined
   );
   return first || null;
+}
+
+// --- The studio of the redesign: ready-made settings as chips, the sources as one switch, the video
+// as chips, a test of the microphone, the disk, marks, the tabs of the recording ---
+function renderStudioPresetChips() {
+  const box = document.getElementById('st-preset-chips');
+  if (!box) return;
+  const cur = state.recPresetId || defaultRecordPresetId();
+  const def = defaultRecordPresetId();
+  const rec = isRecording();
+  box.innerHTML = recordPresets().map(p => `<button data-click="applyRecordPreset" data-click-args='[${jsArg(p.id)}]' ${rec ? 'disabled' : ''}
+      class="st-chip ${p.id === cur ? 'is-on' : ''}" title="${escapeHtml(p.id === def ? t('rdSasPresetDefault') : '')}">${p.id === def ? '★ ' : ''}${escapeHtml(presetLabel(p))}</button>`).join('');
+}
+
+function studioSetSource(value) {
+  if (isRecording()) return;
+  document.getElementById('record-source-select').value = value;
+  syncRecordModalToSettings();
+  renderStudioSourceSeg();
+  renderStudioState();
+}
+
+function renderStudioSourceSeg() {
+  const v = document.getElementById('record-source-select')?.value || 'both';
+  const rec = isRecording();
+  ['both', 'mic', 'system'].forEach(k => {
+    const b = document.getElementById(`st-src-${k}`);
+    if (!b) return;
+    b.className = `apple-segment-btn text-[11px] ${k === v ? 'apple-segment-active' : 'text-apple-secondary hover:text-white'}`;
+    b.setAttribute('aria-checked', String(k === v));
+    b.disabled = rec;
+  });
+  // the microphone is not asked for when only the sound of the computer is recorded
+  document.getElementById('record-mic-select').closest('.st-sub')?.classList.toggle('st-dim', v === 'system');
+}
+
+// The choices of the video list that this computer has (the app's own capture is shown only where it works)
+function renderStudioVideoChips() {
+  const sel = document.getElementById('record-video-select');
+  const box = document.getElementById('st-video-chips');
+  if (!sel || !box) return;
+  const short = { '': 'rdSasVideoNone', screen: 'rdSasVideoScreen', app_desktop: 'rdSasVideoDesktop', app_window: 'rdSasVideoWindow' };
+  const rec = isRecording();
+  box.innerHTML = [...sel.options].filter(o => !o.classList.contains('hidden')).map(o =>
+    `<button data-click="studioSetVideo" data-click-args='[${jsArg(o.value)}]' ${rec ? 'disabled' : ''} title="${escapeHtml(o.textContent.trim())}"
+      class="st-chip ${o.value === sel.value ? 'is-on' : ''}">${escapeHtml(short[o.value] ? t(short[o.value]) : o.textContent.trim())}</button>`).join('');
+}
+
+function studioSetVideo(value) {
+  if (isRecording()) return;
+  document.getElementById('record-video-select').value = value;
+  saveRecordVideoPref();
+}
+
+function renderStudioExtras() {
+  renderStudioPresetChips();
+  renderStudioSourceSeg();
+  renderStudioVideoChips();
+  const rec = isRecording();
+  document.getElementById('st-mark-btn')?.classList.toggle('hidden', !rec);
+  document.getElementById('st-notes-idle')?.classList.toggle('hidden', rec);
+  document.getElementById('st-ask-idle')?.classList.toggle('hidden', !!liveCap.session);
+  const hk = document.getElementById('st-hotkey');
+  const key = state.system?.settings?.record_hotkey;
+  if (hk) {
+    hk.textContent = key || '—';
+    hk.parentElement.classList.toggle('hidden', !key);
+  }
+  renderStudioTab();
+}
+
+// --- The tabs under the recording: the text, the user's notes, questions ---
+function studioTab(name) {
+  studio.tab = ['text', 'notes', 'ask'].includes(name) ? name : 'text';
+  try { localStorage.setItem('verbascribe_studio_tab', studio.tab); } catch (e) {}
+  renderStudioTab();
+  if (studio.tab === 'notes' && isRecording()) document.getElementById('studio-notes-input')?.focus();
+  if (studio.tab === 'ask') document.getElementById('studio-ask-input')?.focus();
+}
+
+function renderStudioTab() {
+  if (!studio.tab) {
+    try { studio.tab = localStorage.getItem('verbascribe_studio_tab') || 'text'; } catch (e) { studio.tab = 'text'; }
+  }
+  ['text', 'notes', 'ask'].forEach(k => {
+    document.getElementById(`st-pane-${k}`)?.classList.toggle('hidden', k !== studio.tab);
+    const b = document.getElementById(`st-tab-${k}`);
+    if (b) { b.classList.toggle('is-on', k === studio.tab); b.setAttribute('aria-selected', String(k === studio.tab)); }
+  });
+}
+
+// --- A mark: a line of the notes with the time of the recording and ⚑ (saved and analysed with them) ---
+function studioMark() {
+  if (!isRecording()) return;
+  const ta = document.getElementById('studio-notes-input');
+  if (!ta) return;
+  const stamp = studioNotesStamp();
+  ta.value = `${ta.value.replace(/\s+$/, '')}${ta.value.trim() ? '\n' : ''}${stamp}⚑ `;
+  saveStudioNotesDraft();
+  showToast(t('rdSasMarked').replace('{t}', () => stamp.replace(/[[\]\s]/g, '')));
+}
+
+// M — a mark, N — the notes, while recording in the studio and not typing
+document.addEventListener('keydown', e => {
+  if (state.appView !== 'studio' || !isRecording() || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+  const k = e.key.toLowerCase();
+  if (k === 'm' || k === 'ь') { e.preventDefault(); studioMark(); }
+  if (k === 'n' || k === 'т') { e.preventDefault(); studioTab('notes'); }
+});
+
+// --- The disk: how long the free space lasts, where the recording goes ---
+async function studioRenderDisk() {
+  const el = document.getElementById('st-disk');
+  if (!el) return;
+  const disk = await fetch('/api/disk').then(r => r.json()).catch(() => null);
+  const parts = [];
+  if (disk && disk.free_bytes >= 0) {
+    const min = recMinutesLeft(disk.free_bytes, !!document.getElementById('record-video-select')?.value);
+    parts.push(t('rdSasDiskLeft').replace('{time}', () => (min >= 120 ? `${Math.floor(min / 60)} ${t('unitH')}` : `${min} ${t('unitMin')}`)));
+  }
+  const dir = state.system?.paths?.recordings;
+  if (dir) parts.push(t('rdSasSavedTo').replace('{dir}', () => dir.split(/[\\/]/).filter(Boolean).pop() || dir));
+  el.textContent = parts.join(' · ');
+  el.title = dir || '';
+  el.classList.toggle('text-apple-amber', !!(disk && disk.low));
+}
+
+// --- «Автоматически»: switches that are settings of the whole program ---
+function studioFillAuto() {
+  const s = state.system?.settings || {};
+  const a = document.getElementById('st-auto-summary');
+  if (a) a.checked = s.auto_summary !== 'false';
+  const c = document.getElementById('st-call-record');
+  if (c) c.checked = s.call_auto_record === 'true';
+}
+
+async function studioSetAuto(key, on) {
+  const value = on ? 'true' : 'false';
+  const res = await fetch('/api/settings', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: { [key]: value } }),
+  }).catch(() => null);
+  if (!res || !res.ok) {
+    showToast(res ? errorText(await readJson(res), res) : t('settingsSaveFailed').replace('{why}', () => ''));
+    studioFillAuto();
+    return;
+  }
+  const data = await readJson(res);
+  if (data?.settings && state.system) state.system.settings = data.settings;
+  // the same switch on the settings page
+  const mirror = { auto_summary: 'set-auto-summary', call_auto_record: 'set-call-record' }[key];
+  const el = mirror && document.getElementById(mirror);
+  if (el) el.checked = on;
+  if (key === 'call_auto_record' && typeof renderCallSettings === 'function') renderCallSettings();
+}
+
+// --- A test of the microphone: three seconds recorded, then played back ---
+let _micTest = null;
+
+async function studioMicTest() {
+  if (isRecording() || _micTest) return;
+  const label = document.getElementById('st-mic-test-label');
+  const btn = document.getElementById('st-mic-test');
+  const setLabel = (key) => { if (label) label.textContent = t(key); };
+  let streams = [];
+  try {
+    const micId = document.getElementById('record-mic-select').value || '';
+    const { ctx, mixedStream, acquiredStreams } = await buildCaptureStream('mic', micId);
+    streams = acquiredStreams;
+    _micTest = { ctx };
+    btn.disabled = true;
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 512;
+    ctx.createMediaStreamSource(mixedStream).connect(analyser);
+    const buf = new Uint8Array(analyser.fftSize);
+    const history = new Array(68).fill(0.04);
+    let loudest = -60;
+    const chunks = [];
+    const rec = new MediaRecorder(mixedStream);
+    rec.ondataavailable = (ev) => { if (ev.data.size) chunks.push(ev.data); };
+    setLabel('rdSasMicSpeak');
+    const draw = () => {
+      if (!_micTest) return;
+      const { db, visualAmp } = computeRmsAndDb(analyser, buf);
+      loudest = Math.max(loudest, db);
+      history.push(visualAmp); history.shift();
+      drawLiveSoundCloudBars('record-waveform-canvas', history, '#0A84FF');
+      document.getElementById('record-level-bar').style.width = `${Math.min(100, Math.max(2, Math.round(((db + 60) / 60) * 100)))}%`;
+      document.getElementById('record-db-display').textContent = `${db} dB`;
+      document.getElementById('record-signal-dot').classList.toggle('on', db > -44);
+      _micTest.anim = requestAnimationFrame(draw);
+    };
+    draw();
+    rec.start();
+    await new Promise(r => setTimeout(r, 3000));
+    await new Promise(r => { rec.onstop = r; rec.stop(); });
+    cancelAnimationFrame(_micTest.anim);
+    streams.forEach(s => s.getTracks().forEach(tr => tr.stop()));
+    try { ctx.close(); } catch (e) {}
+    setLabel('rdSasMicListen');
+    const url = URL.createObjectURL(new Blob(chunks, { type: rec.mimeType || 'audio/webm' }));
+    await new Promise(r => {
+      const audio = new Audio(url);
+      audio.onended = r;
+      audio.onerror = r;
+      audio.play().catch(r);
+    });
+    URL.revokeObjectURL(url);
+    setLabel(loudest > -44 ? 'rdSasMicOk' : 'rdSasMicQuiet');
+  } catch (err) {
+    streams.forEach(s => s.getTracks().forEach(tr => tr.stop()));
+    showAlert(err.message || err);
+    setLabel('rdSasMicTest');
+  } finally {
+    _micTest = null;
+    if (btn) btn.disabled = false;
+    document.getElementById('record-level-bar').style.width = '2%';
+    document.getElementById('record-db-display').textContent = '-60 dB';
+    document.getElementById('record-signal-dot').classList.remove('on');
+    setTimeout(() => drawIdleSoundCloudBars('record-waveform-canvas'), 30);
+    setTimeout(() => { if (!_micTest && label) label.textContent = t('rdSasMicTest'); }, 4000);
+  }
 }
