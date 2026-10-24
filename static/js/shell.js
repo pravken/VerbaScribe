@@ -92,7 +92,7 @@ function renderTopbar() {
   if (m) {
     const name = document.getElementById('tb-recname');
     if (name.textContent !== m.title) name.textContent = m.title;
-    name.title = t('tbOpenRecord').replace('{title}', () => m.title);
+    document.getElementById('tb-recname-btn').title = t('tbOpenRecord').replace('{title}', () => m.title);
     // the sections made (summaries["error"] is the last failure, not a section)
     const ready = Object.entries(m.summaries || {}).filter(([k, v]) => k !== 'error' && typeof v === 'string' && v.trim()).length;
     badge('nav-summary-n', ready);

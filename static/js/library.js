@@ -831,6 +831,28 @@ function libHere() {
   return state._libHere = { key, folders, dates };
 }
 
+// The name of the open recording in the top bar: its row in the library, its folders and day group
+// unfolded, scrolled to and lit for a moment
+function revealActiveMeeting() {
+  const m = state.activeMeeting;
+  if (!m) return;
+  const here = libHere();
+  const folders = collapsedFolders(), dates = collapsedDates();
+  here.folders.forEach(id => folders.delete(id));
+  here.dates.forEach(id => dates.delete(id));
+  try {
+    localStorage.setItem('verbascribe_folders_collapsed', JSON.stringify([...folders]));
+    localStorage.setItem('verbascribe_dates_collapsed', JSON.stringify([...dates]));
+  } catch (e) {}
+  renderMeetingsSidebar();
+  const row = document.querySelector(`#meetings-list [data-mid="${m.id}"]`);
+  if (!row) { showToast(t('tbRecNotInList')); return; }  // a filter or the search hides it
+  row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  row.classList.remove('lib-row-flash');
+  void row.offsetWidth;
+  row.classList.add('lib-row-flash');
+}
+
 // "Fold all" / "Unfold all" in the library header: folders and day groups together
 function libAnyOpen() {
   const folders = collapsedFolders();
