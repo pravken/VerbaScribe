@@ -469,7 +469,7 @@ async function assistantSend(text, scopeArg) {
   let chat = currentChat();
   if (!chat) { chat = newChatObject(); ASSIST.chats.unshift(chat); ASSIST.chatId = chat.id; }
   const scope = { ...(scopeArg || state.askScope) };
-  const item = { id: Date.now(), question, scope, scopeLabel: assistantScopeLabel(scope), status: 'pending', data: null, error: '', at: new Date().toISOString() };
+  const item = { id: newAskItemId(), question, scope, scopeLabel: assistantScopeLabel(scope), status: 'pending', data: null, error: '', at: new Date().toISOString() };
   chat.items.push(item);
   if (!chat.title) chat.title = question.slice(0, 80);
   chat.updated = item.at;

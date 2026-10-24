@@ -277,6 +277,9 @@ const SVG_SPARK = '<svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="current
 state.askScope = { type: 'all' };
 const askThread = [];
 let _askSeq = 0;
+// The id of a question, a digest or a brief in the assistant: unique across the saved conversations
+// (they outlive the page), so a source link or «Спросить снова» finds its own item
+function newAskItemId() { return Date.now() * 1000 + (++_askSeq % 1000); }
 
 function folderById(id) {
   return (state.folders || []).find(f => f.id === id) || null;
@@ -386,7 +389,7 @@ document.addEventListener('click', () => document.getElementById('digest-menu')?
 
 async function makeBrief() {
   const scope = { ...state.askScope };
-  const item = { id: ++_askSeq, question: t('briefBtn'), scopeLabel: askScopeLabel(scope), status: 'pending', data: null, error: '' };
+  const item = { id: newAskItemId(), question: t('briefBtn'), scopeLabel: askScopeLabel(scope), status: 'pending', data: null, error: '' };
   askThread.unshift(item);
   renderAskThread();
   try {
@@ -409,7 +412,7 @@ async function makeBrief() {
 async function makeDigest(days) {
   const scope = state.askScope.type === 'folder' ? { ...state.askScope } : { type: 'all' };
   const period = days === 7 ? t('digestWeek') : days === 30 ? t('digestMonth') : t('digestEverything');
-  const item = { id: ++_askSeq, question: `${t('digestBtn')} · ${period}`, scopeLabel: askScopeLabel(scope), status: 'pending', data: null, error: '' };
+  const item = { id: newAskItemId(), question: `${t('digestBtn')} · ${period}`, scopeLabel: askScopeLabel(scope), status: 'pending', data: null, error: '' };
   askThread.unshift(item);
   renderAskThread();
   try {
