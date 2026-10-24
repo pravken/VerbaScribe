@@ -274,7 +274,7 @@ async function toggleSettingsAudioTest() {
     step();
   } catch (err) {
     stopSettingsAudioTest();
-    showAlert(err.message || err);
+    showMediaError(err);
   }
 }
 
@@ -480,7 +480,7 @@ async function handleCallEvent(ev) {
     try {
       await quickRecord(s.call_preset || defaultRecordPresetId());
     } catch (e) {
-      showToast(`${t('callRecordFailed')}: ${e.message || e}`);
+      showToast(`${t('callRecordFailed')}: ${mediaErrorText(e)}`);
     }
     // The recording starts asynchronously: wait for it before deciding it did not start
     for (let i = 0; i < 40 && !isRecording(); i++) await new Promise(r => setTimeout(r, 250));
@@ -1296,7 +1296,7 @@ async function startLiveRecording() {
         });
       } catch (e) {
         if (e && e.name === 'NotAllowedError') return;  // the picker was closed: nothing starts
-        if (!state.screenCapture.supported) throw new Error(t('recVideoFailed') + (e && e.message ? `: ${e.message}` : ''));
+        if (!state.screenCapture.supported) throw new Error(mediaErrorText(e, 'screen'));
         appTarget = 'desktop';
         showToast(t('recVideoFallback'));
       }
@@ -1457,7 +1457,7 @@ async function startLiveRecording() {
     document.getElementById('record-status-hint').textContent = t('recStatusRecording');
   } catch (err) {
     _cleanupRecordingResources();
-    showAlert(t('recCaptureError') + err.message);
+    showMediaError(err);
   }
 }
 
@@ -1840,7 +1840,7 @@ async function studioMicTest() {
     setLabel(loudest > -44 ? 'rdSasMicOk' : 'rdSasMicQuiet');
   } catch (err) {
     streams.forEach(s => s.getTracks().forEach(tr => tr.stop()));
-    showAlert(err.message || err);
+    showMediaError(err);
     setLabel('rdSasMicTest');
   } finally {
     _micTest = null;

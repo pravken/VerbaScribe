@@ -175,6 +175,7 @@ async function shellQuickRecord() {
   if (_quickRecBusy) return;
   _quickRecBusy = true;
   hideQuickRecDone();
+  updateRecordButtonState();  // «Запуск…» at once: the microphone can take seconds to answer
   try {
     if (isRecording()) {
       const clock = document.getElementById('studio-timer').textContent;
@@ -218,7 +219,10 @@ function updateRecordButtonState() {
   const recording = isRecording();
   const timer = document.getElementById('studio-timer').textContent;
   btn.classList.toggle('tb-rec-on', recording);
-  document.getElementById('tb-rec-label').textContent = recording ? t('tbRecStop') : t('tbRecord');
+  const starting = _quickRecBusy && !recording;
+  btn.classList.toggle('tb-rec-busy', starting);
+  btn.setAttribute('aria-busy', String(starting));
+  document.getElementById('tb-rec-label').textContent = recording ? t('tbRecStop') : starting ? t('tbRecStarting') : t('tbRecord');
   const clock = document.getElementById('tb-rec-clock');
   clock.textContent = recording ? timer : '';
   clock.classList.toggle('hidden', !recording);

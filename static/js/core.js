@@ -228,7 +228,8 @@ function setUILanguage(lang) {
 
 // A styled yes/no question (instead of the browser's confirm): resolves true or false.
 // Cancel is focused, so Enter does not confirm by accident.
-function confirmDialog(title, text, okLabel, danger = true) {
+// opts.cancel: the label of the other button; opts.single: one button only (a message, not a question)
+function confirmDialog(title, text, okLabel, danger = true, opts = {}) {
   return new Promise(resolve => {
     const wrap = document.createElement('div');
     wrap.className = 'fixed inset-0 modal-backdrop z-[70] flex items-center justify-center p-4';
@@ -238,7 +239,7 @@ function confirmDialog(title, text, okLabel, danger = true) {
       <div class="text-sm font-semibold text-white">${escapeHtml(title)}</div>
       <p class="text-xs text-apple-secondary leading-relaxed whitespace-pre-line break-words">${escapeHtml(text)}</p>
       <div class="flex justify-end gap-2">
-        <button data-a="no" class="ui-btn ui-btn-subtle">${escapeHtml(t('cancel'))}</button>
+        ${opts.single ? '' : `<button data-a="no" class="ui-btn ui-btn-subtle">${escapeHtml(opts.cancel || t('cancel'))}</button>`}
         <button data-a="yes" class="ui-btn ${danger ? 'bg-apple-red text-white hover:opacity-90' : 'ui-btn-primary'}">${escapeHtml(okLabel)}</button>
       </div></div>`;
     const done = v => { wrap.remove(); document.removeEventListener('keydown', onKey, true); resolve(v); };
@@ -250,7 +251,7 @@ function confirmDialog(title, text, okLabel, danger = true) {
     });
     document.addEventListener('keydown', onKey, true);
     document.body.appendChild(wrap);
-    wrap.querySelector('button[data-a="no"]').focus();
+    wrap.querySelector('button[data-a="no"]') ? wrap.querySelector('button[data-a="no"]').focus() : wrap.querySelector('button[data-a="yes"]').focus();
   });
 }
 
@@ -287,7 +288,30 @@ function askText(label, value = '') {
 }
 
 function showAlert(text) {
-  return confirmDialog(t('attentionTitle'), String(text), t('ok'), false).then(() => {});
+  return confirmDialog(t('attentionTitle'), String(text), t('gotIt'), false, { single: true }).then(() => {});
+}
+
+// The browser's reasons for not giving a microphone or the screen (DOMException names), in words a user
+// can act on; what: 'mic' or 'screen'. Our own messages (a plain Error) are shown as they are.
+function mediaErrorText(err, what = 'mic') {
+  const name = err && err.name;
+  if (what === 'screen') {
+    if (name === 'NotAllowedError' || name === 'SecurityError') return t('recErrScreenDenied');
+    if (name === 'NotFoundError' || name === 'NotReadableError' || name === 'AbortError' || name === 'NotSupportedError') return t('recErrScreenFailed');
+  }
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') return t('recErrMicMissing');
+  if (name === 'NotAllowedError' || name === 'SecurityError') return t('recErrMicDenied');
+  if (name === 'NotReadableError' || name === 'AbortError' || name === 'TrackStartError') return t('recErrMicBusy');
+  if (err && typeof DOMException !== 'undefined' && err instanceof DOMException) return t('recErrUnknown');
+  return serverText((err && err.message) || String(err || '')) || t('recErrUnknown');
+}
+
+// A recording that could not start: the reason and a way to the recording settings (one place for the
+// studio, the red button of the top bar and the microphone tests)
+async function showMediaError(err, what = 'mic') {
+  console.warn('media:', err);
+  const go = await confirmDialog(t('recErrTitle'), mediaErrorText(err, what), t('recErrOpenSettings'), false, { cancel: t('close') });
+  if (go) openModal('settings', 'record');
 }
 
 // A message of the server (always Russian) in the interface language (static/server_text.js)
