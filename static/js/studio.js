@@ -250,7 +250,7 @@ async function toggleSettingsAudioTest() {
     _settingsWaveHistory = new Array(68).fill(0.04);
 
     document.getElementById('btn-test-settings-audio-label').textContent = t('stopTestAudioBtn');
-    document.getElementById('btn-test-settings-audio').className = 'ui-btn ui-btn-active h-6 px-2.5 text-[11px]';
+    document.getElementById('btn-test-settings-audio').className = 'ui-btn ui-btn-active h-6 px-2.5 text-[11.5px]';
 
     function step() {
       if (!_settingsTestCtx) return;
@@ -292,7 +292,7 @@ function stopSettingsAudioTest() {
   const btnLabel = document.getElementById('btn-test-settings-audio-label');
   if (btnLabel) btnLabel.textContent = t('testAudioBtn');
   const btn = document.getElementById('btn-test-settings-audio');
-  if (btn) btn.className = 'ui-btn ui-btn-subtle h-6 px-2.5 text-[11px]';
+  if (btn) btn.className = 'ui-btn ui-btn-subtle h-6 px-2.5 text-[11.5px]';
   const dot = document.getElementById('settings-audio-dot');
   if (dot) dot.className = 'w-2 h-2 rounded-full bg-apple-tertiary';
   const st = document.getElementById('settings-audio-status');
@@ -415,7 +415,7 @@ function toggleRecordPresetMenu(e) {
     `<button ${pageCall('click', 'runAll', calls)} class="macos-menu-item gap-2" style="justify-content:flex-start">`
     + `<span class="w-3 shrink-0 text-center text-apple-amber">${mark}</span>`
     + `<span class="min-w-0"><span class="block truncate">${escapeHtml(label)}</span>`
-    + (hint ? `<span class="block text-[10.5px] text-apple-tertiary truncate">${escapeHtml(hint)}</span>` : '') + `</span></button>`;
+    + (hint ? `<span class="block text-[11px] text-apple-tertiary truncate">${escapeHtml(hint)}</span>` : '') + `</span></button>`;
   const sourceName = { mic: t('sourceMic'), system: t('sourceSystem'), both: t('sourceBoth') };
   menu.innerHTML = recordPresets().map(p => item(
     [['hideRecordPresetMenu'], ['quickRecord', p.id]], p.id === def ? '★' : '', presetLabel(p),
@@ -510,7 +510,7 @@ async function studioAsk() {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.detail || 'Error');
-    box.innerHTML = `<div class="text-[11px] text-apple-tertiary mb-1">${escapeHtml(q)}</div>${sanitizedMarkdown(data.answer)}`;
+    box.innerHTML = `<div class="text-[11.5px] text-apple-tertiary mb-1">${escapeHtml(q)}</div>${sanitizedMarkdown(data.answer)}`;
     input.value = '';
   } catch (e) {
     box.innerHTML = `<div class="text-apple-amber">${escapeHtml(e.message)}</div>`;
@@ -835,9 +835,9 @@ function openQuickLangMenu(e, index) {
   const menu = document.createElement('div');
   menu.id = 'quick-lang-menu';
   menu.className = 'fixed w-56 max-h-80 overflow-y-auto macos-menu z-50';
-  menu.innerHTML = `<div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(t('quickLangPick'))}</div>`
+  menu.innerHTML = `<div class="px-2.5 py-1 text-[11px] text-apple-tertiary">${escapeHtml(t('quickLangPick'))}</div>`
     + codes.map(({ c, n }) => `<button class="macos-menu-item" data-code="${c}" ${langs.includes(c) && c !== langs[index] ? 'disabled style="opacity:.4"' : ''}>`
-      + `<span>${escapeHtml(n)}</span><span class="text-[10.5px] opacity-80">${c === langs[index] ? '✓' : escapeHtml(langCode(c))}</span></button>`).join('');
+      + `<span>${escapeHtml(n)}</span><span class="text-[11px] opacity-80">${c === langs[index] ? '✓' : escapeHtml(langCode(c))}</span></button>`).join('');
   menu.addEventListener('click', (ev) => {
     const b = ev.target.closest('button[data-code]');
     ev.stopPropagation();
@@ -1078,7 +1078,7 @@ function toggleStudioFocus(on) {
 
 function renderStudioControls() {
   ['quality', 'fast'].forEach(k => {
-    document.getElementById(`studio-speed-${k}`).className = `apple-segment-btn text-[11px] ${studio.speed === k ? 'apple-segment-active' : 'text-apple-secondary hover:text-white'}`;
+    document.getElementById(`studio-speed-${k}`).className = `apple-segment-btn text-[11.5px] ${studio.speed === k ? 'apple-segment-active' : 'text-apple-secondary hover:text-white'}`;
   });
   document.getElementById('studio-tr-options').classList.toggle('hidden', !document.getElementById('live-translate-select').value);
   renderQuickLangs();
@@ -1086,7 +1086,7 @@ function renderStudioControls() {
   const autoOpt = document.querySelector('#studio-speech option[value="auto"]');
   if (autoOpt) autoOpt.textContent = t('studioSpeechAuto') + (liveCap.lang && studio.speech === 'auto' ? ` · ${langCode(liveCap.lang)}` : '');
   ['under', 'side', 'tr'].forEach(k => {
-    document.getElementById(`studio-view-${k}`).className = `apple-segment-btn text-[11px] ${studio.view === k ? 'apple-segment-active' : 'text-apple-secondary hover:text-white'}`;
+    document.getElementById(`studio-view-${k}`).className = `apple-segment-btn text-[11.5px] ${studio.view === k ? 'apple-segment-active' : 'text-apple-secondary hover:text-white'}`;
   });
   document.getElementById('studio-captions-inner').style.setProperty('--cap-size', `${studio.font}px`);
 }
@@ -1269,7 +1269,7 @@ function syncStudioCaptions() {
   renderStudioModels(target);
   status.textContent = liveCap.error ? liveCap.error
     : target && liveCap.session && !liveCap.translationReady ? t('studioLoadingTranslator') : '';
-  status.className = `text-[11px] ${liveCap.error ? 'text-apple-amber' : 'text-apple-tertiary'}`;
+  status.className = `text-[11.5px] ${liveCap.error ? 'text-apple-amber' : 'text-apple-tertiary'}`;
 }
 
 async function startLiveRecording() {
@@ -1657,7 +1657,7 @@ function renderStudioSourceSeg() {
   ['both', 'mic', 'system'].forEach(k => {
     const b = document.getElementById(`st-src-${k}`);
     if (!b) return;
-    b.className = `apple-segment-btn text-[11px] ${k === v ? 'apple-segment-active' : 'text-apple-secondary hover:text-white'}`;
+    b.className = `apple-segment-btn text-[11.5px] ${k === v ? 'apple-segment-active' : 'text-apple-secondary hover:text-white'}`;
     b.setAttribute('aria-checked', String(k === v));
     b.disabled = rec;
   });

@@ -212,11 +212,11 @@ function assistantMenu(e, items, width = 270) {
   menu.style.width = `${width}px`;
   menu.innerHTML = items.map((it, i) => {
     if (it === 'sep') return '<div class="my-1 h-px bg-white/10"></div>';
-    if (it.head) return `<div class="px-2.5 pt-1.5 pb-1 text-[10.5px] text-apple-tertiary">${escapeHtml(it.head)}</div>`;
+    if (it.head) return `<div class="px-2.5 pt-1.5 pb-1 text-[11px] text-apple-tertiary">${escapeHtml(it.head)}</div>`;
     if (it.html) return `<div data-i="${i}">${it.html}</div>`;
     return `<button class="macos-menu-item" data-i="${i}" ${it.disabled ? 'disabled' : ''}>
       <span class="w-3.5 text-apple-blue shrink-0">${it.on ? '✓' : ''}</span><span class="flex-1 truncate">${escapeHtml(it.label)}</span>
-      ${it.note != null ? `<span class="text-[10.5px] text-apple-tertiary shrink-0">${escapeHtml(String(it.note))}</span>` : ''}</button>`;
+      ${it.note != null ? `<span class="text-[11px] text-apple-tertiary shrink-0">${escapeHtml(String(it.note))}</span>` : ''}</button>`;
   }).join('');
   menu.addEventListener('click', ev => {
     ev.stopPropagation();
@@ -432,7 +432,7 @@ function assistantPickPanel() {
   const list = [...state.meetings].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))).slice(0, 80);
   const rows = list.map(m => `<label class="flex items-center gap-2 px-2.5 py-1 text-xs text-apple-label cursor-pointer hover:bg-white/5 rounded">
       <input type="checkbox" data-mid="${m.id}" ${chosen.has(m.id) ? 'checked' : ''} class="rounded bg-apple-sidebar border-white/20 text-apple-blue">
-      <span class="flex-1 truncate">${escapeHtml(m.title)}</span><span class="text-[10.5px] text-apple-tertiary">${escapeHtml(assistantMeetingDate(m).split('-').reverse().join('.'))}</span></label>`).join('');
+      <span class="flex-1 truncate">${escapeHtml(m.title)}</span><span class="text-[11px] text-apple-tertiary">${escapeHtml(assistantMeetingDate(m).split('-').reverse().join('.'))}</span></label>`).join('');
   const menu = assistantMenu({ stopPropagation() {}, currentTarget: btn }, [
     { head: t('rdSasScopePickMenu') },
     { html: `<div class="max-h-[300px] overflow-y-auto">${rows || `<div class="px-2.5 py-2 text-xs text-apple-tertiary">${escapeHtml(t('rdSasNoRecordings'))}</div>`}</div>` },

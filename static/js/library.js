@@ -186,7 +186,7 @@ function renderQueuePanel() {
           <button data-click="stopThen" data-click-args='[{"$": "event"}, "cancelProcessing", ${Number(q.id) || 0}]' title="${escapeHtml(t('tipQueueCancel'))}"
             class="shrink-0 text-apple-tertiary hover:text-apple-red opacity-80 group-hover:opacity-100 transition ${q.cancelling ? 'hidden' : ''}">${SVG_ICONS.closeX}</button>
         </div>
-        <div class="flex items-center justify-between gap-2 text-[10.5px] mt-0.5">
+        <div class="flex items-center justify-between gap-2 text-[11px] mt-0.5">
           <span class="${q.kind === 'transcribe' ? 'text-apple-secondary' : 'text-apple-amber'} shrink-0">${escapeHtml(queueKindLabel(q))}</span>
           <span class="text-apple-tertiary truncate font-mono">${running && !q.cancelling ? `${escapeHtml(timing)}${timing ? ' · ' : ''}${pct}%` : escapeHtml(detail)}</span>
         </div>
@@ -368,7 +368,7 @@ function openDigestMenu(e) {
   // Before the next meeting of a series, or with a person
   const brief = scope.type === 'series' || scope.type === 'person'
     ? `<button class="macos-menu-item" data-brief="1"><span>${escapeHtml(t('briefBtn'))}</span></button><div class="my-1 h-px bg-white/10"></div>` : '';
-  menu.innerHTML = brief + `<div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(where)}</div>`
+  menu.innerHTML = brief + `<div class="px-2.5 py-1 text-[11px] text-apple-tertiary">${escapeHtml(where)}</div>`
     + [[7, t('digestWeek')], [30, t('digestMonth')], [0, t('digestEverything')]]
       .map(([d, label]) => `<button class="macos-menu-item" data-days="${d}"><span>${escapeHtml(label)}</span></button>`).join('');
   menu.addEventListener('click', (ev) => {
@@ -743,9 +743,9 @@ function meetingRowHtml(m, depth) {
         <div class="flex items-center justify-between gap-2">
           <span title="${escapeHtml(libTitle(m))}" class="text-[12.5px] font-medium leading-snug line-clamp-2 break-words min-w-0">${escapeHtml(libTitle(m))}</span>
           <button data-click="openRecordingContextMenu" data-click-args='[{"$": "event"}, ${m.id}]' title="${escapeHtml(t('tipItemMenu'))}"
-            class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 px-1 rounded hover:bg-black/20 text-xs shrink-0 transition">•••</button>
+            class="row-more opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 px-1 rounded hover:bg-black/20 text-xs shrink-0 transition">•••</button>
         </div>
-        <div class="flex items-center justify-between gap-2 text-[11px] mt-0.5 ${isSelected ? 'text-white/80' : 'text-apple-secondary'}">
+        <div class="flex items-center justify-between gap-2 text-[11.5px] mt-0.5 ${isSelected ? 'text-white/80' : 'text-apple-secondary'}">
           <span class="flex items-center gap-1.5 min-w-0">
             <span class="font-mono shrink-0">${isBusy ? `${m.progress}%` : formatTime(m.duration)}</span>
             <span class="rec-badges">${recordingBadgesHtml(m)}</span>
@@ -872,9 +872,9 @@ function dateRowHtml(id, label, count, depth, open) {
          class="flex items-center gap-1.5 pr-2 py-1 rounded-lg cursor-pointer text-apple-secondary hover:bg-white/5 transition"
          style="padding-left:${6 + depth * 14}px" title="${escapeHtml(label)}">
       <span class="shrink-0 text-apple-tertiary transition-transform ${open ? 'rotate-90' : ''}">${ICON_CHEVRON}</span>
-      <span class="text-[11px] font-semibold truncate flex-1">${escapeHtml(label)}</span>
+      <span class="text-[11.5px] font-semibold truncate flex-1">${escapeHtml(label)}</span>
       ${!open && libHere().dates.has(id) ? `<span class="lib-here-dot" title="${escapeHtml(t('tipLibHere'))}"></span>` : ''}
-      <span class="text-[10.5px] font-mono text-apple-tertiary">${count}</span>
+      <span class="text-[11px] font-mono text-apple-tertiary">${count}</span>
     </div>`;
 }
 
@@ -919,21 +919,21 @@ function openLibViewMenu(e) {
   if (had) return;
   const p = libPrefs();
   const item = (key, value, label, on, extra = '') => `<button class="macos-menu-item" data-k="${key}" data-v="${value}">`
-    + `<span>${escapeHtml(label)}</span><span class="text-[10.5px] opacity-70">${on ? (extra || '✓') : ''}</span></button>`;
+    + `<span>${escapeHtml(label)}</span><span class="text-[11px] opacity-70">${on ? (extra || '✓') : ''}</span></button>`;
   const arrow = p.dir === 'asc' ? '↑' : '↓';
   const menu = document.createElement('div');
   menu.id = 'lib-view-menu';
   menu.className = 'fixed w-56 macos-menu z-50';
-  menu.innerHTML = `<div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(t('libView'))}</div>`
+  menu.innerHTML = `<div class="px-2.5 py-1 text-[11px] text-apple-tertiary">${escapeHtml(t('libView'))}</div>`
     + LIB_VIEWS.map(v => item('view', v, t(`libView_${v}`), p.view === v)).join('')
-    + `<div class="my-1 h-px bg-white/10"></div><div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(t('libSort'))}</div>`
+    + `<div class="my-1 h-px bg-white/10"></div><div class="px-2.5 py-1 text-[11px] text-apple-tertiary">${escapeHtml(t('libSort'))}</div>`
     + LIB_SORTS.map(v => item('sort', v, t(`libSort_${v}`), p.sort === v, arrow)).join('')
-    + `<div class="my-1 h-px bg-white/10"></div><div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(t('libGroup'))}</div>`
+    + `<div class="my-1 h-px bg-white/10"></div><div class="px-2.5 py-1 text-[11px] text-apple-tertiary">${escapeHtml(t('libGroup'))}</div>`
     + LIB_GROUPS.map(v => item('group', v, t(`libGroup_${v}`), p.group === v)).join('')
-    + `<div class="my-1 h-px bg-white/10"></div><div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(t('libNames'))}</div>`
+    + `<div class="my-1 h-px bg-white/10"></div><div class="px-2.5 py-1 text-[11px] text-apple-tertiary">${escapeHtml(t('libNames'))}</div>`
     + item('names', 'title', t('libNames_title'), p.names === 'title')
     + item('names', 'file', t('libNames_file'), p.names === 'file')
-    + `<div class="my-1 h-px bg-white/10"></div><div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(t('libBadges'))}</div>`
+    + `<div class="my-1 h-px bg-white/10"></div><div class="px-2.5 py-1 text-[11px] text-apple-tertiary">${escapeHtml(t('libBadges'))}</div>`
     + item('badges', 'smart', t('libBadges_smart'), p.badges === 'smart')
     + item('badges', 'all', t('libBadges_all'), p.badges === 'all');
   menu.addEventListener('click', (ev) => {
@@ -1021,10 +1021,10 @@ function renderLibSelectionBar() {
     list.parentNode.insertBefore(bar, list);
   }
   bar.innerHTML = `<span class="flex-1 min-w-0 truncate">${escapeHtml(t('libSelected').replace('{n}', () => n))}</span>
-    <button data-click="bulkRename" class="ui-btn ui-btn-subtle h-6 !px-2 text-[11px]" title="${escapeHtml(t('tipBulkRename'))}">${escapeHtml(t('bulkRename'))}</button>
-    <button data-click="bulkAutoTitles" class="ui-btn ui-btn-subtle h-6 !px-2 text-[11px]" title="${escapeHtml(t('tipBulkAutoTitle'))}">${escapeHtml(t('bulkAutoTitle'))}</button>
-    <button data-click="bulkDelete" class="ui-btn h-6 !px-2 text-[11px] bg-apple-red/80 text-white hover:bg-apple-red">${escapeHtml(t('ctxDelete'))}</button>
-    <button data-click="clearLibSelection" class="ui-btn ui-btn-subtle h-6 !px-1.5 text-[11px]" title="${escapeHtml(t('cancel'))} (Esc)">✕</button>`;
+    <button data-click="bulkRename" class="ui-btn ui-btn-subtle h-6 !px-2 text-[11.5px]" title="${escapeHtml(t('tipBulkRename'))}">${escapeHtml(t('bulkRename'))}</button>
+    <button data-click="bulkAutoTitles" class="ui-btn ui-btn-subtle h-6 !px-2 text-[11.5px]" title="${escapeHtml(t('tipBulkAutoTitle'))}">${escapeHtml(t('bulkAutoTitle'))}</button>
+    <button data-click="bulkDelete" class="ui-btn h-6 !px-2 text-[11.5px] bg-apple-red/80 text-white hover:bg-apple-red">${escapeHtml(t('ctxDelete'))}</button>
+    <button data-click="clearLibSelection" class="ui-btn ui-btn-subtle h-6 !px-1.5 text-[11.5px]" title="${escapeHtml(t('cancel'))} (Esc)">✕</button>`;
 }
 
 function libSelectedInOrder() {
@@ -1128,7 +1128,7 @@ document.addEventListener('keydown', e => {
 // "•••" on a row: the same menu as a right click (shown on hover and on keyboard focus)
 function rowMoreButton(m) {
   return `<button data-click="stopThen" data-click-args='[{"$": "event"}, "openRecordingContextMenu", {"$": "event"}, ${Number(m.id) || 0}]' tabindex="-1" aria-label="${escapeHtml(t('tipRecordingMore'))}"
-    title="${escapeHtml(t('tipRecordingMore'))}" class="row-more opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 px-1 rounded hover:bg-black/20 text-[11px] shrink-0 transition">•••</button>`;
+    title="${escapeHtml(t('tipRecordingMore'))}" class="row-more opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 px-1 rounded hover:bg-black/20 text-[11.5px] shrink-0 transition">•••</button>`;
 }
 
 function meetingCompactRowHtml(m, depth) {
@@ -1143,7 +1143,7 @@ function meetingCompactRowHtml(m, depth) {
       <span class="shrink-0 ${isSelected ? 'text-white/80' : 'text-apple-tertiary'}">${m.is_video ? ICON_FILE_VIDEO : ICON_FILE_AUDIO}</span>
       <span class="truncate flex-1 min-w-0">${escapeHtml(libTitle(m))}</span>
       <span class="rec-badges shrink-0 ${isSelected ? 'text-white/80' : 'text-apple-secondary'}">${recordingBadgesHtml(m)}</span>
-      <span class="font-mono text-[10.5px] shrink-0 ${isSelected ? 'text-white/80' : 'text-apple-tertiary'}">${isBusy ? `${m.progress}%` : libPrefs().sort === 'size' ? formatSize(m.size_bytes) : formatTime(m.duration)}</span>
+      <span class="font-mono text-[11px] shrink-0 ${isSelected ? 'text-white/80' : 'text-apple-tertiary'}">${isBusy ? `${m.progress}%` : libPrefs().sort === 'size' ? formatSize(m.size_bytes) : formatTime(m.duration)}</span>
       ${rowMoreButton(m)}
     </div>`;
 }
@@ -1165,7 +1165,7 @@ function meetingTileHtml(m) {
       </div>
       <div class="px-1.5 pt-1 pb-1.5 min-w-0">
         <div class="text-[11.5px] font-medium leading-tight line-clamp-2">${escapeHtml(libTitle(m))}</div>
-        <div class="flex items-center justify-between gap-1 mt-1 text-[10px] ${isSelected ? 'text-white/80' : 'text-apple-secondary'}">
+        <div class="flex items-center justify-between gap-1 mt-1 text-[11px] ${isSelected ? 'text-white/80' : 'text-apple-secondary'}">
           <span class="rec-badges">${recordingBadgesHtml(m)}</span>
           <span class="shrink-0">${escapeHtml(libSortValue(m))}</span>
         </div>
@@ -1190,9 +1190,9 @@ function folderRowHtml(f, depth, collapsed) {
       <span class="text-[12px] font-semibold truncate flex-1">${escapeHtml(folderName(f))}</span>
       ${f.local_only ? `<span class="shrink-0 text-apple-tertiary" title="${escapeHtml(t('tipLocalOnly'))}">${ICON_LOCK}</span>` : ''}
       ${!open && libHere().folders.has(f.id) ? `<span class="lib-here-dot" title="${escapeHtml(t('tipLibHere'))}"></span>` : ''}
-      <span class="text-[10.5px] font-mono text-apple-tertiary">${count}</span>
+      <span class="text-[11px] font-mono text-apple-tertiary">${count}</span>
       <button data-click="openFolderMenu" data-click-args='[{"$": "event"}, ${f.id}]' title="${escapeHtml(t('tipFolderMenu'))}"
-        class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 px-1 rounded hover:bg-black/20 text-xs shrink-0 transition">•••</button>
+        class="row-more opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 px-1 rounded hover:bg-black/20 text-xs shrink-0 transition">•••</button>
     </div>`;
 }
 
@@ -1221,8 +1221,8 @@ function renderMeetingsSidebar() {
         ${(item.hits || []).map(h => `
           <div data-click="openLibraryHit" data-click-args='[${Number(item.meeting_id) || 0}, ${Number(h.start) || 0}]' tabindex="0" role="button"
                title="${escapeHtml(t('tipSeekTimestamp'))}"
-               class="px-2 py-1 rounded bg-black/30 hover:bg-apple-blue/20 cursor-pointer text-[11px] transition">
-            <div class="flex items-center justify-between text-[10px] text-apple-blue font-mono">
+               class="px-2 py-1 rounded bg-black/30 hover:bg-apple-blue/20 cursor-pointer text-[11.5px] transition">
+            <div class="flex items-center justify-between text-[11px] text-apple-blue font-mono">
               <span>${escapeHtml(h.speaker)}${h.semantic ? ` <span class="text-apple-tertiary" title="${escapeHtml(t('tipSemanticHit'))}">· ${escapeHtml(t('semanticHit'))}</span>` : ''}</span>
               <span>${formatTime(h.start)}</span>
             </div>

@@ -534,7 +534,7 @@ function renderVoiceProfiles(data) {
   const box = document.getElementById('voice-profiles-list');
   const list = (data && data.profiles) || [];
   if (!list.length) {
-    box.innerHTML = `<div class="text-[11px] text-apple-tertiary">${escapeHtml(t('voiceProfilesNone'))}</div>`;
+    box.innerHTML = `<div class="text-[11.5px] text-apple-tertiary">${escapeHtml(t('voiceProfilesNone'))}</div>`;
     return;
   }
   box.innerHTML = list.map(p => `
@@ -542,7 +542,7 @@ function renderVoiceProfiles(data) {
       <span class="text-apple-label truncate">${escapeHtml(p.name)}
         <span class="text-apple-tertiary">· ${escapeHtml(t('voiceProfileSamples').replace('{n}', () => p.samples))}</span></span>
       <button data-click="deleteVoiceProfile" data-click-args='[${Number(p.id)}, {"$": "data", "k": "name"}]' data-name="${escapeHtml(p.name)}"
-        class="ui-btn ui-btn-subtle h-6 px-2 text-[11px] text-apple-red" title="${escapeHtml(t('tipVoiceProfileDelete'))}">${escapeHtml(t('voiceProfileDelete'))}</button>
+        class="ui-btn ui-btn-subtle h-6 px-2 text-[11.5px] text-apple-red" title="${escapeHtml(t('tipVoiceProfileDelete'))}">${escapeHtml(t('voiceProfileDelete'))}</button>
     </div>`).join('');
 }
 

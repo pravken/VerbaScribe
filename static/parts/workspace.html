@@ -78,7 +78,7 @@
       <section class="st-card">
         <h3 class="st-card-title" data-i18n="rdSasSources">Источники</h3>
         <div id="st-source-seg" class="apple-segmented w-full settings-tabs" role="radiogroup" data-i18n-title="tipRecordSourceSelect" title="Выберите источник записи">
-          <button data-click="studioSetSource" data-click-args='["both"]' id="st-src-both" class="apple-segment-btn text-[11px]" role="radio" data-i18n="rdSasSrcBoth">Микрофон и ПК</button>
+          <button data-click="studioSetSource" data-click-args='["both"]' id="st-src-both" class="apple-segment-btn text-[11.5px]" role="radio" data-i18n="rdSasSrcBoth">Микрофон и ПК</button>
           <button data-click="studioSetSource" data-click-args='["mic"]' id="st-src-mic" class="apple-segment-btn text-[11.5px]" role="radio" data-i18n="rdSasSrcMic">Микрофон</button>
           <button data-click="studioSetSource" data-click-args='["system"]' id="st-src-system" class="apple-segment-btn text-[11.5px]" role="radio" data-i18n="rdSasSrcSystem">Звук ПК</button>
         </div>
@@ -92,7 +92,7 @@
         <div class="st-sub">
           <div class="flex items-center gap-2">
             <span class="st-sub-title flex-1" data-i18n="recMicDeviceLabel">Микрофон</span>
-            <button id="st-mic-test" data-click="studioMicTest" class="ui-btn ui-btn-subtle h-6 px-2.5 text-[11px]" data-i18n-title="rdSasMicTestTip"
+            <button id="st-mic-test" data-click="studioMicTest" class="ui-btn ui-btn-subtle h-6 px-2.5 text-[11.5px]" data-i18n-title="rdSasMicTestTip"
               title="Запишет три секунды с микрофона и сразу проиграет их">
               <span id="st-mic-test-label" data-i18n="rdSasMicTest">Проверить</span></button>
           </div>
@@ -104,14 +104,14 @@
           <div id="record-timer-display" class="text-xl font-mono font-semibold text-white tracking-wider">00:00</div>
           <div class="flex items-center gap-2">
             <span id="record-signal-dot" class="signal-dot" data-i18n-title="tipSignalDot" title="Горит зелёным, когда на входе есть звук"></span>
-            <span id="record-db-display" class="text-[11px] font-mono text-apple-secondary w-12 text-right">-60 dB</span>
+            <span id="record-db-display" class="text-[11.5px] font-mono text-apple-secondary w-12 text-right">-60 dB</span>
           </div>
         </div>
         <canvas id="record-waveform-canvas" class="w-full h-12 block"></canvas>
         <div class="w-full h-1.5 bg-black/50 rounded-full overflow-hidden border border-white/5">
           <div id="record-level-bar" class="h-full bg-apple-green transition-all duration-75" style="width: 2%"></div>
         </div>
-        <p id="record-status-hint" class="text-[11px] text-apple-secondary text-center leading-snug" data-i18n="recordWaveHint">Индикатор показывает уровень сигнала выбранного источника в реальном времени</p>
+        <p id="record-status-hint" class="text-[11.5px] text-apple-secondary text-center leading-snug" data-i18n="recordWaveHint">Индикатор показывает уровень сигнала выбранного источника в реальном времени</p>
       </div>
         </div>
         <div>
@@ -139,9 +139,9 @@
           placeholder="Созвон / Голосовая заметка" data-i18n-placeholder="phRecordTitle"
           class="w-full h-8 bg-apple-card border apple-border rounded-lg px-3 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
         <div id="studio-upcoming" class="hidden"></div>
-      <div class="text-[11px] text-apple-tertiary leading-snug space-y-1">
+      <div class="text-[11.5px] text-apple-tertiary leading-snug space-y-1">
         <p id="record-save-hint" class="break-all"></p>
-        <button data-click="openModal" data-click-args='["settings", "record"]' class="text-apple-blue hover:underline" data-i18n="recordChangeFolder">Изменить папку для записей…</button>
+        <button data-click="openModal" data-click-args='["settings", "record"]' class="vs-link text-apple-blue hover:underline" data-i18n="recordChangeFolder">Изменить папку для записей…</button>
       </div>
       </section>
 
@@ -187,14 +187,14 @@
         <span id="studio-rec-dot" class="relative flex w-3 h-3 shrink-0"><span class="studio-ping absolute inset-0 rounded-full bg-apple-red animate-ping opacity-60"></span><span class="relative w-3 h-3 rounded-full bg-apple-red"></span></span>
         <div class="min-w-0 flex-1 xl:flex-none">
           <div id="studio-heading" class="text-[13px] font-semibold text-white leading-tight truncate" data-i18n="studioIdle">Студия записи</div>
-          <div id="studio-source" class="text-[11px] text-apple-secondary truncate"></div>
+          <div id="studio-source" class="text-[11.5px] text-apple-secondary truncate"></div>
         </div>
         <div id="studio-timer" class="text-xl xl:text-2xl font-mono font-semibold text-white tracking-wider shrink-0 whitespace-nowrap">00:00</div>
         <div class="hidden lg:flex flex-1 items-center gap-2 min-w-[70px] max-w-[220px]">
           <div class="flex-1 h-1.5 bg-black/50 rounded-full overflow-hidden border border-white/5">
             <div id="studio-level" class="h-full bg-apple-green transition-all duration-75" style="width: 2%"></div>
           </div>
-          <span id="studio-db" class="text-[11px] font-mono text-apple-secondary w-14 text-right whitespace-nowrap">-60 dB</span>
+          <span id="studio-db" class="text-[11.5px] font-mono text-apple-secondary w-14 text-right whitespace-nowrap">-60 dB</span>
         </div>
         <div class="flex items-center gap-2 shrink-0 ml-auto">
           <button data-click="toggleStudioFocus" id="studio-focus-btn" class="ui-btn ui-btn-subtle h-8" data-i18n-title="tipStudioFocus" title="Субтитры на всё окно (Esc — выход)">
@@ -254,13 +254,13 @@
         <!-- Only while translating: how the translation is shown and which model makes it -->
         <div id="studio-tr-options" class="flex items-center gap-3">
           <div class="apple-segmented" style="height: 26px;">
-            <button data-click="studioSetView" data-click-args='["under"]' id="studio-view-under" class="apple-segment-btn text-[11px]" data-i18n="studioViewUnder">Под фразой</button>
-            <button data-click="studioSetView" data-click-args='["side"]' id="studio-view-side" class="apple-segment-btn text-[11px]" data-i18n="studioViewSide">Рядом</button>
-            <button data-click="studioSetView" data-click-args='["tr"]' id="studio-view-tr" class="apple-segment-btn text-[11px]" data-i18n="studioViewTr">Только перевод</button>
+            <button data-click="studioSetView" data-click-args='["under"]' id="studio-view-under" class="apple-segment-btn text-[11.5px]" data-i18n="studioViewUnder">Под фразой</button>
+            <button data-click="studioSetView" data-click-args='["side"]' id="studio-view-side" class="apple-segment-btn text-[11.5px]" data-i18n="studioViewSide">Рядом</button>
+            <button data-click="studioSetView" data-click-args='["tr"]' id="studio-view-tr" class="apple-segment-btn text-[11.5px]" data-i18n="studioViewTr">Только перевод</button>
           </div>
           <div class="apple-segmented" style="height: 26px;" data-i18n-title="tipStudioSpeed" title="Небольшая модель: быстрее, но перевод проще">
-            <button data-click="studioSetSpeed" data-click-args='["quality"]' id="studio-speed-quality" class="apple-segment-btn text-[11px]" data-i18n="studioSpeedQuality">Качество</button>
-            <button data-click="studioSetSpeed" data-click-args='["fast"]' id="studio-speed-fast" class="apple-segment-btn text-[11px]" data-i18n="studioSpeedFast">Скорость</button>
+            <button data-click="studioSetSpeed" data-click-args='["quality"]' id="studio-speed-quality" class="apple-segment-btn text-[11.5px]" data-i18n="studioSpeedQuality">Качество</button>
+            <button data-click="studioSetSpeed" data-click-args='["fast"]' id="studio-speed-fast" class="apple-segment-btn text-[11.5px]" data-i18n="studioSpeedFast">Скорость</button>
           </div>
           <label class="flex items-center gap-1.5 cursor-pointer text-xs text-apple-label" data-i18n-title="tipLiveDraftTr"
             title="Переводить фразу, пока её произносят, не дожидаясь паузы. Дополнительно нагружает модель перевода">
@@ -269,32 +269,32 @@
           </label>
         </div>
         <div class="flex items-center gap-1">
-          <button data-click="studioFont" data-click-args='[-2]' class="ui-btn ui-btn-subtle h-7 !px-2 text-[11px]" data-i18n-title="tipStudioFontSmaller" title="Мельче">A−</button>
+          <button data-click="studioFont" data-click-args='[-2]' class="ui-btn ui-btn-subtle h-7 !px-2 text-[11.5px]" data-i18n-title="tipStudioFontSmaller" title="Мельче">A−</button>
           <button data-click="studioFont" data-click-args='[2]' class="ui-btn ui-btn-subtle h-7 !px-2 text-[13px]" data-i18n-title="tipStudioFontLarger" title="Крупнее">A+</button>
         </div>
         <!-- The models writing the captions and the translation now; can be changed by hand -->
         <div id="studio-models" class="hidden flex items-center gap-2 ml-auto">
-          <label class="flex items-center gap-1 text-[11px] text-apple-tertiary">
+          <label class="flex items-center gap-1 text-[11.5px] text-apple-tertiary">
             <span data-i18n="studioModelCaptions">Субтитры</span>
             <select id="studio-cap-model" data-change="studioSetCaptionModel" data-change-args='[{"$": "value"}]' data-i18n-title="tipStudioCapModel" title="Модель, которая пишет субтитры. «Авто» выбирает по языку речи"
-              class="h-6 max-w-[170px] bg-apple-sidebar border apple-border rounded-md px-1.5 text-[11px] text-white focus:outline-none"></select>
+              class="h-6 max-w-[170px] bg-apple-sidebar border apple-border rounded-md px-1.5 text-[11.5px] text-white focus:outline-none"></select>
           </label>
-          <label id="studio-tr-model-wrap" class="flex items-center gap-1 text-[11px] text-apple-tertiary">
+          <label id="studio-tr-model-wrap" class="flex items-center gap-1 text-[11.5px] text-apple-tertiary">
             <span data-i18n="studioModelTranslation">Перевод</span>
             <select id="studio-tr-model" data-change="studioSetTranslateModel" data-change-args='[{"$": "value"}]' data-i18n-title="tipStudioTrModel" title="Модель перевода. «Авто» — по переключателю «Качество / Скорость»"
-              class="h-6 max-w-[170px] bg-apple-sidebar border apple-border rounded-md px-1.5 text-[11px] text-white focus:outline-none"></select>
+              class="h-6 max-w-[170px] bg-apple-sidebar border apple-border rounded-md px-1.5 text-[11.5px] text-white focus:outline-none"></select>
           </label>
         </div>
-        <span id="studio-status" class="text-[11px] text-apple-tertiary"></span>
+        <span id="studio-status" class="text-[11.5px] text-apple-tertiary"></span>
       </div>
       <!-- Models in memory: shown here when the studio covers the whole window -->
       <div class="studio-focus-only px-5 py-1.5 flex items-center gap-2 border-b apple-border shrink-0 bg-apple-bg/95">
-        <span class="text-[10px] font-mono text-apple-tertiary shrink-0">VRAM</span>
+        <span class="text-[11px] font-mono text-apple-tertiary shrink-0">VRAM</span>
         <div id="studio-vram-chips" class="flex flex-wrap gap-1"></div>
       </div>
       <div id="studio-captions" class="flex-1 min-h-0 overflow-y-auto px-8 py-6">
         <div id="studio-captions-inner" class="max-w-6xl mx-auto">
-          <div id="studio-cap-head" class="hidden grid grid-cols-2 gap-8 text-[11px] uppercase tracking-wider text-apple-tertiary sticky top-0 bg-apple-bg/95 py-1 mb-2 z-10">
+          <div id="studio-cap-head" class="hidden grid grid-cols-2 gap-8 text-[11.5px] uppercase tracking-wider text-apple-tertiary sticky top-0 bg-apple-bg/95 py-1 mb-2 z-10">
             <div id="studio-cap-head-orig"></div><div id="studio-cap-head-tr"></div>
           </div>
           <div id="studio-cap-rows" class="cap-rows"></div>
@@ -307,8 +307,8 @@
       <!-- The user's own notes while recording: saved with the recording, every summary takes them in -->
       <div id="studio-notes" class="hidden flex-1 min-h-0 flex flex-col px-6 py-4">
         <div class="flex items-center justify-between mb-1">
-          <span class="text-[11px] font-semibold text-apple-secondary" data-i18n="notesTitle">Мои заметки</span>
-          <span class="text-[10.5px] text-apple-tertiary" data-i18n="notesStudioHint">Enter — новая строка с отметкой времени. Заметки сохранятся с записью и войдут в пересказ</span>
+          <span class="text-[11.5px] font-semibold text-apple-secondary" data-i18n="notesTitle">Мои заметки</span>
+          <span class="text-[11px] text-apple-tertiary" data-i18n="notesStudioHint">Enter — новая строка с отметкой времени. Заметки сохранятся с записью и войдут в пересказ</span>
         </div>
         <textarea id="studio-notes-input" rows="12" data-keydown="studioNotesKey" data-keydown-args='[{"$": "event"}]' data-input="saveStudioNotesDraft"
           data-i18n-placeholder="notesPh" placeholder="Главное для вас: решения, вопросы, что не забыть…"
@@ -434,7 +434,7 @@
         </button>
         </div>
         <p id="workspace-empty-pick" class="hidden text-xs text-apple-label mt-6" data-i18n="emptyPickRecording">Или выберите запись в медиатеке слева</p>
-        <p class="text-[11px] text-apple-tertiary mt-6">
+        <p class="text-[11.5px] text-apple-tertiary mt-6">
           <span data-i18n="emptyShortcutsHint">Горячие клавиши</span> — <kbd class="empty-card-kbd !static">?</kbd>
         </p>
       </div>
@@ -454,7 +454,7 @@
             data-i18n-title="tipRenameInline"
             title="Нажмите, чтобы переименовать запись"
             class="bg-transparent hover:bg-white/5 focus:bg-apple-card focus:outline-none focus:ring-1 focus:ring-apple-blue px-2 h-7 -ml-2 rounded-md text-[14px] font-semibold text-white truncate min-w-[100px] max-w-[320px] transition" />
-          <span id="meeting-meta-badge" class="text-[11px] text-apple-secondary font-mono truncate min-w-0"></span>
+          <span id="meeting-meta-badge" class="text-[11.5px] text-apple-secondary font-mono truncate min-w-0"></span>
           <button data-click="openActiveRecordingMenu" data-click-args='[{"$": "event"}]' data-i18n-title="tipRecordingMore"
             title="Действия с записью: переименовать, серия, нарезка, повторная обработка, удаление"
             class="ui-btn ui-btn-subtle h-7 !px-2 shrink-0">•••</button>
@@ -501,7 +501,7 @@
               <button data-click="runAll" data-click-args='[["hideTranslateMenu"], ["openDubModal"]]' id="dub-open-btn" data-i18n-title="tipDubOpen"
                 title="Перевести запись и озвучить её голосами участников (бета)" class="macos-menu-item">
                 <span data-i18n="translateMenuDub">Озвучка голосом (дубляж)…</span>
-                <span class="text-[10px] opacity-80" data-i18n="dubProto">(бета)</span>
+                <span class="text-[11px] opacity-80" data-i18n="dubProto">(бета)</span>
               </button>
             </div>
           </div>
@@ -531,14 +531,14 @@
               <span id="workspace-stage-text" class="text-apple-label font-medium truncate">Обработка…</span>
             </span>
             <span class="flex items-center gap-2.5 shrink-0">
-              <span id="workspace-progress-time" class="font-mono text-[11px] text-apple-secondary"></span>
+              <span id="workspace-progress-time" class="font-mono text-[11.5px] text-apple-secondary"></span>
               <span id="workspace-progress-pct" class="font-mono text-apple-blue">0%</span>
               <button id="workspace-error-more" data-click="showProcessingErrorDetails" data-i18n="errDetails"
-                class="hidden ui-btn ui-btn-subtle h-6 px-2 text-[11px]">Подробнее</button>
+                class="hidden ui-btn ui-btn-subtle h-6 px-2 text-[11.5px]">Подробнее</button>
               <button id="workspace-retry-btn" data-click="retryActiveMeeting" data-i18n="retryBtn"
-                class="hidden ui-btn ui-btn-primary h-6 px-2 text-[11px]">Повторить</button>
+                class="hidden ui-btn ui-btn-primary h-6 px-2 text-[11.5px]">Повторить</button>
               <button id="workspace-cancel-btn" data-click="cancelActiveProcessing" data-i18n-title="tipCancelProcessing" title="Остановить обработку этой записи"
-                class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]" data-i18n="cancelProcessingBtn">Отменить</button>
+                class="ui-btn ui-btn-subtle h-6 px-2 text-[11.5px]" data-i18n="cancelProcessingBtn">Отменить</button>
             </span>
           </div>
           <div class="w-full h-1 bg-white/10 rounded-full overflow-hidden">
@@ -653,7 +653,7 @@
         <!-- Chapters (from the "Chapters" analysis): a clickable table of contents above the text -->
         <div id="chapters-bar" class="hidden border-b apple-border bg-apple-bg/95 px-6 py-1.5 shrink-0">
           <div class="max-w-3xl mx-auto flex items-center gap-2 min-w-0">
-            <span class="text-[10.5px] uppercase tracking-wider text-apple-tertiary shrink-0" data-i18n="chaptersLabel">Главы</span>
+            <span class="text-[11px] uppercase tracking-wider text-apple-tertiary shrink-0" data-i18n="chaptersLabel">Главы</span>
             <div id="chapters-list" class="flex items-center gap-1 overflow-x-auto min-w-0 chapters-scroll"></div>
           </div>
         </div>
@@ -720,7 +720,7 @@
                   </button>
                 </div>
                 <!-- Where the analysis goes and how big the cloud request is (settings.js) -->
-                <div id="analysis-estimate" class="hidden text-[11px] -mt-1 flex items-center gap-1.5"></div>
+                <div id="analysis-estimate" class="hidden text-[11.5px] -mt-1 flex items-center gap-1.5"></div>
                 <div id="summary-content" class="an-body"></div>
               </div>
             </div>

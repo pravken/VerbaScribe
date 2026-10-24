@@ -25,7 +25,7 @@
             </svg>
           </div>
           <div>
-            <button data-click="openAbout" data-i18n-title="tipAbout" title="О программе" class="font-semibold text-[14px] leading-tight tracking-tight text-white hover:text-apple-label">VerbaScribe</button>
+            <button data-click="openAbout" data-i18n-title="tipAbout" title="О программе" class="sb-about font-semibold text-[14px] leading-tight tracking-tight text-white hover:text-apple-label">VerbaScribe</button>
           </div>
         </div>
         <button data-click="openSupport" data-i18n-title="tipSupport" title="Поддержать разработку на Ko-fi"
@@ -81,7 +81,7 @@
     <!-- Processing queue (shown only while something is queued or running) -->
     <div id="queue-panel" class="hidden mx-2.5 mt-1 mb-1 rounded-lg border apple-border bg-white/[0.03]">
       <div class="px-2.5 pt-2 pb-1 flex items-center justify-between">
-        <span class="text-[11px] font-semibold text-apple-secondary uppercase tracking-wider">
+        <span class="text-[11.5px] font-semibold text-apple-secondary uppercase tracking-wider">
           <span data-i18n="queueTitle">Очередь</span> <span id="queue-count" class="font-mono text-apple-blue"></span>
         </span>
       </div>
@@ -90,17 +90,16 @@
 
     <!-- Sidebar Section Header -->
     <div class="px-4 pt-2 pb-1 flex items-center justify-between gap-2">
-      <span class="text-[11px] font-semibold text-apple-secondary uppercase tracking-wider" data-i18n="recordings">Медиатека</span>
+      <span class="text-[11.5px] font-semibold text-apple-secondary uppercase tracking-wider" data-i18n="recordings" data-i18n-title="rightClickHint" title="Правый клик — меню">Медиатека</span>
       <span class="flex items-center gap-1.5 min-w-0">
-        <span class="text-[10px] text-apple-tertiary truncate" data-i18n="rightClickHint">Правый клик — меню</span>
         <button id="lib-fold-btn" data-click="toggleLibraryFold" data-i18n-title="tipLibFoldAll" title="Свернуть всё"
-          class="shrink-0 p-1 rounded-md text-apple-secondary hover:text-white hover:bg-white/10 transition"></button>
+          class="sb-icon-btn shrink-0 p-1 rounded-md text-apple-secondary hover:text-white hover:bg-white/10 transition"></button>
         <button data-click="openLibViewMenu" data-click-args='[{"$": "event"}]' data-i18n-title="tipLibView" title="Вид и сортировка"
-          class="shrink-0 p-1 rounded-md text-apple-secondary hover:text-white hover:bg-white/10 transition">
+          class="sb-icon-btn shrink-0 p-1 rounded-md text-apple-secondary hover:text-white hover:bg-white/10 transition">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7.5L7.5 3m0 0L12 7.5M7.5 3v13.5m13.5 0L16.5 21m0 0L12 16.5m4.5 4.5V7.5"/></svg>
         </button>
         <button data-click="createFolderPrompt" data-click-args='[null]' data-i18n-title="tipNewFolder" title="Новая папка"
-          class="shrink-0 p-1 rounded-md text-apple-secondary hover:text-white hover:bg-white/10 transition">
+          class="sb-icon-btn shrink-0 p-1 rounded-md text-apple-secondary hover:text-white hover:bg-white/10 transition">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10.5v6m3-3H9m4.06-7.19l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
         </button>
       </span>
@@ -121,11 +120,11 @@
           <span id="sidebar-dl-title" class="text-[11.5px] font-semibold text-white truncate" data-i18n="dlModelTitle">Загрузка модели…</span>
         </div>
         <div class="flex items-center gap-1.5 shrink-0">
-          <span id="sidebar-dl-pct" class="text-[11px] font-mono font-semibold text-apple-blue">0%</span>
+          <span id="sidebar-dl-pct" class="text-[11.5px] font-mono font-semibold text-apple-blue">0%</span>
           <button data-click="toggleSidebarDownloadLogs"
             data-i18n-title="tipToggleDlLogs"
             title="Показать или скрыть подробный лог скачивания"
-            class="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 text-[10px] text-apple-secondary hover:text-white transition"
+            class="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 text-[11px] text-apple-secondary hover:text-white transition"
             data-i18n="logsBtn">Журнал</button>
         </div>
       </div>
@@ -134,9 +133,9 @@
         <div id="sidebar-dl-bar" class="h-full bg-apple-blue transition-all duration-300" style="width: 2%"></div>
       </div>
 
-      <div id="sidebar-dl-status" class="text-[10.5px] text-apple-secondary truncate" data-i18n="dlPreparingShort">Подготовка…</div>
+      <div id="sidebar-dl-status" class="text-[11px] text-apple-secondary truncate" data-i18n="dlPreparingShort">Подготовка…</div>
 
-      <div id="sidebar-dl-logs" class="hidden max-h-24 overflow-y-auto overflow-x-hidden font-mono text-[10px] text-apple-secondary space-y-0.5 bg-black/40 rounded-lg p-2 border apple-border break-all whitespace-pre-wrap">
+      <div id="sidebar-dl-logs" class="hidden max-h-24 overflow-y-auto overflow-x-hidden font-mono text-[11px] text-apple-secondary space-y-0.5 bg-black/40 rounded-lg p-2 border apple-border break-all whitespace-pre-wrap">
       </div>
     </div>
 
@@ -152,7 +151,7 @@
           </svg>
           <span data-i18n="dictionary" class="truncate">Словарь</span>
         </span>
-        <span id="dict-count-badge" class="text-[10.5px] font-mono text-apple-tertiary shrink-0 ml-1">0</span>
+        <span id="dict-count-badge" class="text-[11px] font-mono text-apple-tertiary shrink-0 ml-1">0</span>
       </button>
 
       <button data-click="openModal" data-click-args='["settings"]'

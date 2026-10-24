@@ -768,7 +768,7 @@ function openTemplatesEditor() {
     wrap.innerHTML = `<div class="w-full max-w-2xl max-h-[85vh] flex flex-col bg-apple-card border apple-border rounded-2xl shadow-2xl modal-card">
       <div class="px-5 pt-5 pb-3 border-b apple-border">
         <div class="text-sm font-semibold text-white">${escapeHtml(t('templatesTitle'))}</div>
-        <p class="text-[11px] text-apple-secondary mt-1">${escapeHtml(t('templatesDesc'))}</p>
+        <p class="text-[11.5px] text-apple-secondary mt-1">${escapeHtml(t('templatesDesc'))}</p>
       </div>
       <div class="flex-1 overflow-y-auto px-5 py-3 space-y-3">
         ${items.map((x, i) => `<div class="p-3 rounded-xl bg-apple-sidebar border border-white/10 space-y-2">
@@ -781,9 +781,9 @@ function openTemplatesEditor() {
             class="w-full bg-apple-card border apple-border rounded-lg px-2.5 py-2 text-xs text-white focus:outline-none focus:border-apple-blue resize-y">${escapeHtml(x.prompt)}</textarea>
         </div>`).join('') || `<div class="py-6 text-center text-xs text-apple-tertiary">${escapeHtml(t('templatesEmpty'))}</div>`}
         <div class="flex flex-wrap items-center gap-1.5 pt-1">
-          <span class="text-[11px] text-apple-secondary">${escapeHtml(t('templatesAddFrom'))}</span>
-          ${presets.map((p, i) => `<button data-preset="${i}" class="ui-btn ui-btn-subtle h-7 text-[11px]">${escapeHtml(p.name)}</button>`).join('')}
-          <button data-add="1" class="ui-btn ui-btn-subtle h-7 text-[11px]">+ ${escapeHtml(t('templateBlank'))}</button>
+          <span class="text-[11.5px] text-apple-secondary">${escapeHtml(t('templatesAddFrom'))}</span>
+          ${presets.map((p, i) => `<button data-preset="${i}" class="ui-btn ui-btn-subtle h-7 text-[11.5px]">${escapeHtml(p.name)}</button>`).join('')}
+          <button data-add="1" class="ui-btn ui-btn-subtle h-7 text-[11.5px]">+ ${escapeHtml(t('templateBlank'))}</button>
         </div>
       </div>
       <div class="px-5 py-3 border-t apple-border flex justify-end gap-2">
@@ -817,8 +817,8 @@ function openTemplatesEditor() {
 // --- Commitments (app/commitments.py): who promised what to whom, by when ---
 function commitmentRowHtml(c, withMeeting) {
   const who = escapeHtml(c.who || '—') + (c.to_whom ? ` <span class="text-apple-tertiary">→ ${escapeHtml(c.to_whom)}</span>` : '');
-  const ts = c.at != null ? ` <button data-mid="${c.meeting_id}" data-at="${c.at}" data-click="openCommitmentPlace" data-click-args='[{"$": "el"}]' class="font-mono text-[11px] text-apple-blue hover:underline">[${formatTime(c.at)}]</button>` : '';
-  const where = withMeeting ? `<div class="text-[10.5px] text-apple-tertiary mt-0.5">${escapeHtml(c.meeting_title || '')} · ${escapeHtml(c.meeting_date || '')}</div>` : '';
+  const ts = c.at != null ? ` <button data-mid="${c.meeting_id}" data-at="${c.at}" data-click="openCommitmentPlace" data-click-args='[{"$": "el"}]' class="font-mono text-[11.5px] text-apple-blue hover:underline">[${formatTime(c.at)}]</button>` : '';
+  const where = withMeeting ? `<div class="text-[11px] text-apple-tertiary mt-0.5">${escapeHtml(c.meeting_title || '')} · ${escapeHtml(c.meeting_date || '')}</div>` : '';
   return `<label class="flex items-start gap-2.5 py-2 border-b border-white/5 cursor-pointer ${c.status === 'done' ? 'opacity-50' : ''}">
       <input type="checkbox" ${c.status === 'done' ? 'checked' : ''} data-cid="${c.id}" data-change="toggleCommitment" data-change-args='[{"$": "el"}]' class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
       <span class="min-w-0 text-[13px] text-apple-label leading-snug"><span class="font-medium text-white">${who}</span>: ${escapeHtml(c.what)}${c.due ? ` <span class="text-apple-amber text-[11.5px]">(${escapeHtml(c.due)})</span>` : ''}${ts}${where}</span>
@@ -843,9 +843,9 @@ async function renderCommitments(box) {
 
 // Promises as tasks for another app: Markdown (Obsidian, Notion), Todoist's CSV, a table
 function commitmentExportBar(meetingId) {
-  const b = (fmt, label) => `<button data-click="exportCommitments" data-click-args='[${jsArg(fmt)}, ${jsArg(meetingId)}]' class="ui-btn ui-btn-subtle h-7 text-[11px]">${escapeHtml(label)}</button>`;
+  const b = (fmt, label) => `<button data-click="exportCommitments" data-click-args='[${jsArg(fmt)}, ${jsArg(meetingId)}]' class="ui-btn ui-btn-subtle h-7 text-[11.5px]">${escapeHtml(label)}</button>`;
   return `<div class="flex flex-wrap items-center gap-1.5 pt-3">
-      <span class="text-[11px] text-apple-tertiary mr-1">${escapeHtml(t('commitmentsExport'))}</span>
+      <span class="text-[11.5px] text-apple-tertiary mr-1">${escapeHtml(t('commitmentsExport'))}</span>
       ${b('md', 'Markdown')}${b('todoist', 'Todoist')}${b('csv', t('commitmentsTable'))}
     </div>`;
 }
@@ -886,7 +886,7 @@ async function openOpenCommitments() {
   wrap.innerHTML = `<div class="w-full max-w-2xl max-h-[85vh] flex flex-col bg-apple-card border apple-border rounded-2xl shadow-2xl modal-card">
       <div class="px-5 pt-5 pb-3 border-b apple-border flex items-center justify-between gap-3">
         <div><div class="text-sm font-semibold text-white">${escapeHtml(t('openCommitmentsBtn'))}</div>
-          <p class="text-[11px] text-apple-secondary mt-1">${escapeHtml(t('openCommitmentsDesc'))}</p></div>
+          <p class="text-[11.5px] text-apple-secondary mt-1">${escapeHtml(t('openCommitmentsDesc'))}</p></div>
         <button data-a="close" class="ui-btn ui-btn-subtle">${escapeHtml(t('close'))}</button>
       </div>
       <div class="flex-1 overflow-y-auto px-5 py-2">${items.length ? items.map(c => commitmentRowHtml(c, true)).join('') + commitmentExportBar(null)
@@ -919,10 +919,10 @@ function aiAvailable() {
 function renderMyNotesEditor(box) {
   const m = state.activeMeeting;
   box.innerHTML = `<div class="space-y-2">
-      <p class="text-[11px] text-apple-tertiary">${escapeHtml(t('notesHint'))}</p>
+      <p class="text-[11.5px] text-apple-tertiary">${escapeHtml(t('notesHint'))}</p>
       <textarea id="my-notes-input" rows="14" placeholder="${escapeHtml(t('notesPh'))}"
         class="w-full bg-apple-sidebar border apple-border rounded-xl px-4 py-3 text-[13px] leading-relaxed text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue resize-y"></textarea>
-      <div id="my-notes-status" class="text-[10.5px] text-apple-tertiary h-4"></div>
+      <div id="my-notes-status" class="text-[11px] text-apple-tertiary h-4"></div>
     </div>`;
   const ta = document.getElementById('my-notes-input');
   ta.value = m.user_notes || '';
@@ -963,7 +963,7 @@ function markUnverified(root) {
       if (p) frag.appendChild(document.createTextNode(p));
       if (i < parts.length - 1) {
         const b = document.createElement('span');
-        b.className = 'ml-1 px-1.5 py-px rounded bg-apple-amber/15 text-apple-amber text-[10.5px] font-medium whitespace-nowrap align-middle';
+        b.className = 'ml-1 px-1.5 py-px rounded bg-apple-amber/15 text-apple-amber text-[11px] font-medium whitespace-nowrap align-middle';
         b.textContent = t('unverifiedBadge');
         b.title = t('tipUnverified');
         frag.appendChild(b);
@@ -1309,7 +1309,7 @@ function updateFileNamePreview() {
   const input = document.getElementById('set-file-name-template');
   const tokens = document.getElementById('file-name-tokens');
   if (tokens && !tokens.childElementCount) {
-    tokens.innerHTML = FILE_NAME_TOKENS.map(tk => `<button type="button" data-tk="${tk}" class="ui-btn ui-btn-subtle h-6 !px-2 text-[10.5px] font-mono">${tk}</button>`).join('');
+    tokens.innerHTML = FILE_NAME_TOKENS.map(tk => `<button type="button" data-tk="${tk}" class="ui-btn ui-btn-subtle h-6 !px-2 text-[11px] font-mono">${tk}</button>`).join('');
     tokens.onclick = e => {
       const b = e.target.closest('[data-tk]');
       if (!b) return;
@@ -1353,7 +1353,7 @@ async function refreshObsidianStatus() {
       : st.is_vault ? [t('obsPillVault'), 'bg-apple-green/15 text-apple-green']
       : [t('obsPillFolder'), 'bg-apple-amber/15 text-apple-amber'];
     pill.textContent = text;
-    pill.className = `text-[10px] font-mono px-2.5 py-0.5 rounded-full shrink-0 ${cls}`;
+    pill.className = `text-[11px] font-mono px-2.5 py-0.5 rounded-full shrink-0 ${cls}`;
     pill.title = st.is_vault || !st.vault ? '' : t('tipObsNotVault');
   } catch (e) {}
 }
@@ -1461,8 +1461,8 @@ function renderMeetingInfo(info) {
       <div class="divide-y divide-white/5">${rows}</div>
     </div>` : '';
   const pathActions = (p) => p ? `
-    <button data-click="revealPath" data-click-args='[{"$": "data", "k": "p"}]' data-p="${escapeHtml(p)}" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]">${escapeHtml(t('showInFolder'))}</button>
-    <button data-click="copyText" data-click-args='[{"$": "data", "k": "p"}]' data-p="${escapeHtml(p)}" class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]">${escapeHtml(t('copyPath'))}</button>` : '';
+    <button data-click="revealPath" data-click-args='[{"$": "data", "k": "p"}]' data-p="${escapeHtml(p)}" class="ui-btn ui-btn-subtle h-6 px-2 text-[11.5px]">${escapeHtml(t('showInFolder'))}</button>
+    <button data-click="copyText" data-click-args='[{"$": "data", "k": "p"}]' data-p="${escapeHtml(p)}" class="ui-btn ui-btn-subtle h-6 px-2 text-[11.5px]">${escapeHtml(t('copyPath'))}</button>` : '';
 
   const media = info.media || {};
   const probe = info.probe || {};
@@ -1514,7 +1514,7 @@ function renderMeetingInfo(info) {
   if ((info.pending_exports || []).length) {
     html += `<div class="rounded-xl border border-apple-amber/40 bg-apple-amber/10 px-4 py-3 text-xs text-apple-amber flex items-center justify-between gap-3">
       <span>${escapeHtml(t('infoPendingExports').replace('{n}', () => info.pending_exports.length))}</span>
-      <button data-click="cancelPendingExports" data-click-args='[${info.id}]' class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]">${escapeHtml(t('cancel'))}</button>
+      <button data-click="cancelPendingExports" data-click-args='[${info.id}]' class="ui-btn ui-btn-subtle h-6 px-2 text-[11.5px]">${escapeHtml(t('cancel'))}</button>
     </div>`;
   }
   box.innerHTML = html;
@@ -1709,7 +1709,7 @@ function openTextMenuAt(items, x, y, opts) {
   menu.innerHTML = clean.map((it, i) => it.sep
     ? '<div class="my-1 h-px bg-white/10"></div>'
     : `<button class="macos-menu-item gap-6" data-i="${i}" ${it.disabled ? 'disabled style="opacity:.4"' : ''}><span>${escapeHtml(it.label)}</span>`
-      + `<span class="text-[10.5px] opacity-80 font-mono">${escapeHtml(it.key || '')}</span></button>`).join('');
+      + `<span class="text-[11px] opacity-80 font-mono">${escapeHtml(it.key || '')}</span></button>`).join('');
   // Keeps the selection: a click in the menu must not clear it before the action reads it
   menu.addEventListener('mousedown', ev => ev.preventDefault());
   menu.addEventListener('click', (ev) => {

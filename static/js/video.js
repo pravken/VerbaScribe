@@ -103,7 +103,7 @@ function applyTheatreLayout() {
   if (subs) updateTheatreCaption(document.getElementById('media-player').currentTime || 0, true);
   THEATRE_LAYOUTS.forEach(k => {
     document.getElementById(`theatre-layout-${k}`).className =
-      `apple-segment-btn text-[11px] ${k === layout ? 'apple-segment-active' : 'text-apple-secondary hover:text-white'}`;
+      `apple-segment-btn text-[11.5px] ${k === layout ? 'apple-segment-active' : 'text-apple-secondary hover:text-white'}`;
   });
   redrawAfterLayoutChange();
 }

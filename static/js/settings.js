@@ -293,7 +293,7 @@ function renderVram(data) {
       : (actionable ? '<span class="opacity-70 group-hover:opacity-100">↑</span>' : '');
     return `<button data-i="${i}" data-click="vramChipClick" data-click-args='[{"$": "data", "k": "i"}]' ${actionable || c.kind === 'dub' ? '' : 'disabled'}
       title="${escapeHtml(vramChipTitle(c))}"
-      class="group max-w-full inline-flex items-center gap-1 px-1.5 h-5 rounded-full border text-[10px] font-medium transition ${cls} ${actionable ? 'hover:bg-white/10' : 'cursor-default'}">
+      class="group max-w-full inline-flex items-center gap-1 px-1.5 h-5 rounded-full border text-[11px] font-medium transition ${cls} ${actionable ? 'hover:bg-white/10' : 'cursor-default'}">
       <span class="w-1.5 h-1.5 rounded-full shrink-0 ${c.loaded || c.loading ? 'bg-current' : 'border border-current'}"></span>
       <span class="truncate">${c.default ? '★ ' : ''}${escapeHtml(vramChipLabel(c))}</span>${icon}</button>`;
   };
@@ -469,10 +469,10 @@ function updateWhisperModelsUI(models) {
   if (diarPill) {
     if (diarInstalled) {
       diarPill.textContent = t('uiSpeakerModelReady');
-      diarPill.className = 'text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-apple-green/15 text-apple-green shrink-0';
+      diarPill.className = 'text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-apple-green/15 text-apple-green shrink-0';
     } else {
       diarPill.textContent = t('uiDownloadsWithWhisper');
-      diarPill.className = 'text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-white/5 text-apple-secondary shrink-0';
+      diarPill.className = 'text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-white/5 text-apple-secondary shrink-0';
     }
   }
 
@@ -533,8 +533,8 @@ function updateWhisperModelsUI(models) {
           <div class="min-w-0 flex-1">
             <div class="flex items-center flex-wrap gap-2">
               <span class="text-xs font-semibold text-white">${escapeHtml(formatModelName(item.id))}</span>
-              <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-apple-secondary">${escapeHtml(badgeLabel)}</span>
-              <span class="text-[10px] text-apple-tertiary">${escapeHtml(item.vram)}</span>
+              <span class="text-[11px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-apple-secondary">${escapeHtml(badgeLabel)}</span>
+              <span class="text-[11px] text-apple-tertiary">${escapeHtml(item.vram)}</span>
             </div>
             <p class="text-[11.5px] text-apple-secondary mt-1 leading-snug">${escapeHtml(desc)}</p>
             ${item.installed ? modelLocationHtml(item.path, item.disk_mb) : ''}
@@ -589,32 +589,32 @@ function openFirstRunWizard(data) {
   const hw = data.hardware || {};
   const ollama = data.ollama || {};
   const card = (key, title, sub, on) => `<button data-pick="${escapeHtml(key)}" class="w-full text-left p-3 rounded-xl border transition ${on ? 'bg-apple-blue/15 border-apple-blue/60' : 'bg-apple-sidebar border-white/10 hover:border-white/25'}">
-      <div class="text-xs font-semibold text-white">${title}</div><div class="text-[11px] text-apple-secondary mt-0.5 leading-snug">${sub}</div></button>`;
+      <div class="text-xs font-semibold text-white">${title}</div><div class="text-[11.5px] text-apple-secondary mt-0.5 leading-snug">${sub}</div></button>`;
   const draw = () => {
     const picks = firstRunPicks(data, st.lang);
     if (!st.speech || !picks.speech.some(p => p.id === st.speech)) st.speech = picks.speech[0].id;
     let body = '';
     if (st.step === 0) {
       body = `<p class="text-xs text-apple-secondary leading-relaxed">${escapeHtml(t('frIntro'))}</p>
-        <div class="text-[11px] text-apple-tertiary">${escapeHtml(t('frHardware'))}: <span class="text-apple-label">${escapeHtml(hwDeviceLabel(hw))}${hw.vram_total_gb ? ` · ${hw.vram_total_gb} ${t('unitGB')}` : ''}</span></div>
+        <div class="text-[11.5px] text-apple-tertiary">${escapeHtml(t('frHardware'))}: <span class="text-apple-label">${escapeHtml(hwDeviceLabel(hw))}${hw.vram_total_gb ? ` · ${hw.vram_total_gb} ${t('unitGB')}` : ''}</span></div>
         <div class="text-xs text-white font-medium pt-1">${escapeHtml(t('frLangQ'))}</div>
         <div class="grid grid-cols-3 gap-2">${[['ru', t('frLangRu')], ['en', t('frLangEn')], ['mix', t('frLangMix')]].map(([k, l]) =>
           `<button data-lang="${k}" class="ui-btn h-9 ${st.lang === k ? 'ui-btn-primary' : 'ui-btn-subtle'}">${escapeHtml(l)}</button>`).join('')}</div>`;
     } else if (st.step === 1) {
       body = `<div class="text-xs text-white font-medium">${escapeHtml(t('frSpeechQ'))}</div>
-        <div class="space-y-2">${picks.speech.map((p, i) => card(p.id, escapeHtml(formatModelName(p.id)) + (i === 0 ? ` <span class="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-apple-green/20 text-apple-green">${escapeHtml(t('frRecommended'))}</span>` : ''), escapeHtml(p.why), st.speech === p.id)).join('')}</div>`;
+        <div class="space-y-2">${picks.speech.map((p, i) => card(p.id, escapeHtml(formatModelName(p.id)) + (i === 0 ? ` <span class="ml-1 text-[11px] px-1.5 py-0.5 rounded bg-apple-green/20 text-apple-green">${escapeHtml(t('frRecommended'))}</span>` : ''), escapeHtml(p.why), st.speech === p.id)).join('')}</div>`;
     } else if (st.step === 2) {
       body = `<div class="text-xs text-white font-medium">${escapeHtml(t('frLlmQ'))}</div>
-        <p class="text-[11px] text-apple-secondary leading-snug">${escapeHtml(t('frLlmDesc'))}</p>
+        <p class="text-[11.5px] text-apple-secondary leading-snug">${escapeHtml(t('frLlmDesc'))}</p>
         <div class="space-y-2">
-          ${card('llm-yes', escapeHtml(formatModelName(picks.llm)) + ` <span class="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-apple-green/20 text-apple-green">${escapeHtml(t('frRecommended'))}</span>`, escapeHtml(ollama.installed ? t('frLlmLocal') : t('frLlmNoOllama')), st.llm)}
+          ${card('llm-yes', escapeHtml(formatModelName(picks.llm)) + ` <span class="ml-1 text-[11px] px-1.5 py-0.5 rounded bg-apple-green/20 text-apple-green">${escapeHtml(t('frRecommended'))}</span>`, escapeHtml(ollama.installed ? t('frLlmLocal') : t('frLlmNoOllama')), st.llm)}
           ${card('llm-no', escapeHtml(t('frLlmSkip')), escapeHtml(t('frLlmSkipDesc')), !st.llm)}
         </div>`;
     }
     wrap.innerHTML = `<div class="w-full max-w-lg bg-apple-card border apple-border rounded-2xl shadow-2xl modal-card">
       <div class="px-5 pt-5 pb-3 border-b apple-border flex items-center justify-between">
         <div class="text-sm font-semibold text-white">${escapeHtml(t('frTitle'))}</div>
-        <div class="text-[11px] text-apple-tertiary font-mono">${st.step + 1} / 3</div>
+        <div class="text-[11.5px] text-apple-tertiary font-mono">${st.step + 1} / 3</div>
       </div>
       <div class="px-5 py-4 space-y-3">${body}</div>
       <div class="px-5 py-3 border-t apple-border flex items-center gap-2">
@@ -669,7 +669,7 @@ async function selectActiveWhisperModel(modelId) {
 function modelLocationHtml(path, mb, label) {
   if (!path) return '';
   const size = mb ? ` · ${mb >= 1024 ? (mb / 1024).toFixed(1) + ' ' + t('unitGB') : mb + ' ' + t('unitMB')}` : '';
-  return `<div class="mt-1.5 flex items-center gap-1.5 min-w-0 text-[10.5px] text-apple-tertiary">
+  return `<div class="mt-1.5 flex items-center gap-1.5 min-w-0 text-[11px] text-apple-tertiary">
       <span class="shrink-0">${escapeHtml(label || t('modelLocation'))}${size}:</span>
       <span class="font-mono truncate" title="${escapeHtml(path)}">${escapeHtml(path)}</span>
       <button data-path="${escapeHtml(path)}" data-click="revealPath" data-click-args='[{"$": "data", "k": "path"}]' class="shrink-0 text-apple-blue hover:underline">${escapeHtml(t('modelReveal'))}</button>
@@ -767,12 +767,12 @@ function updateOllamaUI(ollama) {
 
   if (ollama.running) {
     pill.textContent = t('uiOllamaActive');
-    pill.className = 'text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-apple-green/15 text-apple-green shrink-0';
+    pill.className = 'text-[11.5px] font-mono px-2.5 py-0.5 rounded-full bg-apple-green/15 text-apple-green shrink-0';
   } else {
     pill.textContent = ollama.installed
       ? t('uiOllamaNotRunning')
       : t('uiOllamaNotInstalled');
-    pill.className = 'text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-apple-amber/15 text-apple-amber shrink-0';
+    pill.className = 'text-[11.5px] font-mono px-2.5 py-0.5 rounded-full bg-apple-amber/15 text-apple-amber shrink-0';
   }
 
   state.lastOllama = ollama;
@@ -817,8 +817,8 @@ function updateOllamaUI(ollama) {
           <div class="min-w-0 flex-1">
             <div class="flex items-center flex-wrap gap-2">
               <span class="text-xs font-semibold text-white">${escapeHtml(pretty)}</span>
-              <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-apple-secondary">${escapeHtml(badgeLabel)}</span>
-              <span class="text-[10px] text-apple-tertiary">${escapeHtml(item.vram)}</span>
+              <span class="text-[11px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-apple-secondary">${escapeHtml(badgeLabel)}</span>
+              <span class="text-[11px] text-apple-tertiary">${escapeHtml(item.vram)}</span>
             </div>
             <p class="text-[11.5px] text-apple-secondary mt-1 leading-snug">${escapeHtml(desc)}</p>
             ${item.installed ? modelLocationHtml(ollama.models_dir, 0, t('modelLocationOllama')) : ''}
@@ -878,7 +878,7 @@ function renderWatchFolder(st) {
   document.getElementById('watch-folder-path').textContent = st.folder || t('watchOff');
   const box = document.getElementById('watch-folder-status');
   box.textContent = st.error ? st.error : st.folder ? t('watchOn').replace('{n}', () => st.imported || 0) + (st.last_import ? ` · ${st.last_import}` : '') : '';
-  box.className = 'text-[11px] ' + (st.error ? 'text-apple-amber' : 'text-apple-tertiary');
+  box.className = 'text-[11.5px] ' + (st.error ? 'text-apple-amber' : 'text-apple-tertiary');
 }
 
 async function loadWatchFolder() {
@@ -936,7 +936,7 @@ async function makeBackup() {
   const box = document.getElementById('backup-status');
   const btn = document.getElementById('backup-make-btn');
   btn.disabled = true;
-  box.className = 'text-[11px] text-apple-tertiary';
+  box.className = 'text-[11.5px] text-apple-tertiary';
   box.textContent = t('backupMaking');
   try {
     const res = await fetch('/api/backup', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -945,7 +945,7 @@ async function makeBackup() {
     if (!res.ok) throw new Error(data.detail || 'Error');
     box.textContent = data.cancelled ? '' : t('backupMade').replace('{path}', () => data.path).replace('{mb}', () => data.size_mb);
   } catch (e) {
-    box.className = 'text-[11px] text-apple-amber';
+    box.className = 'text-[11.5px] text-apple-amber';
     box.textContent = e.message;
   } finally {
     btn.disabled = false;
@@ -955,13 +955,13 @@ async function makeBackup() {
 async function restoreBackup() {
   if (!(await confirmDialog(t('backupRestoreTitle'), t('backupRestoreText'), t('backupRestore').replace('…', '')))) return;
   const box = document.getElementById('backup-status');
-  box.className = 'text-[11px] text-apple-tertiary';
+  box.className = 'text-[11.5px] text-apple-tertiary';
   box.textContent = t('backupReading');
   const res = await fetch('/api/backup/restore', { method: 'POST' });
   const data = await readJson(res);
-  if (!res.ok) { box.className = 'text-[11px] text-apple-amber'; box.textContent = data.detail || 'Error'; return; }
+  if (!res.ok) { box.className = 'text-[11.5px] text-apple-amber'; box.textContent = data.detail || 'Error'; return; }
   if (data.cancelled) { box.textContent = ''; return; }
-  box.className = 'text-[11px] text-apple-green';
+  box.className = 'text-[11.5px] text-apple-green';
   box.textContent = t('backupRestored').replace('{n}', () => data.recordings).replace('{m}', () => data.media_restored);
 }
 
@@ -973,7 +973,7 @@ function renderOnnxGpu(st) {
   box.classList.toggle('hidden', !st.nvidia);
   if (!st.nvidia) return;
   const label = document.getElementById('onnx-gpu-status');
-  label.className = 'text-[11px] ' + (st.error ? 'text-apple-amber' : st.active ? 'text-apple-green' : 'text-apple-secondary');
+  label.className = 'text-[11.5px] ' + (st.error ? 'text-apple-amber' : st.active ? 'text-apple-green' : 'text-apple-secondary');
   label.textContent = st.installing ? t('onnxGpuInstalling')
     : st.error ? st.error
     : st.removal_pending ? t('onnxGpuRemovePending')
@@ -1021,13 +1021,13 @@ function useOutlookCalendar() {
 async function checkCalendar() {
   const box = document.getElementById('calendar-status');
   const source = document.getElementById('set-calendar-ics').value.trim();
-  box.className = 'text-[11px] text-apple-tertiary';
+  box.className = 'text-[11.5px] text-apple-tertiary';
   box.textContent = t('calendarChecking');
   await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ settings: { calendar_ics: source } }) }).catch(() => null);
   const st = await fetch('/api/calendar/upcoming?refresh=true').then(r => r.json()).catch(() => null);
   if (!st || !st.configured) { box.textContent = source ? 'Error' : t('watchOff'); return; }
-  if (st.error) { box.className = 'text-[11px] text-apple-amber'; box.textContent = st.error; return; }
+  if (st.error) { box.className = 'text-[11.5px] text-apple-amber'; box.textContent = st.error; return; }
   box.textContent = t('calendarOk').replace('{n}', () => st.count).replace('{next}', () => st.events.length);
 }
 
@@ -1126,7 +1126,7 @@ async function loadHotkeyStatus() {
     if (!box) continue;
     if (!one || one.ok === null || one.ok === undefined) { box.textContent = ''; continue; }
     box.textContent = one.ok ? t('hotkeyActive') : (one.error ? serverText(one.error) : t('hotkeyFailed'));
-    box.className = 'text-[11px] ' + (one.ok ? 'text-apple-green' : 'text-apple-amber');
+    box.className = 'text-[11.5px] ' + (one.ok ? 'text-apple-green' : 'text-apple-amber');
   }
 }
 
@@ -1193,7 +1193,7 @@ async function loadSemanticStatus() {
   const parts = [t('semanticIndexed').replace('{n}', () => st.indexed).replace('{total}', () => st.total)];
   if (st.running) parts.push(t('semanticRunning'));
   box.textContent = parts.join(' · ');
-  box.className = 'pl-6 text-[11px] ' + (st.error ? 'text-apple-amber' : 'text-apple-secondary');
+  box.className = 'pl-6 text-[11.5px] ' + (st.error ? 'text-apple-amber' : 'text-apple-secondary');
   if (st.error) box.textContent += ` · ${st.error}`;
   clearTimeout(window._semanticTimer);
   const modal = document.getElementById('modal-settings');
@@ -1220,8 +1220,8 @@ function renderSemanticModelCard() {
     <div class="min-w-0 flex-1">
       <div class="flex items-center flex-wrap gap-2">
         <span class="text-xs font-semibold text-white">BGE-M3</span>
-        <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-apple-secondary">1.2 GB · MIT</span>
-        <span class="text-[10px] text-apple-tertiary">${installed ? '✓ ' + escapeHtml(t('semanticInstalled')) : '1+ GB VRAM / CPU'}</span>
+        <span class="text-[11px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-apple-secondary">1.2 GB · MIT</span>
+        <span class="text-[11px] text-apple-tertiary">${installed ? '✓ ' + escapeHtml(t('semanticInstalled')) : '1+ GB VRAM / CPU'}</span>
       </div>
       <p class="text-[11.5px] text-apple-secondary mt-1 leading-snug">${escapeHtml(t('semanticModelDesc'))}</p>
       ${installed ? modelLocationHtml(ollama.models_dir, 0, t('modelLocationOllama')) : ''}
@@ -1335,7 +1335,7 @@ function renderLlmProvider(keepModel) {
   const badge = document.getElementById('llm-key-badge');
   const ok = p.key.saved && p.key.readable;
   badge.classList.toggle('hidden', !p.key.saved);
-  badge.className = `${p.key.saved ? '' : 'hidden '}inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium ${ok ? 'bg-apple-green/15 text-apple-green' : 'bg-apple-red/15 text-apple-red'}`;
+  badge.className = `${p.key.saved ? '' : 'hidden '}inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${ok ? 'bg-apple-green/15 text-apple-green' : 'bg-apple-red/15 text-apple-red'}`;
   badge.innerHTML = ok ? `${SVG_ICONS.check}<span>${escapeHtml(t('llmKeyBadge').replace('{last4}', p.key.last4))}</span>` : escapeHtml(t('llmKeyBadgeBroken'));
   keyInput.placeholder = p.key.saved ? t('llmKeySavedPh').replace('{last4}', p.key.last4) : t('llmKeyPh');
   keyInput.classList.toggle('border-apple-green/50', ok);
@@ -1343,7 +1343,7 @@ function renderLlmProvider(keepModel) {
   hint.textContent = p.key.saved
     ? (p.key.readable ? t('llmKeySaved') : t('llmKeyUnreadable'))
     : (p.keys_url ? t('llmKeyWhere').replace('{url}', () => p.keys_url) : t('llmKeyCompat'));
-  hint.className = `mt-1 text-[11px] leading-snug break-words select-text ${p.key.saved && !p.key.readable ? 'text-apple-red' : 'text-apple-tertiary'}`;
+  hint.className = `mt-1 text-[11.5px] leading-snug break-words select-text ${p.key.saved && !p.key.readable ? 'text-apple-red' : 'text-apple-tertiary'}`;
   const links = document.getElementById('llm-key-links');
   links.classList.toggle('hidden', !p.keys_url);
   document.getElementById('llm-key-open').dataset.url = p.keys_url || '';
@@ -1377,7 +1377,7 @@ function renderLlmModelSelect(prov) {
   hint.textContent = loaded
     ? (custom ? t('llmModelNotInList') : t('llmModelsFromKey').replace('{n}', () => loaded.length))
     : (p.key.saved ? '' : t('llmModelsAfterKey'));
-  hint.className = `mt-1 text-[10.5px] leading-snug ${loaded && custom ? 'text-apple-amber' : 'text-apple-tertiary'}`;
+  hint.className = `mt-1 text-[11px] leading-snug ${loaded && custom ? 'text-apple-amber' : 'text-apple-tertiary'}`;
 }
 
 function onLlmModelSelect(value) {
@@ -1399,7 +1399,7 @@ function setLlmTestResult(kind, text) {
   const out = document.getElementById('llm-test-result');
   out.classList.toggle('hidden', !text);
   const cls = { ok: 'bg-apple-green/10 text-apple-green border border-apple-green/30', err: 'bg-apple-red/10 text-apple-red border border-apple-red/30', wait: 'text-apple-secondary animate-pulse' }[kind] || '';
-  out.className = `${text ? '' : 'hidden '}text-[11px] leading-snug break-words select-text rounded-lg px-3 py-2 ${cls}`;
+  out.className = `${text ? '' : 'hidden '}text-[11.5px] leading-snug break-words select-text rounded-lg px-3 py-2 ${cls}`;
   out.textContent = text;
 }
 
@@ -1529,7 +1529,7 @@ async function openCloudLog() {
   wrap.innerHTML = `<div class="w-full max-w-2xl max-h-[85vh] flex flex-col bg-apple-card border apple-border rounded-2xl shadow-2xl modal-card">
       <div class="px-5 pt-5 pb-3 border-b apple-border flex items-center justify-between gap-3">
         <div><div class="text-sm font-semibold text-white">${escapeHtml(t('cloudLogBtn'))}</div>
-          <p class="text-[11px] text-apple-secondary mt-1">${escapeHtml(t('cloudLogDesc'))}</p></div>
+          <p class="text-[11.5px] text-apple-secondary mt-1">${escapeHtml(t('cloudLogDesc'))}</p></div>
         <div class="flex gap-2 shrink-0">
           ${rows.length ? `<button data-a="clear" class="ui-btn ui-btn-subtle">${escapeHtml(t('cloudLogClear'))}</button>` : ''}
           <button data-a="close" class="ui-btn ui-btn-subtle">${escapeHtml(t('close'))}</button>
@@ -1803,7 +1803,7 @@ async function loadDictionary() {
           data-change="toggleDictItem" data-change-args='[${item.id}, {"$": "checked"}]'
           class="rounded bg-apple-bg border-white/20 text-apple-blue" />
         <span class="${item.active ? 'text-white' : 'text-apple-tertiary line-through'}">${escapeHtml(item.term)}</span>
-        <span class="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-apple-secondary">${escapeHtml(item.category)}</span>
+        <span class="text-[11px] px-1.5 py-0.5 rounded bg-white/5 text-apple-secondary">${escapeHtml(item.category)}</span>
       </div>
       <button data-click="deleteDictItem" data-click-args='[${item.id}]' title="${escapeHtml(t('tipDeleteDictTerm'))}" class="text-apple-tertiary hover:text-apple-red transition p-1">${SVG_ICONS.closeX}</button>
     </div>
@@ -1879,7 +1879,7 @@ function benchModels() {
 function renderBench() {
   const d = bench.data || {};
   ['asr', 'llm'].forEach(k => {
-    document.getElementById(`bench-kind-${k}`).className = `apple-segment-btn text-[11px] ${bench.kind === k ? 'apple-segment-active' : 'text-apple-secondary hover:text-white'}`;
+    document.getElementById(`bench-kind-${k}`).className = `apple-segment-btn text-[11.5px] ${bench.kind === k ? 'apple-segment-active' : 'text-apple-secondary hover:text-white'}`;
   });
   document.getElementById('bench-clip').classList.toggle('hidden', bench.kind !== 'asr');
   const models = benchModels();
@@ -1889,12 +1889,12 @@ function renderBench() {
     ? models.map(m => `<label class="flex items-center gap-1.5 cursor-pointer text-xs text-apple-label">
         <input type="checkbox" ${picked.has(m.id) ? 'checked' : ''} ${d.running ? 'disabled' : ''} data-change="benchPick" data-change-args='[${jsArg(m.id)}, {"$": "checked"}]'
           class="rounded bg-apple-sidebar border-white/20 text-apple-blue" />
-        <span>${escapeHtml(m.name || m.id)}</span>${m.engine === 'onnx' ? '<span class="text-[10px] text-apple-tertiary">CPU</span>' : ''}</label>`).join('')
-    : `<span class="text-[11px] text-apple-tertiary">${escapeHtml(t(bench.kind === 'asr' ? 'benchNoAsr' : 'benchNoLlm'))}</span>`;
+        <span>${escapeHtml(m.name || m.id)}</span>${m.engine === 'onnx' ? '<span class="text-[11px] text-apple-tertiary">CPU</span>' : ''}</label>`).join('')
+    : `<span class="text-[11.5px] text-apple-tertiary">${escapeHtml(t(bench.kind === 'asr' ? 'benchNoAsr' : 'benchNoLlm'))}</span>`;
   document.getElementById('bench-start').classList.toggle('hidden', !!d.running);
   document.getElementById('bench-cancel').classList.toggle('hidden', !d.running);
   const st = document.getElementById('bench-status');
-  st.className = 'text-[11px] ' + (d.error && !d.running ? 'text-apple-amber' : 'text-apple-tertiary');
+  st.className = 'text-[11.5px] ' + (d.error && !d.running ? 'text-apple-amber' : 'text-apple-tertiary');
   st.textContent = d.running
     ? `${d.done + 1}/${d.total} · ${benchModelName(d.model)} · ${d.stage || ''}`
     : d.error || d.busy || '';
@@ -1903,8 +1903,8 @@ function renderBench() {
   document.getElementById('bench-results').innerHTML = live && live.results.length ? benchTable(live) : '';
   const hist = (d.history || []).filter(h => h.kind === bench.kind);
   document.getElementById('bench-history').innerHTML = hist.length
-    ? `<div class="flex items-center justify-between pt-2"><span class="text-[11px] uppercase tracking-wider text-apple-tertiary">${escapeHtml(t('benchHistory'))}</span>
-         <button data-click="clearBenchHistory" class="text-[11px] text-apple-tertiary hover:text-white">${escapeHtml(t('benchClear'))}</button></div>`
+    ? `<div class="flex items-center justify-between pt-2"><span class="text-[11.5px] uppercase tracking-wider text-apple-tertiary">${escapeHtml(t('benchHistory'))}</span>
+         <button data-click="clearBenchHistory" class="text-[11.5px] text-apple-tertiary hover:text-white">${escapeHtml(t('benchClear'))}</button></div>`
       + hist.map((h, i) => `<details class="rounded-lg border apple-border px-3 py-1.5" ${i === 0 && !live ? 'open' : ''}>
           <summary class="cursor-pointer text-[12px] text-apple-label">${escapeHtml(h.at)} · ${escapeHtml(h.title)}${h.clip_sec ? ` · ${formatDurationShort(h.clip_sec)}` : ''}${h.ref_words ? ` · ${h.ref_words} ${escapeHtml(t('benchWords'))}` : ''}</summary>
           <div class="pt-2">${benchTable(h)}</div></details>`).join('')
@@ -1928,10 +1928,10 @@ function benchTable(run) {
   const cell = (v, isBest) => `<td class="px-2 py-1 text-right font-mono ${isBest ? 'text-apple-green' : ''}">${v}</td>`;
   // The work, and under it the loading of the model (timed apart, each model from an empty memory)
   const timeCell = (r, isBest) => `<td class="px-2 py-1 text-right font-mono ${isBest ? 'text-apple-green' : ''}">${r.sec} s${r.load_sec != null
-    ? `<div class="text-[10px] text-apple-tertiary font-sans">${escapeHtml(t('benchLoad'))} ${r.load_sec} s</div>` : ''}</td>`;
-  const useBtn = r => r.error ? '' : `<button data-click="benchUse" data-click-args='[${jsArg(run.kind)}, ${jsArg(r.model)}]' class="text-[11px] text-apple-blue hover:underline">${escapeHtml(t('benchUse'))}</button>`;
+    ? `<div class="text-[11px] text-apple-tertiary font-sans">${escapeHtml(t('benchLoad'))} ${r.load_sec} s</div>` : ''}</td>`;
+  const useBtn = r => r.error ? '' : `<button data-click="benchUse" data-click-args='[${jsArg(run.kind)}, ${jsArg(r.model)}]' class="text-[11.5px] text-apple-blue hover:underline">${escapeHtml(t('benchUse'))}</button>`;
   const mem = r => [r.vram_mb ? `${(r.vram_mb / 1024).toFixed(1)} GB VRAM` : '', r.ram_mb ? `${(r.ram_mb / 1024).toFixed(1)} GB RAM` : ''].filter(Boolean).join(' · ') || '—';
-  const text = r => r.text ? `<details><summary class="cursor-pointer text-[11px] text-apple-tertiary">${escapeHtml(t('benchShowText'))}</summary>
+  const text = r => r.text ? `<details><summary class="cursor-pointer text-[11.5px] text-apple-tertiary">${escapeHtml(t('benchShowText'))}</summary>
       <div class="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap text-[11.5px] text-apple-secondary">${escapeHtml(r.text)}</div></details>` : '';
   let head, rows;
   if (run.kind === 'asr') {
@@ -1941,7 +1941,7 @@ function benchTable(run) {
       ? `<tr><td class="px-2 py-1">${escapeHtml(r.name || benchModelName(r.model))}</td><td colspan="5" class="px-2 py-1 text-apple-amber">${escapeHtml(r.error)}</td></tr>`
       : `<tr class="align-top"><td class="px-2 py-1">${escapeHtml(r.name || benchModelName(r.model))}${text(r)}</td>
           ${cell(`${(r.wer * 100).toFixed(1)}%`, r.wer === bw)}${timeCell(r, r.sec === bs)}${cell(`×${r.speed}`, false)}
-          <td class="px-2 py-1 text-right text-[11px] text-apple-secondary">${escapeHtml(mem(r))}<div class="text-apple-tertiary">${escapeHtml(r.device || '')}</div></td>
+          <td class="px-2 py-1 text-right text-[11.5px] text-apple-secondary">${escapeHtml(mem(r))}<div class="text-apple-tertiary">${escapeHtml(r.device || '')}</div></td>
           <td class="px-2 py-1 text-right">${useBtn(r)}</td></tr>`);
   } else {
     const bu = best('unverified_share'), bs = best('sec');
@@ -1953,9 +1953,9 @@ function benchTable(run) {
           <td class="px-2 py-1 text-right">${useBtn(r)}</td></tr>`);
   }
   return `<div class="overflow-x-auto"><table class="w-full text-[12px] text-apple-label">
-    <thead><tr class="text-[10.5px] uppercase tracking-wider text-apple-tertiary">${head.map((h, i) => `<th class="px-2 py-1 font-normal ${i ? 'text-right' : 'text-left'}">${h ? escapeHtml(t(h)) : ''}</th>`).join('')}</tr></thead>
+    <thead><tr class="text-[11px] uppercase tracking-wider text-apple-tertiary">${head.map((h, i) => `<th class="px-2 py-1 font-normal ${i ? 'text-right' : 'text-left'}">${h ? escapeHtml(t(h)) : ''}</th>`).join('')}</tr></thead>
     <tbody class="divide-y divide-white/5">${rows.join('')}</tbody></table></div>`
-    + `<p class="text-[10.5px] text-apple-tertiary mt-1">${escapeHtml(t(run.kind === 'asr' ? 'benchAsrNote' : 'benchLlmNote'))}</p>`;
+    + `<p class="text-[11px] text-apple-tertiary mt-1">${escapeHtml(t(run.kind === 'asr' ? 'benchAsrNote' : 'benchLlmNote'))}</p>`;
 }
 
 async function startBench() {
@@ -2264,7 +2264,7 @@ function renderSettingsDictionary() {
         <input type="checkbox" ${item.active ? 'checked' : ''} data-change="toggleDictItem" data-change-args='[${item.id}, {"$": "checked"}]'
           class="rounded bg-apple-bg border-white/20 text-apple-blue" />
         <span class="truncate ${item.active ? 'text-white' : 'text-apple-tertiary line-through'}">${escapeHtml(item.term)}</span>
-        <span class="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-apple-secondary shrink-0">${escapeHtml(item.category)}</span>
+        <span class="text-[11px] px-1.5 py-0.5 rounded bg-white/5 text-apple-secondary shrink-0">${escapeHtml(item.category)}</span>
       </label>
       <button data-click="deleteSettingsDictItem" data-click-args='[${item.id}]' title="${escapeHtml(t('tipDeleteDictTerm'))}" class="text-apple-tertiary hover:text-apple-red transition p-1">${SVG_ICONS.closeX}</button>
     </div>`).join('');

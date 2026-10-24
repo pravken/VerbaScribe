@@ -33,14 +33,14 @@ function renderExportMenu() {
   const dubReady = dubs.includes(dubLang);
 
   const header = (label, extra = '') =>
-    `<div class="px-2.5 pt-2 pb-1 flex items-center justify-between gap-2"><span class="text-[10px] font-semibold uppercase tracking-wider text-apple-secondary">${escapeHtml(label)}</span>${extra}</div>`;
+    `<div class="px-2.5 pt-2 pb-1 flex items-center justify-between gap-2"><span class="text-[11px] font-semibold uppercase tracking-wider text-apple-secondary">${escapeHtml(label)}</span>${extra}</div>`;
   const item = (payload, label, tag, hint) =>
     `<button data-click="runExport" data-click-args='[${jsArg(payload)}]' class="macos-menu-item gap-3" ${hint ? `title="${escapeHtml(hint)}"` : ''}>`
-    + `<span class="truncate">${escapeHtml(label)}</span><span class="text-[10.5px] opacity-80 shrink-0">${escapeHtml(tag)}</span></button>`;
-  const note = (text, cls = 'text-apple-tertiary') => `<div class="px-2.5 pb-1 text-[10.5px] leading-snug ${cls}">${escapeHtml(text)}</div>`;
+    + `<span class="truncate">${escapeHtml(label)}</span><span class="text-[11px] opacity-80 shrink-0">${escapeHtml(tag)}</span></button>`;
+  const note = (text, cls = 'text-apple-tertiary') => `<div class="px-2.5 pb-1 text-[11px] leading-snug ${cls}">${escapeHtml(text)}</div>`;
   const sep = '<div class="my-1 border-t border-white/10"></div>';
   const langSelect = (id, fn, options) =>
-    `<select id="${id}" ${pageCall('change', fn, [{ $: 'value' }])} ${pageCall('click', 'stopEvent', [{ $: 'event' }])} class="h-6 max-w-[150px] bg-apple-sidebar border apple-border rounded-md px-1.5 text-[11px] text-white focus:outline-none">${options}</select>`;
+    `<select id="${id}" ${pageCall('change', fn, [{ $: 'value' }])} ${pageCall('click', 'stopEvent', [{ $: 'event' }])} class="h-6 max-w-[150px] bg-apple-sidebar border apple-border rounded-md px-1.5 text-[11.5px] text-white focus:outline-none">${options}</select>`;
 
   let html = '';
   if (busy) html += note(t('exportWhileProcessing'), 'text-apple-amber');
@@ -264,7 +264,7 @@ function openBulkMenu(e) {
   menu.id = 'bulk-menu';
   menu.className = 'fixed w-56 macos-menu z-50';
   const item = (fn, label, cls = '') => `<button class="macos-menu-item ${cls}" data-fn="${fn}"><span>${escapeHtml(label)}</span></button>`;
-  menu.innerHTML = `<div class="px-2.5 py-1 text-[11px] font-semibold text-apple-secondary border-b border-white/10 mb-1">${escapeHtml(t('libSelected').replace('{n}', () => state.multi.size))}</div>`
+  menu.innerHTML = `<div class="px-2.5 py-1 text-[11.5px] font-semibold text-apple-secondary border-b border-white/10 mb-1">${escapeHtml(t('libSelected').replace('{n}', () => state.multi.size))}</div>`
     + item('bulkRename', t('bulkRename') + '…') + item('bulkAutoTitles', t('bulkAutoTitle'))
     + '<div class="my-1 h-px bg-white/10"></div>' + item('bulkDelete', t('ctxDelete'), 'text-apple-red');
   menu.addEventListener('click', ev => {
@@ -329,8 +329,8 @@ async function openSeriesMenu(e) {
   const menu = document.createElement('div');
   menu.id = 'series-menu';
   menu.className = 'fixed w-60 max-h-80 overflow-y-auto macos-menu z-50';
-  menu.innerHTML = `<div class="px-2.5 py-1 text-[10.5px] text-apple-tertiary">${escapeHtml(t('ctxSeries'))}</div>`
-    + state.series.map(s => `<button class="macos-menu-item" data-sid="${s.id}"><span class="truncate">${escapeHtml(s.name)}</span><span class="text-[10.5px] opacity-70">${m.series_id === s.id ? '✓' : s.count}</span></button>`).join('')
+  menu.innerHTML = `<div class="px-2.5 py-1 text-[11px] text-apple-tertiary">${escapeHtml(t('ctxSeries'))}</div>`
+    + state.series.map(s => `<button class="macos-menu-item" data-sid="${s.id}"><span class="truncate">${escapeHtml(s.name)}</span><span class="text-[11px] opacity-70">${m.series_id === s.id ? '✓' : s.count}</span></button>`).join('')
     + `<button class="macos-menu-item" data-sid="new"><span>${escapeHtml(t('seriesNew'))}</span></button>`
     + (m.series_id ? `<button class="macos-menu-item" data-sid="rename"><span>${escapeHtml(t('seriesRename'))}</span></button>`
       + `<button class="macos-menu-item" data-sid="none"><span>${escapeHtml(t('seriesRemove'))}</span></button>` : '');
@@ -507,7 +507,7 @@ function confirmDeleteDialog(list) {
     const notes = list.filter(m => m.obsidian_path);
     const opt = (id, label, detail) => `<label class="flex items-start gap-2.5 cursor-pointer text-xs text-apple-label">
         <input type="checkbox" id="${id}" class="del-opt mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-red" />
-        <span>${escapeHtml(label)}${detail ? `<span class="block text-[11px] text-apple-tertiary mt-0.5 break-all line-clamp-2">${escapeHtml(detail)}</span>` : ''}</span></label>`;
+        <span>${escapeHtml(label)}${detail ? `<span class="block text-[11.5px] text-apple-tertiary mt-0.5 break-all line-clamp-2">${escapeHtml(detail)}</span>` : ''}</span></label>`;
     const options = [
       sources.length ? opt('del-with-source', t('deleteWithSource'), sources.map(m => m.filename).join(', ')) : '',
       exportsN ? opt('del-with-exports', t('deleteWithExports').replace('{n}', () => exportsN), list.flatMap(m => m.exports || []).slice(0, 3).join(', ')) : '',
@@ -519,8 +519,8 @@ function confirmDeleteDialog(list) {
     wrap.innerHTML = `<div class="w-full max-w-md bg-apple-card border apple-border rounded-2xl shadow-2xl p-5 space-y-4 modal-card">
       <div class="text-sm font-semibold text-white">${escapeHtml(t('deleteTitle'))}</div>
       <p class="text-xs text-apple-secondary leading-relaxed">${escapeHtml(what)}</p>
-      <p class="text-[11px] text-apple-tertiary leading-relaxed">${escapeHtml(t('deleteAlways'))}</p>
-      ${options.length ? `<div class="space-y-2.5"><div class="text-[11px] text-apple-secondary">${escapeHtml(t('deleteAlsoFiles'))}</div>${options.join('')}</div>` : ''}
+      <p class="text-[11.5px] text-apple-tertiary leading-relaxed">${escapeHtml(t('deleteAlways'))}</p>
+      ${options.length ? `<div class="space-y-2.5"><div class="text-[11.5px] text-apple-secondary">${escapeHtml(t('deleteAlsoFiles'))}</div>${options.join('')}</div>` : ''}
       <div class="flex justify-end gap-2">
         ${options.length > 1 ? `<button data-a="all" class="ui-btn ui-btn-subtle mr-auto">${escapeHtml(t('deleteSelectAll'))}</button>` : ''}
         <button data-a="no" class="ui-btn ui-btn-subtle">${escapeHtml(t('cancel'))}</button>

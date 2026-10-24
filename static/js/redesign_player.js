@@ -1043,7 +1043,7 @@ function rpRenderInfo() {
   }).join('');
   const pending = (info.pending_exports || []).length ? `<div class="rounded-xl border border-apple-amber/40 bg-apple-amber/10 px-4 py-3 text-xs text-apple-amber flex items-center justify-between gap-3">
       <span>${escapeHtml(t('infoPendingExports').replace('{n}', () => info.pending_exports.length))}</span>
-      <button data-click="rpCancelPendingExports" data-click-args='[${Number(info.id)}]' class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]">${escapeHtml(t('cancel'))}</button></div>` : '';
+      <button data-click="rpCancelPendingExports" data-click-args='[${Number(info.id)}]' class="ui-btn ui-btn-subtle h-6 px-2 text-[11.5px]">${escapeHtml(t('cancel'))}</button></div>` : '';
   box.innerHTML = `<div class="ri-grid">${fileCard}${datesCard}${formatCard}${recogCard}${soundCard}${listenCard}</div>
     <section class="ri-card"><div class="ri-card-head"><h3 class="ri-card-title" style="flex:none">${escapeHtml(t('rdPlyrCopies'))}</h3><span class="ri-copy-sub">${copies.length || ''}</span>
       <span style="flex:1"></span><span class="ri-copy-sub">${escapeHtml(t('rdPlyrCopiesNote'))}</span></div>

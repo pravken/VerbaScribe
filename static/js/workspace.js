@@ -222,15 +222,15 @@ function renderTxProcMenu() {
       <input type="checkbox" ${p.values[key] !== false ? 'checked' : ''} data-change="setTxProc" data-change-args='[${jsArg(key)}, {"$": "checked"}]'
         class="mt-0.5 rounded bg-apple-sidebar border-white/20 text-apple-blue" />
       <span class="min-w-0"><span class="block text-xs text-apple-label">${escapeHtml(t(label))}</span>
-        <span class="block text-[10.5px] text-apple-tertiary leading-snug">${escapeHtml(t(hint))}</span></span></label>`;
+        <span class="block text-[11px] text-apple-tertiary leading-snug">${escapeHtml(t(hint))}</span></span></label>`;
   const select = (key, source, value) => `<select data-change="setTxProcValue" data-change-args='[${jsArg(key)}, {"$": "value"}]'
       class="mt-1 w-full h-7 bg-apple-sidebar border apple-border rounded-[7px] px-2 text-xs text-white focus:outline-none">${document.getElementById(source).innerHTML}</select>`;
   box.innerHTML = TX_PROC_GROUPS.map(([title, items]) => `<div class="space-y-1.5">
-      <div class="text-[10px] font-semibold uppercase tracking-wider text-apple-tertiary">${escapeHtml(t(title))}</div>${items.map(check).join('')}</div>`).join('')
+      <div class="text-[11px] font-semibold uppercase tracking-wider text-apple-tertiary">${escapeHtml(t(title))}</div>${items.map(check).join('')}</div>`).join('')
     + `<div class="grid grid-cols-2 gap-2">
-        <label class="block text-[10.5px] text-apple-tertiary">${escapeHtml(t('speechLangLabel'))}${select('language', 'reconfig-language', p.language)}</label>
-        <label class="block text-[10.5px] text-apple-tertiary">${escapeHtml(t('speakersCountLabel'))}${select('speakers', 'reconfig-speakers', p.speakers)}</label></div>
-      <p class="text-[10.5px] text-apple-tertiary">${escapeHtml(t('txProcApplies'))}</p>`;
+        <label class="block text-[11px] text-apple-tertiary">${escapeHtml(t('speechLangLabel'))}${select('language', 'reconfig-language', p.language)}</label>
+        <label class="block text-[11px] text-apple-tertiary">${escapeHtml(t('speakersCountLabel'))}${select('speakers', 'reconfig-speakers', p.speakers)}</label></div>
+      <p class="text-[11px] text-apple-tertiary">${escapeHtml(t('txProcApplies'))}</p>`;
   const [lang, spk] = box.querySelectorAll('select');
   lang.value = p.language;
   if (lang.value !== p.language) lang.value = 'auto';
@@ -476,7 +476,7 @@ function renderDubSetup(env, prefix = 'dub') {
   const btn = el('setup-btn');
   btn.textContent = env.installed ? t('sdubRepairBtn') : (st.error ? t('dubSetupRetry') : t('dubSetupBtn'));
   btn.title = env.installed ? t('tipSdubRepair') : '';
-  btn.className = `ui-btn ${env.installed ? 'ui-btn-subtle' : 'ui-btn-primary'} h-7 px-3 text-[11px]`;
+  btn.className = `ui-btn ${env.installed ? 'ui-btn-subtle' : 'ui-btn-primary'} h-7 px-3 text-[11.5px]`;
   btn.classList.toggle('hidden', !!st.active);
   el('setup-cancel-btn').classList.toggle('hidden', !st.active);
   el('setup-logs-btn').classList.toggle('hidden', !logs.length);
@@ -570,7 +570,7 @@ function renderDubInfo(info) {
     : info.venv_exists ? [t('sdubPillBroken'), 'bg-apple-amber/15 text-apple-amber']
     : [t('sdubPillMissing'), 'bg-white/5 text-apple-secondary'];
   pill.textContent = pillText;
-  pill.className = `text-[10px] font-mono px-2.5 py-0.5 rounded-full shrink-0 ${pillCls}`;
+  pill.className = `text-[11px] font-mono px-2.5 py-0.5 rounded-full shrink-0 ${pillCls}`;
 
   const detail = [info.venv];
   if (info.verified) detail.push(info.verified.replace(/^Verified/, t('sdubVerifiedAt')));
@@ -602,8 +602,8 @@ function renderDubInfo(info) {
       <div class="min-w-0">
         <div class="flex items-center flex-wrap gap-2">
           <span class="text-xs font-semibold text-white">${escapeHtml(item.name)}</span>
-          <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-apple-secondary">${escapeHtml(item.license)}</span>
-          <span class="text-[10px] text-apple-tertiary">${escapeHtml(size)}</span>
+          <span class="text-[11px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-apple-secondary">${escapeHtml(item.license)}</span>
+          <span class="text-[11px] text-apple-tertiary">${escapeHtml(size)}</span>
         </div>
         <p class="text-[11.5px] text-apple-secondary mt-1 leading-snug">${escapeHtml(t('sdubWeightDesc_' + item.id))}</p>
       </div>
@@ -732,7 +732,7 @@ function renderDubResults() {
   const box = document.getElementById('dub-results');
   const dubs = (m && m.dubs) || [];
   if (!dubs.length) {
-    box.innerHTML = `<div class="text-[11px] text-apple-tertiary">${escapeHtml(t('dubNone'))}</div>`;
+    box.innerHTML = `<div class="text-[11.5px] text-apple-tertiary">${escapeHtml(t('dubNone'))}</div>`;
     return;
   }
   box.innerHTML = dubs.map(d => {
@@ -748,10 +748,10 @@ function renderDubResults() {
       <div class="flex items-center justify-between gap-2">
         <div class="min-w-0">
           <div class="text-xs font-semibold text-white">${escapeHtml(dubLangName(d.lang))} · <span class="text-apple-amber">AI dub</span></div>
-          <div class="text-[10.5px] text-apple-secondary truncate" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
-          <div class="text-[10.5px] text-apple-tertiary">${escapeHtml(meta)}</div>
+          <div class="text-[11px] text-apple-secondary truncate" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
+          <div class="text-[11px] text-apple-tertiary">${escapeHtml(meta)}</div>
         </div>
-        <button data-click="revealDub" data-click-args='[${jsArg(lang)}]' class="ui-btn ui-btn-subtle h-6 px-2 text-[11px] shrink-0">${escapeHtml(t('dubReveal'))}</button>
+        <button data-click="revealDub" data-click-args='[${jsArg(lang)}]' class="ui-btn ui-btn-subtle h-6 px-2 text-[11.5px] shrink-0">${escapeHtml(t('dubReveal'))}</button>
       </div>
       ${isVideo
         ? `<video controls preload="none" class="w-full rounded-md bg-black max-h-56" src="${src}"></video>`
@@ -906,7 +906,7 @@ function renderTranslateResults() {
   const trs = meetingTranslations(m);
   const langs = Object.keys(trs);
   if (!langs.length) {
-    box.innerHTML = `<div class="text-[11px] text-apple-tertiary">${escapeHtml(t('translateNone'))}</div>`;
+    box.innerHTML = `<div class="text-[11.5px] text-apple-tertiary">${escapeHtml(t('translateNone'))}</div>`;
     return;
   }
   box.innerHTML = langs.map(lang => {
@@ -917,14 +917,14 @@ function renderTranslateResults() {
       <div class="flex items-center justify-between gap-2">
         <div class="min-w-0">
           <div class="text-xs font-semibold text-white">${escapeHtml(langName(lang))} (${escapeHtml(lang.toUpperCase())})</div>
-          <div class="text-[10.5px] text-apple-tertiary truncate">${escapeHtml(meta)}</div>
-          ${outdated ? `<div class="text-[10.5px] text-apple-amber">${escapeHtml(t('translateOutdated').replace('{stale}', () => r.stale || 0).replace('{missing}', () => r.missing || 0))}</div>` : ''}
+          <div class="text-[11px] text-apple-tertiary truncate">${escapeHtml(meta)}</div>
+          ${outdated ? `<div class="text-[11px] text-apple-amber">${escapeHtml(t('translateOutdated').replace('{stale}', () => r.stale || 0).replace('{missing}', () => r.missing || 0))}</div>` : ''}
         </div>
         <div class="flex items-center gap-1.5 shrink-0">
-          <button data-click="showTranslation" data-click-args='[${jsArg(lang)}]' class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]">${escapeHtml(t('translateShow'))}</button>
-          ${outdated ? `<button data-click="startTranslation" data-click-args='[true, ${jsArg(lang)}]' class="ui-btn ui-btn-primary h-6 px-2 text-[11px]" title="${escapeHtml(t('tipTranslateUpdate'))}">${escapeHtml(t('translateUpdate'))}</button>` : ''}
-          <button data-click="startTranslation" data-click-args='[false, ${jsArg(lang)}]' class="ui-btn ui-btn-subtle h-6 px-2 text-[11px]" title="${escapeHtml(t('tipTranslateRedo'))}">${escapeHtml(t('translateRedo'))}</button>
-          <button data-click="deleteTranslation" data-click-args='[${jsArg(lang)}]' class="ui-btn ui-btn-subtle h-6 px-1.5 text-[11px] hover:text-apple-red" title="${escapeHtml(t('tipTranslateDelete'))}">${SVG_ICONS.trash}</button>
+          <button data-click="showTranslation" data-click-args='[${jsArg(lang)}]' class="ui-btn ui-btn-subtle h-6 px-2 text-[11.5px]">${escapeHtml(t('translateShow'))}</button>
+          ${outdated ? `<button data-click="startTranslation" data-click-args='[true, ${jsArg(lang)}]' class="ui-btn ui-btn-primary h-6 px-2 text-[11.5px]" title="${escapeHtml(t('tipTranslateUpdate'))}">${escapeHtml(t('translateUpdate'))}</button>` : ''}
+          <button data-click="startTranslation" data-click-args='[false, ${jsArg(lang)}]' class="ui-btn ui-btn-subtle h-6 px-2 text-[11.5px]" title="${escapeHtml(t('tipTranslateRedo'))}">${escapeHtml(t('translateRedo'))}</button>
+          <button data-click="deleteTranslation" data-click-args='[${jsArg(lang)}]' class="ui-btn ui-btn-subtle h-6 px-1.5 text-[11.5px] hover:text-apple-red" title="${escapeHtml(t('tipTranslateDelete'))}">${SVG_ICONS.trash}</button>
         </div>
       </div>
     </div>`;
@@ -1488,7 +1488,7 @@ function transcriptSegmentHtml(seg, idx) {
   const mergeBtnHtml = idx > 0 ? `
     <button data-click="mergeSegmentWithPrevious" data-click-args='[${seg.id}]'
       title="${escapeHtml(t('tipMergeSegment'))}"
-      class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 inline-flex items-center gap-1 text-[11px] text-apple-tertiary hover:text-apple-blue transition">
+      class="seg-merge-btn opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 inline-flex items-center gap-1 text-[11.5px] text-apple-tertiary hover:text-apple-blue transition">
       ${SVG_ICONS.mergeUp}
       <span>${t('mergeBtn')}</span>
     </button>
@@ -1499,7 +1499,7 @@ function transcriptSegmentHtml(seg, idx) {
       class="segment-row group px-3.5 py-2.5 flex items-baseline gap-4 hover:bg-white/[0.02]">
       <button data-click="seekPlayer" data-click-args='[${Number(seg.start) || 0}]'
         title="${escapeHtml(t('tipSeekTimestamp'))}"
-        class="text-[11px] font-mono text-apple-tertiary hover:text-apple-blue shrink-0 w-12 text-right transition">
+        class="seg-time text-[11.5px] font-mono text-apple-tertiary hover:text-apple-blue shrink-0 w-12 text-right transition">
         ${formatTime(seg.start)}
       </button>
 
@@ -1509,13 +1509,13 @@ function transcriptSegmentHtml(seg, idx) {
           <select data-change="changeSegmentSpeaker" data-change-args='[${seg.id}, {"$": "value"}]'
             title="${escapeHtml(t('tipChangeSegSpeaker'))}"
             style="color: ${spk.color}"
-            class="bg-transparent text-xs font-semibold focus:outline-none cursor-pointer">
+            class="seg-spk bg-transparent text-xs font-semibold focus:outline-none cursor-pointer">
             ${speakerOptionsHtml(seg.speaker)}
           </select>
           ${speakers[seg.speaker] ? `<button data-click="startInlineSpeakerRename" data-click-args='[${Number(seg.id)}]' class="seg-icon-btn"
             title="${escapeHtml(t('spkRenameOption').replace('{name}', () => speakers[seg.speaker].name))}" aria-label="${escapeHtml(t('spkRenameOption').replace('{name}', () => speakers[seg.speaker].name))}">${SVG_ICONS.pencil}</button>` : ''}
           ${seg.lang && state.activeMeeting && seg.lang !== state.activeMeeting.language
-            ? `<span class="ml-2 text-[10px] font-mono px-1 rounded bg-white/10 text-apple-secondary" title="${escapeHtml(t('tipSegLang'))}">${escapeHtml(String(seg.lang).toUpperCase())}</span>` : ''}
+            ? `<span class="ml-2 text-[11px] font-mono px-1 rounded bg-white/10 text-apple-secondary" title="${escapeHtml(t('tipSegLang'))}">${escapeHtml(String(seg.lang).toUpperCase())}</span>` : ''}
           </div>
           <div class="flex items-center gap-2.5">
             ${mergeBtnHtml}
@@ -1588,7 +1588,7 @@ function translationWordsHtml(seg, text) {
 
 function translationHtml(seg, tr, query, secondary) {
   const staleBadge = tr.stale
-    ? ` <span class="text-[10px] text-apple-amber align-middle" title="${escapeHtml(t('tipTranslationStale'))}">${escapeHtml(t('translationStale'))}</span>`
+    ? ` <span class="text-[11px] text-apple-amber align-middle" title="${escapeHtml(t('tipTranslationStale'))}">${escapeHtml(t('translationStale'))}</span>`
     : '';
   // Without a search the words are separate spans, so playback can follow them (see updatePlaybackHighlight)
   const body = !tr.text
