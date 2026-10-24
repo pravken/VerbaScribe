@@ -462,7 +462,7 @@ def api_commitments_export(payload: CommitmentExportPayload) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail="Неизвестный формат")
     items = commitments.for_meetings([payload.meeting_id]) if payload.meeting_id else commitments.all_open()
     if not items:
-        raise HTTPException(status_code=404, detail="Нет обещаний для выгрузки")
+        raise HTTPException(status_code=404, detail="Нет задач для выгрузки")
     text = commitments.export_text(items, payload.fmt, payload.lang)
     m = get_meeting(payload.meeting_id) if payload.meeting_id else None
     ext = "md" if payload.fmt == "md" else "csv"

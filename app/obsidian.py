@@ -24,9 +24,9 @@ _lock = threading.Lock()
 
 _LABELS = {
     "ru": {"summary": "Резюме", "overview": "Обзор", "tasks": "Задачи", "chapters": "Главы", "transcript": "Расшифровка",
-           "participants": "Участники", "untitled": "Запись", "notes": "Заметки со встречи", "promises": "Обещания"},
+           "participants": "Участники", "untitled": "Запись", "notes": "Заметки со встречи", "promises": "Задачи"},
     "en": {"summary": "Summary", "overview": "Overview", "tasks": "Tasks", "chapters": "Chapters", "transcript": "Transcript",
-           "participants": "Participants", "untitled": "Recording", "notes": "Notes from the meeting", "promises": "Promises"},
+           "participants": "Participants", "untitled": "Recording", "notes": "Notes from the meeting", "promises": "Tasks"},
 }
 
 

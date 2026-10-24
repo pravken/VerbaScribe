@@ -141,7 +141,6 @@ const SERVER_TEXT_EN = {
   "Нет видео": "No video",
   "Нет встреч для справки": "No meetings for a brief",
   "Нет задач для выгрузки": "No tasks to export",
-  "Нет обещаний для выгрузки":"No promises to export",
   "Нет расшифрованных записей за выбранный период": "No transcribed recordings in the chosen period",
   "Нет сохранённой версии для восстановления": "No saved version to restore",
   "Нет текста для субтитров": "No text for subtitles",
