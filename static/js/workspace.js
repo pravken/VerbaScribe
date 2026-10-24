@@ -1225,78 +1225,7 @@ function fitTranscriptToolbar() {
   if (crowded || bar.scrollWidth > bar.clientWidth + 1) bar.classList.add('tx-compact');
 }
 
-async function renderTalkAnalytics() {
-  const box = document.getElementById('talk-analytics');
-  const m = state.activeMeeting;
-  if (!box || !m || !(m.segments || []).length) { if (box) box.innerHTML = ''; return; }
-  const a = await fetch(`/api/meetings/${m.id}/analytics`).then(r => r.ok ? r.json() : null).catch(() => null);
-  if (!a || state.activeMeeting !== m) return;
-  const min = s => s >= 60 ? `${Math.floor(s / 60)} ${t('unitMin')} ${Math.round(s % 60)} ${t('unitSec')}` : `${Math.round(s)} ${t('unitSec')}`;
-  const stat = (label, value) => `<div class="rounded-lg bg-white/[0.03] border apple-border px-3 py-2"><div class="text-[10.5px] text-apple-tertiary">${escapeHtml(label)}</div><div class="text-sm font-semibold text-white mt-0.5">${escapeHtml(value)}</div></div>`;
-  box.innerHTML = `
-    <h3 class="text-sm font-semibold text-white">${escapeHtml(t('analyticsTitle'))}</h3>
-    <div class="grid grid-cols-3 gap-2">${stat(t('analyticsTalk'), min(a.talk_seconds))}${stat(t('analyticsSilence'), `${a.silence_share}%`)}${stat(t('analyticsTurns'), `${a.turns} · ${t('analyticsAvg')} ${min(a.avg_turn)}`)}</div>
-    <div class="space-y-2.5 border apple-border rounded-xl bg-apple-sidebar p-3">
-      ${a.speakers.map(r => `<div>
-        <div class="flex items-center justify-between text-xs"><span class="font-medium" style="color:${r.color}">${escapeHtml(r.name)}</span><span class="font-mono text-apple-secondary">${r.share}% · ${min(r.seconds)}</span></div>
-        <div class="h-1.5 rounded-full bg-white/5 mt-1 overflow-hidden"><div class="h-full rounded-full" style="width:${r.share}%;background:${r.color}"></div></div>
-        <div class="text-[10.5px] text-apple-tertiary mt-1">${escapeHtml([
-          `${r.turns} ${t('turns')}`, r.wpm ? `${r.wpm} ${t('analyticsWpm')}` : '', `${t('analyticsLongest')} ${min(r.longest)}`,
-          r.questions ? `${r.questions} ${t('analyticsQuestions')}` : '', r.interruptions ? `${t('analyticsInterruptions')}: ${r.interruptions}` : '',
-        ].filter(Boolean).join(' · '))}</div></div>`).join('')}
-    </div>
-    ${a.longest_monologues.length ? `<div class="text-[11px] text-apple-secondary">${escapeHtml(t('analyticsMonologues'))}: ${a.longest_monologues.map(x =>
-      `<button data-click="seekPlayer" data-click-args='[${Number(x.start) || 0}]' class="text-apple-blue hover:underline font-mono">${formatTime(x.start)}</button> ${escapeHtml(x.name)} (${min(x.seconds)})`).join(' · ')}</div>` : ''}`;
-}
-
-function renderSpeakersPanel() {
-  renderTalkAnalytics();
-  const box = document.getElementById('speakers-list');
-  const speakers = (state.activeMeeting && state.activeMeeting.speakers) || {};
-  const keys = Object.keys(speakers);
-
-  if (keys.length === 0) {
-    box.innerHTML = `<div class="p-6 text-xs text-apple-tertiary text-center">${escapeHtml(t('emptySpeakers'))}</div>`;
-    return;
-  }
-
-  box.innerHTML = keys.map(spkId => {
-    const s = speakers[spkId];
-    const turnCount = (state.activeMeeting.segments || []).filter(seg => seg.speaker === spkId).length;
-
-    return `
-      <div class="px-4 py-3 flex items-center gap-3">
-        <input type="color" value="${escapeHtml(s.color || '#0A84FF')}"
-          title="${escapeHtml(t('tipSpeakerColor'))}"
-          data-change="updateSpeaker" data-change-args='[${jsArg(spkId)}, null, {"$": "value"}]'
-          class="w-4 h-4 rounded-full cursor-pointer bg-transparent border-0 shrink-0" />
-
-        <input type="text" value="${escapeHtml(s.name)}"
-          title="${escapeHtml(t('tipSpeakerNameInput'))}"
-          data-blur="updateSpeaker" data-blur-args='[${jsArg(spkId)}, {"$": "value"}, null]'
-          data-keydown="blurOnEnter" data-keydown-args='[{"$": "event"}, {"$": "el"}]'
-          class="flex-1 bg-transparent hover:bg-white/5 focus:bg-apple-card focus:outline-none px-2.5 py-1 rounded-md text-xs font-medium text-white" />
-
-        ${s.voice_profile ? `<span class="text-[10.5px] px-1.5 py-0.5 rounded bg-apple-blue/15 text-apple-blue shrink-0"
-          title="${escapeHtml(t('tipVoiceRecognised'))}">${escapeHtml(t('voiceRecognisedBadge'))}</span>` : ''}
-        ${s.voice_suggest ? `<span class="flex items-center gap-1 shrink-0 text-[11px] px-1.5 py-0.5 rounded bg-apple-amber/15 text-apple-amber"
-            title="${escapeHtml(t('tipVoiceSuggest'))}">${escapeHtml(t('voiceSuggest').replace('{name}', () => s.voice_suggest.name))}
-            <button data-spk="${escapeHtml(spkId)}" data-name="${escapeHtml(s.voice_suggest.name)}" data-click="updateSpeaker" data-click-args='[{"$": "data", "k": "spk"}, {"$": "data", "k": "name"}, null]'
-              class="px-1.5 rounded bg-apple-amber/25 hover:bg-apple-amber/40 text-white">${escapeHtml(t('voiceSuggestYes'))}</button>
-            <button data-spk="${escapeHtml(spkId)}" data-click="dismissVoiceSuggestion" data-click-args='[{"$": "data", "k": "spk"}]' class="px-1 hover:text-white">${escapeHtml(t('voiceSuggestNo'))}</button>
-          </span>` : ''}
-        <span class="text-[11px] text-apple-secondary font-mono">${turnCount} ${t('turns')}</span>
-
-        <button data-click="previewSpeakerVoice" data-click-args='[${Number(s.sample_start) || 0}, ${Number(s.sample_end) || 5}]'
-          title="${escapeHtml(t('tipPlayVoiceSample'))}"
-          class="ui-btn ui-btn-subtle text-apple-label">
-          ${SVG_ICONS.playMini}
-          <span>${t('listenBtn')}</span>
-        </button>
-      </div>
-    `;
-  }).join('');
-}
+// The speakers tab (cards, how the talk went): people.js, renderSpeakersPanel and renderTalkAnalytics
 
 async function dismissVoiceSuggestion(speakerId) {
   const m = state.activeMeeting;
