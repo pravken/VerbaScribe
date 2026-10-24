@@ -275,14 +275,29 @@ def for_meetings(ids: List[int], status: Optional[str] = None) -> List[Dict[str,
     return _enrich(_rows(q + " ORDER BY meeting_id, at", args))
 
 
+def meeting_briefs(ids: Any) -> Dict[int, Dict[str, Any]]:
+    """Title, dates and speakers of the given recordings, in one query: the task lists need no
+    transcripts (get_meeting would read every segment of every recording)."""
+    ids = sorted({int(i) for i in ids if i})
+    out: Dict[int, Dict[str, Any]] = {}
+    for start in range(0, len(ids), 500):  # SQLite's limit on the number of parameters
+        part = ids[start:start + 500]
+        for r in _rows(f"SELECT id, title, recorded_at, created_at, speakers_json FROM meetings WHERE id IN ({','.join('?' * len(part))})",
+                       tuple(part)):
+            try:
+                speakers = json.loads(r.get("speakers_json") or "{}")
+            except ValueError:
+                speakers = {}
+            out[r["id"]] = {"id": r["id"], "title": r.get("title") or "", "recorded_at": r.get("recorded_at"),
+                            "created_at": r.get("created_at"), "speakers": speakers if isinstance(speakers, dict) else {}}
+    return out
+
+
 def _enrich(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """The recording's title and date, and for older rows the kind and the date their words give."""
-    meetings: Dict[int, Dict[str, Any]] = {}
+    meetings = meeting_briefs(r["meeting_id"] for r in rows)
     for r in rows:
-        mid = r["meeting_id"]
-        if mid not in meetings:
-            meetings[mid] = (get_meeting(mid) or {}) if mid else {}
-        mm = meetings[mid]
+        mm = meetings.get(r["meeting_id"]) or {}
         r["meeting_title"] = mm.get("title") or ""
         r["meeting_date"] = str(mm.get("recorded_at") or mm.get("created_at") or "")[:10]
         if not r.get("who_kind"):
@@ -404,7 +419,8 @@ def delete(task_id: int) -> bool:
     return bool(n)
 
 
-def people(tasks: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+def people(tasks: Optional[List[Dict[str, Any]]] = None,
+           meetings: Optional[Dict[int, Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
     """Everyone tasks can be on: the people who speak in the recordings that have tasks and the
     names the tasks carry (with their kind), each with its count of open and done tasks."""
     tasks = all_tasks() if tasks is None else tasks
@@ -418,8 +434,9 @@ def people(tasks: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]
             found[key]["kind"] = "part"
         return found[key]
 
-    for mid in sorted({t["meeting_id"] for t in tasks if t["meeting_id"]}):
-        for name in participants(get_meeting(mid)):
+    briefs = meeting_briefs(t["meeting_id"] for t in tasks) if meetings is None else meetings
+    for mid in sorted(briefs):
+        for name in participants(briefs[mid]):
             add(name, "part")
     for t in tasks:
         if t["who"]:

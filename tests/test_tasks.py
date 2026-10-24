@@ -63,6 +63,22 @@ class TasksTest(unittest.TestCase):
               '{"who": "бухгалтерия", "kind": "team", "what": "проверит реквизиты", "due": "до среды", "time": "01:30", '
               '"quote": "пусть бухгалтерия проверит реквизиты"}')
 
+    def test_lists_read_no_transcripts(self):
+        """The task lists (and the top bar's count) take titles, dates and speakers in one query:
+        get_meeting would read every segment of every recording each time."""
+        from app import commitments
+
+        self._extract(self.ANSWER)
+        with mock.patch("app.commitments.get_meeting", side_effect=AssertionError("transcript read")):
+            commitments.all_tasks()
+            commitments.all_open()
+            tasks = commitments.for_meetings([self.m["id"]])
+            people = commitments.people(tasks)
+        self.assertTrue(tasks)
+        self.assertEqual({t["meeting_title"] for t in tasks}, {"Планёрка задач"})
+        self.assertEqual({t["meeting_date"] for t in tasks}, {"2026-10-22"})
+        self.assertIn("Олег", {p["name"] for p in people if p["kind"] == "part"})
+
     def test_extract_keeps_kind_quote_and_date(self):
         items = {x["who"]: x for x in self._extract(self.ANSWER)}
         anna, acc = items["Анна"], items["бухгалтерия"]

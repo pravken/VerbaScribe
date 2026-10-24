@@ -20,17 +20,13 @@ def _pick_export_path(*args: Any, **kwargs: Any) -> Any:
     return pick(*args, **kwargs)
 
 
-def _meetings(tasks: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+def _meetings(briefs: Dict[int, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
     """Title, date and the people who speak, of each recording the tasks come from (the assign menu
     offers them first)."""
     from app.commitments import participants
 
-    out: Dict[str, Dict[str, Any]] = {}
-    for mid in sorted({t["meeting_id"] for t in tasks if t["meeting_id"]}):
-        m = get_meeting(mid) or {}
-        out[str(mid)] = {"title": m.get("title") or "", "date": str(m.get("recorded_at") or m.get("created_at") or "")[:10],
-                         "participants": participants(m)}
-    return out
+    return {str(mid): {"title": m.get("title") or "", "date": str(m.get("recorded_at") or m.get("created_at") or "")[:10],
+                       "participants": participants(m)} for mid, m in sorted(briefs.items())}
 
 
 @router.get("/api/tasks")
@@ -38,7 +34,8 @@ def api_tasks() -> Dict[str, Any]:
     from app import commitments
 
     tasks = commitments.all_tasks()
-    return {"tasks": tasks, "people": commitments.people(tasks), "meetings": _meetings(tasks),
+    briefs = commitments.meeting_briefs(t["meeting_id"] for t in tasks)
+    return {"tasks": tasks, "people": commitments.people(tasks, briefs), "meetings": _meetings(briefs),
             "today": date.today().isoformat()}
 
 
