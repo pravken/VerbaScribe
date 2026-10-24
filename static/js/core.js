@@ -437,6 +437,7 @@ function openModal(name, tab) {
     let last = null;
     try { last = localStorage.getItem('verbascribe_settings_tab'); } catch (e) {}
     selectSettingsTab(tab || last || 'general');
+    syncSettingsFormFromState();  // settings.js: what the import window and the home page changed since
     loadVoiceProfiles();
     loadDubInfo();
     populateAudioInputDevices();

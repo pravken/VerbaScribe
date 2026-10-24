@@ -157,6 +157,7 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     loadHotkeyStatus();
     renderLiveModelSelect();
     refreshSettingsChanged();
+    _settingsBaseline = settingsFormValues();
 
     const srcMode = s.record_source_mode || 'both';
     if (document.getElementById('set-record-source')) {
@@ -1587,56 +1588,93 @@ function syncStartupToggles(el) {
   if (el.checked) document.getElementById('set-close-to-tray').checked = true;
 }
 
-async function saveAllSettings() {
-  const payload = {
-    settings: {
-      whisper_model: document.getElementById('set-whisper-model').value,
-      device: document.getElementById('set-device').value,
-      compute_type: document.getElementById('set-compute-type').value,
-      diarization_enabled: String(document.getElementById('set-diarization').checked),
-      voice_profiles: String(document.getElementById('set-voice-profiles').checked),
-      update_check: String(document.getElementById('set-update-check').checked),
-      delete_media_after: String(document.getElementById('set-delete-media-after').checked),
-      media_retention_days: document.getElementById('set-media-retention').value || '0',
-      update_auto: String(document.getElementById('set-update-auto').checked),
-      update_beta: String(document.getElementById('set-update-beta').checked),
-      start_with_windows: String(document.getElementById('set-start-with-windows').checked),
-      close_to_tray: String(document.getElementById('set-close-to-tray').checked),
-      quiet_mode: String(document.getElementById('set-quiet-mode').checked),
-      vad_filter: String(document.getElementById('set-vad').checked),
-      proc_denoise: String(document.getElementById('set-proc-denoise').checked),
-      proc_loudnorm: String(document.getElementById('set-proc-loudnorm').checked),
-      proc_leveling: String(document.getElementById('set-proc-leveling').checked),
-      audio_enhance: String(document.getElementById('set-proc-denoise').checked || document.getElementById('set-proc-loudnorm').checked),
-      ask_import_params: String(document.getElementById('set-ask-import').checked),
-      clean_fillers: String(document.getElementById('set-clean-fillers')?.checked !== false),
-      ollama_model: document.getElementById('set-ollama-model').value.trim(),
-      auto_summary: String(document.getElementById('set-auto-summary').checked),
-      auto_title: String(document.getElementById('set-auto-title').checked),
-      summary_grounding: String(document.getElementById('set-summary-grounding').checked),
-      auto_commitments: String(document.getElementById('set-auto-commitments').checked),
-      semantic_search: String(document.getElementById('set-semantic').checked),
-      semantic_model: document.getElementById('set-semantic-model').value.trim() || 'bge-m3',
-      idle_unload_minutes: document.getElementById('set-idle-unload').value,
-      ...obsidianSettingsPayload(),
-      ...llmSettingsPayload(),
-      record_source_mode: document.getElementById('set-record-source')?.value || 'both',
-      record_mic_device: document.getElementById('set-record-mic')?.value || '',
-      live_whisper_model: document.getElementById('set-live-model')?.value || 'auto',
-      record_hotkey: document.getElementById('set-record-hotkey')?.value.trim() || '',
-      dictation_hotkey: document.getElementById('set-dictation-hotkey')?.value.trim() || '',
-      dictation_language: document.getElementById('set-dictation-language')?.value || 'auto',
-      dictation_translate_hotkey: document.getElementById('set-translate-hotkey')?.value.trim() || '',
-      dictation_translate_to: document.getElementById('set-dictation-translate-to')?.value || 'en',
-      dictation_translate_cloud: document.getElementById('set-dictation-translate-cloud')?.checked ? 'true' : 'false',
-      dictation_save: document.getElementById('set-dictation-save')?.checked ? 'true' : 'false',
-      calendar_ics: document.getElementById('set-calendar-ics')?.value.trim() || '',
-      onnx_gpu: document.getElementById('set-onnx-gpu')?.checked ? 'true' : 'false',
-      ...callSettingsPayload(),
-      ...dubSettingsPayload(),
-      ...workdaySettingsPayload(),
-    }
+// The page sends only what changed on it since it was filled (or last saved): a setting changed
+// elsewhere since (the import window's «Запомнить», the working day on the home page) is not
+// overwritten by the older value the form still shows
+let _settingsBaseline = null;
+
+function settingsFormValues() {
+  return {
+    whisper_model: document.getElementById('set-whisper-model').value,
+    device: document.getElementById('set-device').value,
+    compute_type: document.getElementById('set-compute-type').value,
+    diarization_enabled: String(document.getElementById('set-diarization').checked),
+    voice_profiles: String(document.getElementById('set-voice-profiles').checked),
+    update_check: String(document.getElementById('set-update-check').checked),
+    delete_media_after: String(document.getElementById('set-delete-media-after').checked),
+    media_retention_days: document.getElementById('set-media-retention').value || '0',
+    update_auto: String(document.getElementById('set-update-auto').checked),
+    update_beta: String(document.getElementById('set-update-beta').checked),
+    start_with_windows: String(document.getElementById('set-start-with-windows').checked),
+    close_to_tray: String(document.getElementById('set-close-to-tray').checked),
+    quiet_mode: String(document.getElementById('set-quiet-mode').checked),
+    vad_filter: String(document.getElementById('set-vad').checked),
+    proc_denoise: String(document.getElementById('set-proc-denoise').checked),
+    proc_loudnorm: String(document.getElementById('set-proc-loudnorm').checked),
+    proc_leveling: String(document.getElementById('set-proc-leveling').checked),
+    audio_enhance: String(document.getElementById('set-proc-denoise').checked || document.getElementById('set-proc-loudnorm').checked),
+    ask_import_params: String(document.getElementById('set-ask-import').checked),
+    clean_fillers: String(document.getElementById('set-clean-fillers')?.checked !== false),
+    ollama_model: document.getElementById('set-ollama-model').value.trim(),
+    auto_summary: String(document.getElementById('set-auto-summary').checked),
+    auto_title: String(document.getElementById('set-auto-title').checked),
+    summary_grounding: String(document.getElementById('set-summary-grounding').checked),
+    auto_commitments: String(document.getElementById('set-auto-commitments').checked),
+    semantic_search: String(document.getElementById('set-semantic').checked),
+    semantic_model: document.getElementById('set-semantic-model').value.trim() || 'bge-m3',
+    idle_unload_minutes: document.getElementById('set-idle-unload').value,
+    ...obsidianSettingsPayload(),
+    ...llmSettingsPayload(),
+    record_source_mode: document.getElementById('set-record-source')?.value || 'both',
+    record_mic_device: document.getElementById('set-record-mic')?.value || '',
+    live_whisper_model: document.getElementById('set-live-model')?.value || 'auto',
+    record_hotkey: document.getElementById('set-record-hotkey')?.value.trim() || '',
+    dictation_hotkey: document.getElementById('set-dictation-hotkey')?.value.trim() || '',
+    dictation_language: document.getElementById('set-dictation-language')?.value || 'auto',
+    dictation_translate_hotkey: document.getElementById('set-translate-hotkey')?.value.trim() || '',
+    dictation_translate_to: document.getElementById('set-dictation-translate-to')?.value || 'en',
+    dictation_translate_cloud: document.getElementById('set-dictation-translate-cloud')?.checked ? 'true' : 'false',
+    dictation_save: document.getElementById('set-dictation-save')?.checked ? 'true' : 'false',
+    calendar_ics: document.getElementById('set-calendar-ics')?.value.trim() || '',
+    onnx_gpu: document.getElementById('set-onnx-gpu')?.checked ? 'true' : 'false',
+    ...callSettingsPayload(),
+    ...dubSettingsPayload(),
+    ...workdaySettingsPayload(),
   };
+}
+
+// The settings the import window («Запомнить») and the home page (the working day, recording every
+// meeting) change: the page shows them as they are now when it opens
+const SETTINGS_SET_ELSEWHERE = ['whisper_model', 'diarization_enabled', 'vad_filter', 'proc_denoise', 'proc_loudnorm',
+  'proc_leveling', 'audio_enhance', 'ask_import_params', 'auto_summary', 'work_day_start', 'work_day_end', 'meet_auto_all',
+  'meet_ask_inperson'];
+function syncSettingsFormFromState() {
+  const s = (state.system && state.system.settings) || {};
+  if (!_settingsBaseline) return;
+  const model = document.getElementById('set-whisper-model');
+  if (model && s.whisper_model && (!model.options || [...model.options].some(o => o.value === s.whisper_model))) model.value = s.whisper_model;
+  const check = (id, on) => { const el = document.getElementById(id); if (el) el.checked = on; };
+  check('set-diarization', s.diarization_enabled !== 'false');
+  check('set-vad', s.vad_filter !== 'false');
+  const sound = (key) => (s[key] ? s[key] !== 'false' : s.audio_enhance !== 'false');
+  check('set-proc-denoise', sound('proc_denoise'));
+  check('set-proc-loudnorm', sound('proc_loudnorm'));
+  check('set-proc-leveling', s.proc_leveling !== 'false');
+  check('set-ask-import', s.ask_import_params !== 'false');
+  check('set-auto-summary', s.auto_summary !== 'false');
+  fillWorkdaySettings(s);
+  const now = settingsFormValues();
+  SETTINGS_SET_ELSEWHERE.forEach(k => { if (k in now) _settingsBaseline[k] = now[k]; });
+  refreshSettingsChanged();
+}
+
+async function saveAllSettings() {
+  const values = settingsFormValues();
+  const changed = _settingsBaseline
+    ? Object.fromEntries(Object.entries(values).filter(([k, v]) => _settingsBaseline[k] !== v))
+    : values;
+  if (!Object.keys(changed).length) { setSettingsSaveState('saved'); refreshSettingsChanged(); return; }
+  const payload = { settings: changed };
   // "Saved" only once the server has the settings: on an error the window stays open with them
   let res;
   try {
@@ -1658,6 +1696,7 @@ async function saveAllSettings() {
   }
   // The settings page saves each change at once and stays open
   setSettingsSaveState('saved');
+  _settingsBaseline = { ...(_settingsBaseline || values), ...changed };
   const saved = await readJson(res);
   if (saved?.settings && state.system) state.system.settings = { ...(state.system.settings || {}), ...saved.settings };
   refreshSettingsChanged();
