@@ -64,54 +64,6 @@ RECOMMENDED_LLM_MODELS: List[Dict[str, Any]] = [
         "cpu_ok": False,
     },
     {
-        "id": "qwen2.5:7b",
-        "name": "Qwen 7B Standard",
-        "badge": "4.7 GB · Apache",
-        "size": "4.7 GB",
-        "vram": "8+ GB VRAM",
-        "license": "Apache",
-        "desc_ru": "Прошлое поколение Qwen: хороший русский и английский, свободная коммерческая лицензия",
-        "desc_en": "The previous Qwen generation: good RU & EN quality, free commercial license",
-        "good_ru": "Модель предыдущего поколения со стабильным качеством на русском и английском",
-        "good_en": "A previous-generation model with stable quality in Russian and English",
-        "weak_ru": "Модели Qwen3 и Qwen3.5 точнее при том же объёме памяти; требуется видеокарта с 8 ГБ памяти",
-        "weak_en": "Qwen3 and Qwen3.5 are more accurate for the same memory; requires a GPU with 8 GB of memory",
-        "min_vram_gb": 8,  # 0: fine without a GPU too
-        "cpu_ok": False,
-    },
-    {
-        "id": "qwen2.5:14b",
-        "name": "Qwen 14B Pro",
-        "badge": "9 GB · Apache",
-        "size": "9 GB",
-        "vram": "12–24 GB VRAM",
-        "license": "Apache",
-        "desc_ru": "Максимальный интеллект и глубина анализа",
-        "desc_en": "Maximum reasoning & detailed analysis",
-        "good_ru": "Подробный анализ длинных записей",
-        "good_en": "Detailed analysis of long recordings",
-        "weak_ru": "Предыдущее поколение: Qwen3 14B точнее при том же объёме памяти; требуется видеокарта с 12 ГБ памяти",
-        "weak_en": "Previous generation: Qwen3 14B is more accurate for the same memory; requires a GPU with 12 GB of memory",
-        "min_vram_gb": 12,  # 0: fine without a GPU too
-        "cpu_ok": False,
-    },
-    {
-        "id": "mistral:7b",
-        "name": "Mistral 7B",
-        "badge": "4.1 GB · Apache",
-        "size": "4.1 GB",
-        "vram": "6–8 GB VRAM",
-        "license": "Apache",
-        "desc_ru": "Европейская открытая модель от Mistral AI",
-        "desc_en": "Open-weights model by Mistral AI",
-        "good_ru": "Альтернативный стиль изложения, высокое качество английского текста",
-        "good_en": "An alternative writing style, high-quality English text",
-        "weak_ru": "Качество русского текста ниже, чем у Qwen; требуется видеокарта с 6 ГБ памяти",
-        "weak_en": "Lower quality of Russian text than Qwen; requires a GPU with 6 GB of memory",
-        "min_vram_gb": 6,  # 0: fine without a GPU too
-        "cpu_ok": False,
-    },
-    {
         "id": "qwen2.5:1.5b",
         "name": "Qwen Lite",
         "badge": "1 GB · Apache",
@@ -134,6 +86,7 @@ _LLM_DISPLAY_NAMES: Dict[str, str] = {
     "qwen3:14b": "Qwen3 14B",
     "qwen3:4b": "Qwen3 4B",
     "qwen3.5:4b": "Qwen3.5 4B",
+    # no longer offered (bench-report/report.md), named still for those who have them
     "qwen2.5:7b": "Qwen 7B Standard",
     "qwen2.5:14b": "Qwen 14B Pro",
     "mistral:7b": "Mistral 7B",
@@ -306,7 +259,7 @@ def get_ollama_status(base_url: Optional[str] = None) -> Dict[str, Any]:
     if not base_url:
         base_url = settings.get("ollama_url", "http://127.0.0.1:11434")
     base_url = base_url.replace("localhost", "127.0.0.1")
-    active_model = settings.get("ollama_model", "qwen2.5:7b")
+    active_model = settings.get("ollama_model", "qwen3.5:4b")
 
     exe = find_ollama_executable()
     # Status polling never starts background processes: Ollama is only launched after an

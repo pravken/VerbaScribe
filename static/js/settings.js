@@ -123,7 +123,7 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     if (document.getElementById('set-clean-fillers')) {
       document.getElementById('set-clean-fillers').checked = s.clean_fillers !== 'false';
     }
-    document.getElementById('set-ollama-model').value = s.ollama_model || 'qwen2.5:7b';
+    document.getElementById('set-ollama-model').value = s.ollama_model || 'qwen3.5:4b';
     document.getElementById('set-auto-summary').checked = s.auto_summary !== 'false';
     document.getElementById('set-auto-title').checked = s.auto_title !== 'false';
     document.getElementById('set-summary-grounding').checked = s.summary_grounding !== 'false';
@@ -488,6 +488,7 @@ const MODEL_DISPLAY_NAMES = {
   'qwen3:14b': 'Qwen3 14B',
   'qwen3.5:4b': 'Qwen3.5 4B',
   'qwen3:4b': 'Qwen3 4B',
+  // no longer offered (bench-report/report.md), named still for those who have them
   'qwen2.5:7b': 'Qwen 7B Standard',
   'qwen2.5:14b': 'Qwen 14B Pro',
   'mistral:7b': 'Mistral 7B',
@@ -975,7 +976,7 @@ function updateOllamaUI(ollama) {
 
   const pill = document.getElementById('settings-ollama-pill');
   const catalogBox = document.getElementById('ollama-catalog-list');
-  const activeModel = document.getElementById('set-ollama-model').value || ollama.active_model || 'qwen2.5:7b';
+  const activeModel = document.getElementById('set-ollama-model').value || ollama.active_model || 'qwen3.5:4b';
 
   if (ollama.running) {
     pill.textContent = t('uiOllamaActive');
@@ -1480,7 +1481,7 @@ function renderSummaryModelSelect() {
   const summarySelect = document.getElementById('summary-llm-select');
   const ollama = state.lastOllama;
   if (!summarySelect || !ollama || !ollama.catalog) return;
-  const activeModel = document.getElementById('set-ollama-model').value || ollama.active_model || 'qwen2.5:7b';
+  const activeModel = document.getElementById('set-ollama-model').value || ollama.active_model || 'qwen3.5:4b';
   const cloud = cloudLlmChoice();
   const onCloud = !!cloud && state.llm.mode === 'cloud';
   summarySelect.innerHTML = (cloud
@@ -1961,7 +1962,7 @@ function startOllamaPollingLoop(model) {
 }
 
 async function pullOllamaModel(modelArg, makeActive = true) {
-  const model = (modelArg || document.getElementById('set-ollama-model').value || 'qwen2.5:7b').trim();
+  const model = (modelArg || document.getElementById('set-ollama-model').value || 'qwen3.5:4b').trim();
   let allowInstall = false;
   if (state.system && state.system.ollama && !state.system.ollama.installed) {
     allowInstall = await askConfirmt('uiOllamaIsNotInstalled');

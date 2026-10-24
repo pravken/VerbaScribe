@@ -206,7 +206,7 @@ def _ollama_target(model: Optional[str], settings: Dict[str, str], start: bool) 
     from app.ollama_client import _ollama_chat, ensure_ollama_running, get_ollama_status
 
     base_url = (settings.get("ollama_url") or "http://127.0.0.1:11434").replace("localhost", "127.0.0.1").rstrip("/")
-    wanted = model or settings.get("ollama_model") or "qwen2.5:7b"
+    wanted = model or settings.get("ollama_model") or "qwen3.5:4b"
     if start:
         ensure_ollama_running(base_url)  # analysis is an explicit user action (or one they turned on)
     status = get_ollama_status(base_url)

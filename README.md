@@ -169,7 +169,7 @@ VerbaScribe's own code is released under the [MIT License](LICENSE). Models and 
 | [NVIDIA Parakeet TDT 0.6B v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) (ONNX export by istupakov) | [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/): credit "Parakeet TDT 0.6B v3 by NVIDIA" |
 | BGE-M3 embeddings (BAAI) | MIT |
 | SpeechBrain ECAPA-TDNN (`spkrec-ecapa-voxceleb`) | Apache 2.0 |
-| Qwen3.5 4B, Qwen3 8B / 14B, Qwen 2.5 1.5B / 7B / 14B, Mistral 7B | Apache 2.0 |
+| Qwen3.5 4B, Qwen3 8B / 14B, Qwen 2.5 1.5B | Apache 2.0 |
 | Ollama, FastAPI, pywebview | MIT / BSD-3 |
 | ONNX Runtime, CTranslate2, pythonnet | MIT |
 | scikit-learn, httpx, uvicorn | BSD-3 |
