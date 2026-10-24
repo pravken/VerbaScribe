@@ -60,17 +60,22 @@ async function hmLoad(force) {
   await Promise.all(jobs);
 }
 
+let hmEventsLoading = null;  // one request at a time; a failed one is tried again at the next tick
 async function hmLoadEvents(force) {
   if (!force && Date.now() - home.eventsAt < 300000) return;
-  home.eventsAt = Date.now();
-  const d = hmDay();
-  // three hours on each side: meetings a little past the edges stretch the day ("fit")
-  const a = new Date(d.from.getTime() - 3 * 3600e3), b = new Date(d.to.getTime() + 3 * 3600e3);
-  const data = await fetch(`/api/calendar/day?start=${encodeURIComponent(hmIso(a))}&end=${encodeURIComponent(hmIso(b))}`)
-    .then(r => (r.ok ? r.json() : null)).catch(() => null);
-  if (!data) return;
-  home.calConfigured = !!data.configured;
-  home.events = (data.events || []).map(e => ({ ...e, s: new Date(e.start), e: new Date(e.end) }));
+  if (hmEventsLoading) return hmEventsLoading;
+  hmEventsLoading = (async () => {
+    const d = hmDay();
+    // three hours on each side: meetings a little past the edges stretch the day ("fit")
+    const a = new Date(d.from.getTime() - 3 * 3600e3), b = new Date(d.to.getTime() + 3 * 3600e3);
+    const data = await fetch(`/api/calendar/day?start=${encodeURIComponent(hmIso(a))}&end=${encodeURIComponent(hmIso(b))}`)
+      .then(r => (r.ok ? r.json() : null)).catch(() => null);
+    if (!data) return;
+    home.eventsAt = Date.now();
+    home.calConfigured = !!data.configured;
+    home.events = (data.events || []).map(e => ({ ...e, s: new Date(e.start), e: new Date(e.end) }));
+  })().finally(() => { hmEventsLoading = null; });
+  return hmEventsLoading;
 }
 
 function renderHome() {
