@@ -24,6 +24,12 @@ RECOMMENDED_LLM_MODELS: List[Dict[str, Any]] = [
         "license": "Apache",
         "desc_ru": "Рекомендуется: в сравнении на реальных записях не хуже моделей вдвое больше, а памяти нужно меньше всех; подходит и для ноутбуков",
         "desc_en": "Recommended: on real recordings as good as models twice its size, with the least memory; fine for laptops too",
+        "good_ru": "Протоколы, задачи и ответы по записям на русском и английском; быстро работает и без видеокарты",
+        "good_en": "Summaries, tasks and answers for Russian and English recordings; fast, even without a GPU",
+        "weak_ru": "На длинных записях и сложных вопросах может упустить детали; без видеокарты ответ дольше",
+        "weak_en": "On long recordings and hard questions it may miss details; slower without a GPU",
+        "min_vram_gb": 4,  # 0: fine without a GPU too
+        "cpu_ok": True,
     },
     {
         "id": "qwen3:8b",
@@ -34,6 +40,12 @@ RECOMMENDED_LLM_MODELS: List[Dict[str, Any]] = [
         "license": "Apache",
         "desc_ru": "Новое поколение Qwen: лучше русский, длинные тексты и точность, та же свободная лицензия",
         "desc_en": "The new Qwen generation: better Russian, long texts and accuracy, same free license",
+        "good_ru": "Точнее на длинных встречах: лучше держит связи между частями разговора",
+        "good_en": "More accurate on long meetings: keeps the parts of a conversation together better",
+        "weak_ru": "Нужна видеокарта от 10 ГБ: без неё медленно; файл больше",
+        "weak_en": "Needs a GPU with 10 GB or more, slow without one; a bigger download",
+        "min_vram_gb": 10,  # 0: fine without a GPU too
+        "cpu_ok": False,
     },
     {
         "id": "qwen3:14b",
@@ -44,6 +56,12 @@ RECOMMENDED_LLM_MODELS: List[Dict[str, Any]] = [
         "license": "Apache",
         "desc_ru": "Самый глубокий анализ для видеокарт с 12 ГБ и больше",
         "desc_en": "The deepest analysis for GPUs with 12 GB or more",
+        "good_ru": "Самый подробный анализ: сложные вопросы, длинные записи, выводы по нескольким записям",
+        "good_en": "The most detailed analysis: hard questions, long recordings, conclusions across recordings",
+        "weak_ru": "Нужна видеокарта от 12 ГБ; медленнее остальных, без видеокарты почти непригодна",
+        "weak_en": "Needs a GPU with 12 GB or more; slower than the rest, barely usable without a GPU",
+        "min_vram_gb": 12,  # 0: fine without a GPU too
+        "cpu_ok": False,
     },
     {
         "id": "qwen2.5:7b",
@@ -54,6 +72,12 @@ RECOMMENDED_LLM_MODELS: List[Dict[str, Any]] = [
         "license": "Apache",
         "desc_ru": "Прошлое поколение Qwen: хороший русский и английский, свободная коммерческая лицензия",
         "desc_en": "The previous Qwen generation: good RU & EN quality, free commercial license",
+        "good_ru": "Проверенная модель прошлого поколения, ровно работает на русском и английском",
+        "good_en": "A proven model of the previous generation, steady in Russian and English",
+        "weak_ru": "Новые Qwen3 и Qwen3.5 при той же памяти точнее; нужна видеокарта от 8 ГБ",
+        "weak_en": "The newer Qwen3 and Qwen3.5 are more accurate for the same memory; needs a GPU with 8 GB",
+        "min_vram_gb": 8,  # 0: fine without a GPU too
+        "cpu_ok": False,
     },
     {
         "id": "qwen2.5:14b",
@@ -64,6 +88,12 @@ RECOMMENDED_LLM_MODELS: List[Dict[str, Any]] = [
         "license": "Apache",
         "desc_ru": "Максимальный интеллект и глубина анализа",
         "desc_en": "Maximum reasoning & detailed analysis",
+        "good_ru": "Подробный анализ длинных записей",
+        "good_en": "Detailed analysis of long recordings",
+        "weak_ru": "Прошлое поколение: Qwen3 14B при той же памяти точнее; нужна видеокарта от 12 ГБ, работает медленно",
+        "weak_en": "Previous generation: Qwen3 14B is more accurate for the same memory; needs a GPU with 12 GB, slow",
+        "min_vram_gb": 12,  # 0: fine without a GPU too
+        "cpu_ok": False,
     },
     {
         "id": "mistral:7b",
@@ -74,6 +104,12 @@ RECOMMENDED_LLM_MODELS: List[Dict[str, Any]] = [
         "license": "Apache",
         "desc_ru": "Европейская открытая модель от Mistral AI",
         "desc_en": "Open-weights model by Mistral AI",
+        "good_ru": "Другой стиль текста, хорошо пишет по-английски",
+        "good_en": "A different writing style, good English",
+        "weak_ru": "Русский слабее, чем у Qwen; нужна видеокарта от 6 ГБ",
+        "weak_en": "Weaker Russian than Qwen; needs a GPU with 6 GB",
+        "min_vram_gb": 6,  # 0: fine without a GPU too
+        "cpu_ok": False,
     },
     {
         "id": "qwen2.5:1.5b",
@@ -84,6 +120,12 @@ RECOMMENDED_LLM_MODELS: List[Dict[str, Any]] = [
         "license": "Apache",
         "desc_ru": "Сверхлегкая и быстрая модель для слабых ПК и процессоров",
         "desc_en": "Ultra-lightweight model for low-VRAM GPUs and CPUs",
+        "good_ru": "Самая лёгкая и быстрая: слабые ПК, работа без видеокарты, короткие записи",
+        "good_en": "The lightest and fastest: modest PCs, no GPU, short recordings",
+        "weak_ru": "Протоколы проще и короче, чаще ошибается в деталях",
+        "weak_en": "Simpler, shorter summaries, more mistakes in details",
+        "min_vram_gb": 0,  # 0: fine without a GPU too
+        "cpu_ok": True,
     },
 ]
 

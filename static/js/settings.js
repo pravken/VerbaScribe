@@ -578,6 +578,78 @@ function firstRunPicks(data, lang) {
   return { speech: speech.slice(0, 3), llm, gpu };
 }
 
+// «Выбрать модель» where nothing can analyse yet: the local analysis models with what each is good at
+// and where it is weaker, the one for this computer marked, the ones too heavy for it said so
+function llmFits(item, hw) {
+  const gpu = hw.cuda_available ? Number(hw.vram_total_gb || 0) : 0;
+  return gpu ? gpu >= Number(item.min_vram_gb || 0) : !!item.cpu_ok;
+}
+
+function openLlmPicker() {
+  const data = state.system || {};
+  const hw = data.hardware || {};
+  const catalog = ((data.ollama || {}).catalog || []).filter(m => m.good_ru);
+  if (!catalog.length) { pullFirstRunLlm(); return; }
+  const rec = firstRunPicks(data, state.uiLang).llm;
+  const en = state.uiLang === 'en';
+  const rank = m => (m.id === rec ? 0 : llmFits(m, hw) ? 1 : 2);
+  const list = catalog.slice().sort((a, b) => rank(a) - rank(b));
+  let pick = (list.find(m => m.installed && llmFits(m, hw)) || list[0]).id;
+  document.getElementById('llm-picker')?.remove();
+  const wrap = document.createElement('div');
+  wrap.id = 'llm-picker';
+  wrap.className = 'fixed inset-0 modal-backdrop z-[70] flex items-center justify-center p-4';
+  wrap.setAttribute('role', 'dialog');
+  wrap.setAttribute('aria-modal', 'true');
+  const gpuText = hw.cuda_available && hw.vram_total_gb ? `${hwDeviceLabel(hw)} · ${hw.vram_total_gb} ${t('unitGB')}` : t('llmPickNoGpu');
+  const draw = () => {
+    const cur = list.find(m => m.id === pick);
+    const cards = list.map(m => {
+      const on = m.id === pick;
+      const tag = m.id === rec ? `<span class="llm-tag llm-tag-rec">${escapeHtml(t('frRecommended'))}</span>`
+        : llmFits(m, hw) ? '' : `<span class="llm-tag llm-tag-heavy">${escapeHtml(t('llmPickHeavy'))}</span>`;
+      return `<button data-pick="${escapeHtml(m.id)}" role="radio" aria-checked="${on}" class="llm-card${on ? ' llm-card-on' : ''}">
+        <span class="flex items-center flex-wrap gap-1.5">
+          <span class="text-xs font-semibold text-white">${escapeHtml(formatModelName(m.id))}</span>
+          <span class="text-[11px] font-mono text-apple-tertiary">${escapeHtml(m.size || '')}</span>
+          ${tag}${m.installed ? `<span class="llm-tag">${escapeHtml(t('llmPickInstalled'))}</span>` : ''}
+        </span>
+        <span class="llm-line"><b>${escapeHtml(t('llmPickGood'))}</b> ${escapeHtml(en ? m.good_en : m.good_ru)}</span>
+        <span class="llm-line"><b>${escapeHtml(t('llmPickWeak'))}</b> ${escapeHtml(en ? m.weak_en : m.weak_ru)}</span>
+      </button>`;
+    }).join('');
+    wrap.innerHTML = `<div class="w-full max-w-lg bg-apple-card border apple-border rounded-2xl shadow-2xl p-5 space-y-3 modal-card llm-dialog">
+      <div class="text-sm font-semibold text-white">${escapeHtml(t('llmPickTitle'))}</div>
+      <p class="text-[11.5px] text-apple-secondary leading-relaxed">${escapeHtml(t('llmPickIntro'))}</p>
+      <div class="text-[11.5px] text-apple-tertiary">${escapeHtml(t('frHardware'))}: <span class="text-apple-label">${escapeHtml(gpuText)}</span></div>
+      <div class="llm-list" role="radiogroup">${cards}</div>
+      <div class="flex items-center gap-2 pt-1">
+        <button data-a="cloud" class="ui-btn ui-btn-subtle">${escapeHtml(t('noAiCloud'))}</button>
+        <span class="flex-1"></span>
+        <button data-a="no" class="ui-btn ui-btn-subtle">${escapeHtml(t('cancel'))}</button>
+        <button data-a="yes" class="ui-btn ui-btn-primary">${escapeHtml(cur.installed ? t('uiSelect') : t('llmPickDownload').replace('{size}', () => cur.size || ''))}</button>
+      </div></div>`;
+    wrap.querySelector('.llm-dialog').style.maxHeight = `${Math.round(viewH() - 32)}px`;  // the page is zoomed: vh would not fit
+    wrap.querySelector('button[data-a="yes"]').focus();
+  };
+  const done = () => { wrap.remove(); document.removeEventListener('keydown', onKey, true); };
+  const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); done(); } };
+  wrap.addEventListener('click', e => {
+    const card = e.target.closest('button[data-pick]');
+    if (card) { pick = card.dataset.pick; draw(); return; }
+    const a = e.target.closest('button[data-a]');
+    if (e.target === wrap || (a && a.dataset.a === 'no')) { done(); return; }
+    if (!a) return;
+    done();
+    if (a.dataset.a === 'cloud') { openModal('settings', 'analysis'); return; }
+    const m = list.find(x => x.id === pick);
+    if (m.installed) selectActiveOllamaModel(m.id); else pullOllamaModel(m.id, true);
+  });
+  document.addEventListener('keydown', onKey, true);
+  document.body.appendChild(wrap);
+  draw();
+}
+
 function openFirstRunWizard(data) {
   document.getElementById('first-run-wizard')?.remove();
   const wrap = document.createElement('div');
