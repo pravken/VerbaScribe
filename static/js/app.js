@@ -381,7 +381,15 @@ document.getElementById('chapters-list')?.addEventListener('wheel', (e) => {
 }, { passive: false });
 // again when the row changes width or comes into view (another tab, the window, the sidebar)
 if (window.ResizeObserver && document.getElementById('chapters-list')) {
-  new ResizeObserver(() => centerActiveChapter(false)).observe(document.getElementById('chapters-list'));
+  // Only a real change of width counts: the row's own side padding (set by the centring) changes its
+  // content box, and reacting to that turned the smooth move to the middle into a jump
+  let chaptersWidth = 0;
+  new ResizeObserver((entries) => {
+    const w = Math.round(entries[0].borderBoxSize?.[0]?.inlineSize ?? entries[0].target.offsetWidth);
+    if (w === chaptersWidth) return;
+    chaptersWidth = w;
+    centerActiveChapter(false);
+  }).observe(document.getElementById('chapters-list'), { box: 'border-box' });
 }
 
 // "Clear" (the section's ⋯): what the open section holds (an analysis, my notes, the promises)
