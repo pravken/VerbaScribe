@@ -144,7 +144,7 @@ function impAddLink() {
   const input = document.getElementById('url-import-input');
   const url = input.value.trim();
   if (!url) return;
-  if (!/^https?:\/\/\S+$/i.test(url)) { showToast(t('impBadLink')); return; }
+  if (!/^https?:\/\/\S+$/i.test(url)) { showWarning(t('impBadLink')); return; }
   const imp = state.imp;
   if (!imp.items.some(x => x.kind === 'link' && x.url === url)) imp.items.push({ id: ++imp.seq, kind: 'link', url });
   input.value = '';
@@ -305,7 +305,7 @@ async function impSubmit() {
       imp.items = imp.items.filter(i => i !== x);  // what went is not sent twice if a later one fails
     }
   } catch (err) {
-    showToast(humanError(err.message || err).short);
+    showError(humanError(err.message || err).short);
     renderImport();
     if (created.length) await loadMeetingsList();
     return;
@@ -334,6 +334,6 @@ async function impSubmit() {
 
 async function impSaveSettings(values) {
   const res = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: values }) });
-  if (!res.ok) { showToast(serverText((await readJson(res)).detail) || 'Error'); return; }
+  if (!res.ok) { showError(serverText((await readJson(res)).detail)); return; }
   if (state.system) state.system.settings = { ...(state.system.settings || {}), ...values };
 }

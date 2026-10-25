@@ -571,7 +571,7 @@ async function studioAsk() {
       body: JSON.stringify({ question: q, lang: state.uiLang === 'en' ? 'en' : 'ru' }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || 'Error');
+    if (!res.ok) throw new Error(data.detail || t('errorGeneric'));
     box.innerHTML = `<div class="text-[11.5px] text-apple-tertiary mb-1">${escapeHtml(q)}</div>${sanitizedMarkdown(data.answer)}`;
     input.value = '';
   } catch (e) {
@@ -794,7 +794,7 @@ async function studioSetModels(change) {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ translate_to: document.getElementById('live-translate-select').value || null, pair: quickLangs(), ...change }),
     });
-    if (!res.ok) showToast((await res.json().catch(() => ({}))).detail || 'Error');
+    if (!res.ok) showError((await res.json().catch(() => ({}))).detail);
   } catch (e) { console.error(e); }
   syncStudioCaptions();
 }
@@ -968,7 +968,7 @@ async function startLiveCaptions(ctx, stream) {
       }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || 'Error');
+    if (!res.ok) throw new Error(data.detail || t('errorGeneric'));
     liveCap.session = data.session;
   } finally {
     liveCap.starting = false;
@@ -1008,7 +1008,7 @@ async function sendLiveAudio() {
     });
     const data = await res.json().catch(() => ({}));
     if (session !== liveCap.session) return;
-    if (!res.ok) throw new Error(data.detail || 'Error');
+    if (!res.ok) throw new Error(data.detail || t('errorGeneric'));
     for (const ln of data.lines || []) {
       liveCap.lines.set(ln.id, { ...(liveCap.lines.get(ln.id) || {}), ...ln });
       liveCap.lastId = Math.max(liveCap.lastId, ln.id);
@@ -1361,7 +1361,7 @@ async function startLiveRecording() {
         if (e && e.name === 'NotAllowedError') return;  // the picker was closed: nothing starts
         if (!state.screenCapture.supported) throw new Error(mediaErrorText(e, 'screen'));
         appTarget = 'desktop';
-        showToast(t('recVideoFallback'));
+        showWarning(t('recVideoFallback'));
       }
     }
     if (_recVideoStream) {
@@ -1422,7 +1422,7 @@ async function startLiveRecording() {
       const { mimeType, options } = recorderFormat(!!_recVideoStream, pageAudio);
       const res = await fetch('/api/record/page/start', { method: 'POST' });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.detail || 'Error');
+      if (!res.ok) throw new Error(data.detail || t('errorGeneric'));
       _recPage = { id: data.page_id, upload: Promise.resolve(), failed: '', hasVideo: !!_recVideoStream, hasMic: pageAudio };
       _mediaRecorder = new MediaRecorder(new MediaStream(tracks), mimeType ? { mimeType, ...options } : options);
       _mediaRecorder.ondataavailable = (e) => {
@@ -1572,11 +1572,11 @@ async function checkRecordingDisk() {
   if (!disk || disk.free_bytes < 0) return;
   if (disk.critical) {
     // Stopped while there is still room to finish the file and save it
-    showToast(t('diskStopped'));
+    showWarning(t('diskStopped'));
     stopAndTranscribeRecording();
   } else if (disk.low && !_recDiskWarned) {
     _recDiskWarned = true;
-    showToast(t('diskLowWarn').replace('{free}', () => formatSize(disk.free_bytes))
+    showWarning(t('diskLowWarn').replace('{free}', () => formatSize(disk.free_bytes))
       .replace('{min}', () => recMinutesLeft(disk.free_bytes, !!_recVideoStream)));
   }
 }
@@ -1688,7 +1688,7 @@ async function stopAndTranscribeRecording(opts) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    showToast(data.detail || 'Error');
+    showError(data.detail);
     return undefined;
   }
   const created = data.created;

@@ -646,7 +646,7 @@ function rpSetB() {
   const p = rpPlayer();
   if (!rp.ab) { rpSetA(); return; }
   const b = Math.floor((p && p.currentTime) || 0);
-  if (b <= rp.ab.a + 1) { showToast(t('rdPlyrAbTooShort')); return; }
+  if (b <= rp.ab.a + 1) { showWarning(t('rdPlyrAbTooShort')); return; }
   rp.ab = { a: rp.ab.a, b };
   if (p) p.currentTime = rp.ab.a;
   rpClosePop();

@@ -109,7 +109,7 @@ async function ctxClearResults() {
   const m = state.meetings.find(x => x.id === id);
   if (!m || !(await confirmDialog(t('clearResultsTitle'), t('clearResultsText').replace('{title}', () => m.title), t('ctxClearResults')))) return;
   const res = await fetch(`/api/meetings/${id}/clear-results`, { method: 'POST' });
-  if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
+  if (!res.ok) { showError((await readJson(res)).detail); return; }
   await loadMeetingsList();
   if (state.activeMeeting && state.activeMeeting.id === id) await selectMeeting(id, true);
 }
@@ -120,7 +120,7 @@ async function ctxRemoveMedia() {
   const m = state.meetings.find(x => x.id === id);
   if (!m || !(await confirmDialog(t('removeMediaTitle'), t('removeMediaText').replace('{title}', () => m.title), t('ctxRemoveMedia')))) return;
   const res = await fetch(`/api/meetings/${id}/remove-media`, { method: 'POST' });
-  if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
+  if (!res.ok) { showError((await readJson(res)).detail); return; }
   await loadMeetingsList();
   if (state.activeMeeting && state.activeMeeting.id === id) await selectMeeting(id, true);
 }
@@ -142,7 +142,7 @@ async function requestCut(kind) {
     body: JSON.stringify({ kind, lang: state.uiLang === 'en' ? 'en' : 'ru' }),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  if (!res.ok) { showError(data.detail); return; }
   if (data.cancelled) return;
   const saved = Math.max(0, Math.round((data.duration || 0) - (data.kept_seconds || 0)));
   showToast(t('cutQueued').replace('{name}', () => data.filename).replace('{kept}', () => formatTime(data.kept_seconds || 0))
@@ -166,7 +166,7 @@ async function runExport(item) {
     });
     data = await res.json().catch(() => ({}));
   } catch (e) {
-    showToast(t('exportFailed'));
+    showError(t('exportFailed'));
     return;
   }
   if (!res.ok) { showToast(data.detail || t('exportFailed')); return; }
@@ -191,7 +191,7 @@ async function runExport(item) {
 async function exportToObsidian(id) {
   const settings = (state.system && state.system.settings) || {};
   if (!settings.obsidian_vault) {
-    showToast(t('exportObsidianNoVault'));
+    showWarning(t('exportObsidianNoVault'));
     openModal('settings', 'export');
     return;
   }
@@ -203,7 +203,7 @@ async function exportToObsidian(id) {
     if (state.activeMeeting && state.activeMeeting.id === id) state.activeMeeting.obsidian_path = data.path;
     showToast(`${t('obsidianSaved')} ${data.filename}`, { label: t('showInFolder'), onClick: () => revealPath(data.path) });
   } catch (e) {
-    showToast(t('exportFailed'));
+    showError(t('exportFailed'));
   }
 }
 
@@ -414,7 +414,7 @@ async function ctxRenameRecording() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title: newTitle.trim() })
   });
-  if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
+  if (!res.ok) { showError((await readJson(res)).detail); return; }
   await loadMeetingsList();
   if (state.activeMeeting && state.activeMeeting.id === m.id) {
     state.activeMeeting.title = newTitle.trim();
@@ -470,7 +470,7 @@ async function restoreSegments(id) {
   const res = await fetch(`/api/meetings/${id}/restore-segments`, { method: 'POST' });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    showToast(data.detail || 'Error');
+    showError(data.detail);
     return;
   }
   if (state.activeMeeting && state.activeMeeting.id === id) {
@@ -557,7 +557,7 @@ async function ctxDeleteRecording() {
   const delRes = await fetch(`/api/meetings/${m.id}${deleteQuery(choice, m)}`, { method: 'DELETE' });
   if (!delRes.ok) {
     const data = await delRes.json().catch(() => ({}));
-    showToast(data.detail || 'Error');
+    showError(data.detail);
     await loadMeetingsList();
     return;
   }
@@ -567,5 +567,5 @@ async function ctxDeleteRecording() {
     document.getElementById('workspace-empty').classList.remove('hidden');
   }
   await loadMeetingsList();
-  showToast(t('uiRecordingDeleted'));
+  showToast(t('uiRecordingDeleted'), null, 'success');
 }

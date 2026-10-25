@@ -51,7 +51,7 @@ async function setUiScale(v) {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: { ui_scale: String(v) } }),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  if (!res.ok) { showError(data.detail); return; }
   if (state.system) state.system.settings = data.settings;
 }
 
@@ -456,7 +456,7 @@ window.addEventListener('resize', () => { if (modelsPop.open) placeModelsPop(); 
 async function vramChipClick(index) {
   const c = (vram.chips || [])[Number(index)];
   if (!c || vram.busy) return;
-  if (c.kind === 'dub') { showToast(t('tipVramDub')); return; }
+  if (c.kind === 'dub') { showWarning(t('tipVramDub')); return; }
   const action = c.loaded ? 'unload' : 'preload';
   if (action === 'unload' && !c.can_unload) return;
   if (action === 'preload' && !c.can_preload) return;
@@ -468,7 +468,7 @@ async function vramChipClick(index) {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: c.kind, name: c.name || '' }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) showToast(data.detail || 'Error');
+    if (!res.ok) showError(data.detail);
     else renderVram(data);
   } catch (e) {
     console.error(e);
@@ -499,7 +499,7 @@ const MODEL_DISPLAY_NAMES = {
 async function startOnnxModelDownload(id) {
   const res = await fetch(`/api/onnx-models/${encodeURIComponent(id)}/download`, { method: 'POST' });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  if (!res.ok) { showError(data.detail); return; }
   showToast(t('onnxDownloading'));
   const poll = async () => {
     const models = await fetch('/api/models/status').then(r => r.json()).catch(() => null);
@@ -507,7 +507,7 @@ async function startOnnxModelDownload(id) {
     const item = models && (models.whisper_catalog || []).find(x => x.id === id);
     if (item && item.downloading) setTimeout(poll, 2000);
     else if (item && item.error) showToast(item.error);
-    else if (item && item.installed) showToast(t('onnxReady'));
+    else if (item && item.installed) showToast(t('onnxReady'), null, 'success');
   };
   setTimeout(poll, 1500);
 }
@@ -898,7 +898,7 @@ async function deleteWhisperModel(modelId) {
   const item = (state.whisperCatalog || []).find(i => i.id === modelId) || {};
   if (!(await confirmModelDelete(pretty, item.path))) return;
   const res = await fetch(`/api/models/${encodeURIComponent(modelId)}`, { method: 'DELETE' });
-  if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
+  if (!res.ok) { showError((await readJson(res)).detail); return; }
   await loadSystemInfo();
   showToast(t('modelDeletedToast').replace('{name}', () => pretty));
 }
@@ -906,7 +906,7 @@ async function deleteWhisperModel(modelId) {
 async function deleteOllamaModel(name) {
   if (!(await confirmModelDelete(formatModelName(name), ''))) return;
   const res = await fetch(`/api/ollama/models/${encodeURIComponent(name)}`, { method: 'DELETE' });
-  if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
+  if (!res.ok) { showError((await readJson(res)).detail); return; }
   updateOllamaUI(await readJson(res));
   showToast(t('modelDeleted').replace('{name}', () => formatModelName(name)));
 }
@@ -1135,10 +1135,10 @@ async function deleteOrphans() {
   try {
     const res = await fetch('/api/storage/orphans/delete', { method: 'POST' });
     const data = await readJson(res);
-    if (!res.ok) throw new Error(data.detail || 'Error');
+    if (!res.ok) throw new Error(data.detail || t('errorGeneric'));
     showToast(t('orphansDeleted').replace('{n}', () => data.files).replace('{size}', () => formatBytes(data.bytes)));
   } catch (e) {
-    showToast(e.message);
+    showError(e.message);
   } finally {
     btn.disabled = false;
     loadOrphans();
@@ -1155,7 +1155,7 @@ async function makeBackup() {
     const res = await fetch('/api/backup', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ with_media: document.getElementById('backup-with-media').checked }) });
     const data = await readJson(res);
-    if (!res.ok) throw new Error(data.detail || 'Error');
+    if (!res.ok) throw new Error(data.detail || t('errorGeneric'));
     box.textContent = data.cancelled ? '' : t('backupMade').replace('{path}', () => data.path).replace('{mb}', () => data.size_mb);
   } catch (e) {
     box.className = 'text-[11.5px] text-apple-amber';
@@ -1172,7 +1172,7 @@ async function restoreBackup() {
   box.textContent = t('backupReading');
   const res = await fetch('/api/backup/restore', { method: 'POST' });
   const data = await readJson(res);
-  if (!res.ok) { box.className = 'text-[11.5px] text-apple-amber'; box.textContent = data.detail || 'Error'; return; }
+  if (!res.ok) { box.className = 'text-[11.5px] text-apple-amber'; box.textContent = data.detail || t('errorGeneric'); return; }
   if (data.cancelled) { box.textContent = ''; return; }
   box.className = 'text-[11.5px] text-apple-green';
   box.textContent = t('backupRestored').replace('{n}', () => data.recordings).replace('{m}', () => data.media_restored);
@@ -1208,7 +1208,7 @@ async function loadOnnxGpu() {
 async function installOnnxGpu() {
   const res = await fetch('/api/onnx-gpu/install', { method: 'POST' });
   const data = await readJson(res);
-  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  if (!res.ok) { showError(data.detail); return; }
   document.getElementById('set-onnx-gpu').checked = true;
   renderOnnxGpu(data);
 }
@@ -1239,7 +1239,7 @@ async function checkCalendar() {
   await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ settings: { calendar_ics: source } }) }).catch(() => null);
   const st = await fetch('/api/calendar/upcoming?refresh=true').then(r => r.json()).catch(() => null);
-  if (!st || !st.configured) { box.textContent = source ? 'Error' : t('watchOff'); return; }
+  if (!st || !st.configured) { box.textContent = source ? t('errorGeneric') : t('watchOff'); return; }
   if (st.error) { box.className = 'text-[11.5px] text-apple-amber'; box.textContent = st.error; return; }
   box.textContent = t('calendarOk').replace('{n}', () => st.count).replace('{next}', () => st.events.length);
 }
@@ -1459,7 +1459,7 @@ async function buildSemanticIndex() {
   });
   const res = await fetch('/api/semantic/index', { method: 'POST' });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) showToast(data.detail || 'Error');
+  if (!res.ok) showError(data.detail);
   setTimeout(loadSemanticStatus, 800);
 }
 
@@ -1631,7 +1631,7 @@ async function saveLlmSettingsNow(extra = {}) {
     body: JSON.stringify({ settings: { ...llmSettingsPayload(), ...extra } }),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) { showToast(data.detail || 'Error'); return false; }
+  if (!res.ok) { showError(data.detail); return false; }
   if (state.system) state.system.settings = data.settings;
   state.llmProviderEdited = false;
   await loadLlmStatus();
@@ -1664,7 +1664,7 @@ async function saveLlmKey() {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider, key }),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) { setLlmTestResult('err', data.detail || 'Error'); return; }
+  if (!res.ok) { setLlmTestResult('err', data.detail || t('errorGeneric')); return; }
   input.value = '';
   state.llm = data;
   if ((data.models || []).length) state.llmModels = { ...(state.llmModels || {}), [provider]: data.models };
@@ -1720,7 +1720,7 @@ async function testLlmConnection() {
   try {
     const res = await fetch(`/api/llm/test/${provider}`, { method: 'POST' });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || 'Error');
+    if (!res.ok) throw new Error(data.detail || t('errorGeneric'));
     setLlmTestResult('ok', t('llmTestOk').replace('{model}', () => data.model).replace('{sec}', () => data.seconds));
   } catch (e) {
     setLlmTestResult('err', e.message);
@@ -1916,13 +1916,13 @@ async function saveAllSettings() {
     });
   } catch (e) {
     setSettingsSaveState('failed');
-    showToast(t('settingsSaveFailed').replace('{why}', () => String(e.message || e)));
+    showError(t('settingsSaveFailed').replace('{why}', () => String(e.message || e)));
     return;
   }
   if (!res.ok) {
     const why = errorText(await readJson(res), res);
     setSettingsSaveState('failed');
-    showToast(t('settingsSaveFailed').replace('{why}', () => why));
+    showError(t('settingsSaveFailed').replace('{why}', () => why));
     return;
   }
   // The settings page saves each change at once and stays open
@@ -2181,7 +2181,7 @@ async function startBench() {
     body: JSON.stringify({ kind: bench.kind, meeting_id: meetingId, models, clip_sec: Number(document.getElementById('bench-clip').value) }),
   });
   const data = await readJson(res);
-  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  if (!res.ok) { showError(data.detail); return; }
   bench.data = { ...bench.data, ...data };
   renderBench();
   pollBench();
@@ -2490,7 +2490,7 @@ async function addSettingsDictItem() {
   const term = input.value.trim();
   if (!term) return;
   if ((state.dictionary || []).some(d => d.term.toLowerCase() === term.toLowerCase())) {
-    showToast(t('rdSasDictDup'));
+    showWarning(t('rdSasDictDup'));
     return;
   }
   const category = document.getElementById('settings-dict-cat').value.trim() || t('rdSasDictCatDefault');
@@ -2546,7 +2546,7 @@ async function copySystemInfo() {
     const btn = document.getElementById('settings-copy-info');
     if (btn) { btn.textContent = t('rdSasCopied'); setTimeout(() => { btn.textContent = t('rdSasCopyInfo'); }, 1800); }
   } catch (e) {
-    showToast(t('rdSasCopyFailed'));
+    showError(t('rdSasCopyFailed'));
   }
 }
 

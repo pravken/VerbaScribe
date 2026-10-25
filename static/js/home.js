@@ -19,7 +19,7 @@ function hmPad(n) { return String(n).padStart(2, '0'); }
 
 async function hmSave(values) {
   const res = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: values }) });
-  if (!res.ok) { showToast(serverText((await readJson(res)).detail) || 'Error'); return false; }
+  if (!res.ok) { showError(serverText((await readJson(res)).detail)); return false; }
   if (state.system) state.system.settings = { ...(state.system.settings || {}), ...values };
   return true;
 }
@@ -375,7 +375,7 @@ function renderHomeTasks() {
 
 async function hmTaskDone(id) {
   const res = await fetch(`/api/commitments/${Number(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'done' }) });
-  if (!res.ok) { showToast(serverText((await readJson(res)).detail) || 'Error'); return; }
+  if (!res.ok) { showError(serverText((await readJson(res)).detail)); return; }
   home.tasks = home.tasks.filter(c => c.id !== Number(id));
   refreshTasksCount(true);
   renderHomeNow();
@@ -467,7 +467,7 @@ let hmDictTimer = null;
 async function hmDictToggle() {
   const res = await fetch('/api/dictation/toggle', { method: 'POST' });
   const data = await readJson(res);
-  if (!res.ok) { showToast(serverText(data.detail) || 'Error'); return; }
+  if (!res.ok) { showError(serverText(data.detail)); return; }
   hmDictShow(data.state === 'started' ? 'listen' : 'busy');
   clearInterval(hmDictTimer);
   hmDictTimer = setInterval(hmDictPoll, 500);
@@ -513,8 +513,8 @@ async function hmDictCancel() {
 }
 
 async function hmDictCopy() {
-  try { await navigator.clipboard.writeText(document.getElementById('hm-dict-text').textContent); showToast(t('copied')); }
-  catch (e) { showToast(String(e.message || e)); }
+  try { await navigator.clipboard.writeText(document.getElementById('hm-dict-text').textContent); showToast(t('copied'), null, 'success'); }
+  catch (e) { showError(String(e.message || e)); }
 }
 
 // The tray's "Open the last recording" (run.py): the newest one of the library

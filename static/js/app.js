@@ -68,7 +68,7 @@ async function installUpdate() {
   if (!(info.download || {}).done) {
     if (updateState.polling) return;
     const r = await fetch('/api/update/download', { method: 'POST' });
-    if (!r.ok) { showToast((await r.json()).detail || 'Error'); return; }
+    if (!r.ok) { showError((await r.json()).detail); return; }
     updateState.info = await r.json();
     renderUpdateStatus();
     updateState.polling = true;
@@ -414,7 +414,7 @@ async function clearSummaryTab(key) {
     res = await fetch(`/api/meetings/${m.id}/summaries?key=${encodeURIComponent(tab)}`, { method: 'DELETE' });
     if (res.ok) state.activeMeeting.summaries = (await readJson(res)).summaries || {};
   }
-  if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
+  if (!res.ok) { showError((await readJson(res)).detail); return; }
   if (tab === 'chapters') renderChaptersBar();
   renderSummaryPanel();
 }
@@ -719,7 +719,7 @@ function openTemplateDialog(tpl) {
   const save = async (list) => {
     const res = await fetch('/api/summary-templates', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ templates: list }) });
     const data = await readJson(res);
-    if (!res.ok) { showToast(serverText(data.detail || 'Error')); return null; }
+    if (!res.ok) { showError(serverText(data.detail)); return null; }
     state.summaryTemplates = data;
     return data;
   };
@@ -777,7 +777,7 @@ async function createAnalysisSection(key, ev) {
       res = await fetch(`/api/meetings/${m.id}/summary`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ template: key, model: chosenModel, lang: state.uiLang }) });
     }
     const data = await readJson(res);
-    if (!res.ok) throw new Error(data.detail || 'Error');
+    if (!res.ok) throw new Error(data.detail || t('errorGeneric'));
     if (data.summaries) m.summaries = data.summaries;
     if (key === 'commitments') state.anCommit = { id: m.id, n: Array.isArray(data) ? data.length : (data.items || []).length || 0 };
     if (key === 'chapters' && state.activeMeeting === m) renderChaptersBar();
@@ -852,7 +852,7 @@ function openTemplatesEditor() {
     else if (b.dataset.add) { items.push({ id: '', name: '', prompt: '' }); draw(); }
     else if (b.dataset.a === 'save') {
       const res = await fetch('/api/summary-templates', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ templates: items }) });
-      if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
+      if (!res.ok) { showError((await readJson(res)).detail); return; }
       state.summaryTemplates = await readJson(res);
       renderTemplateTabs();
       wrap.remove();
@@ -903,7 +903,7 @@ async function exportCommitments(fmt, meetingId) {
     body: JSON.stringify({ fmt, meeting_id: meetingId, lang: state.uiLang === 'en' ? 'en' : 'ru' }),
   });
   const data = await readJson(res);
-  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  if (!res.ok) { showError(data.detail); return; }
   if (data.ok) showToast(t('commitmentsSaved'), { label: t('modelReveal'), onClick: () => revealPath(data.path) });
 }
 
@@ -911,7 +911,7 @@ async function toggleCommitment(input) {
   const res = await fetch(`/api/commitments/${input.dataset.cid}`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: input.checked ? 'done' : 'open' }),
   });
-  if (!res.ok) { input.checked = !input.checked; showToast((await readJson(res)).detail || 'Error'); return; }
+  if (!res.ok) { input.checked = !input.checked; showError((await readJson(res)).detail); return; }
   input.closest('label')?.classList.toggle('opacity-50', input.checked);
 }
 
@@ -948,7 +948,7 @@ async function openOpenCommitments() {
 // scrolled to and lit for a moment instead of doing nothing
 function flashNoAiBanner(id = 'an-noai') {
   const b = document.getElementById(id);
-  if (!b) { showToast(t('anNeedModel')); return; }
+  if (!b) { showWarning(t('anNeedModel')); return; }
   b.classList.remove('hidden', 'an-noai-flash');
   void b.offsetWidth;
   b.classList.add('an-noai-flash');
@@ -982,7 +982,7 @@ function renderMyNotesEditor(box) {
     window._notesSaveTimer = setTimeout(async () => {
       const res = await fetch(`/api/meetings/${id}/notes`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notes: text }) });
       const st = document.getElementById('my-notes-status');
-      if (st) st.textContent = res.ok ? t('notesSaved') : ((await readJson(res)).detail || 'Error');
+      if (st) st.textContent = res.ok ? t('notesSaved') : ((await readJson(res)).detail || t('errorGeneric'));
     }, 600);
   };
 }
@@ -1125,11 +1125,11 @@ async function runCustomQuestion() {
       body: JSON.stringify({ template: 'custom', custom_prompt: prompt, model: chosenModel, lang: state.uiLang }),
     });
     const data = await readJson(res);
-    if (!res.ok) throw new Error(data.detail || 'Error');
+    if (!res.ok) throw new Error(data.detail || t('errorGeneric'));
     m.summaries = data.summaries;
     input.value = '';
   } catch (e) {
-    showToast(serverText(e.message));
+    showError(serverText(e.message));
   } finally {
     state.anBusy.delete(`${m.id}:custom`);
     if (state.activeMeeting === m) { renderChaptersBar(); renderSummaryPanel(); }
@@ -1150,7 +1150,7 @@ function copySummaryText() {
   const text = anSectionText(state.activeSummaryTab).replaceAll('[?]', `(${t('unverifiedBadge')})`).trim();
   if (!text) return;
   navigator.clipboard.writeText(text);
-  showToast(t('uiCopied'));
+  showToast(t('uiCopied'), null, 'success');
 }
 
 // --- Export ---
@@ -1167,7 +1167,7 @@ async function exportMeetingById(id, fmt, opts) {
     const qs = params.toString() ? `?${params}` : '';
     const res = await fetch(`/api/meetings/${id}/export/${fmt}${qs}`);
     if (!res.ok) {
-      showToast(t('exportFailed'));
+      showError(t('exportFailed'));
       return;
     }
     const blob = await res.blob();
@@ -1231,7 +1231,7 @@ async function exportMeetingById(id, fmt, opts) {
     showToast(`${t('exportSavedTo')} ${filename}`);
   } catch (e) {
     console.error('Export error:', e);
-    showToast(t('exportFailed'));
+    showError(t('exportFailed'));
   }
 }
 
@@ -1280,7 +1280,7 @@ async function refreshRecordingsDirLabel() {
 async function pickRecordingsDir() {
   const res = await fetch('/api/recordings-dir/pick', { method: 'POST' });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  if (!res.ok) { showError(data.detail); return; }
   if (data.ok) await afterRecordingsDirChange();
 }
 
@@ -1416,7 +1416,7 @@ async function pickObsidianVault() {
   vault.dataset.path = data.folder;
   updateObsidianPreview();
   refreshObsidianStatus();
-  if (!data.is_vault) showToast(t('tipObsNotVault'));
+  if (!data.is_vault) showWarning(t('tipObsNotVault'));
 }
 
 async function openObsidianFolder() {
@@ -1429,7 +1429,7 @@ async function openObsidianFolder() {
 async function unloadAllModelsNow() {
   const res = await fetch('/api/vram/unload-all', { method: 'POST' });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  if (!res.ok) { showError(data.detail); return; }
   renderVram(data);
   showToast((data.released || []).length ? t('idleUnloadedNow') : t('idleNothingLoaded'));
 }
@@ -1469,7 +1469,7 @@ async function loadMeetingInfo() {
   try {
     const res = await fetch(`/api/meetings/${id}/info`);
     const info = await readJson(res);
-    if (!res.ok) throw new Error(info.detail || 'Error');
+    if (!res.ok) throw new Error(info.detail || t('errorGeneric'));
     if (!state.activeMeeting || state.activeMeeting.id !== id) return;
     renderMeetingInfo(info);
   } catch (e) {
@@ -1489,7 +1489,7 @@ function formatDateTime(s) {
 }
 
 function copyText(text) {
-  navigator.clipboard.writeText(text).then(() => showToast(t('copied')), () => {});
+  navigator.clipboard.writeText(text).then(() => showToast(t('copied'), null, 'success'), () => {});
 }
 
 function renderMeetingInfo(info) {
@@ -1698,7 +1698,7 @@ async function pasteInto(field) {
       field.dispatchEvent(new Event('input', { bubbles: true }));
     }
   } catch (e) {
-    showToast(t('ctxPasteBlocked'));
+    showWarning(t('ctxPasteBlocked'));
   }
 }
 

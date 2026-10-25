@@ -349,7 +349,7 @@ async function retryActiveMeeting() {
   const m = state.activeMeeting;
   if (!m) return;
   const res = await fetch(`/api/meetings/${m.id}/retry`, { method: 'POST' });
-  if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
+  if (!res.ok) { showError((await readJson(res)).detail); return; }
   await loadMeetingsList();
   await selectMeeting(m.id, false);
 }
@@ -415,7 +415,7 @@ async function saveDubFile(lang, kind) {
     showToast(`${t('exportSavedTo')} ${data.filename}`, { label: t('showInFolder'), title: t('tipShowInFolder'), onClick: () => revealPath(data.path) });
   } catch (e) {
     console.error(e);
-    showToast(t('exportFailed'));
+    showError(t('exportFailed'));
   }
 }
 
@@ -545,7 +545,7 @@ async function pollDubSetup() {
       renderDubSetup(env, 'sdub');
       updateDubStartButton();
       if (!env.setup || !env.setup.active) {
-        if (env.installed) showToast(t('dubSetupDone'));
+        if (env.installed) showToast(t('dubSetupDone'), null, 'success');
         loadDubInfo();
         break;
       }
@@ -696,7 +696,7 @@ async function verifyDubEnv() {
   try {
     const res = await fetch('/api/dub/verify', { method: 'POST' });
     const data = await res.json().catch(() => ({}));
-    showToast(res.ok ? (data.ok ? t('sdubVerifyOk') : t('sdubVerifyFailed')) : (data.detail || 'Error'));
+    showError(res.ok ? (data.ok ? t('sdubVerifyOk') : t('sdubVerifyFailed')) : (data.detail));
   } finally {
     btn.disabled = false;
     btn.textContent = t('sdubVerifyBtn');
@@ -800,7 +800,7 @@ async function startDub() {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    showToast(data.detail || 'Error');
+    showError(data.detail);
     return;
   }
   closeModal('dub');
@@ -829,7 +829,7 @@ async function revealDub(lang) {
   const res = await fetch(`/api/meetings/${m.id}/dub/${lang}/reveal`, { method: 'POST' });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    showToast(data.detail || 'Error');
+    showError(data.detail);
   }
 }
 
@@ -989,7 +989,7 @@ async function startTranslation(onlyChanged, lang) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    showToast(data.detail || 'Error');
+    showError(data.detail);
     return;
   }
   state.txLang = target;
@@ -1004,7 +1004,7 @@ async function deleteTranslation(lang) {
   const res = await fetch(`/api/meetings/${m.id}/translations/${encodeURIComponent(lang)}`, { method: 'DELETE' });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    showToast(data.detail || 'Error');
+    showError(data.detail);
     return;
   }
   state.activeMeeting = data;
@@ -1048,7 +1048,7 @@ async function requestVideoSubtitles(lang, variant, mode, askPath) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    showToast(data.detail || 'Error');
+    showError(data.detail);
     return false;
   }
   if (data.cancelled) return false;
@@ -1135,7 +1135,7 @@ async function deleteActiveDub() {
   if (!m || !lang || lang === 'orig') return;
   if (!(await confirmDialog(t('dubDeleteTitle').replace('{lang}', () => lang.toUpperCase()), t('dubDeleteText'), t('dubDelete')))) return;
   const res = await fetch(`/api/meetings/${m.id}/dubs/${encodeURIComponent(lang)}`, { method: 'DELETE' });
-  if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
+  if (!res.ok) { showError((await readJson(res)).detail); return; }
   setAudioTrack('orig');
   await selectMeeting(m.id, true);
 }
@@ -1191,7 +1191,7 @@ async function cancelProcessing(id) {
   const res = await fetch(`/api/meetings/${id}/cancel`, { method: 'POST' });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    showToast(data.detail || 'Error');
+    showError(data.detail);
     return;
   }
   showToast(t('uiCancelling'));

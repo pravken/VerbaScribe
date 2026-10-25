@@ -399,7 +399,7 @@ async function makeBrief() {
         lang: state.uiLang === 'en' ? 'en' : 'ru' }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || 'Error');
+    if (!res.ok) throw new Error(data.detail || t('errorGeneric'));
     item.data = data;
     item.status = 'done';
   } catch (e) {
@@ -422,7 +422,7 @@ async function makeDigest(days) {
       body: JSON.stringify({ folder_id: scope.type === 'folder' ? scope.id : null, days: days || null, lang: state.uiLang === 'en' ? 'en' : 'ru' }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || 'Error');
+    if (!res.ok) throw new Error(data.detail || t('errorGeneric'));
     item.data = data;
     item.status = 'done';
   } catch (e) {
@@ -529,7 +529,7 @@ async function createFolderPrompt(parentId) {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, parent_id: parentId }),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  if (!res.ok) { showError(data.detail); return; }
   if (parentId != null) {
     const set = collapsedFolders();
     if (set.delete(parentId)) try { localStorage.setItem('verbascribe_folders_collapsed', JSON.stringify([...set])); } catch (e) {}
@@ -543,7 +543,7 @@ async function patchFolder(id, body) {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) { showToast(data.detail || 'Error'); return false; }
+  if (!res.ok) { showError(data.detail); return false; }
   await loadFolders();
   renderMeetingsSidebar();
   return true;
@@ -635,7 +635,7 @@ async function fctxDelete() {
   if (!await askConfirm(t('folderDeleteConfirm').replace('{name}', () => folderName(f)), true, t('cfDeleteFolder'))) return;
   const res = await fetch(`/api/folders/${f.id}`, { method: 'DELETE' });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  if (!res.ok) { showError(data.detail); return; }
   await Promise.all([loadFolders(), loadMeetingsList()]);
   renderMeetingsSidebar();
 }
@@ -1277,13 +1277,13 @@ async function bulkRename() {
   }
   await loadMeetingsList();
   if (state.activeMeeting && state.multi.has(state.activeMeeting.id)) openMeeting(state.activeMeeting.id);
-  if (failed) showToast(t('bulkSomeFailed').replace('{n}', () => failed));
+  if (failed) showError(t('bulkSomeFailed').replace('{n}', () => failed));
 }
 
 // Titles made by the analysis model from each transcript
 async function bulkAutoTitles() {
   const list = libSelectedInOrder().filter(m => m.status === 'completed');
-  if (!list.length) { showToast(t('bulkNoTranscripts')); return; }
+  if (!list.length) { showWarning(t('bulkNoTranscripts')); return; }
   let failed = 0;
   for (const [i, m] of list.entries()) {
     showToast(t('bulkAutoTitleWorking').replace('{i}', () => i + 1).replace('{n}', () => list.length));
@@ -1675,7 +1675,7 @@ async function handleFileSelect(fileList) {
     await selectMeeting(created[0].id, true);
     return created;
   } catch (err) {
-    showToast(String(err.message || err));
+    showError(String(err.message || err));
   }
 }
 

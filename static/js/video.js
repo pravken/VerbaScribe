@@ -321,7 +321,7 @@ async function toggleVideoPip() {
     else await player.requestPictureInPicture();
   } catch (e) {
     console.error(e);
-    showToast(t('videoPipFailed'));
+    showError(t('videoPipFailed'));
   }
 }
 

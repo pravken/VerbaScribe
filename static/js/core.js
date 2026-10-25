@@ -482,7 +482,7 @@ window.fetch = async (...args) => {
 };
 
 async function onSessionLost() {
-  showToast(t('sessionLost'));
+  showWarning(t('sessionLost'));
   // In the app window the page reloads and signs in again (app/main.py _LOCKED_PAGE)
   if (window.pywebview && window.pywebview.api) setTimeout(() => location.replace('/'), 1500);
   /* in a browser: the toast says what to do */
@@ -501,24 +501,57 @@ async function readJson(res) {
   }
 }
 
-function showToast(msg, action) {
-  const el = document.getElementById('toast');
-  el.textContent = '';
-  const span = document.createElement('span');
-  span.textContent = msg;
-  el.appendChild(span);
+// Audit 6.3, 3.11. Four kinds of notices: a status, done (with «Отменить» when it can be undone),
+// a warning and an error. An error stays until it is closed and is read out by the screen reader at
+// once; the others leave by themselves, but not while the pointer is on them. A new status or done
+// notice replaces the previous one; errors and warnings stack, three at most, the newest below
+const TOAST_LIFE = { status: 3000, success: 3000, warning: 8000, error: 0 };
+const TOAST_ICONS = {
+  status: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="6.2"/><path d="M8 7.2v3.6M8 5.1v.1" stroke-linecap="round"/></svg>',
+  success: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.4l3 3 6-6.4"/></svg>',
+  warning: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.2l6.2 11H1.8z"/><path d="M8 6.6v3M8 11.4v.1"/></svg>',
+  error: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="8" cy="8" r="6.2"/><path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4"/></svg>',
+};
+function showToast(msg, action, kind) {
+  kind = TOAST_LIFE[kind] !== undefined ? kind : (action ? 'success' : 'status');
+  const stack = document.getElementById('toast');
+  if (kind === 'status' || kind === 'success') {
+    stack.querySelectorAll('.toast-status, .toast-success').forEach(old => { if (!old.classList.contains('is-leaving')) removeWithExit(old); });
+  }
+  const el = document.createElement('div');
+  el.className = `toast toast-${kind}`;
+  el.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+  el.innerHTML = `<span class="toast-icon" aria-hidden="true">${TOAST_ICONS[kind]}</span><span class="toast-text"></span>`;
+  el.querySelector('.toast-text').textContent = msg;
+  const dismiss = () => { clearTimeout(el._timer); removeWithExit(el); };
   if (action && action.label && typeof action.onClick === 'function') {
     const btn = document.createElement('button');
-    btn.className = 'ml-3 text-apple-blue hover:underline font-semibold';
+    btn.className = 'toast-action';
     btn.textContent = action.label;
     if (action.title) btn.title = action.title;
-    btn.onclick = () => { el.classList.add('hidden'); action.onClick(); };
+    btn.onclick = () => { dismiss(); action.onClick(); };
     el.appendChild(btn);
   }
-  el.classList.remove('hidden');
-  clearTimeout(window._toastTimer);
-  window._toastTimer = setTimeout(() => el.classList.add('hidden'), action ? 7000 : 2600);
+  if (kind === 'warning' || kind === 'error') {
+    const x = document.createElement('button');
+    x.className = 'toast-close';
+    x.setAttribute('aria-label', t('close'));
+    x.textContent = '✕';
+    x.onclick = dismiss;
+    el.appendChild(x);
+  }
+  const life = action && kind === 'success' ? 7000 : TOAST_LIFE[kind];
+  const arm = (ms) => { clearTimeout(el._timer); if (ms) el._timer = setTimeout(dismiss, ms); };
+  el.addEventListener('mouseenter', () => clearTimeout(el._timer));
+  el.addEventListener('mouseleave', () => arm(life && Math.max(1500, life / 2)));
+  stack.appendChild(el);
+  const live = [...stack.children].filter(c => !c.classList.contains('is-leaving'));
+  live.slice(0, Math.max(0, live.length - 3)).forEach(c => removeWithExit(c));
+  arm(life);
+  return dismiss;
 }
+function showError(msg, action) { return showToast(msg || t('errorGeneric'), action, 'error'); }
+function showWarning(msg, action) { return showToast(msg, action, 'warning'); }
 
 function formatTime(sec) {
   sec = Math.max(0, Number(sec) || 0);
@@ -654,7 +687,7 @@ function renderVoiceProfiles(data) {
 async function applyVoiceProfilesToLibrary() {
   const res = await fetch('/api/voice-profiles/apply-all', { method: 'POST' });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  if (!res.ok) { showError(data.detail); return; }
   showToast(data.speakers ? t('voiceApplyAllDone').replace('{n}', () => data.speakers).replace('{m}', () => data.meetings) : t('voiceApplyAllNone'));
   if (data.speakers) {
     await loadMeetingsList();
@@ -667,7 +700,7 @@ async function deleteVoiceProfile(id, name) {
   const res = await fetch(`/api/voice-profiles/${id}`, { method: 'DELETE' });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    showToast(data.detail || 'Error');
+    showError(data.detail);
     return;
   }
   renderVoiceProfiles(data);

@@ -43,7 +43,7 @@ function tkIsMe(name) { return !!name && tkMeNames().includes(String(name).toLoc
 async function tkSaveMyName(value) {
   const res = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: { my_name: value } }) });
   const data = await readJson(res);
-  if (!res.ok) { showToast(serverText(data.detail || 'Error')); return false; }
+  if (!res.ok) { showError(serverText(data.detail)); return false; }
   if (state.system) state.system.settings = data.settings;
   return true;
 }
@@ -529,7 +529,7 @@ async function deleteTask(id) {
   const ok = await confirmDialog(t('tkDeleteTitle'), t('tkDeleteText').replace('{task}', () => x.what), t('tkDelete'));
   if (!ok) return;
   const res = await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
-  if (!res.ok) { showToast(t('tkSaveFailed')); return; }
+  if (!res.ok) { showError(t('tkSaveFailed')); return; }
   TK.data.tasks = TK.data.tasks.filter(y => y.id !== id);
   if (TK.sel === id) TK.sel = null;
   TK.report = null;
@@ -896,7 +896,7 @@ async function makeTasksReport() {
 
 async function copyTasksReport() {
   if (!TK.report) return;
-  try { await navigator.clipboard.writeText(TK.report.text); } catch { showToast(t('tkCopyFailed')); return; }
+  try { await navigator.clipboard.writeText(TK.report.text); } catch { showError(t('tkCopyFailed')); return; }
   TK.copied = true;
   renderTasksReport();
 }
