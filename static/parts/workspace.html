@@ -587,6 +587,9 @@
             <span id="tx-model-status" class="tx-model-status"></span>
           </div>
           <div class="tx-toolbar max-w-6xl mx-auto flex items-center justify-between gap-3">
+            <!-- Audit 8.4: with a text there, recognition folds into this mark of its model; it opens the row above -->
+            <button id="tx-model-chip" data-click="toggleTxModelBar" class="tx-model-chip hidden" aria-expanded="false" aria-controls="tx-model-bar"
+              data-i18n-title="tipTxModelChip" title="Модель расшифровки: сменить, расшифровать заново, параметры"></button>
             <span class="tx-section-label tx-section-label-text" data-i18n="txSectionText">Текст</span>
             <!-- Left: Speaker Filter Pills (they wrap within their part; the tools stay on one line) -->
             <div class="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap min-h-[28px]" id="speaker-pills-container">

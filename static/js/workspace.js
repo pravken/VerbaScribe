@@ -79,15 +79,26 @@ function txModelChoices(m) {
   return { list, done };
 }
 
+function toggleTxModelBar(open) {
+  state.txBarOpen = typeof open === 'boolean' ? open : !state.txBarOpen;
+  renderTxModelBar();
+}
+
 function renderTxModelBar() {
   const m = state.activeMeeting;
   const bar = document.getElementById('tx-model-bar');
   if (!bar) return;
-  bar.classList.toggle('hidden', !m);
-  if (!m) return;
-  if (state.txModelFor !== m.id) { state.txModelFor = m.id; state.txModelPick = null; }
+  const chip = document.getElementById('tx-model-chip');
+  if (!m) { bar.classList.add('hidden'); chip.classList.add('hidden'); return; }
+  if (state.txModelFor !== m.id) { state.txModelFor = m.id; state.txModelPick = null; state.txBarOpen = false; }
   const { list, done } = txModelChoices(m);
   const shown = (m.segments || []).length ? (m.transcript_model || '') : '';
+  // Audit 8.4: when a text is shown and nothing is running, the row folds into the model's mark
+  const folded = !!shown && DONE_STATUSES.includes(m.status) && !state.txBarOpen;
+  bar.classList.toggle('hidden', folded);
+  chip.classList.toggle('hidden', !shown || !DONE_STATUSES.includes(m.status));
+  chip.setAttribute('aria-expanded', String(!folded));
+  chip.innerHTML = `<span class="tx-model-chip-dot" aria-hidden="true"></span><span>${escapeHtml(formatModelName(shown))}</span><span aria-hidden="true">${folded ? '▾' : '▴'}</span>`;
   const pick = state.txModelPick || shown || m.model_name || (list[0] && list[0].id) || '';
   const lang = String(m.language || '').slice(0, 2);
   const sel = document.getElementById('tx-model-select');

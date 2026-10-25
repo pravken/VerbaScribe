@@ -1084,6 +1084,7 @@ async function rpCancelPendingExports(id) {
 function rpInfoToRecognition() {
   closeModal('recinfo');
   openRecordTab('transcript');
+  toggleTxModelBar(true);  // the parameters live in the recognition row, folded while a text is shown
   nextFrame(() => document.getElementById('tx-proc-btn')?.click());
 }
 
