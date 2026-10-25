@@ -970,7 +970,7 @@ async function openOpenCommitments() {
       <div class="px-5 pt-5 pb-3 border-b apple-border flex items-center justify-between gap-3">
         <div><div class="text-sm font-semibold text-white">${escapeHtml(t('openCommitmentsBtn'))}</div>
           <p class="text-[11.5px] text-apple-secondary mt-1">${escapeHtml(t('openCommitmentsDesc'))}</p></div>
-        <button data-a="close" class="ui-btn ui-btn-subtle">${escapeHtml(t('close'))}</button>
+        <button data-a="close" class="dlg-x" title="${escapeHtml(t('tipCloseModal'))}" aria-label="${escapeHtml(t('tipCloseModal'))}">✕</button>
       </div>
       <div class="flex-1 overflow-y-auto px-5 py-2">${items.length ? items.map(c => commitmentRowHtml(c, true)).join('') + commitmentExportBar(null)
         : `<div class="py-10 text-center text-xs text-apple-tertiary">${escapeHtml(t('commitmentsNoneOpen'))}</div>`}</div>

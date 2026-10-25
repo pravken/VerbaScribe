@@ -2,6 +2,7 @@
   <!-- About (openAbout in static/js/app.js): a click on the willow is a small easter egg, five quick clicks a big one -->
   <div id="modal-about" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4" data-click="closeModalOnBackdrop" data-click-args='[{"$": "event"}, "about"]'>
     <div class="about-card relative w-full max-w-lg bg-apple-card border apple-border rounded-2xl shadow-2xl overflow-hidden modal-card">
+      <button data-click="closeModal" data-click-args='["about"]' data-i18n-title="tipCloseModal" title="Закрыть окно" data-i18n-aria="tipCloseModal" aria-label="Закрыть окно" class="dlg-x dlg-x-corner">✕</button>
       <div class="px-7 pt-7 pb-4 flex items-center gap-6">
         <button id="about-logo" data-click="aboutLogoClick" class="about-logo shrink-0" data-i18n-title="tipAboutLogo" title="Это верба. Она всё слышит">
           <svg class="about-willow" viewBox="0 0 24 24" fill="none">
@@ -34,7 +35,6 @@
         </button>
         <div class="flex-1"></div>
         <button data-click="openExternal" data-click-args='["https://github.com/pravken/VerbaScribe/releases"]' class="ui-btn ui-btn-subtle h-9 px-4" data-i18n="aboutWhatsNew">Что нового</button>
-        <button data-click="closeModal" data-click-args='["about"]' class="ui-btn ui-btn-primary h-9 px-6">OK</button>
       </div>
       <!-- The big easter egg: the room, transcribed. Plays to its end (a click does not stop it; it
            closes by itself, or with the window) -->

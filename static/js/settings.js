@@ -1771,7 +1771,7 @@ async function openCloudLog() {
           <p class="text-[11.5px] text-apple-secondary mt-1">${escapeHtml(t('cloudLogDesc'))}</p></div>
         <div class="flex gap-2 shrink-0">
           ${rows.length ? `<button data-a="clear" class="ui-btn ui-btn-subtle">${escapeHtml(t('cloudLogClear'))}</button>` : ''}
-          <button data-a="close" class="ui-btn ui-btn-subtle">${escapeHtml(t('close'))}</button>
+          <button data-a="close" class="dlg-x" title="${escapeHtml(t('tipCloseModal'))}" aria-label="${escapeHtml(t('tipCloseModal'))}">✕</button>
         </div>
       </div>
       <div class="flex-1 overflow-y-auto px-5 py-2">${rows.length ? rows.map(r => `<div class="py-2 border-b border-white/5 text-[11.5px]">

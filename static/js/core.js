@@ -652,7 +652,9 @@ function openModal(name, tab) {
   setTimeout(() => {
     if (modal.contains(document.activeElement)) return;
     const first = name === 'settings' ? document.getElementById('settings-search') : null;  // the search, not «Закрыть»
-    (first || focusablesIn(modal)[0] || modal).focus();
+    // Audit 7.2: the first field or action, not the ✕ of the window (Enter must not close it)
+    const items = focusablesIn(modal);
+    (first || items.find(el => !el.matches('.dlg-x, .imp-x')) || items[0] || modal).focus();
   }, 60);
   if (name === 'import') onImportDialogOpen();  // importdlg.js: the list, the processing from the settings
   if (name === 'settings') {

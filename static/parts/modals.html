@@ -4,7 +4,7 @@
       <div class="p-6 space-y-3">
         <div class="flex items-center justify-between">
           <h3 class="text-sm font-semibold text-white" data-i18n="shortcutsTitle">Горячие клавиши</h3>
-          <button data-click="closeModal" data-click-args='["shortcuts"]' data-i18n-title="tipCloseModal" title="Закрыть окно" class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
+          <button data-click="closeModal" data-click-args='["shortcuts"]' data-i18n-title="tipCloseModal" title="Закрыть окно" data-i18n-aria="tipCloseModal" aria-label="Закрыть окно" class="dlg-x">✕</button>
         </div>
         <div>
           <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
@@ -73,7 +73,7 @@
       <div class="p-6 space-y-4">
         <div class="flex items-center justify-between">
           <h3 class="text-sm font-semibold text-white" data-i18n="reconfigTitle">Параметры обработки записи</h3>
-          <button data-click="closeModal" data-click-args='["reconfigure"]' data-i18n-title="tipCloseModal" title="Закрыть окно" class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
+          <button data-click="closeModal" data-click-args='["reconfigure"]' data-i18n-title="tipCloseModal" title="Закрыть окно" data-i18n-aria="tipCloseModal" aria-label="Закрыть окно" class="dlg-x">✕</button>
         </div>
         <p id="reconfig-recording-name" class="text-xs text-apple-secondary truncate"></p>
 
@@ -125,7 +125,7 @@
       <div class="p-6 space-y-4 overflow-y-auto" style="max-height: 85vh">
         <div class="flex items-center justify-between">
           <h3 class="text-sm font-semibold text-white" data-i18n="translateTitle">Перевод текста</h3>
-          <button data-click="closeModal" data-click-args='["translate"]' class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
+          <button data-click="closeModal" data-click-args='["translate"]' data-i18n-title="tipCloseModal" title="Закрыть окно" data-i18n-aria="tipCloseModal" aria-label="Закрыть окно" class="dlg-x">✕</button>
         </div>
         <p class="text-xs text-apple-secondary leading-relaxed" data-i18n="translateIntro">Каждая реплика переводится выбранной моделью Ollama на этом компьютере — текст никуда не отправляется. Это машинный перевод: качество зависит от модели, имена и термины стоит проверить. Таймкоды реплик сохраняются.</p>
         <div id="translate-last-error" class="hidden text-xs rounded-lg border border-apple-red/30 bg-apple-red/15 text-apple-red px-3 py-2"></div>
@@ -188,7 +188,7 @@
       <div class="p-6 space-y-4 overflow-y-auto" style="max-height: 85vh">
         <div class="flex items-center justify-between">
           <h3 class="text-sm font-semibold text-white"><span data-i18n="dubTitle">Перевод и дубляж</span> <span class="text-[11px] font-normal text-apple-secondary" data-i18n="dubProto">(бета)</span></h3>
-          <button data-click="closeModal" data-click-args='["dub"]' class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
+          <button data-click="closeModal" data-click-args='["dub"]' data-i18n-title="tipCloseModal" title="Закрыть окно" data-i18n-aria="tipCloseModal" aria-label="Закрыть окно" class="dlg-x">✕</button>
         </div>
         <p class="text-xs text-apple-secondary leading-relaxed" data-i18n="dubIntro">Каждая фраза переводится локальной моделью Ollama, озвучивается клоном голоса её участника (Chatterbox Multilingual), фон сохраняется (Demucs), результат пишется в новый файл. Всё работает локально.</p>
         <div id="dub-env-panel" class="hidden rounded-xl border apple-border bg-apple-amber/15 p-3 space-y-2">
@@ -264,7 +264,7 @@
             <h3 class="text-sm font-semibold text-white" data-i18n="dictTitle">Пользовательский словарь</h3>
             <p class="text-[11.5px] text-apple-secondary" data-i18n="dictSubtitle">Имена, бренды и профильные термины для точного распознавания</p>
           </div>
-          <button data-click="closeModal" data-click-args='["dictionary"]' data-i18n-title="tipCloseModal" title="Закрыть окно" class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
+          <button data-click="closeModal" data-click-args='["dictionary"]' data-i18n-title="tipCloseModal" title="Закрыть окно" data-i18n-aria="tipCloseModal" aria-label="Закрыть окно" class="dlg-x">✕</button>
         </div>
 
         <div class="flex gap-2 shrink-0">
