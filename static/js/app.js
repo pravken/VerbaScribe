@@ -1571,7 +1571,8 @@ async function cancelPendingExports(id) {
 const TEXT_AREAS = '#studio-captions, #transcript-container, #summary-content, #ask-thread, #info-content, .markdown-body';
 
 function closeTextMenu() {
-  document.getElementById('text-menu')?.remove();
+  const menu = document.getElementById('text-menu');
+  if (menu && !menu.classList.contains('is-leaving')) { menu.id = ''; removeWithExit(menu); }
 }
 
 function textMenuItems(e) {

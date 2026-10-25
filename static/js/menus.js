@@ -365,7 +365,8 @@ async function openSeriesMenu(e) {
 document.addEventListener('click', () => document.getElementById('series-menu')?.remove());
 
 function hideContextMenu() {
-  document.getElementById('recording-context-menu')?.classList.add('hidden');
+  const menu = document.getElementById('recording-context-menu');
+  if (menu) hideWithExit(menu);
 }
 
 document.addEventListener('click', () => {

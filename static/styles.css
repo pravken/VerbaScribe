@@ -2159,3 +2159,19 @@ input[type="range"].rp-volume::-webkit-slider-thumb { -webkit-appearance: none; 
 
 /* Audit 4.7. Nothing scrolls under the recording header: no blur, an opaque fill */
 #workspace-header.apple-blur { backdrop-filter: none; -webkit-backdrop-filter: none; background-color: #1C1C1E; }
+
+/* Audit 3.4, 3.5. Menus and popovers grow from the corner nearest to what opened them (placeMenuAt
+   sets it at the pointer; popovers under a button grow from its side), all with one short entrance */
+@keyframes menuGrow { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+.macos-menu, .tk-pop, .an-pop, .models-pop { transform-origin: top left; }
+.hm-pop, .tb-pop, #export-menu { transform-origin: top right; }
+.rp-pop { transform-origin: bottom right; }
+.macos-menu, .rp-pop, .tk-pop, .an-pop, .hm-pop, .tb-pop, .models-pop {
+  animation: menuGrow var(--dur) var(--ease-out);
+}
+/* Audit 3.6. The way out: the same path backwards in 120 ms, letting the pointer through */
+@keyframes menuLeave { to { opacity: 0; transform: scale(0.97); } }
+@keyframes fadeLeave { to { opacity: 0; } }
+.is-leaving { pointer-events: none; animation: menuLeave var(--dur-fast) ease-in forwards !important; }
+.modal-backdrop.is-leaving, .tk-veil.is-leaving { animation: fadeLeave var(--dur-fast) ease-in forwards !important; }
+.modal-backdrop.is-leaving > .modal-card { animation: menuLeave var(--dur-fast) ease-in forwards; }

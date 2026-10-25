@@ -579,7 +579,8 @@ function openFolderMenu(e, id) {
 }
 
 function hideFolderMenu() {
-  document.getElementById('folder-context-menu')?.classList.add('hidden');
+  const menu = document.getElementById('folder-context-menu');
+  if (menu) hideWithExit(menu);
 }
 
 async function fctxRename() {

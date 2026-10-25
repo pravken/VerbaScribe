@@ -18,9 +18,34 @@ function viewH() { return window.innerHeight / uiZoom(); }
 function scrollMotion() {
   return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
 }
+// Audit 3.6. Menus and dialogs leave the way they came, in 120 ms, instead of vanishing in one
+// frame; the pointer goes through them meanwhile, so nothing waits for the animation. Showing the
+// element again cancels its exit (cancelLeave)
+function leaveThen(el, done) {
+  if (!el || scrollMotion() === 'auto' || el.classList.contains('hidden')) { done(); return; }
+  const token = el._leave = (el._leave || 0) + 1;
+  el.classList.add('is-leaving');
+  const end = () => {
+    if (el._leave !== token) return;
+    el._leave++;
+    el.classList.remove('is-leaving');
+    done();
+  };
+  el.addEventListener('animationend', (e) => { if (e.target === el) end(); }, { once: true });
+  setTimeout(end, 140);
+}
+function hideWithExit(el) { leaveThen(el, () => el.classList.add('hidden')); }
+function removeWithExit(el) { leaveThen(el, () => el.remove()); }
+function cancelLeave(el) {
+  if (!el || !el.classList.contains('is-leaving')) return;
+  el._leave = (el._leave || 0) + 1;
+  el.classList.remove('is-leaving');
+}
+
 // Puts a shown menu at the pointer by its real size: where it does not fit below, it opens upward
 // from the pointer, and where it does not fit to the right, leftward; it never leaves the window
 function placeMenuAt(menu, e) {
+  cancelLeave(menu);
   const x = zpx(e.clientX), y = zpx(e.clientY);
   const w = menu.offsetWidth, h = menu.offsetHeight;
   const left = x + w <= viewW() - 8 ? x : Math.max(8, x - w);
@@ -302,7 +327,7 @@ function confirmDialog(title, text, okLabel, danger = true, opts = {}) {
         ${opts.single ? '' : `<button data-a="no" class="ui-btn ui-btn-subtle">${escapeHtml(opts.cancel || t('cancel'))}</button>`}
         <button data-a="yes" class="ui-btn ${danger ? 'bg-apple-red text-white hover:opacity-90' : 'ui-btn-primary'}">${escapeHtml(okLabel)}</button>
       </div></div>`;
-    const done = v => { wrap.remove(); document.removeEventListener('keydown', onKey, true); resolve(v); };
+    const done = v => { removeWithExit(wrap); document.removeEventListener('keydown', onKey, true); resolve(v); };
     const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); done(false); } };
     wrap.addEventListener('click', e => {
       const a = e.target.closest('button[data-a]');
@@ -350,7 +375,7 @@ function askText(label, value = '', opts = {}) {
       </div></form>`;
     const input = wrap.querySelector('input');
     input.value = value || '';
-    const done = v => { wrap.remove(); document.removeEventListener('keydown', onKey, true); resolve(v); };
+    const done = v => { removeWithExit(wrap); document.removeEventListener('keydown', onKey, true); resolve(v); };
     const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); done(null); } };
     wrap.querySelector('form').addEventListener('submit', e => { e.preventDefault(); done(input.value); });
     wrap.addEventListener('click', e => { if (e.target === wrap || e.target.closest('[data-a="no"]')) done(null); });
@@ -561,6 +586,7 @@ function openModal(name, tab) {
     modal.setAttribute('role', 'dialog');
     modal.setAttribute('aria-modal', 'true');
   }
+  cancelLeave(modal);
   modal.classList.remove('hidden');
   if (name === 'settings' && state.appView !== 'settings') switchAppView('settings');
   setTimeout(() => {
@@ -650,7 +676,9 @@ function closeModal(name) {
     stopSettingsAudioTest();
   }
   if (name === 'about') endAboutEgg();  // the transcript of the room does not go on unseen
-  document.getElementById(`modal-${name}`).classList.add('hidden');
+  const modal = document.getElementById(`modal-${name}`);
+  if (name === 'settings') modal.classList.add('hidden');
+  else hideWithExit(modal);
   // The settings page: back to the view it was opened from
   if (name === 'settings' && state.appView === 'settings') switchAppView(state.prevView || 'home');
   const back = _modalReturnFocus[name];
