@@ -2141,3 +2141,10 @@ input[type="range"].rp-volume::-webkit-slider-thumb { -webkit-appearance: none; 
   filter: brightness(0.75);
   transition: transform var(--dur) var(--ease-out), filter var(--dur) var(--ease-out);
 }
+
+/* Audit 4.5. Soft edges of scrolled lists (softEdges() in core.js sets the classes) */
+.soft-edges { --se-top: 0px; --se-bottom: 0px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 var(--se-top), #000 calc(100% - var(--se-bottom)), transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 var(--se-top), #000 calc(100% - var(--se-bottom)), transparent); }
+.soft-edges.se-top { --se-top: 18px; }
+.soft-edges.se-bottom { --se-bottom: 24px; }

@@ -660,6 +660,25 @@ function closeModalOnBackdrop(e, name) {
   if (e.target === e.currentTarget) closeModal(name);
 }
 
+// Audit 4.5. Scrolled lists fade into their edges instead of being cut by a line: the top edge
+// fades only once the list is scrolled, the bottom one while there is more below
+function softEdges(el) {
+  if (!el || el._softEdges) return;
+  el._softEdges = true;
+  el.classList.add('soft-edges');
+  const update = () => {
+    el.classList.toggle('se-top', el.scrollTop > 2);
+    el.classList.toggle('se-bottom', el.scrollTop + el.clientHeight < el.scrollHeight - 2);
+  };
+  el.addEventListener('scroll', update, { passive: true });
+  if (window.ResizeObserver) new ResizeObserver(update).observe(el);
+  if (window.MutationObserver) new MutationObserver(update).observe(el, { childList: true, subtree: true });
+  update();
+}
+document.addEventListener('DOMContentLoaded', () => {
+  ['transcript-container', 'an-main', 'library-answer', 'wview-speakers', 'wview-info'].forEach(id => softEdges(document.getElementById(id)));
+});
+
 // A press inside a dialog released over its backdrop (a text selection dragged out of a field)
 // reaches the backdrop as a click: that is not a click on the backdrop, so no dialog closes on it
 let _pressTarget = null;
