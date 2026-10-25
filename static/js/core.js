@@ -9,7 +9,7 @@ try { sessionStorage.removeItem('vs_relocked'); } catch (e) { /* storage off */ 
 // --- Interface scale (Settings → Interface, ui_scale): CSS zoom on the page, 100 % by default ---
 // The zoom is on <html>, so the page lays itself out in its own pixels: a point of the window
 // (event.clientX/Y, getBoundingClientRect) is divided by the zoom before it becomes style.left/top.
-const UI_SCALES = ['75', '90', '100', '115'];
+const UI_SCALES = ['75', '90', '100', '115', '130', '150'];
 function uiZoom() { return Number(document.documentElement.dataset.zoom) || 1; }
 function zpx(v) { return v / uiZoom(); }
 function viewW() { return window.innerWidth / uiZoom(); }
@@ -591,9 +591,9 @@ function formatTime(sec) {
 
 // --- Modals & Menus ---
 // Settings are split into tabs; the last one is remembered
-const SETTINGS_TABS = ['general', 'ui', 'record', 'recognition', 'models', 'analysis', 'calendar', 'hotkeys', 'dictionary',
+const SETTINGS_TABS = ['general', 'record', 'recognition', 'models', 'analysis', 'calendar', 'hotkeys', 'dictionary',
   'export', 'privacy', 'updates', 'dub', 'bench', 'about'];
-const SETTINGS_TAB_ALIASES = { integrations: 'export', interface: 'ui', ai: 'analysis', dict: 'dictionary', recog: 'recognition' };
+const SETTINGS_TAB_ALIASES = { integrations: 'export', interface: 'general', ui: 'general', ai: 'analysis', dict: 'dictionary', recog: 'recognition' };
 function selectSettingsTab(name) {
   name = SETTINGS_TAB_ALIASES[name] || name;
   if (!SETTINGS_TABS.includes(name)) name = 'general';

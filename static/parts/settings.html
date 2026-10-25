@@ -7,8 +7,8 @@
       <aside class="sx-nav">
         <div class="flex items-center gap-2 px-2 pt-1 pb-3">
           <h2 class="flex-1 text-[19px] font-bold text-white" data-i18n="settingsModalTitle">Настройки</h2>
-          <button data-click="closeModal" data-click-args='["settings"]' data-i18n-title="tipCloseModal" title="Закрыть окно настроек"
-            class="ui-btn ui-btn-subtle h-7 !px-2.5 text-[11.5px]" data-i18n="close">Закрыть</button>
+          <button data-click="closeModal" data-click-args='["settings"]' data-i18n-title="tipSettingsBack" title="Вернуться туда, откуда открыты настройки"
+            class="ui-btn ui-btn-subtle h-7 !px-2.5 text-[11.5px]" data-i18n="settingsBack">← Назад</button>
         </div>
         <label class="sx-search">
           <svg aria-hidden="true" class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
@@ -21,10 +21,6 @@
             <svg class="sx-nav-ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg>
             <span class="flex-1 min-w-0 truncate" data-i18n="rdSasNavGeneral">Общие</span><span class="sx-nav-dot" aria-hidden="true"></span>
           </button>
-          <button data-click="selectSettingsTab" data-click-args='["ui"]' id="stab-ui" class="sx-nav-btn" type="button">
-            <svg class="sx-nav-ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
-            <span class="flex-1 min-w-0 truncate" data-i18n="rdSasNavUi">Интерфейс</span><span class="sx-nav-dot" aria-hidden="true"></span>
-          </button>
           <button data-click="selectSettingsTab" data-click-args='["record"]' id="stab-record" class="sx-nav-btn" type="button">
             <svg class="sx-nav-ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5"/></svg>
             <span class="flex-1 min-w-0 truncate" data-i18n="rdSasNavRecord">Запись</span><span class="sx-nav-dot" aria-hidden="true"></span>
@@ -35,7 +31,7 @@
           </button>
           <button data-click="selectSettingsTab" data-click-args='["models"]' id="stab-models" class="sx-nav-btn" type="button">
             <svg class="sx-nav-ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/></svg>
-            <span class="flex-1 min-w-0 truncate" data-i18n="rdSasNavModels">Модели</span><span class="sx-nav-dot" aria-hidden="true"></span>
+            <span class="flex-1 min-w-0 truncate" data-i18n="rdSasNavModels">Модели речи</span><span class="sx-nav-dot" aria-hidden="true"></span>
           </button>
           <button data-click="selectSettingsTab" data-click-args='["analysis"]' id="stab-analysis" class="sx-nav-btn" type="button">
             <svg class="sx-nav-ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3l1.6 4.6 4.6 1.6-4.6 1.6L10 15.4l-1.6-4.6L3.8 9.2l4.6-1.6z"/><path d="M18 14l.8 2.2 2.2.8-2.2.8L18 20l-.8-2.2-2.2-.8 2.2-.8z"/></svg>
@@ -65,17 +61,18 @@
             <svg class="sx-nav-ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4.5V11h-6.5"/></svg>
             <span class="flex-1 min-w-0 truncate" data-i18n="rdSasNavUpdates">Обновления</span><span class="sx-nav-dot" aria-hidden="true"></span>
           </button>
-          <button data-click="selectSettingsTab" data-click-args='["dub"]' id="stab-dub" class="sx-nav-btn" type="button">
-            <svg class="sx-nav-ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5v5h3.5L12 19V5L7.5 9.5z"/><path d="M15.5 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"/></svg>
-            <span class="flex-1 min-w-0 truncate" data-i18n="rdSasNavDub">Дубляж</span><span class="sx-nav-dot" aria-hidden="true"></span>
+          <button data-click="selectSettingsTab" data-click-args='["about"]' id="stab-about" class="sx-nav-btn" type="button">
+            <svg class="sx-nav-ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.6v.4"/></svg>
+            <span class="flex-1 min-w-0 truncate" data-i18n="rdSasNavAbout">О программе</span><span class="sx-nav-dot" aria-hidden="true"></span>
           </button>
+          <div class="sx-nav-cap" data-i18n="sxNavAdvanced">Для опытных</div>
           <button data-click="selectSettingsTab" data-click-args='["bench"]' id="stab-bench" class="sx-nav-btn" type="button">
             <svg class="sx-nav-ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></svg>
             <span class="flex-1 min-w-0 truncate" data-i18n="rdSasNavBench">Сравнение моделей</span><span class="sx-nav-dot" aria-hidden="true"></span>
           </button>
-          <button data-click="selectSettingsTab" data-click-args='["about"]' id="stab-about" class="sx-nav-btn" type="button">
-            <svg class="sx-nav-ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.6v.4"/></svg>
-            <span class="flex-1 min-w-0 truncate" data-i18n="rdSasNavAbout">О программе</span><span class="sx-nav-dot" aria-hidden="true"></span>
+          <button data-click="selectSettingsTab" data-click-args='["dub"]' id="stab-dub" class="sx-nav-btn" type="button">
+            <svg class="sx-nav-ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5v5h3.5L12 19V5L7.5 9.5z"/><path d="M15.5 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"/></svg>
+            <span class="flex-1 min-w-0 truncate" data-i18n="rdSasNavDub">Дубляж</span><span class="sx-nav-dot" aria-hidden="true"></span>
           </button>
         </nav>
         <p id="settings-save-state" class="sx-foot" data-i18n="rdSasAutoNote">Изменения применяются сразу. Всё хранится только на этом компьютере.</p>
@@ -96,7 +93,7 @@
         <!-- First-Run Welcome Banner -->
         <div id="first-run-banner" class="hidden mb-4 rounded-xl bg-apple-blue/15 border border-apple-blue/40 p-3.5 text-xs text-white space-y-1">
           <div class="font-semibold text-apple-blue" data-i18n="firstRunTitle">Начальная настройка</div>
-          <p class="text-apple-label/90 text-[11.5px]" data-i18n="firstRunText">Модели распознавания не входят в установку, чтобы она занимала меньше места. Скачайте рекомендуемую модель на вкладке «Модели».</p>
+          <p class="text-apple-label/90 text-[11.5px]" data-i18n="firstRunText">Модели распознавания не входят в установку, чтобы она занимала меньше места. Скачайте рекомендуемую модель на вкладке «Модели речи».</p>
           <button type="button" class="ui-btn ui-btn-primary first-run-btn" data-click="selectSettingsTab" data-click-args='["models"]' data-i18n="firstRunOpenModels">Открыть модели</button>
         </div>
           <div id="settings-search-empty" class="hidden text-center text-xs text-apple-tertiary py-16" data-i18n="rdSasSearchNone">Ничего не нашлось</div>
@@ -169,12 +166,6 @@
           </div>
           <button id="ffmpeg-download-btn" data-click="installFfmpeg" class="hidden ui-btn ui-btn-primary shrink-0" data-i18n="ffmpegDownloadBtn">Скачать FFmpeg</button>
         </div>
-        </div>
-        <div data-stab="ui" class="sx-section space-y-3 hidden">
-          <div class="sx-section-head">
-            <h3 class="sx-section-title" data-i18n="rdSasNavUi">Интерфейс</h3>
-            <p class="sx-section-desc" data-i18n="rdSasDescUi">Размер всего интерфейса.</p>
-          </div>
         <!-- Interface scale: CSS zoom on the page (applyUiScale in static/js/core.js) -->
         <div class="settings-card !space-y-0 flex items-center justify-between gap-3">
           <div class="min-w-0">
@@ -186,6 +177,8 @@
             <button data-click="setUiScale" data-click-args='["90"]' id="scale-btn-90" role="radio" class="apple-segment-btn">90 %</button>
             <button data-click="setUiScale" data-click-args='["100"]' id="scale-btn-100" role="radio" class="apple-segment-btn">100 %</button>
             <button data-click="setUiScale" data-click-args='["115"]' id="scale-btn-115" role="radio" class="apple-segment-btn">115 %</button>
+            <button data-click="setUiScale" data-click-args='["130"]' id="scale-btn-130" role="radio" class="apple-segment-btn">130 %</button>
+            <button data-click="setUiScale" data-click-args='["150"]' id="scale-btn-150" role="radio" class="apple-segment-btn">150 %</button>
           </div>
         </div>
         </div>
@@ -316,23 +309,32 @@
             <h4 class="text-[13px] font-semibold text-white" data-i18n="deviceTitle">Устройство</h4>
             <p class="text-[11.5px] text-apple-secondary leading-snug mt-0.5" data-i18n="deviceDesc">Где считается распознавание: видеокарта NVIDIA быстрее, процессор подходит любому компьютеру.</p>
           </div>
+          <!-- Audit 8.2: chosen by the hardware unless you pick yourself; the device and the precision are one level deeper -->
+          <label class="vs-row cursor-pointer text-xs text-apple-label">
+            <span class="min-w-0"><span data-i18n="deviceAuto">Подбирать автоматически</span>
+              <span id="device-auto-hint" class="block text-[11.5px] text-apple-tertiary leading-snug mt-0.5"></span></span>
+            <input type="checkbox" role="switch" class="vs-switch" id="set-device-auto" data-change="syncDeviceAuto" />
+          </label>
+          <details id="device-more" class="sx-more">
+            <summary data-i18n="sxMore">Дополнительно</summary>
           <div class="grid grid-cols-2 gap-3.5">
           <div>
             <label class="block text-[11.5px] text-apple-secondary mb-1" data-i18n="deviceLabel">Устройство вычислений</label>
             <select id="set-device" data-i18n-title="tipComputeDevice" title="Выберите видеокарту NVIDIA (CUDA) или процессор (CPU)" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none">
-              <option value="cuda">NVIDIA GPU (CUDA)</option>
-              <option value="cpu">CPU</option>
+              <option value="cuda" data-i18n="devGpu">Видеокарта NVIDIA (CUDA)</option>
+              <option value="cpu" data-i18n="devCpu">Процессор</option>
             </select>
           </div>
           <div>
             <label class="block text-[11.5px] text-apple-secondary mb-1" data-i18n="precisionLabel">Точность вычислений</label>
             <select id="set-compute-type" data-i18n-title="tipComputePrecision" title="Выберите формат точности весов под объём видеопамяти" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none">
-              <option value="float16">float16 (8+ GB VRAM)</option>
-              <option value="int8_float16">int8_float16 (4–6 GB VRAM)</option>
-              <option value="int8">int8 (Compact / CPU)</option>
+              <option value="float16" data-i18n="precHigh">Высокая — нужна видеокарта от 8 ГБ</option>
+              <option value="int8_float16" data-i18n="precMid">Средняя — видеокарта от 4–6 ГБ</option>
+              <option value="int8" data-i18n="precLow">Компактная — процессор или мало видеопамяти</option>
             </select>
           </div>
           </div>
+          </details>
           <!-- GigaAM / Parakeet on the NVIDIA GPU (app/onnx_gpu.py) -->
           <div id="onnx-gpu-box" class="hidden space-y-1.5">
           <label class="vs-row cursor-pointer text-xs text-apple-label">
@@ -409,7 +411,7 @@
         </div>
         <div data-stab="models" class="sx-section space-y-3 hidden">
           <div class="sx-section-head">
-            <h3 class="sx-section-title" data-i18n="rdSasNavModels">Модели</h3>
+            <h3 class="sx-section-title" data-i18n="rdSasNavModels">Модели речи</h3>
             <p class="sx-section-desc" data-i18n="rdSasDescModels">Модели распознавания речи на этом компьютере: скачать, выбрать основную, удалить.</p>
           </div>
         <!-- Section 2: Whisper Speech Recognition Models -->

@@ -1,7 +1,8 @@
 """System, models, settings, dictionary and live progress (SSE)."""
 
 import json
-from typing import Any, Dict, List
+import sys
+from typing import Any, Dict, List, Optional
 from fastapi import HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -21,11 +22,27 @@ from app.main import (  # noqa: E402 - shared helpers live in app/main.py
 router = APIRouter()
 
 # --- System, Hardware & Settings ---
+def windows_text_scale() -> Optional[int]:
+    """«Make text bigger» of Windows (Accessibility → Text size), in percent; None elsewhere or unset.
+    The page takes its first interface scale from it (audit 5.5)."""
+    if sys.platform != "win32":
+        return None
+    try:
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Accessibility") as key:
+            value, _ = winreg.QueryValueEx(key, "TextScaleFactor")
+        return int(value)
+    except (OSError, ValueError, TypeError):
+        return None
+
+
 @router.get("/api/system")
 def api_system_info() -> Dict[str, Any]:
     from app.model_manager import get_models_status
 
     return {
+        "text_scale": windows_text_scale(),
         "hardware": get_hardware_info(),
         "settings": get_all_settings(),
         "ollama": get_ollama_status(),

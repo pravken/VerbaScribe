@@ -2227,3 +2227,15 @@ input[type="range"].rp-volume::-webkit-slider-thumb { -webkit-appearance: none; 
 .dlg-x:hover { background: rgba(255, 255, 255, 0.14); color: #FFFFFF; }
 .dlg-x:active { transform: scale(0.94); }
 .dlg-x-corner { position: absolute; top: 14px; right: 14px; z-index: 2; }
+
+/* Audit 8.1, 8.8. The settings: a caption over the rare sections at the end; the open settings page
+   marks its button in the sidebar */
+.sx-nav-cap { padding: 12px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--hc-dim, #8A8A90); }
+#sb-settings-btn.sb-on { background: rgba(255, 255, 255, 0.12); color: #FFFFFF; }
+
+/* Audit 8.1, 8.2. «Дополнительно»: what is rarely changed, one click deeper */
+.sx-more > summary { cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--hc-dim, #AEAEB2); padding: 2px 0; }
+.sx-more > summary::-webkit-details-marker { display: none; }
+.sx-more > summary::before { content: '▸'; font-size: 10px; transition: transform var(--dur-fast); }
+.sx-more[open] > summary::before { transform: rotate(90deg); }
+.sx-more[open] > summary { margin-bottom: 10px; color: #F5F5F7; }

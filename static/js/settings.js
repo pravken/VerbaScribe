@@ -67,7 +67,14 @@ async function loadSystemInfo() {
     const res = await fetch('/api/system');
     const data = await readJson(res);
     state.system = data;
-    applyUiScale((data.settings || {}).ui_scale);
+    // Audit 5.5: with no scale chosen yet, the first one follows «Text size» of Windows
+    const ownScale = (data.settings || {}).ui_scale;
+    let asked = true;
+    try { asked = !!localStorage.getItem('verbascribe_ui_scale_windows'); localStorage.setItem('verbascribe_ui_scale_windows', '1'); } catch (e) {}
+    if (!asked && (!ownScale || ownScale === '100') && Number(data.text_scale) >= 110) {
+      const near = UI_SCALES.reduce((a, b) => Math.abs(b - data.text_scale) < Math.abs(a - data.text_scale) ? b : a);
+      setUiScale(near);
+    } else applyUiScale(ownScale);
     renderUiScaleButtons();
 
     const hw = data.hardware;
@@ -103,6 +110,10 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     document.getElementById('upload-model').value = s.whisper_model || 'large-v3-turbo';
     document.getElementById('set-device').value = s.device || 'cuda';
     document.getElementById('set-compute-type').value = s.compute_type || 'float16';
+    // with no choice saved yet, «automatic» is on when the values are the recommended ones
+    document.getElementById('set-device-auto').checked = s.device_auto ? s.device_auto !== 'false'
+      : (s.device || '') === (hw.recommended_device || '') && (s.compute_type || '') === (hw.recommended_compute_type || '');
+    syncDeviceAuto(false);
     document.getElementById('set-diarization').checked = s.diarization_enabled !== 'false';
     document.getElementById('set-voice-profiles').checked = s.voice_profiles !== 'false';
     syncVoiceProfilesToggle();
@@ -1848,11 +1859,28 @@ function syncStartupToggles(el) {
 // The page sends only what changed on it since it was filled (or last saved): a setting changed
 // elsewhere since (the import window's «Запомнить», the working day on the home page) is not
 // overwritten by the older value the form still shows
+// Audit 8.2. «Подбирать автоматически»: the device and precision the hardware calls for, shown in words;
+// off, the two lists of «Дополнительно» are yours
+function syncDeviceAuto(save = true) {
+  const auto = document.getElementById('set-device-auto').checked;
+  const hw = (state.system || {}).hardware || {};
+  const dev = document.getElementById('set-device'), prec = document.getElementById('set-compute-type');
+  if (auto) {
+    if (hw.recommended_device) dev.value = hw.recommended_device;
+    if (hw.recommended_compute_type) prec.value = hw.recommended_compute_type;
+  }
+  dev.disabled = prec.disabled = auto;
+  const name = (sel) => sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : '';
+  document.getElementById('device-auto-hint').textContent = auto ? t('deviceAutoNow').replace('{dev}', () => name(dev)).replace('{prec}', () => name(prec).split(' — ')[0].toLowerCase()) : t('deviceManualHint');
+  if (save) { scheduleSettingsSave(); refreshSettingsChanged(); }
+}
+
 let _settingsBaseline = null;
 
 function settingsFormValues() {
   return {
     whisper_model: document.getElementById('set-whisper-model').value,
+    device_auto: String(document.getElementById('set-device-auto').checked),
     device: document.getElementById('set-device').value,
     compute_type: document.getElementById('set-compute-type').value,
     diarization_enabled: String(document.getElementById('set-diarization').checked),

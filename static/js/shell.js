@@ -40,6 +40,8 @@ function switchAppView(view) {
     VIEW_HOOKS[prev]?.hide?.();
   }
   state.appView = view;
+  // audit 8.8: the open settings page is marked on its button, like the current tab
+  document.getElementById('sb-settings-btn')?.classList.toggle('sb-on', view === 'settings');
   // The sidebar always shows the library; the main area shows the chosen part
   for (const v of APP_VIEWS) document.getElementById(`${v}-view`)?.classList.toggle('hidden', v !== view);
   if (view === 'ask') loadPeople();

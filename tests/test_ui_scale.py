@@ -52,3 +52,28 @@ class UiScaleDefaultTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SystemInfoTest(unittest.TestCase):
+    """/api/system answers with the system info (once its route took the Windows text-size helper
+    instead and answered null), and the scale steps of 130 and 150 % are accepted."""
+
+    def test_system_info_and_new_scale_steps(self):
+        from fastapi.testclient import TestClient
+        from app import main
+        from app.api.system import windows_text_scale
+
+        database.init_db()
+        c = TestClient(main.app, base_url="http://127.0.0.1:8792")
+        c.get(f"/?token={main.SESSION_TOKEN}")
+        data = c.get("/api/system").json()
+        self.assertIsInstance(data, dict)
+        self.assertIn("settings", data)
+        self.assertIn("text_scale", data)
+        self.assertEqual(data["text_scale"], windows_text_scale())
+        for v in ("130", "150"):
+            r = c.post("/api/settings", json={"settings": {"ui_scale": v}})
+            self.assertEqual(r.status_code, 200, r.text)
+            self.assertEqual(_scale(), v)
+        self.assertEqual(c.post("/api/settings", json={"settings": {"ui_scale": "175"}}).status_code, 400)
+        _put("100", True)
