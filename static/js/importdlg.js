@@ -253,11 +253,23 @@ function renderImport() {
   document.getElementById('imp-sound').innerHTML = IMP_SOUND.map(card).join('');
   document.getElementById('imp-after').innerHTML = IMP_AFTER.map(([k, l, h]) => card([k, l, h, ''])).join('');
   const def = impDefaults();
+  const asSettings = IMP_SOUND.every(([k]) => imp.proc[k] === def[k]) && IMP_AFTER.every(([k]) => imp.proc[k] === def[k]);
   document.getElementById('imp-reset').classList.toggle('hidden', IMP_SOUND.every(([k]) => imp.proc[k] === def[k]));
+  // audit 8.3: one line says how the files will be processed; the switches open under «Изменить»
+  document.querySelector('#modal-import .imp-card').classList.toggle('imp-more-open', !!imp.moreOpen);
+  document.getElementById('imp-more-summary').textContent = t(asSettings ? 'impMoreAsSettings' : 'impMoreChanged');
+  const moreBtn = document.getElementById('imp-more-btn');
+  moreBtn.textContent = t(imp.moreOpen ? 'impMoreClose' : 'impMoreOpen');
+  moreBtn.setAttribute('aria-expanded', String(!!imp.moreOpen));
 
   const go = document.getElementById('imp-go');
   go.textContent = items.length ? `${t('impGo')} ${plural(items.length, t('impItemsForms'))}` : t('impGo');
   go.disabled = !items.length;
+}
+
+function impToggleMore() {
+  state.imp.moreOpen = !state.imp.moreOpen;
+  renderImport();
 }
 
 function impToggle(key, on) {
