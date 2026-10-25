@@ -14,6 +14,17 @@ function uiZoom() { return Number(document.documentElement.dataset.zoom) || 1; }
 function zpx(v) { return v / uiZoom(); }
 function viewW() { return window.innerWidth / uiZoom(); }
 function viewH() { return window.innerHeight / uiZoom(); }
+// Puts a shown menu at the pointer by its real size: where it does not fit below, it opens upward
+// from the pointer, and where it does not fit to the right, leftward; it never leaves the window
+function placeMenuAt(menu, e) {
+  const x = zpx(e.clientX), y = zpx(e.clientY);
+  const w = menu.offsetWidth, h = menu.offsetHeight;
+  const left = x + w <= viewW() - 8 ? x : Math.max(8, x - w);
+  const top = y + h <= viewH() - 8 ? y : Math.max(8, Math.min(y - h, viewH() - h - 8));
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+  menu.style.transformOrigin = `${left < x ? 'right' : 'left'} ${top < y ? 'bottom' : 'top'}`;
+}
 function applyUiScale(pct) {
   const z = (UI_SCALES.includes(String(pct)) ? Number(pct) : 100) / 100;
   const root = document.documentElement;
@@ -631,6 +642,16 @@ function closeModal(name) {
 function closeModalOnBackdrop(e, name) {
   if (e.target === e.currentTarget) closeModal(name);
 }
+
+// A press inside a dialog released over its backdrop (a text selection dragged out of a field)
+// reaches the backdrop as a click: that is not a click on the backdrop, so no dialog closes on it
+let _pressTarget = null;
+document.addEventListener('pointerdown', e => { _pressTarget = e.target; }, true);
+window.addEventListener('click', e => {
+  const t = e.target;
+  if (t === _pressTarget || !(t instanceof Element)) return;
+  if (t.classList.contains('modal-backdrop') || t.classList.contains('tk-veil')) e.stopPropagation();
+}, true);
 
 function switchWorkspaceTab(tab) {
   state.activeWorkspaceTab = tab;

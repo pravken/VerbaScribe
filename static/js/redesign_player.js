@@ -487,10 +487,17 @@ function rpInitWave() {
     if (evt.button !== 0 || evt.target.closest('.rp-chapter')) return;
     rp.drag = true;
     wrap.setPointerCapture(evt.pointerId);
+    // Grabbing the time bubble or the knob keeps the spot under the pointer: no jump on the press,
+    // and the drag moves the time by as much as the pointer moves
+    rp.grabOffset = 0;
+    if (evt.target.closest('.rp-bubble, .rp-knob')) {
+      const p = rpPlayer(), dur = rpDuration();
+      if (p && dur > 0) { rp.grabOffset = p.currentTime / dur - ratioAt(evt); return; }
+    }
     seekTo(ratioAt(evt));
   });
   wrap.addEventListener('pointermove', (evt) => {
-    if (rp.drag) seekTo(ratioAt(evt));
+    if (rp.drag) seekTo(Math.max(0, Math.min(1, ratioAt(evt) + (rp.grabOffset || 0))));
     else { state.playerHoverRatio = ratioAt(evt); rpRender(); }
   });
   const end = () => { if (rp.drag) { rp.drag = false; rpRender(); } };
@@ -981,7 +988,7 @@ function rpRenderInfo() {
   const probe = info.probe || {};
   const v = probe.video, a = probe.audio;
   const row = (k, val, opts = {}) => (val == null || val === '') ? '' :
-    `<div class="ri-row"><span class="ri-k">${escapeHtml(k)}</span><span class="ri-v ${opts.cls || ''}" title="${escapeHtml(opts.full || String(val))}"${opts.mono ? ' style="font-family: \'JetBrains Mono\', monospace; font-size: 12px"' : ''}>${opts.html ? val : escapeHtml(String(val))}</span></div>`;
+    `<div class="ri-row"><span class="ri-k">${escapeHtml(k)}</span><span class="ri-v ${opts.cls || ''}" title="${escapeHtml(opts.full || String(val))}"${opts.mono ? ' style="font-family: var(--font-mono); font-size: 12px"' : ''}>${opts.html ? val : escapeHtml(String(val))}</span></div>`;
   const yes = (k, val) => row(k, `✓ ${val}`, { cls: 'ri-yes' });
   const no = (k, val) => row(k, `— ${val}`, { cls: 'ri-no' });
   const flag = (k, on, onText, offText) => (on ? yes : no)(k, on ? onText : offText);

@@ -181,7 +181,9 @@ async function shellQuickRecord() {
       return;
     }
     state.quickRecStay = true;  // startLiveRecording leaves the view as it is
-    await prepareStudio(state.recPresetId || defaultRecordPresetId());
+    // In the open Studio it records what the Studio shows; from another view, with the chosen preset
+    if (state.appView === 'studio') await prepareStudio();
+    else await prepareStudio(state.recPresetId || defaultRecordPresetId());
     await startLiveRecording();
   } finally {
     state.quickRecStay = false;

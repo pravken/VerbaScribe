@@ -910,8 +910,7 @@ function openQuickLangMenu(e, index) {
     closeQuickLangMenu();
   });
   document.body.appendChild(menu);
-  menu.style.left = `${Math.min(zpx(e.clientX), viewW() - 236)}px`;
-  menu.style.top = `${Math.min(zpx(e.clientY), viewH() - 330)}px`;
+  placeMenuAt(menu, e);
 }
 
 function closeQuickLangMenu() {

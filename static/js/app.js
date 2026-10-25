@@ -123,13 +123,17 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   player.addEventListener('enterpictureinpicture', applyVideoLayout);
   player.addEventListener('leavepictureinpicture', applyVideoLayout);
+  const txBox = document.getElementById('transcript-container');
+  const userMoved = () => { state.userScrollAt = Date.now(); };
+  ['wheel', 'pointerdown', 'keydown', 'touchmove'].forEach(ev => txBox.addEventListener(ev, userMoved, { passive: true }));
   player.addEventListener('timeupdate', () => {
     const cur = player.currentTime;
     const dur = player.duration || (state.activeMeeting && state.activeMeeting.duration) || 1;
     document.getElementById('player-current-time').textContent = formatTime(cur);
     if (player.paused) renderPlayerWaveform(Math.min(1, cur / dur));  // while playing: redesign_player.js rpTick
 
-    const follow = state.autoScroll !== false && !player.paused;
+    // Following waits while you scroll or click in the text yourself, then picks the current line up again
+    const follow = state.autoScroll !== false && !player.paused && Date.now() - (state.userScrollAt || 0) > 4000;
     const activeSegEl = updatePlaybackHighlight(cur, follow);
     updateTheatreCaption(cur);
     updateActiveChapter(cur);
@@ -1768,7 +1772,8 @@ function openTextMenuAt(items, x, y, opts) {
 document.addEventListener('click', closeTextMenu);
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeTextMenu(); });
 window.addEventListener('blur', closeTextMenu);
-document.addEventListener('scroll', closeTextMenu, true);
+// The page scrolling under the menu closes it; a long menu scrolling its own list does not
+document.addEventListener('scroll', (e) => { if (!(e.target instanceof Element && e.target.closest('#text-menu'))) closeTextMenu(); }, true);
 
 // --- About (GET /api/about) and its easter eggs: the willow hears everything ---
 const ABOUT_LINES = {

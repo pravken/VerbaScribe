@@ -252,10 +252,7 @@ function openRecordingContextMenu(e, meetingId) {
   const menu = document.getElementById('recording-context-menu');
   menu.classList.remove('hidden');
 
-  const x = Math.min(zpx(e.clientX), viewW() - 235);
-  const y = Math.min(zpx(e.clientY), viewH() - 265);
-  menu.style.left = `${x}px`;
-  menu.style.top = `${y}px`;
+  placeMenuAt(menu, e);
 }
 
 function openBulkMenu(e) {
@@ -274,8 +271,7 @@ function openBulkMenu(e) {
     window[b.dataset.fn]();
   });
   document.body.appendChild(menu);
-  menu.style.left = `${Math.min(zpx(e.clientX), viewW() - 232)}px`;
-  menu.style.top = `${Math.min(zpx(e.clientY), viewH() - 140)}px`;
+  placeMenuAt(menu, e);
   setTimeout(() => document.addEventListener('click', () => menu.remove(), { once: true }), 0);
 }
 
@@ -363,8 +359,7 @@ async function openSeriesMenu(e) {
     loadSeries();
   });
   document.body.appendChild(menu);
-  menu.style.left = `${Math.min(zpx(e.clientX), viewW() - 250)}px`;
-  menu.style.top = `${Math.min(zpx(e.clientY), viewH() - 330)}px`;
+  placeMenuAt(menu, e);
 }
 
 document.addEventListener('click', () => document.getElementById('series-menu')?.remove());

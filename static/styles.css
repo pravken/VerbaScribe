@@ -1993,3 +1993,6 @@ input[type="range"].rp-volume::-webkit-slider-thumb { -webkit-appearance: none; 
 #studio-view.studio-focus .st-rec, #studio-view.studio-focus .st-rec-info, #studio-view.studio-focus .st-tabs { display: none; }
 .st-side .apple-segment-btn { padding-left: 6px; padding-right: 6px; white-space: nowrap; }
 @media (max-width: 1250px) { .st-side { width: 320px; } .st-keys { display: none; } }
+
+/* The first-run banner: its one action, under the text */
+.first-run-btn { margin-top: 6px; }

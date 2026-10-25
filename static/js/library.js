@@ -575,8 +575,7 @@ function openFolderMenu(e, id) {
   document.getElementById('fctx-local').disabled = inherited;
   document.getElementById('fctx-local').style.opacity = inherited ? '.5' : '';
   menu.classList.remove('hidden');
-  menu.style.left = `${Math.min(zpx(e.clientX), viewW() - 230)}px`;
-  menu.style.top = `${Math.min(zpx(e.clientY), viewH() - 190)}px`;
+  placeMenuAt(menu, e);
 }
 
 function hideFolderMenu() {
