@@ -54,7 +54,7 @@ function switchAppView(view) {
   if (view === 'ask') {
     renderAskScope();
     renderAskThread();
-    setTimeout(() => document.getElementById('library-question').focus(), 30);
+    nextFrame(() => document.getElementById('library-question').focus());
   }
   // Reached without openModal (another script switching to it): the page needs its content
   if (view === 'settings' && document.getElementById('modal-settings')?.classList.contains('hidden')) openModal('settings');

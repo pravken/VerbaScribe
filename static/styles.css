@@ -215,8 +215,9 @@ input[type="range"].volume-slider::-webkit-slider-thumb:hover {
 }
 
 /* Transcript Highlighting */
+/* audit 3.14: only the highlight changes on a row (the transform transition never ran) */
 .segment-row {
-  transition: background-color var(--dur) ease, transform var(--dur) ease;
+  transition: background-color var(--dur) ease;
   border-radius: 10px;
 }
 .segment-active {
@@ -515,8 +516,8 @@ label.settings-toggle { display: flex; }
   transition: transform var(--dur) ease;
 }
 .about-logo:active { transform: scale(0.96); }
-.about-willow { width: 64px; height: 64px; transform-origin: 20% 85%; animation: willow-sway 5s ease-in-out infinite; }
-.about-willow .catkin { transform-box: fill-box; transform-origin: center; animation: catkin-puff 3.2s ease-in-out infinite; animation-delay: var(--d); }
+.about-willow { width: 64px; height: 64px; transform-origin: 20% 85%; animation: willow-sway 2.4s ease-in-out 2;  /* audit 3.21: two sways on opening, then still */ }
+.about-willow .catkin { transform-box: fill-box; transform-origin: center; animation: catkin-puff 3.2s ease-in-out 2; animation-delay: var(--d); }
 .about-logo.about-shake .about-willow { animation: willow-shake .5s ease-in-out; }
 @keyframes willow-shake {
   0%, 100% { transform: rotate(0deg); }
@@ -843,6 +844,9 @@ label:has(> .vs-switch.vs-sm) { min-height: 24px; }
 .tb-rec {
   display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 18px; border-radius: 19px;
   font-size: 14.5px; font-weight: 600; color: #FFFFFF; background: #D70015; white-space: nowrap; transition: filter var(--dur-fast) ease;
+  /* audit 3.19: as wide as its longest idle label («Запуск…»), so «Запись» → «Запуск…» does not
+     push the tabs; the clock has digits of one width */
+  min-width: 124px; justify-content: center; font-variant-numeric: tabular-nums;
 }
 .tb-rec:hover { filter: brightness(1.12); }
 .tb-rec-busy { opacity: 0.8; cursor: progress; }

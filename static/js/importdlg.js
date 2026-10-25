@@ -137,7 +137,7 @@ function impShowRow(kind) {
   const row = document.getElementById(kind === 'link' ? 'imp-link-row' : 'imp-path-row');
   row.classList.remove('hidden');
   if (kind === 'link') document.getElementById('imp-link-note').classList.remove('hidden');
-  setTimeout(() => row.querySelector('input').focus(), 30);
+  nextFrame(() => row.querySelector('input').focus());
 }
 
 function impAddLink() {

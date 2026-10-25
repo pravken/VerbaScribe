@@ -665,7 +665,7 @@ async function prepareStudio(presetId) {
   document.getElementById('record-signal-dot').classList.remove('on');
   _studioPrepared = true;
   renderStudioState();
-  setTimeout(() => drawIdleSoundCloudBars('record-waveform-canvas'), 40);
+  nextFrame(() => drawIdleSoundCloudBars('record-waveform-canvas'));
   loadUpcomingMeetings();
   studioRenderDisk();
   studioFillAuto();
@@ -1920,7 +1920,7 @@ async function studioMicTest() {
     document.getElementById('record-level-bar').style.width = '2%';
     document.getElementById('record-db-display').textContent = '-60 dB';
     document.getElementById('record-signal-dot').classList.remove('on');
-    setTimeout(() => drawIdleSoundCloudBars('record-waveform-canvas'), 30);
+    nextFrame(() => drawIdleSoundCloudBars('record-waveform-canvas'));
     setTimeout(() => { if (!_micTest && label) label.textContent = t('rdSasMicTest'); }, 4000);
   }
 }

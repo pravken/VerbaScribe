@@ -178,7 +178,7 @@ function rpRender() {
 
   const p = rpPlayer();
   const dur = rpDuration();
-  const cur = (p && p.currentTime) || 0;
+  const cur = rp.drag && rp.dragTime != null ? rp.dragTime : ((p && p.currentTime) || 0);
   const ratio = dur > 0 ? Math.min(1, cur / dur) : 0;
   const x = (t) => (dur > 0 ? (t / dur) * w : 0);
   const segs = rpSegments();
@@ -477,12 +477,21 @@ function rpInitWave() {
     const r = wrap.getBoundingClientRect();
     return Math.max(0, Math.min(1, (evt.clientX - r.left) / Math.max(1, r.width)));
   };
-  const seekTo = (ratio) => {
+  // Audit 3.20. While dragging, the marks follow the pointer at once but the media is asked for a
+  // new spot only when it has found the last one (a video decodes each seek); the release seeks exactly
+  const seekTo = (ratio, exact = true) => {
     const p = rpPlayer();
     const dur = rpDuration();
-    if (p && dur > 0) p.currentTime = ratio * dur;
+    if (p && dur > 0) {
+      rp.dragTime = ratio * dur;
+      if (exact || !p.seeking) p.currentTime = rp.dragTime;
+    }
     rpRender();
   };
+  rpPlayer()?.addEventListener('seeked', () => {
+    const p = rpPlayer();
+    if (rp.drag && rp.dragTime != null && Math.abs(p.currentTime - rp.dragTime) > 0.05) p.currentTime = rp.dragTime;
+  });
   wrap.addEventListener('pointerdown', (evt) => {
     if (evt.button !== 0 || evt.target.closest('.rp-chapter')) return;
     rp.drag = true;
@@ -497,10 +506,17 @@ function rpInitWave() {
     seekTo(ratioAt(evt));
   });
   wrap.addEventListener('pointermove', (evt) => {
-    if (rp.drag) seekTo(Math.max(0, Math.min(1, ratioAt(evt) + (rp.grabOffset || 0))));
+    if (rp.drag) seekTo(Math.max(0, Math.min(1, ratioAt(evt) + (rp.grabOffset || 0))), false);
     else { state.playerHoverRatio = ratioAt(evt); rpRender(); }
   });
-  const end = () => { if (rp.drag) { rp.drag = false; rpRender(); } };
+  const end = () => {
+    if (!rp.drag) return;
+    const p = rpPlayer();
+    if (p && rp.dragTime != null) p.currentTime = rp.dragTime;
+    rp.drag = false;
+    rp.dragTime = null;
+    rpRender();
+  };
   wrap.addEventListener('pointerup', end);
   wrap.addEventListener('pointercancel', end);
   wrap.addEventListener('pointerleave', () => { state.playerHoverRatio = -1; rpRender(); });
@@ -1068,13 +1084,13 @@ async function rpCancelPendingExports(id) {
 function rpInfoToRecognition() {
   closeModal('recinfo');
   openRecordTab('transcript');
-  setTimeout(() => document.getElementById('tx-proc-btn')?.click(), 80);
+  nextFrame(() => document.getElementById('tx-proc-btn')?.click());
 }
 
 function rpInfoToSound() {
   closeModal('recinfo');
   if (state.appView !== 'library') openRecordTab('transcript');
-  setTimeout(() => { rp.open = 'sound'; rpRenderPop(); }, 60);
+  nextFrame(() => { rp.open = 'sound'; rpRenderPop(); });
 }
 
 async function rpRevealCopy(cid) {

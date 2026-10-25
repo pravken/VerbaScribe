@@ -14,6 +14,8 @@ function uiZoom() { return Number(document.documentElement.dataset.zoom) || 1; }
 function zpx(v) { return v / uiZoom(); }
 function viewW() { return window.innerWidth / uiZoom(); }
 function viewH() { return window.innerHeight / uiZoom(); }
+// Audit 3.15. After the page has drawn what was just shown (two frames), not after a guessed delay
+function nextFrame(fn) { requestAnimationFrame(() => requestAnimationFrame(fn)); }
 // «Show less motion» in Windows: scrolls jump instead of gliding (CSS covers the rest)
 function scrollMotion() {
   return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
@@ -609,7 +611,7 @@ function openModal(name, tab) {
     state.llmProviderEdited = false;
     state.llmShowCloud = false;
     loadLlmStatus();
-    setTimeout(() => drawIdleSoundCloudBars('settings-waveform-canvas'), 30);
+    nextFrame(() => drawIdleSoundCloudBars('settings-waveform-canvas'));
   }
 }
 // Voice profiles only work with speaker separation: dimmed while it is off

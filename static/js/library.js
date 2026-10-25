@@ -470,7 +470,10 @@ function openMeeting(id) {
 async function selectMeetingAndSeek(meetingId, startSec) {
   await selectMeeting(meetingId, true);
   switchWorkspaceTab('transcript');
-  setTimeout(() => seekPlayer(startSec), 220);
+  // The moment is shown as soon as the media can seek, not after a delay that showed the start first
+  const p = document.getElementById('media-player');
+  if (!p || p.readyState >= 1) seekPlayer(startSec);
+  else p.addEventListener('loadedmetadata', () => seekPlayer(startSec), { once: true });
 }
 
 // --- Library: recordings in folders, sorted by dragging ---
@@ -899,7 +902,7 @@ function dateRowHtml(id, label, count, depth, open) {
     <div data-click="toggleDateCollapsed" data-click-args='[{"$": "data", "k": "id"}]' data-id="${escapeHtml(id)}" tabindex="0" role="button"
          class="flex items-center gap-1.5 pr-2 py-1 rounded-lg cursor-pointer text-apple-secondary hover:bg-white/5 transition"
          style="padding-left:${6 + depth * 14}px" title="${escapeHtml(label)}">
-      <span class="shrink-0 text-apple-tertiary transition-transform ${open ? 'rotate-90' : ''}">${ICON_CHEVRON}</span>
+      <span class="shrink-0 text-apple-tertiary ${open ? 'rotate-90' : ''}">${ICON_CHEVRON}</span>
       <span class="text-[11.5px] font-semibold truncate flex-1">${escapeHtml(label)}</span>
       ${!open && libHere().dates.has(id) ? `<span class="lib-here-dot" title="${escapeHtml(t('tipLibHere'))}"></span>` : ''}
       <span class="text-[11px] font-mono text-apple-tertiary">${count}</span>
@@ -1171,7 +1174,9 @@ state.multi = new Set();
 let _libAnchor = null;
 
 function libIsSelected(m) {
-  return state.multi.size ? state.multi.has(m.id) : !!(state.activeMeeting && state.activeMeeting.id === m.id);
+  if (state.multi.size) return state.multi.has(m.id);
+  if (state.pendingMeetingId != null) return state.pendingMeetingId === m.id;  // clicked, still loading
+  return !!(state.activeMeeting && state.activeMeeting.id === m.id);
 }
 
 function libVisibleIds() {
@@ -1384,7 +1389,7 @@ function folderRowHtml(f, depth, collapsed) {
          data-dragover="libraryDragOver" data-dragover-args='[{"$": "event"}, ${f.id}]' data-dragleave="libraryDragLeave" data-dragleave-args='[{"$": "event"}]' data-drop="libraryDrop" data-drop-args='[{"$": "event"}, ${f.id}]'
          data-folder-row="${f.id}" class="folder-row group flex items-center gap-1.5 pr-2 py-1.5 rounded-lg cursor-pointer text-apple-label hover:bg-white/5 transition"
          style="padding-left:${6 + depth * 14}px" title="${escapeHtml(folderName(f))}">
-      <span class="shrink-0 text-apple-tertiary transition-transform ${open ? 'rotate-90' : ''}">${ICON_CHEVRON}</span>
+      <span class="shrink-0 text-apple-tertiary ${open ? 'rotate-90' : ''}">${ICON_CHEVRON}</span>
       <span class="shrink-0 ${f.system_key ? 'text-apple-blue' : 'text-apple-secondary'}">${folderIcon(f)}</span>
       <span class="text-[12px] font-semibold truncate flex-1">${escapeHtml(folderName(f))}</span>
       ${f.local_only ? `<span class="shrink-0 text-apple-tertiary" title="${escapeHtml(t('tipLocalOnly'))}">${ICON_LOCK}</span>` : ''}

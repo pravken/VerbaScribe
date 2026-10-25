@@ -7,8 +7,24 @@ let _selectSeq = 0;
 async function selectMeeting(id, reloadPlayer = true) {
   // Only the last request wins: a slow answer for an earlier click must not replace the open recording
   const seq = ++_selectSeq;
-  const res = await fetch(`/api/meetings/${id}`);
-  if (!res.ok || seq !== _selectSeq) return;
+  // Audit 3.2. The click answers at once: the row lights up and the title shows the recording,
+  // the rest comes with the server's answer
+  const known = (state.meetings || []).find(x => x.id === id);
+  if (known && (!state.activeMeeting || state.activeMeeting.id !== id)) {
+    state.pendingMeetingId = id;
+    renderMeetingsSidebar();
+    document.getElementById('meeting-title-input').value = known.title || '';
+  }
+  const res = await fetch(`/api/meetings/${id}`).catch(() => null);
+  if (seq !== _selectSeq) return;
+  if (state.pendingMeetingId === id) {
+    state.pendingMeetingId = null;
+    if (!res || !res.ok) {
+      renderMeetingsSidebar();
+      if (state.activeMeeting) document.getElementById('meeting-title-input').value = state.activeMeeting.title || '';
+    }
+  }
+  if (!res || !res.ok) return;
   const m = await readJson(res);
   const prevId = state.activeMeeting ? state.activeMeeting.id : null;
   state.activeMeeting = m;

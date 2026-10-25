@@ -933,7 +933,7 @@ function openNewTask() {
   sel.innerHTML = `<option value="">${escapeHtml(t('tkNoRecordOpt'))}</option>` + recs.map(m => `<option value="${m.id}">${escapeHtml(m.title)}</option>`).join('');
   renderNewTask();
   document.getElementById('tk-new').classList.remove('hidden');
-  setTimeout(() => document.getElementById('tk-n-text').focus(), 30);
+  nextFrame(() => document.getElementById('tk-n-text').focus());
 }
 
 function closeNewTask() { document.getElementById('tk-new').classList.add('hidden'); }
