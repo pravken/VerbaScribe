@@ -549,14 +549,22 @@ async function patchFolder(id, body) {
 async function moveMeetingToFolder(meetingId, folderId) {
   const m = state.meetings.find(x => x.id === meetingId);
   if (!m || (m.folder_id ?? null) === folderId) return;
+  // The row moves at once; the server confirms, or the row goes back with the reason
+  const before = m.folder_id ?? null;
+  const setFolder = (id) => {
+    m.folder_id = id;
+    if (state.activeMeeting && state.activeMeeting.id === meetingId) state.activeMeeting.folder_id = id;
+    renderMeetingsSidebar();
+  };
+  setFolder(folderId);
+  flashFolderRow(folderId);
   const res = await fetch(`/api/meetings/${meetingId}/folder`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ folder_id: folderId }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) { showToast(data.detail || 'Error'); return; }
-  m.folder_id = folderId;
-  if (state.activeMeeting && state.activeMeeting.id === meetingId) state.activeMeeting.folder_id = folderId;
-  renderMeetingsSidebar();
+  }).catch(() => null);
+  if (res && res.ok) return;
+  const data = res ? await res.json().catch(() => ({})) : {};
+  setFolder(before);
+  showToast(data.detail || t('errorGeneric'));
 }
 
 // Folder menu (right click or •••)
@@ -656,15 +664,35 @@ function libraryDragOver(e, folderId) {
   e.dataTransfer.dropEffect = 'move';
   document.querySelectorAll('#meetings-list .drop-target').forEach(el => { if (el !== e.currentTarget) el.classList.remove('drop-target'); });
   e.currentTarget.classList.add('drop-target');
+  // A collapsed folder held under the pointer for 0.6 s opens, to drop deeper into it
+  if (folderId != null && collapsedFolders().has(folderId) && _libSpringFolder !== folderId) {
+    clearTimeout(_libSpringTimer);
+    _libSpringFolder = folderId;
+    _libSpringTimer = setTimeout(() => { if (_libDrag && collapsedFolders().has(folderId)) toggleFolderCollapsed(folderId); }, 600);
+  }
+}
+let _libSpringTimer = null, _libSpringFolder = null;
+
+// The folder a recording went to lights up for a moment, so it is clear where it is now
+function flashFolderRow(folderId) {
+  const row = folderId == null ? null : document.querySelector(`[data-folder-row="${folderId}"]`);
+  if (!row) return;
+  row.classList.remove('lib-flash');
+  void row.offsetWidth;
+  row.classList.add('lib-flash');
 }
 
 function libraryDragLeave(e) {
   if (e.currentTarget.contains(e.relatedTarget)) return;
   e.currentTarget.classList.remove('drop-target');
+  clearTimeout(_libSpringTimer);
+  _libSpringFolder = null;
 }
 
 function clearLibraryDrag() {
   _libDrag = null;
+  clearTimeout(_libSpringTimer);
+  _libSpringFolder = null;
   document.querySelectorAll('#meetings-list .drop-target').forEach(el => el.classList.remove('drop-target'));
   document.getElementById('meetings-list')?.classList.remove('drop-target', 'lib-dragging');
 }
@@ -1354,7 +1382,7 @@ function folderRowHtml(f, depth, collapsed) {
     <div data-click="toggleFolderCollapsed" data-click-args='[${f.id}]' tabindex="0" role="button" data-contextmenu="openFolderMenu" data-contextmenu-args='[{"$": "event"}, ${f.id}]'
          ${f.system_key ? '' : `draggable="true" data-dragstart="libraryDragStart" data-dragstart-args='[{"$": "event"}, "f", ${f.id}]'`}
          data-dragover="libraryDragOver" data-dragover-args='[{"$": "event"}, ${f.id}]' data-dragleave="libraryDragLeave" data-dragleave-args='[{"$": "event"}]' data-drop="libraryDrop" data-drop-args='[{"$": "event"}, ${f.id}]'
-         class="folder-row group flex items-center gap-1.5 pr-2 py-1.5 rounded-lg cursor-pointer text-apple-label hover:bg-white/5 transition"
+         data-folder-row="${f.id}" class="folder-row group flex items-center gap-1.5 pr-2 py-1.5 rounded-lg cursor-pointer text-apple-label hover:bg-white/5 transition"
          style="padding-left:${6 + depth * 14}px" title="${escapeHtml(folderName(f))}">
       <span class="shrink-0 text-apple-tertiary transition-transform ${open ? 'rotate-90' : ''}">${ICON_CHEVRON}</span>
       <span class="shrink-0 ${f.system_key ? 'text-apple-blue' : 'text-apple-secondary'}">${folderIcon(f)}</span>

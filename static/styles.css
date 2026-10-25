@@ -2175,3 +2175,7 @@ input[type="range"].rp-volume::-webkit-slider-thumb { -webkit-appearance: none; 
 .is-leaving { pointer-events: none; animation: menuLeave var(--dur-fast) ease-in forwards !important; }
 .modal-backdrop.is-leaving, .tk-veil.is-leaving { animation: fadeLeave var(--dur-fast) ease-in forwards !important; }
 .modal-backdrop.is-leaving > .modal-card { animation: menuLeave var(--dur-fast) ease-in forwards; }
+
+/* Audit 3.9. The folder a recording was dropped into lights up for a moment */
+@keyframes lib-flash { 0%, 40% { background-color: rgba(10, 132, 255, 0.28); } 100% { background-color: transparent; } }
+.folder-row.lib-flash { animation: lib-flash 0.9s ease-out; }
