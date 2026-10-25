@@ -382,9 +382,9 @@ document.addEventListener('keydown', (e) => {
       e.preventDefault();  // the details of the open recording (its ⋯ in the top bar)
       rpOpenInfo();
     } else if (/^(Digit|Numpad)[1-5]$/.test(e.code) && !e.shiftKey && !anyModalOpen()) {
-      // Ctrl+1…5: Home, the open recording, Tasks, the Studio, the Assistant (the top bar, in its order)
+      // Ctrl+1…5: Home, Tasks, the open recording, the Studio, the Assistant: the top bar, in its order
       e.preventDefault();
-      switchAppView(APP_VIEWS[Number(e.code.slice(-1)) - 1]);
+      switchAppView(['home', 'tasks', 'library', 'studio', 'ask'][Number(e.code.slice(-1)) - 1]);
     }
     return;
   }

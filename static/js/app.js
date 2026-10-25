@@ -519,7 +519,7 @@ function renderAnalysisHead() {
   // without a model the question field says so; a press anywhere that needs one points to the banner
   const ask = document.getElementById('custom-summary-prompt');
   if (ask) {
-    ask.placeholder = ai ? t('anAskPh') : t('anAskNeedModel');
+    ask.placeholder = t('anAskPh');  // audit 7.6: why it waits is said once, by the banner
     ask.title = ai ? t('tipAskInput') : t('anNeedModel');
     ask.closest('.an-ask')?.classList.toggle('an-ask-off', !ai);
   }

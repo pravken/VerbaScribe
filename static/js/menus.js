@@ -364,6 +364,20 @@ async function openSeriesMenu(e) {
 
 document.addEventListener('click', () => document.getElementById('series-menu')?.remove());
 
+// «Сведения» and «Переместить в папку» of the recording menu (they were only in the top bar's own menu)
+async function ctxOpenInfo() {
+  const id = state.contextMeetingId;
+  hideContextMenu();
+  if (!state.activeMeeting || state.activeMeeting.id !== id) await openMeeting(id);
+  rpOpenInfo();
+}
+function ctxMoveToFolder(e) {
+  const m = state.meetings.find(x => x.id === state.contextMeetingId);
+  const r = document.getElementById('recording-context-menu').getBoundingClientRect();
+  hideContextMenu();
+  if (m) openMoveRecordMenu(m, { right: r.right, bottom: r.top - 4 + Math.min(r.height, 60) });
+}
+
 function hideContextMenu() {
   const menu = document.getElementById('recording-context-menu');
   if (menu) hideWithExit(menu);

@@ -4,7 +4,7 @@
 
 // --- Views of the main area ---
 // "library" is the open recording (its transcript, analysis and speakers); its name stays for the
-// many places that open a recording. Ctrl+1…5 go through the first five, in the order of the top bar.
+// many places that open a recording. Ctrl+1…5 follow the top bar (video.js).
 const APP_VIEWS = ['home', 'library', 'tasks', 'studio', 'ask', 'settings'];
 const VIEW_HOOKS = {};
 
@@ -138,20 +138,13 @@ async function refreshTasksCount(force) {
 setInterval(() => { if (!document.hidden) renderTopbar(); }, 1500);
 
 // The ⋯ of the open recording: its details, rename, move, show the file, delete
+// Audit 7.1. The ⋯ of the top bar opens the same full menu of the recording as the ⋯ at its title
 function openRecordBarMenu(e) {
   e.stopPropagation();
   const m = state.activeMeeting;
   if (!m) return;
   const r = e.currentTarget.getBoundingClientRect();
-  const at = (fn) => () => { state.contextMeetingId = m.id; fn(); };
-  openTextMenuAt([
-    { label: t('tbRecInfo'), key: 'Ctrl+I', run: () => rpOpenInfo() },
-    { label: t('ctxRename'), key: 'F2', run: at(ctxRenameRecording) },
-    { label: t('tbRecMove'), run: () => openMoveRecordMenu(m, r) },
-    { label: t('ctxReveal'), run: at(ctxRevealInExplorer) },
-    { sep: true },
-    { label: t('tbRecDelete'), key: 'Del', run: at(ctxDeleteRecording) },
-  ], r.right, r.bottom + 4, { right: true });
+  openRecordingContextMenu({ clientX: r.right, clientY: r.bottom + 4, preventDefault() {}, stopPropagation() {} }, m.id);
 }
 
 function openMoveRecordMenu(m, r) {

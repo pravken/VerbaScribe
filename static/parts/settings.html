@@ -540,7 +540,7 @@
             <input id="custom-ollama-model-input" type="text"
               data-i18n-title="tipCustomOllamaInput"
               title="Введите название любой модели из каталога Ollama"
-              data-i18n-placeholder="phCustomOllama" placeholder="Или введите имя любой модели из библиотеки Ollama (напр. mistral:7b)…"
+              data-i18n-placeholder="phCustomOllama" placeholder="Или введите имя любой модели из библиотеки Ollama…"
               class="flex-1 h-8 bg-apple-sidebar border apple-border rounded-lg px-3 text-xs text-white placeholder-apple-tertiary focus:outline-none" />
             <button data-click="pullCustomOllamaModel"
               data-i18n-title="tipPullCustomOllama"
@@ -747,7 +747,10 @@
           </div>
           <div id="settings-dict-dup" class="dict-dup hidden" role="status" data-i18n="rdSasDictDup">Это слово уже есть в словаре</div>
           <div id="settings-dict-list" class="rounded-lg border apple-border divide-y divide-white/5 max-h-[420px] overflow-y-auto"></div>
-          <div id="settings-dict-count" class="text-[11.5px] text-apple-tertiary"></div>
+          <div class="flex items-center justify-between gap-2">
+            <div id="settings-dict-count" class="text-[11.5px] text-apple-tertiary"></div>
+            <button id="settings-dict-clear" data-click="clearDictionary" class="hidden ui-btn ui-btn-subtle h-7 px-3 text-[11.5px] hover:text-apple-red" data-i18n="cfDeleteWords">Удалить все слова</button>
+          </div>
         </div>
         </div>
         <div data-stab="export" class="sx-section space-y-3 hidden">
@@ -814,7 +817,7 @@
           <div class="flex items-center justify-between gap-2">
             <div>
               <h4 class="text-[13px] font-semibold text-white" data-i18n="obsTitle">Obsidian</h4>
-              <p class="text-[11.5px] text-apple-secondary leading-snug" data-i18n="obsDesc">Заметка на каждую встречу в формате Markdown: свойства (дата, участники, длительность), резюме, обзор, задачи чек-листом и расшифровка с таймкодами.</p>
+              <p class="text-[11.5px] text-apple-secondary leading-snug" data-i18n="obsDesc">Заметка на каждую встречу в формате Markdown: свойства (дата, участники, длительность), «Кратко», обзор, задачи чек-листом и расшифровка с таймкодами.</p>
             </div>
             <span id="obs-pill" class="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-white/5 text-apple-secondary shrink-0"></span>
           </div>
@@ -853,7 +856,7 @@
           <div>
             <div class="text-[11.5px] text-apple-secondary mb-1" data-i18n="obsIncludeLabel">Что включать в заметку</div>
             <div class="grid grid-cols-2 gap-x-3">
-              <label class="settings-toggle flex items-center gap-2.5 cursor-pointer text-xs text-apple-label"><input type="checkbox" id="set-obsidian-summary" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" /><span data-i18n="obsIncSummary">Резюме и обзор</span></label>
+              <label class="settings-toggle flex items-center gap-2.5 cursor-pointer text-xs text-apple-label"><input type="checkbox" id="set-obsidian-summary" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" /><span data-i18n="obsIncSummary">«Кратко» и обзор</span></label>
               <label class="settings-toggle flex items-center gap-2.5 cursor-pointer text-xs text-apple-label"><input type="checkbox" id="set-obsidian-tasks" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" /><span data-i18n="obsIncTasks">Задачи</span></label>
               <label class="settings-toggle flex items-center gap-2.5 cursor-pointer text-xs text-apple-label"><input type="checkbox" id="set-obsidian-chapters" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" /><span data-i18n="obsIncChapters">Главы</span></label>
               <label class="settings-toggle flex items-center gap-2.5 cursor-pointer text-xs text-apple-label"><input type="checkbox" id="set-obsidian-transcript" checked class="rounded bg-apple-sidebar border-white/20 text-apple-blue" /><span data-i18n="obsIncTranscript">Расшифровка</span></label>

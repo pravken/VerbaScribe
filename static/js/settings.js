@@ -1512,8 +1512,10 @@ function renderSummaryModelSelect() {
     ? `<option value="__cloud" ${onCloud ? 'selected' : ''}>☁ ${escapeHtml(cloud.label)}</option>` : '')
     + ollama.catalog.map(item => {
       const pretty = formatModelName(item.id);
-      const note = localLlmNote(item.id);
-      return `<option value="${escapeHtml(item.id)}" data-off="${note ? 1 : 0}" ${!onCloud && item.id === activeModel ? 'selected' : ''}>${escapeHtml(pretty)}${note ? ` · ${escapeHtml(note)}` : ''}</option>`;
+      // Audit 7.6: «Ollama не запущен» is said once, by the banner above with its action; a model
+      // that is not downloaded is still marked here, it is a fact of that model
+      const note = localLlmState(item.id) === 'missing' ? localLlmNote(item.id) : '';
+      return `<option value="${escapeHtml(item.id)}" data-off="${localLlmState(item.id) === 'ready' ? 0 : 1}" ${!onCloud && item.id === activeModel ? 'selected' : ''}>${escapeHtml(pretty)}${note ? ` · ${escapeHtml(note)}` : ''}</option>`;
     }).join('');
   summarySelect.title = onCloud ? t('tipSummaryCloud') : t('tipSelectLlm');
 }
@@ -2020,48 +2022,15 @@ async function pullOllamaModel(modelArg, makeActive = true) {
 }
 
 // --- Dictionary ---
+// Audit 7.5: the dictionary has one place, Settings → Dictionary (the sidebar button opens it)
 async function loadDictionary() {
   const res = await fetch('/api/dictionary');
   const terms = await readJson(res);
   if (!res.ok || !Array.isArray(terms)) return;
   state.dictionary = terms;
   document.getElementById('dict-count-badge').textContent = state.dictionary.filter(d => d.active).length;
-
-  const box = document.getElementById('dictionary-list');
-  document.getElementById('dict-clear-btn').classList.toggle('hidden', state.dictionary.length === 0);
-  if (state.dictionary.length === 0) {
-    box.innerHTML = `<div class="p-6 text-center text-xs text-apple-tertiary">${escapeHtml(t('emptyDictionary'))}</div>`;
-    renderSettingsDictionary();
-    return;
-  }
-
-  box.innerHTML = state.dictionary.map(item => `
-    <div class="flex items-center justify-between px-3.5 py-2 text-xs">
-      <div class="flex items-center gap-2.5">
-        <input type="checkbox" ${item.active ? 'checked' : ''}
-          data-change="toggleDictItem" data-change-args='[${item.id}, {"$": "checked"}]'
-          class="rounded bg-apple-bg border-white/20 text-apple-blue" />
-        <span class="${item.active ? 'text-white' : 'text-apple-tertiary line-through'}">${escapeHtml(item.term)}</span>
-        <span class="text-[11px] px-1.5 py-0.5 rounded bg-white/5 text-apple-secondary">${escapeHtml(item.category)}</span>
-      </div>
-      <button data-click="deleteDictItem" data-click-args='[${item.id}]' title="${escapeHtml(t('tipDeleteDictTerm'))}" class="text-apple-tertiary hover:text-apple-red transition p-1">${SVG_ICONS.closeX}</button>
-    </div>
-  `).join('');
+  document.getElementById('settings-dict-clear')?.classList.toggle('hidden', state.dictionary.length === 0);
   renderSettingsDictionary();
-}
-
-async function addDictionaryItems() {
-  const input = document.getElementById('dict-term-input');
-  const cat = document.getElementById('dict-category-input').value;
-  if (!input.value.trim()) return;
-
-  await fetch('/api/dictionary', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ term: input.value, category: cat })
-  });
-  input.value = '';
-  await loadDictionary();
 }
 
 // Audit 6.1: cleared at once; «Отменить» adds the same words back, switched off ones stay off

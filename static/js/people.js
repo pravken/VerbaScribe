@@ -123,7 +123,7 @@ function renderSpeakersPanel(opts = {}) {
             <button class="sp-me${s.is_me ? ' sp-me-on' : ''}" aria-pressed="${s.is_me ? 'true' : 'false'}" title="${escapeHtml(t('spMeTip'))}"
               ${pageCall('click', 'spToggleMe', [id])}>${escapeHtml(t('spMe'))}</button>
           </div>
-          <input class="sp-role" value="${escapeHtml(s.role || '')}" placeholder="${escapeHtml(t('spRolePh'))}" aria-label="${escapeHtml(t('spRolePh'))}"
+          <input class="sp-role" value="${escapeHtml(s.role || '')}" placeholder="${escapeHtml(t('spRoleAdd'))}" aria-label="${escapeHtml(t('spRolePh'))}"
             ${pageCall('blur', 'spSetRole', [id, { $: 'value' }])} ${pageCall('keydown', 'blurOnEnter', [{ $: 'event' }, { $: 'el' }])}>
           <span class="sp-stats">${escapeHtml(stats)}</span>
         </div>
