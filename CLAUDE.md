@@ -37,7 +37,8 @@ python -m compileall -q app run.py build_exe.py tests
 ```
 
 Браузерный smoke-тест — как в `.github/workflows/ci.yml`: сервер `uvicorn app.main:app --port 8799`
-с временными `VERBASCRIBE_DATA_DIR`/`VERBASCRIBE_MODELS_DIR`, затем `node tests/ui/smoke.mjs`.
+с временными `VERBASCRIBE_DATA_DIR`/`VERBASCRIBE_MODELS_DIR` (демо-записи: `python tests/ui/seed.py`), затем
+`node tests/ui/smoke.mjs` и `node tests/ui/scenarios.mjs` (сценарии; `SHOTS=<папка>` — скриншоты шагов).
 
 - **Стили:** `static/vendor/tailwind.css` собирается заранее. Новый класс Tailwind в разметке или
   скриптах — пересобери: `npm run vendor` (тест `test_every_class_has_its_css` это ловит).
