@@ -51,7 +51,7 @@ body {
   animation: modalEnter 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .tab-pane-anim {
-  animation: tabFadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: tabFadeIn var(--dur-fast) ease-out;
 }
 
 @keyframes backdropFade {
@@ -62,9 +62,10 @@ body {
   from { opacity: 0; transform: scale(0.96) translateY(6px); }
   to { opacity: 1; transform: scale(1) translateY(0); }
 }
+/* Audit 3.16. Tabs sit side by side: switching fades, nothing rises from below */
 @keyframes tabFadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .apple-border {
@@ -943,6 +944,8 @@ label:has(> .vs-switch.vs-sm) { min-height: 24px; }
 .settings-page { display: flex; flex: 1; min-height: 0; padding: 20px 24px; }
 .settings-page.hidden { display: none; }
 .settings-page > .modal-card { max-width: 980px; max-height: none; height: 100% !important; margin: 0 auto; }
+/* Audit 3.17. The settings are a page: they appear like the other pages, without growing like a dialog */
+.settings-page > .modal-card { animation: none; }
 
 /* A first home and tasks page (packages B and D replace them) */
 .home-wrap { max-width: 1100px; margin: 0 auto; padding: 28px 32px; display: flex; flex-direction: column; gap: 18px; }
