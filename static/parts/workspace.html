@@ -10,7 +10,7 @@
       <svg width="0" height="0" class="absolute" aria-hidden="true" focusable="false"><defs><linearGradient id="vs-ai-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#D4B3FF"/><stop offset="1" stop-color="#6CC8FF"/></linearGradient></defs></svg>
       <div class="relative">
         <button data-click="shellQuickRecord" id="tb-rec" class="tb-rec" data-i18n-title="tipTbRecord" title="Начать запись с последними настройками (Ctrl+Alt+R)">
-          <span id="tb-rec-dot" class="tb-rec-dot"></span><span id="tb-rec-label" class="tb-lbl" data-i18n="tbRecord">Запись</span><span id="tb-rec-clock" class="tb-rec-clock hidden"></span>
+          <span id="tb-rec-dot" class="tb-rec-dot"></span><span id="tb-rec-label" class="tb-lbl" data-i18n="tbRecord">Запись</span><span id="tb-rec-clock" class="tb-rec-clock hidden"></span><span class="rec-src rec-src-tb hidden" data-rec-src></span>
         </button>
         <div id="tb-rec-done" class="tb-pop hidden" role="status">
           <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-apple-green shrink-0"></span><b class="text-[14px] font-semibold text-white" data-i18n="tbRecSaved">Запись сохранена</b><span id="tb-rec-saved-time" class="font-mono text-[12.5px] text-apple-secondary"></span>
@@ -23,12 +23,10 @@
         </div>
       </div>
       <span class="tb-sep" aria-hidden="true"></span>
-      <button data-click="switchAppView" data-click-args='["home"]' id="nav-home" class="tb-tab" data-i18n-title="tipNavHome" title="Главная: последние записи, встречи и задачи (Ctrl+1)"><svg class="tb-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11.5 12 5l8 6.5"/><path d="M6.5 10v9h11v-9"/></svg><span class="tb-lbl" data-i18n="navHome">Главная</span></button>
-      <button data-click="switchAppView" data-click-args='["tasks"]' id="nav-tasks" class="tb-tab" data-i18n-title="tipNavTasks" title="Задачи из всех записей (Ctrl+3)"><span data-i18n="navTasks">Задачи</span><span id="nav-tasks-n" class="tb-badge hidden"></span></button>
+      <button data-click="switchAppView" data-click-args='["home"]' id="nav-home" class="tb-tab" data-i18n-title="tipNavHome" title="Сегодня: встречи дня, недавние записи и задачи (Ctrl+1)"><svg class="tb-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11.5 12 5l8 6.5"/><path d="M6.5 10v9h11v-9"/></svg><span class="tb-lbl" data-i18n="navHome">Сегодня</span></button>
+      <button data-click="switchAppView" data-click-args='["tasks"]' id="nav-tasks" class="tb-tab" data-i18n-title="tipNavTasks" title="Задачи из всех записей (Ctrl+2)"><span data-i18n="navTasks">Задачи</span><span id="nav-tasks-n" class="tb-badge hidden"></span></button>
       <div id="tb-record" class="tb-group hidden" role="group" data-i18n-aria="tbRecordGroup" aria-label="Открытая запись">
-        <svg class="w-[13px] h-[13px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/></svg>
-        <span id="tb-recname" class="tb-recname"></span><span class="tb-recname-sep tb-recname" aria-hidden="true"></span>
-        <button data-click="openRecordTab" data-click-args='["transcript"]' id="nav-transcript" class="tb-subtab" data-i18n-title="tipTabTranscript" title="Показать полную расшифровку разговора по ролям (Ctrl+2)"><svg class="tb-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h9"/></svg><span class="tb-lbl" data-i18n="tabTranscript">Расшифровка</span></button>
+        <button data-click="openRecordTab" data-click-args='["transcript"]' id="nav-transcript" class="tb-subtab" data-i18n-title="tipTabTranscript" title="Показать полную расшифровку речи по ролям и таймкодам (Ctrl+3)"><svg class="tb-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h9"/></svg><span class="tb-lbl" data-i18n="tabTranscript">Расшифровка</span></button>
         <button data-click="openRecordTab" data-click-args='["summary"]' id="nav-summary" class="tb-subtab" data-i18n-title="tipTabSummary" title="Структурированный обзор, задачи и ответы на вопросы по записи"><svg class="tb-ai" aria-hidden="true" viewBox="0 0 24 24"><path d="M10 2l1.9 5.6 5.6 1.9-5.6 1.9L10 17l-1.9-5.6-5.6-1.9 5.6-1.9z"/><path d="M18.5 13l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/></svg><span class="tb-lbl" data-i18n="tabSummary">Анализ</span><span id="nav-summary-n" class="tb-badge hidden"></span></button>
         <button data-click="openRecordTab" data-click-args='["speakers"]' id="nav-speakers" class="tb-subtab" data-i18n-title="tipTabSpeakers" title="Управление участниками, прослушивание образцов голоса и переименование"><svg class="tb-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="9" cy="8.5" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M15.5 6.2a3 3 0 0 1 0 5.6M17.5 14.4A5.5 5.5 0 0 1 20.5 19"/></svg><span class="tb-lbl" data-i18n="tabSpeakers">Участники</span><span id="nav-speakers-n" class="tb-badge hidden"></span></button>
         <span class="tb-sep tb-sep-sm" aria-hidden="true"></span>
@@ -103,6 +101,7 @@
         <div class="flex items-center justify-between">
           <div id="record-timer-display" class="text-xl font-mono font-semibold text-white tracking-wider">00:00</div>
           <div class="flex items-center gap-2">
+            <span class="rec-src rec-src-studio hidden" data-rec-src></span>
             <span id="record-signal-dot" class="signal-dot" data-i18n-title="tipSignalDot" title="Горит зелёным, когда на входе есть звук"></span>
             <span id="record-db-display" class="text-[11.5px] font-mono text-apple-secondary w-12 text-right">-60 dB</span>
           </div>
@@ -382,7 +381,7 @@
         <!-- Nothing here can answer yet: the same two ways as on the analysis page, before a question is asked -->
         <div id="as-noai" class="an-noai hidden" role="status">
           <span class="an-noai-text" data-i18n="rdSasNoAiText">Отвечать пока некому: модель анализа не установлена.</span>
-          <button data-click="pullFirstRunLlm" class="an-noai-main" data-i18n="noAiLocal">Скачать модель</button>
+          <button data-click="openLlmPicker" class="an-noai-main" data-i18n="noAiLocal">Выбрать локальную модель</button>
           <button data-click="openModal" data-click-args='["settings", "analysis"]' class="an-noai-alt" data-i18n="noAiCloud">Подключить облачную</button>
         </div>
 
@@ -454,11 +453,11 @@
             data-keydown="blurOnEnter" data-keydown-args='[{"$": "event"}, {"$": "el"}]'
             data-i18n-title="tipRenameInline"
             title="Нажмите, чтобы переименовать запись"
-            class="bg-transparent hover:bg-white/5 focus:bg-apple-card focus:outline-none focus:ring-1 focus:ring-apple-blue px-2 h-7 -ml-2 rounded-md text-[14px] font-semibold text-white truncate min-w-[100px] max-w-[320px] transition" />
+            class="bg-transparent hover:bg-white/5 focus:bg-apple-card focus:outline-none focus:ring-1 focus:ring-apple-blue px-2 h-7 -ml-2 rounded-md text-[14px] font-semibold text-white truncate min-w-[100px] transition" />
           <span id="meeting-meta-badge" class="text-[11.5px] text-apple-secondary font-mono truncate min-w-0"></span>
           <button data-click="openActiveRecordingMenu" data-click-args='[{"$": "event"}]' data-i18n-title="tipRecordingMore"
             title="Действия с записью: переименовать, серия, нарезка, повторная обработка, удаление"
-            class="ui-btn ui-btn-subtle h-7 !px-2 shrink-0">•••</button>
+            class="ui-btn ui-btn-subtle h-7 !px-2 shrink-0"><svg class="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>
         </div>
 
         <!-- The views of the recording are chosen in the top bar (openRecordTab in static/js/shell.js);
@@ -483,7 +482,7 @@
         </div>
 
         <!-- Right: Translation menu (text translation / voice dub) + Document Export Menu -->
-        <div class="flex items-center justify-end gap-2 flex-1 shrink-0">
+        <div class="flex items-center justify-end gap-2 shrink-0">
           <div class="relative shrink-0">
             <button data-click="toggleTranslateMenu" data-click-args='[{"$": "event"}]' id="translate-menu-btn"
               data-i18n-title="tipTranslateMenu" title="Перевод текста, субтитры и озвучка голосом"
@@ -583,11 +582,14 @@
             <button data-click="deletePickedTranscript" id="tx-delete-version-btn" class="hidden ui-btn ui-btn-subtle shrink-0"
               data-i18n-title="tipTxDeleteVersion" title="Удалить расшифровку выбранной модели. Тексты других моделей останутся">
               <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
-              <span class="tx-tool-label" data-i18n="txDeleteVersion">Очистить</span>
+              <span class="tx-tool-label" data-i18n="txDeleteVersion">Удалить эту версию</span>
             </button>
             <span id="tx-model-status" class="tx-model-status"></span>
           </div>
           <div class="tx-toolbar max-w-6xl mx-auto flex items-center justify-between gap-3">
+            <!-- Audit 8.4: with a text there, recognition folds into this mark of its model; it opens the row above -->
+            <button id="tx-model-chip" data-click="toggleTxModelBar" class="tx-model-chip hidden" aria-expanded="false" aria-controls="tx-model-bar"
+              data-i18n-title="tipTxModelChip" title="Модель расшифровки: сменить, расшифровать заново, параметры"></button>
             <span class="tx-section-label tx-section-label-text" data-i18n="txSectionText">Текст</span>
             <!-- Left: Speaker Filter Pills (they wrap within their part; the tools stay on one line) -->
             <div class="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap min-h-[28px]" id="speaker-pills-container">
@@ -656,6 +658,8 @@
           <div class="max-w-3xl mx-auto flex items-center gap-2 min-w-0">
             <span class="text-[11px] uppercase tracking-wider text-apple-tertiary shrink-0" data-i18n="chaptersLabel">Главы</span>
             <div id="chapters-list" class="flex items-center gap-1 overflow-x-auto min-w-0 chapters-scroll"></div>
+            <button id="chapters-all" class="chapter-all" data-click="openChaptersMenu" data-click-args='[{"$": "event"}]'
+                    data-i18n-title="tipChaptersAll" title="Все главы записи списком: щелчок переходит к главе"></button>
           </div>
         </div>
 
@@ -671,7 +675,7 @@
       <div id="wview-summary" class="hidden flex-1 flex flex-col min-h-0 tab-pane-anim">
         <div id="an-noai" class="an-noai hidden" role="status">
           <span class="an-noai-text" data-i18n="anNoAiText">Модель анализа не подключена. Готовые разделы видны и копируются; создать новые или обновить — после подключения.</span>
-          <button data-click="pullFirstRunLlm" class="an-noai-main" data-i18n="noAiLocal">Скачать модель</button>
+          <button data-click="openLlmPicker" class="an-noai-main" data-i18n="noAiLocal">Выбрать локальную модель</button>
           <button data-click="openModal" data-click-args='["settings", "analysis"]' class="an-noai-alt" data-i18n="noAiCloud">Подключить облачную</button>
         </div>
         <div class="flex-1 min-h-0 flex">
@@ -773,12 +777,27 @@
       <footer id="player-footer" class="rp-footer shrink-0 z-20 flex flex-col">
 
         <!-- Attached Video Frame (Directly connected to player controls below) -->
-        <div id="video-drawer" class="hidden border-b apple-border bg-black/95 py-3 px-6">
+        <div id="video-drawer" class="hidden relative border-b apple-border bg-black/95 py-3 px-6">
           <div id="video-expanded-slot" class="max-w-xl mx-auto relative">
             <video id="media-player" crossorigin="anonymous" data-click="onVideoClick"
               data-i18n-title="tipVideoCanvas"
               title="Нажмите на видео для воспроизведения / паузы"
               class="w-full max-h-56 rounded-xl bg-black mx-auto cursor-pointer shadow-2xl border border-white/10"></video>
+          </div>
+          <!-- How the video is shown: smaller (in the player bar), theatre, a window over the other programs -->
+          <div id="video-tools" class="video-tools" role="group" data-i18n-aria="rdPlyrVideo" aria-label="Видео">
+            <button data-click="rpSetVideo" data-click-args='["mini"]' class="video-tool" data-i18n-title="tipVideoCollapse" title="Свернуть видео в маленькое превью в панели плеера (выбор запоминается)">
+              <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25"/></svg>
+              <span class="video-tool-label" data-i18n="vtMini">Уменьшить</span>
+            </button>
+            <button data-click="rpSetVideo" data-click-args='["theatre"]' class="video-tool" data-i18n-title="tipTheatre" title="Режим кинотеатра: большое видео и текст рядом (Esc — выход)">
+              <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.75" y="4.75" width="18.5" height="12.5" rx="2"/><path stroke-linecap="round" d="M8 20.25h8"/></svg>
+              <span class="video-tool-label" data-i18n="vtTheatre">Кинотеатр</span>
+            </button>
+            <button data-click="rpSetVideo" data-click-args='["window"]' id="video-tool-window" class="video-tool" data-i18n-title="tipVideoPip" title="Открыть видео в отдельном окне поверх других программ">
+              <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.75" y="4.75" width="18.5" height="14.5" rx="2"/><rect x="12" y="11.5" width="7" height="5.5" rx="1" fill="currentColor" stroke="none"/></svg>
+              <span class="video-tool-label" data-i18n="vtWindow">В отдельном окне</span>
+            </button>
           </div>
         </div>
 
@@ -842,17 +861,12 @@
             </div>
 
             <div class="rp-right">
-              <!-- How the video is shown: in the panel, small, theatre, separate window -->
-              <div class="rp-anchor hidden" id="rp-video-anchor">
-                <button id="rp-video-btn" class="rp-chip" data-click="rpTogglePop" data-click-args='["video"]' aria-expanded="false"></button>
-                <div id="rp-pop-video" class="rp-pop rp-menu hidden" role="menu"></div>
-              </div>
               <!-- The sound while listening: studio voice, skipping silence, the track -->
               <div class="rp-anchor">
                 <button id="rp-sound-btn" class="rp-chip" data-click="rpTogglePop" data-click-args='["sound"]' aria-expanded="false"
                   data-i18n-title="rdPlyrTipSound" title="Как звучит запись сейчас: студийный голос, пропуск тишины, дорожка">
                   <svg class="tb-ai" width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2l1.9 5.6 5.6 1.9-5.6 1.9L10 17l-1.9-5.6-5.6-1.9 5.6-1.9z"/><path d="M18.5 13l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/></svg>
-                  <span data-i18n="rdPlyrSound">Звук</span><span id="rp-sound-n" class="rp-badge hidden"></span>
+                  <span class="rp-chip-label" data-i18n="rdPlyrSound">Звук</span><span id="rp-sound-n" class="rp-badge hidden"></span>
                 </button>
                 <div id="rp-pop-sound" class="rp-pop rp-pop-sound hidden" role="dialog" data-i18n-aria="rdPlyrSoundTitle" aria-label="Звук при прослушивании"></div>
               </div>

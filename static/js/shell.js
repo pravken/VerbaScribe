@@ -4,7 +4,7 @@
 
 // --- Views of the main area ---
 // "library" is the open recording (its transcript, analysis and speakers); its name stays for the
-// many places that open a recording. Ctrl+1…5 go through the first five, in the order of the top bar.
+// many places that open a recording. Ctrl+1…5 follow the top bar (video.js).
 const APP_VIEWS = ['home', 'library', 'tasks', 'studio', 'ask', 'settings'];
 const VIEW_HOOKS = {};
 
@@ -40,6 +40,8 @@ function switchAppView(view) {
     VIEW_HOOKS[prev]?.hide?.();
   }
   state.appView = view;
+  // audit 8.8: the open settings page is marked on its button, like the current tab
+  document.getElementById('sb-settings-btn')?.classList.toggle('sb-on', view === 'settings');
   // The sidebar always shows the library; the main area shows the chosen part
   for (const v of APP_VIEWS) document.getElementById(`${v}-view`)?.classList.toggle('hidden', v !== view);
   if (view === 'ask') loadPeople();
@@ -54,7 +56,7 @@ function switchAppView(view) {
   if (view === 'ask') {
     renderAskScope();
     renderAskThread();
-    setTimeout(() => document.getElementById('library-question').focus(), 30);
+    nextFrame(() => document.getElementById('library-question').focus());
   }
   // Reached without openModal (another script switching to it): the page needs its content
   if (view === 'settings' && document.getElementById('modal-settings')?.classList.contains('hidden')) openModal('settings');
@@ -85,14 +87,13 @@ function renderTopbar() {
   set('nav-studio', view === 'studio');
   set('nav-ask', view === 'ask');
   const m = state.activeMeeting;
-  document.getElementById('tb-record')?.classList.toggle('hidden', !m);
+  // Audit 8.5: the tabs of a recording appear once you have opened one, not for the one picked at start
+  if (view === 'library') state.recordSeen = true;
+  document.getElementById('tb-record')?.classList.toggle('hidden', !m || !state.recordSeen);
   set('nav-transcript', view === 'library' && tab === 'transcript');
   set('nav-summary', view === 'library' && tab === 'summary');
   set('nav-speakers', view === 'library' && tab === 'speakers');
   if (m) {
-    const name = document.getElementById('tb-recname');
-    if (name.textContent !== m.title) name.textContent = m.title;
-    name.title = t('tbOpenRecord').replace('{title}', () => m.title);
     // the sections made (summaries["error"] is the last failure, not a section)
     const ready = Object.entries(m.summaries || {}).filter(([k, v]) => k !== 'error' && typeof v === 'string' && v.trim()).length;
     badge('nav-summary-n', ready);
@@ -141,20 +142,13 @@ async function refreshTasksCount(force) {
 setInterval(() => { if (!document.hidden) renderTopbar(); }, 1500);
 
 // The ⋯ of the open recording: its details, rename, move, show the file, delete
+// Audit 7.1. The ⋯ of the top bar opens the same full menu of the recording as the ⋯ at its title
 function openRecordBarMenu(e) {
   e.stopPropagation();
   const m = state.activeMeeting;
   if (!m) return;
   const r = e.currentTarget.getBoundingClientRect();
-  const at = (fn) => () => { state.contextMeetingId = m.id; fn(); };
-  openTextMenuAt([
-    { label: t('tbRecInfo'), key: 'Ctrl+I', run: () => rpOpenInfo() },
-    { label: t('ctxRename'), key: 'F2', run: at(ctxRenameRecording) },
-    { label: t('tbRecMove'), run: () => openMoveRecordMenu(m, r) },
-    { label: t('ctxReveal'), run: at(ctxRevealInExplorer) },
-    { sep: true },
-    { label: t('tbRecDelete'), key: 'Del', run: at(ctxDeleteRecording) },
-  ], r.right, r.bottom + 4, { right: true });
+  openRecordingContextMenu({ clientX: r.right, clientY: r.bottom + 4, preventDefault() {}, stopPropagation() {} }, m.id);
 }
 
 function openMoveRecordMenu(m, r) {
@@ -184,7 +178,9 @@ async function shellQuickRecord() {
       return;
     }
     state.quickRecStay = true;  // startLiveRecording leaves the view as it is
-    await prepareStudio(state.recPresetId || defaultRecordPresetId());
+    // In the open Studio it records what the Studio shows; from another view, with the chosen preset
+    if (state.appView === 'studio') await prepareStudio();
+    else await prepareStudio(state.recPresetId || defaultRecordPresetId());
     await startLiveRecording();
   } finally {
     state.quickRecStay = false;
@@ -226,6 +222,7 @@ function updateRecordButtonState() {
   const clock = document.getElementById('tb-rec-clock');
   clock.textContent = recording ? timer : '';
   clock.classList.toggle('hidden', !recording);
+  if (!recording && recSrc.mic.used + recSrc.sys.used) recSourcesStop();  // a recording that ended another way
   btn.title = recording ? t('tipTbRecordStop') : t('tipTbRecord');
   document.getElementById('nav-studio-dot').classList.toggle('hidden', !recording);
   document.getElementById('nav-studio-label').textContent = recording ? `${t('navStudio')} · ${timer}` : t('navStudio');
@@ -249,14 +246,21 @@ function leaveSettingsPage() {
   stopSettingsAudioTest();
 }
 
-// --- The status bar: the load of the computer and the queue ---
+// --- The status bar: the queue (the load of the computer is in the sidebar) ---
 function renderStatusbar() {
+  // Audit 6.4: a model downloading in the background is seen from every page
+  const dl = document.getElementById('sb-dl');
+  const downloads = typeof modelDownloadsNow === 'function' ? modelDownloadsNow() : [];
+  if (dl) {
+    dl.classList.toggle('hidden', !downloads.length);
+    if (downloads.length) {
+      const d = downloads[0];
+      const label = `↓ ${d.name} · ${d.pct || 0}%${downloads.length > 1 ? ` · ${t('sbQueueMore').replace('{n}', () => downloads.length - 1)}` : ''}`;
+      if (dl.textContent !== label) dl.textContent = label;
+    }
+  }
   const text = (id) => (document.getElementById(id)?.textContent || '').trim();
   const put = (id, v) => { const el = document.getElementById(id); if (el && el.textContent !== v) el.textContent = v || '—'; };
-  put('sb-cpu', text('cpu-text'));
-  put('sb-ram', text('ram-text'));
-  const gpu = text('vram-text');
-  put('sb-gpu', gpu ? `${gpu} · ${text('hw-text')}` : text('hw-text'));
   const items = state.queue || [];
   const q = document.getElementById('sb-queue');
   if (!q) return;
@@ -273,6 +277,10 @@ function renderStatusbar() {
     ? `${queueKindLabel(run)} · ${pct}% — «${run.title}»${more ? ` · ${t('sbQueueMore').replace('{n}', () => more)}` : ''}`
     : t('sbQueueWaiting').replace('{n}', () => items.length);
   q.classList.add('sb-queue-busy');
+}
+
+function openStatusbarDownloads(e) {
+  if (typeof toggleModelsPop === 'function') toggleModelsPop(e);
 }
 
 function openStatusbarQueue() {

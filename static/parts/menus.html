@@ -37,11 +37,17 @@
   <div id="recording-context-menu" class="hidden fixed w-56 macos-menu z-50" data-click="stopEvent" data-click-args='[{"$": "event"}]'>
     <div id="ctx-title-header" class="px-2.5 py-1 text-[11.5px] font-semibold text-apple-secondary truncate border-b border-white/10 mb-1"></div>
 
+    <button data-click="ctxOpenInfo" data-i18n-title="tbRecInfo" title="Сведения" class="macos-menu-item">
+      <span data-i18n="tbRecInfo">Сведения</span><span class="tm-key">Ctrl+I</span>
+    </button>
     <button data-click="ctxRenameRecording" data-i18n-title="tipCtxRename" title="Изменить название выбранной записи" class="macos-menu-item">
-      <span data-i18n="ctxRename">Переименовать…</span>
+      <span data-i18n="ctxRename">Переименовать…</span><span class="tm-key">F2</span>
+    </button>
+    <button data-click="ctxMoveToFolder" data-click-args='[{"$": "event"}]' data-i18n-title="tbRecMove" title="Переместить в папку" class="macos-menu-item">
+      <span data-i18n="tbRecMove">Переместить в папку</span>
     </button>
     <button data-click="ctxOpenReconfigureModal" data-i18n-title="tipCtxReconfigure" title="Изменить модель Whisper или число участников и запустить заново" class="macos-menu-item">
-      <span data-i18n="ctxReconfigure">Повторная обработка…</span>
+      <span data-i18n="ctxReconfigure">Расшифровать заново…</span>
     </button>
     <button id="ctx-cancel-item" data-click="ctxCancelProcessing" data-i18n-title="tipCtxCancel" title="Остановить распознавание этой записи" class="macos-menu-item hidden">
       <span data-i18n="ctxCancel">Отменить обработку</span>
@@ -56,7 +62,7 @@
       <span data-i18n="ctxLocalOnly">Только локальный анализ</span><span id="ctx-local-item-check" class="text-[11.5px] opacity-70"></span>
     </button>
     <button data-click="ctxClearResults" class="macos-menu-item" data-i18n-title="tipClearResults" title="Удалить расшифровку, участников, саммари, переводы и задачи; звук и ваши заметки остаются, запись можно расшифровать заново">
-      <span data-i18n="ctxClearResults">Очистить результаты</span>
+      <span data-i18n="ctxClearResults">Удалить результаты</span>
     </button>
     <button data-click="ctxRemoveMedia" class="macos-menu-item" data-i18n-title="tipRemoveMedia" title="Удалить звук и видео записи, оставив расшифровку, анализ и заметки">
       <span data-i18n="ctxRemoveMedia">Удалить звук, оставить текст</span>
@@ -99,3 +105,5 @@
     <button id="fctx-delete" data-click="fctxDelete" class="macos-menu-item macos-menu-item-danger"><span data-i18n="folderDelete">Удалить папку</span></button>
   </div>
 
+  <!-- All the models, opened from the tile under the hardware in the sidebar (renderModelsPop in static/js/settings.js) -->
+  <div id="models-pop" class="models-pop hidden" role="dialog" data-i18n-aria="mpTitle" aria-label="Модели"></div>

@@ -123,7 +123,7 @@ function renderSpeakersPanel(opts = {}) {
             <button class="sp-me${s.is_me ? ' sp-me-on' : ''}" aria-pressed="${s.is_me ? 'true' : 'false'}" title="${escapeHtml(t('spMeTip'))}"
               ${pageCall('click', 'spToggleMe', [id])}>${escapeHtml(t('spMe'))}</button>
           </div>
-          <input class="sp-role" value="${escapeHtml(s.role || '')}" placeholder="${escapeHtml(t('spRolePh'))}" aria-label="${escapeHtml(t('spRolePh'))}"
+          <input class="sp-role" value="${escapeHtml(s.role || '')}" placeholder="${escapeHtml(t('spRoleAdd'))}" aria-label="${escapeHtml(t('spRolePh'))}"
             ${pageCall('blur', 'spSetRole', [id, { $: 'value' }])} ${pageCall('keydown', 'blurOnEnter', [{ $: 'event' }, { $: 'el' }])}>
           <span class="sp-stats">${escapeHtml(stats)}</span>
         </div>
@@ -175,7 +175,7 @@ async function spMeta(id, body) {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ speaker_id: id, ...body }),
   });
   const data = await readJson(res);
-  if (!res.ok) { showToast(serverText(data.detail || 'Error')); return null; }
+  if (!res.ok) { showError(serverText(data.detail)); return null; }
   if (body.is_me !== undefined) await spRefreshSettings();
   if (state.activeMeeting === m) {
     state.activeMeeting = data;
@@ -193,7 +193,7 @@ function spSetRole(id, value) {
 async function spToggleMe(id) {
   const s = ((state.activeMeeting && state.activeMeeting.speakers) || {})[id];
   if (!s) return;
-  if (!s.is_me && spIsDefault(s.name)) { showToast(t('spMeNeedsName')); spFocusName(id); return; }
+  if (!s.is_me && spIsDefault(s.name)) { showWarning(t('spMeNeedsName')); spFocusName(id); return; }
   if (await spMeta(id, { is_me: !s.is_me }) && !s.is_me) showToast(t('spMeSet').replace('{name}', () => s.name));
 }
 
@@ -228,7 +228,7 @@ async function spMerge(source, target) {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source, target }),
   });
   const data = await readJson(res);
-  if (!res.ok) { showToast(serverText(data.detail || 'Error')); return; }
+  if (!res.ok) { showError(serverText(data.detail)); return; }
   spAfterTranscriptEdit(m, data);
   showToast(t('spMerged').replace('{name}', () => data.speakers[target].name));
 }
@@ -248,7 +248,7 @@ function openSplitDialog(id) {
   const s = m && (m.speakers || {})[id];
   if (!s) return;
   const lines = (m.segments || []).map((seg, i) => ({ seg, i })).filter(x => x.seg.speaker === id);
-  if (lines.length < 2) { showToast(t('spSplitFew')); return; }
+  if (lines.length < 2) { showWarning(t('spSplitFew')); return; }
   document.getElementById('sp-split-dlg')?.remove();
   const wrap = document.createElement('div');
   wrap.id = 'sp-split-dlg';
@@ -288,7 +288,7 @@ function openSplitDialog(id) {
       body: JSON.stringify({ speaker_id: id, positions, new_name: wrap.querySelector('[data-f="name"]').value }),
     });
     const data = await readJson(res);
-    if (!res.ok) { showToast(serverText(data.detail || 'Error')); return; }
+    if (!res.ok) { showError(serverText(data.detail)); return; }
     wrap.remove();
     spAfterTranscriptEdit(m, data);
     showToast(t('spSplitDone').replace('{n}', () => String(positions.length)));
@@ -476,7 +476,7 @@ async function dirAdd(name) {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, kind: dir.tab }),
   });
   const data = await readJson(res);
-  if (!res.ok) { showToast(serverText(data.detail || 'Error')); return; }
+  if (!res.ok) { showError(serverText(data.detail)); return; }
   dir.adding = false;
   await loadDirectory();
   spCtx.data = null;
@@ -487,7 +487,7 @@ async function dirUpdate(body) {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   });
   const data = await readJson(res);
-  if (!res.ok) { showToast(serverText(data.detail || 'Error')); return; }
+  if (!res.ok) { showError(serverText(data.detail)); return; }
   if (body.is_me !== undefined || body.new_name) await spRefreshSettings();
   await loadDirectory();
   spCtx.data = null;
@@ -510,7 +510,7 @@ async function dirMerge() {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ names: dir.picked }),
   });
   const data = await readJson(res);
-  if (!res.ok) { showToast(serverText(data.detail || 'Error')); return; }
+  if (!res.ok) { showError(serverText(data.detail)); return; }
   dir.picked = [];
   await loadDirectory();
   spCtx.data = null;

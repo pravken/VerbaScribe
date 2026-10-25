@@ -6,16 +6,58 @@ const DONE_STATUSES = ['completed', 'failed', 'cancelled', 'cleared'];
 // The page opened, so the locked page (app/main.py) may again try one fresh address next time
 try { sessionStorage.removeItem('vs_relocked'); } catch (e) { /* storage off */ }
 
-// --- Interface scale (Settings → Interface, ui_scale): CSS zoom on the page, 75 % by default ---
+// --- Interface scale (Settings → Interface, ui_scale): CSS zoom on the page, 100 % by default ---
 // The zoom is on <html>, so the page lays itself out in its own pixels: a point of the window
 // (event.clientX/Y, getBoundingClientRect) is divided by the zoom before it becomes style.left/top.
-const UI_SCALES = ['75', '90', '100', '115'];
+const UI_SCALES = ['75', '90', '100', '115', '130', '150'];
 function uiZoom() { return Number(document.documentElement.dataset.zoom) || 1; }
 function zpx(v) { return v / uiZoom(); }
 function viewW() { return window.innerWidth / uiZoom(); }
 function viewH() { return window.innerHeight / uiZoom(); }
+// Audit 3.15. After the page has drawn what was just shown (two frames), not after a guessed delay
+function nextFrame(fn) { requestAnimationFrame(() => requestAnimationFrame(fn)); }
+// «Show less motion» in Windows: scrolls jump instead of gliding (CSS covers the rest)
+function scrollMotion() {
+  return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+}
+// Audit 3.6. Menus and dialogs leave the way they came, in 120 ms, instead of vanishing in one
+// frame; the pointer goes through them meanwhile, so nothing waits for the animation. Showing the
+// element again cancels its exit (cancelLeave)
+function leaveThen(el, done) {
+  if (!el || scrollMotion() === 'auto' || el.classList.contains('hidden')) { done(); return; }
+  const token = el._leave = (el._leave || 0) + 1;
+  el.classList.add('is-leaving');
+  const end = () => {
+    if (el._leave !== token) return;
+    el._leave++;
+    el.classList.remove('is-leaving');
+    done();
+  };
+  el.addEventListener('animationend', (e) => { if (e.target === el) end(); }, { once: true });
+  setTimeout(end, 140);
+}
+function hideWithExit(el) { leaveThen(el, () => el.classList.add('hidden')); }
+function removeWithExit(el) { leaveThen(el, () => el.remove()); }
+function cancelLeave(el) {
+  if (!el || !el.classList.contains('is-leaving')) return;
+  el._leave = (el._leave || 0) + 1;
+  el.classList.remove('is-leaving');
+}
+
+// Puts a shown menu at the pointer by its real size: where it does not fit below, it opens upward
+// from the pointer, and where it does not fit to the right, leftward; it never leaves the window
+function placeMenuAt(menu, e) {
+  cancelLeave(menu);
+  const x = zpx(e.clientX), y = zpx(e.clientY);
+  const w = menu.offsetWidth, h = menu.offsetHeight;
+  const left = x + w <= viewW() - 8 ? x : Math.max(8, x - w);
+  const top = y + h <= viewH() - 8 ? y : Math.max(8, Math.min(y - h, viewH() - h - 8));
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+  menu.style.transformOrigin = `${left < x ? 'right' : 'left'} ${top < y ? 'bottom' : 'top'}`;
+}
 function applyUiScale(pct) {
-  const z = (UI_SCALES.includes(String(pct)) ? Number(pct) : 75) / 100;
+  const z = (UI_SCALES.includes(String(pct)) ? Number(pct) : 100) / 100;
   const root = document.documentElement;
   root.style.zoom = String(z);
   root.dataset.zoom = String(z);
@@ -24,7 +66,7 @@ function applyUiScale(pct) {
   if (typeof scheduleFitTopbar === 'function') scheduleFitTopbar();
 }
 // Before anything is drawn: the last scale, so the window does not jump when the settings arrive
-(() => { let v = null; try { v = localStorage.getItem('verbascribe_ui_scale'); } catch (e) {} applyUiScale(v || '75'); })();
+(() => { let v = null; try { v = localStorage.getItem('verbascribe_ui_scale'); } catch (e) {} applyUiScale(v || '100'); })();
 
 // --- Events without inline handlers ---
 // The page's Content-Security-Policy runs no inline script, so markup does not say onclick="…".
@@ -282,12 +324,12 @@ function confirmDialog(title, text, okLabel, danger = true, opts = {}) {
     wrap.setAttribute('aria-modal', 'true');
     wrap.innerHTML = `<div class="w-full max-w-md bg-apple-card border apple-border rounded-2xl shadow-2xl p-5 space-y-4 modal-card">
       <div class="text-sm font-semibold text-white">${escapeHtml(title)}</div>
-      <p class="text-xs text-apple-secondary leading-relaxed whitespace-pre-line break-words">${escapeHtml(text)}</p>
+      ${text ? `<p class="text-xs text-apple-secondary leading-relaxed whitespace-pre-line break-words">${escapeHtml(text)}</p>` : ''}
       <div class="flex justify-end gap-2">
         ${opts.single ? '' : `<button data-a="no" class="ui-btn ui-btn-subtle">${escapeHtml(opts.cancel || t('cancel'))}</button>`}
         <button data-a="yes" class="ui-btn ${danger ? 'bg-apple-red text-white hover:opacity-90' : 'ui-btn-primary'}">${escapeHtml(okLabel)}</button>
       </div></div>`;
-    const done = v => { wrap.remove(); document.removeEventListener('keydown', onKey, true); resolve(v); };
+    const done = v => { removeWithExit(wrap); document.removeEventListener('keydown', onKey, true); resolve(v); };
     const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); done(false); } };
     wrap.addEventListener('click', e => {
       const a = e.target.closest('button[data-a]');
@@ -302,8 +344,21 @@ function confirmDialog(title, text, okLabel, danger = true, opts = {}) {
 
 // Short forms for the old browser dialogs (window.confirm / prompt / alert), in the app's style.
 // danger: the button is red (deleting, discarding); said by the caller, not guessed from the words
-function askConfirm(text, danger = false) {
-  return confirmDialog(t('confirmTitle'), text, t('ok'), danger);
+// The question is the title and the button names the action («Удалить папку», not «OK»).
+// text: the question with its explanation, in either order ("Удалить X? Записи останутся." or
+// "Места мало. Начать запись?"); okLabel: the verb of the action
+function askConfirm(text, danger = false, okLabel = '') {
+  const [title, body] = splitQuestion(text);
+  return confirmDialog(title, body, okLabel || t('ok'), danger);
+}
+function splitQuestion(text) {
+  const s = String(text);
+  const i = s.indexOf('?');
+  if (i < 0) return [t('confirmTitle'), s];
+  const rest = s.slice(i + 1).trim();
+  if (rest) return [s.slice(0, i + 1).trim(), rest];
+  const m = s.match(/^([\s\S]*[.!])\s+([^.!?]+\?)$/);
+  return m ? [m[2].trim(), m[1].trim()] : [s.trim(), ''];
 }
 
 function askText(label, value = '', opts = {}) {
@@ -322,7 +377,7 @@ function askText(label, value = '', opts = {}) {
       </div></form>`;
     const input = wrap.querySelector('input');
     input.value = value || '';
-    const done = v => { wrap.remove(); document.removeEventListener('keydown', onKey, true); resolve(v); };
+    const done = v => { removeWithExit(wrap); document.removeEventListener('keydown', onKey, true); resolve(v); };
     const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); done(null); } };
     wrap.querySelector('form').addEventListener('submit', e => { e.preventDefault(); done(input.value); });
     wrap.addEventListener('click', e => { if (e.target === wrap || e.target.closest('[data-a="no"]')) done(null); });
@@ -427,7 +482,7 @@ window.fetch = async (...args) => {
 };
 
 async function onSessionLost() {
-  showToast(t('sessionLost'));
+  showWarning(t('sessionLost'));
   // In the app window the page reloads and signs in again (app/main.py _LOCKED_PAGE)
   if (window.pywebview && window.pywebview.api) setTimeout(() => location.replace('/'), 1500);
   /* in a browser: the toast says what to do */
@@ -446,24 +501,82 @@ async function readJson(res) {
   }
 }
 
-function showToast(msg, action) {
-  const el = document.getElementById('toast');
-  el.textContent = '';
-  const span = document.createElement('span');
-  span.textContent = msg;
-  el.appendChild(span);
+// Audit 6.3, 3.11. Four kinds of notices: a status, done (with «Отменить» when it can be undone),
+// a warning and an error. An error stays until it is closed and is read out by the screen reader at
+// once; the others leave by themselves, but not while the pointer is on them. A new status or done
+// notice replaces the previous one; errors and warnings stack, three at most, the newest below
+const TOAST_LIFE = { status: 3000, success: 3000, warning: 8000, error: 0 };
+const TOAST_ICONS = {
+  status: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="6.2"/><path d="M8 7.2v3.6M8 5.1v.1" stroke-linecap="round"/></svg>',
+  success: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.4l3 3 6-6.4"/></svg>',
+  warning: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.2l6.2 11H1.8z"/><path d="M8 6.6v3M8 11.4v.1"/></svg>',
+  error: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="8" cy="8" r="6.2"/><path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4"/></svg>',
+};
+function showToast(msg, action, kind) {
+  kind = TOAST_LIFE[kind] !== undefined ? kind : (action ? 'success' : 'status');
+  const stack = document.getElementById('toast');
+  if (kind === 'status' || kind === 'success') {
+    stack.querySelectorAll('.toast-status, .toast-success').forEach(old => { if (!old.classList.contains('is-leaving')) removeWithExit(old); });
+  }
+  const el = document.createElement('div');
+  el.className = `toast toast-${kind}`;
+  el.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+  el.innerHTML = `<span class="toast-icon" aria-hidden="true">${TOAST_ICONS[kind]}</span><span class="toast-text"></span>`;
+  el.querySelector('.toast-text').textContent = msg;
+  const dismiss = () => { clearTimeout(el._timer); removeWithExit(el); };
   if (action && action.label && typeof action.onClick === 'function') {
     const btn = document.createElement('button');
-    btn.className = 'ml-3 text-apple-blue hover:underline font-semibold';
+    btn.className = 'toast-action';
     btn.textContent = action.label;
     if (action.title) btn.title = action.title;
-    btn.onclick = () => { el.classList.add('hidden'); action.onClick(); };
+    btn.onclick = () => { dismiss(); action.onClick(); };
     el.appendChild(btn);
   }
-  el.classList.remove('hidden');
-  clearTimeout(window._toastTimer);
-  window._toastTimer = setTimeout(() => el.classList.add('hidden'), action ? 7000 : 2600);
+  if (kind === 'warning' || kind === 'error') {
+    const x = document.createElement('button');
+    x.className = 'toast-close';
+    x.setAttribute('aria-label', t('close'));
+    x.textContent = '✕';
+    x.onclick = dismiss;
+    el.appendChild(x);
+  }
+  const life = action && kind === 'success' ? 7000 : TOAST_LIFE[kind];
+  const arm = (ms) => { clearTimeout(el._timer); if (ms) el._timer = setTimeout(dismiss, ms); };
+  el.addEventListener('mouseenter', () => clearTimeout(el._timer));
+  el.addEventListener('mouseleave', () => arm(life && Math.max(1500, life / 2)));
+  stack.appendChild(el);
+  const live = [...stack.children].filter(c => !c.classList.contains('is-leaving'));
+  live.slice(0, Math.max(0, live.length - 3)).forEach(c => removeWithExit(c));
+  arm(life);
+  return dismiss;
 }
+// Audit 6.1. A reversible removal happens at once and the notice offers «Отменить» for 7 s; the
+// server is told only then (or when the window closes), so undoing needs nothing from it.
+// hide() and restore() change the page; commit(keepalive) sends the removal and resolves true
+// when it went through (on false the item comes back with an error)
+function deleteWithUndo({ message, hide, restore, commit }) {
+  hide();
+  let settled = false;
+  const onLeave = () => { if (!settled) { settled = true; commit(true); } };
+  const finish = async () => {
+    if (settled) return;
+    settled = true;
+    window.removeEventListener('pagehide', onLeave);
+    const ok = await Promise.resolve(commit(false)).catch(() => false);
+    if (ok === false) { restore(); showError(t('errorGeneric')); }
+  };
+  window.addEventListener('pagehide', onLeave);
+  const timer = setTimeout(finish, 7000);
+  showToast(message, { label: t('rdSasUndo'), onClick: () => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timer);
+    window.removeEventListener('pagehide', onLeave);
+    restore();
+  } });
+}
+function showError(msg, action) { return showToast(msg || t('errorGeneric'), action, 'error'); }
+function showWarning(msg, action) { return showToast(msg, action, 'warning'); }
 
 function formatTime(sec) {
   sec = Math.max(0, Number(sec) || 0);
@@ -478,9 +591,9 @@ function formatTime(sec) {
 
 // --- Modals & Menus ---
 // Settings are split into tabs; the last one is remembered
-const SETTINGS_TABS = ['general', 'ui', 'record', 'recognition', 'models', 'analysis', 'calendar', 'hotkeys', 'dictionary',
+const SETTINGS_TABS = ['general', 'record', 'recognition', 'models', 'analysis', 'calendar', 'hotkeys', 'dictionary',
   'export', 'privacy', 'updates', 'dub', 'bench', 'about'];
-const SETTINGS_TAB_ALIASES = { integrations: 'export', interface: 'ui', ai: 'analysis', dict: 'dictionary', recog: 'recognition' };
+const SETTINGS_TAB_ALIASES = { integrations: 'export', interface: 'general', ui: 'general', ai: 'analysis', dict: 'dictionary', recog: 'recognition' };
 function selectSettingsTab(name) {
   name = SETTINGS_TAB_ALIASES[name] || name;
   if (!SETTINGS_TABS.includes(name)) name = 'general';
@@ -533,12 +646,15 @@ function openModal(name, tab) {
     modal.setAttribute('role', 'dialog');
     modal.setAttribute('aria-modal', 'true');
   }
+  cancelLeave(modal);
   modal.classList.remove('hidden');
   if (name === 'settings' && state.appView !== 'settings') switchAppView('settings');
   setTimeout(() => {
     if (modal.contains(document.activeElement)) return;
     const first = name === 'settings' ? document.getElementById('settings-search') : null;  // the search, not «Закрыть»
-    (first || focusablesIn(modal)[0] || modal).focus();
+    // Audit 7.2: the first field or action, not the ✕ of the window (Enter must not close it)
+    const items = focusablesIn(modal);
+    (first || items.find(el => !el.matches('.dlg-x, .imp-x')) || items[0] || modal).focus();
   }, 60);
   if (name === 'import') onImportDialogOpen();  // importdlg.js: the list, the processing from the settings
   if (name === 'settings') {
@@ -555,7 +671,7 @@ function openModal(name, tab) {
     state.llmProviderEdited = false;
     state.llmShowCloud = false;
     loadLlmStatus();
-    setTimeout(() => drawIdleSoundCloudBars('settings-waveform-canvas'), 30);
+    nextFrame(() => drawIdleSoundCloudBars('settings-waveform-canvas'));
   }
 }
 // Voice profiles only work with speaker separation: dimmed while it is off
@@ -598,7 +714,7 @@ function renderVoiceProfiles(data) {
 async function applyVoiceProfilesToLibrary() {
   const res = await fetch('/api/voice-profiles/apply-all', { method: 'POST' });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  if (!res.ok) { showError(data.detail); return; }
   showToast(data.speakers ? t('voiceApplyAllDone').replace('{n}', () => data.speakers).replace('{m}', () => data.meetings) : t('voiceApplyAllNone'));
   if (data.speakers) {
     await loadMeetingsList();
@@ -607,11 +723,11 @@ async function applyVoiceProfilesToLibrary() {
 }
 
 async function deleteVoiceProfile(id, name) {
-  if (!await askConfirm(t('voiceProfileDeleteConfirm').replace('{name}', () => name || ''), true)) return;
+  if (!await askConfirm(t('voiceProfileDeleteConfirm').replace('{name}', () => name || ''), true, t('cfDeleteProfile'))) return;
   const res = await fetch(`/api/voice-profiles/${id}`, { method: 'DELETE' });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    showToast(data.detail || 'Error');
+    showError(data.detail);
     return;
   }
   renderVoiceProfiles(data);
@@ -622,7 +738,9 @@ function closeModal(name) {
     stopSettingsAudioTest();
   }
   if (name === 'about') endAboutEgg();  // the transcript of the room does not go on unseen
-  document.getElementById(`modal-${name}`).classList.add('hidden');
+  const modal = document.getElementById(`modal-${name}`);
+  if (name === 'settings') modal.classList.add('hidden');
+  else hideWithExit(modal);
   // The settings page: back to the view it was opened from
   if (name === 'settings' && state.appView === 'settings') switchAppView(state.prevView || 'home');
   const back = _modalReturnFocus[name];
@@ -631,6 +749,35 @@ function closeModal(name) {
 function closeModalOnBackdrop(e, name) {
   if (e.target === e.currentTarget) closeModal(name);
 }
+
+// Audit 4.5. Scrolled lists fade into their edges instead of being cut by a line: the top edge
+// fades only once the list is scrolled, the bottom one while there is more below
+function softEdges(el) {
+  if (!el || el._softEdges) return;
+  el._softEdges = true;
+  el.classList.add('soft-edges');
+  const update = () => {
+    el.classList.toggle('se-top', el.scrollTop > 2);
+    el.classList.toggle('se-bottom', el.scrollTop + el.clientHeight < el.scrollHeight - 2);
+  };
+  el.addEventListener('scroll', update, { passive: true });
+  if (window.ResizeObserver) new ResizeObserver(update).observe(el);
+  if (window.MutationObserver) new MutationObserver(update).observe(el, { childList: true, subtree: true });
+  update();
+}
+document.addEventListener('DOMContentLoaded', () => {
+  ['transcript-container', 'an-main', 'library-answer', 'wview-speakers', 'wview-info'].forEach(id => softEdges(document.getElementById(id)));
+});
+
+// A press inside a dialog released over its backdrop (a text selection dragged out of a field)
+// reaches the backdrop as a click: that is not a click on the backdrop, so no dialog closes on it
+let _pressTarget = null;
+document.addEventListener('pointerdown', e => { _pressTarget = e.target; }, true);
+window.addEventListener('click', e => {
+  const t = e.target;
+  if (t === _pressTarget || !(t instanceof Element)) return;
+  if (t.classList.contains('modal-backdrop') || t.classList.contains('tk-veil')) e.stopPropagation();
+}, true);
 
 function switchWorkspaceTab(tab) {
   state.activeWorkspaceTab = tab;

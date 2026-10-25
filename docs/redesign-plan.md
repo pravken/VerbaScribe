@@ -12,7 +12,7 @@ files, so their changes merge without conflicts.
   the open recording (`#tb-record`: name, «Расшифровка», «✦ Анализ N», «Участники N», ⋯ menu),
   «Студия», «✦ Ассистент». The AI mark is `<svg class="tb-ai">` filled with `url(#vs-ai-grad)`.
 - **Status bar** (`static/parts/statusbar.html`, `renderStatusbar`): CPU, GPU, RAM, the queue.
-- **Interface scale** (`ui_scale`, 75 % by default): CSS zoom on `<html>`. A point of the window
+- **Interface scale** (`ui_scale`, 100 % by default): CSS zoom on `<html>`. A point of the window
   (`clientX/Y`, `getBoundingClientRect()`) is divided by the zoom before it becomes
   `style.left/top`: use `zpx(v)`, `viewW()`, `viewH()` (core.js). `100vh` is not zoomed: the body
   height is `calc(100vh / var(--ui-zoom))`.

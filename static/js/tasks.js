@@ -43,7 +43,7 @@ function tkIsMe(name) { return !!name && tkMeNames().includes(String(name).toLoc
 async function tkSaveMyName(value) {
   const res = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: { my_name: value } }) });
   const data = await readJson(res);
-  if (!res.ok) { showToast(serverText(data.detail || 'Error')); return false; }
+  if (!res.ok) { showError(serverText(data.detail)); return false; }
   if (state.system) state.system.settings = data.settings;
   return true;
 }
@@ -133,6 +133,7 @@ async function loadTasks() {
   const res = await fetch('/api/tasks').catch(() => null);
   if (!res || !res.ok) return;
   TK.data = await res.json();
+  if (TK.pendingDelete && TK.pendingDelete.size) TK.data.tasks = TK.data.tasks.filter(x => !TK.pendingDelete.has(x.id));  // removed, «Отменить» still open
   TK.loaded = true;
   const open = TK.data.tasks.filter(x => !tkIsDone(x)).length;
   badge('nav-tasks-n', open);
@@ -526,14 +527,28 @@ function editTaskText(id) {
 async function deleteTask(id) {
   const x = tkTask(id);
   if (!x) return;
-  const ok = await confirmDialog(t('tkDeleteTitle'), t('tkDeleteText').replace('{task}', () => x.what), t('tkDelete'));
-  if (!ok) return;
-  const res = await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
-  if (!res.ok) { showToast(t('tkSaveFailed')); return; }
-  TK.data.tasks = TK.data.tasks.filter(y => y.id !== id);
-  if (TK.sel === id) TK.sel = null;
-  TK.report = null;
-  await tkRefreshPeople();
+  const at = TK.data.tasks.indexOf(x);
+  deleteWithUndo({
+    message: t('tkDeletedToast'),
+    hide: () => {
+      (TK.pendingDelete = TK.pendingDelete || new Set()).add(id);
+      TK.data.tasks = TK.data.tasks.filter(y => y.id !== id);
+      if (TK.sel === id) TK.sel = null;
+      TK.report = null;
+      renderTasks();
+    },
+    restore: () => {
+      TK.pendingDelete.delete(id);
+      if (!tkTask(id)) TK.data.tasks.splice(Math.min(at, TK.data.tasks.length), 0, x);
+      renderTasks();
+    },
+    commit: async (keepalive) => {
+      const res = await fetch(`/api/tasks/${id}`, { method: 'DELETE', keepalive });
+      TK.pendingDelete.delete(id);
+      if (res.ok && !keepalive) await tkRefreshPeople();
+      return res.ok;
+    },
+  });
 }
 
 // --- The people filter: several people or departments at once; and who "me" is ---
@@ -896,7 +911,7 @@ async function makeTasksReport() {
 
 async function copyTasksReport() {
   if (!TK.report) return;
-  try { await navigator.clipboard.writeText(TK.report.text); } catch { showToast(t('tkCopyFailed')); return; }
+  try { await navigator.clipboard.writeText(TK.report.text); } catch { showError(t('tkCopyFailed')); return; }
   TK.copied = true;
   renderTasksReport();
 }
@@ -933,7 +948,7 @@ function openNewTask() {
   sel.innerHTML = `<option value="">${escapeHtml(t('tkNoRecordOpt'))}</option>` + recs.map(m => `<option value="${m.id}">${escapeHtml(m.title)}</option>`).join('');
   renderNewTask();
   document.getElementById('tk-new').classList.remove('hidden');
-  setTimeout(() => document.getElementById('tk-n-text').focus(), 30);
+  nextFrame(() => document.getElementById('tk-n-text').focus());
 }
 
 function closeNewTask() { document.getElementById('tk-new').classList.add('hidden'); }

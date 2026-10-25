@@ -14,7 +14,7 @@ const rp = {
   pauses: [],       // [start, end] without speech («Пропускать тишину»)
   pauseSec: 0,
   fillers: null,    // what «Без запинок» hides (text_utils.filler_view)
-  open: null,       // the open popover: 'video' | 'sound' | 'speed' | 'more'
+  open: null,       // the open popover: 'sound' | 'speed' | 'more'
   remain: false,    // the end time shows what is left
   loopSeg: null,    // the phrase played in a loop
   ab: null,         // { a, b }: A–B repeat (b null while only A is set)
@@ -178,7 +178,7 @@ function rpRender() {
 
   const p = rpPlayer();
   const dur = rpDuration();
-  const cur = (p && p.currentTime) || 0;
+  const cur = rp.drag && rp.dragTime != null ? rp.dragTime : ((p && p.currentTime) || 0);
   const ratio = dur > 0 ? Math.min(1, cur / dur) : 0;
   const x = (t) => (dur > 0 ? (t / dur) * w : 0);
   const segs = rpSegments();
@@ -477,23 +477,46 @@ function rpInitWave() {
     const r = wrap.getBoundingClientRect();
     return Math.max(0, Math.min(1, (evt.clientX - r.left) / Math.max(1, r.width)));
   };
-  const seekTo = (ratio) => {
+  // Audit 3.20. While dragging, the marks follow the pointer at once but the media is asked for a
+  // new spot only when it has found the last one (a video decodes each seek); the release seeks exactly
+  const seekTo = (ratio, exact = true) => {
     const p = rpPlayer();
     const dur = rpDuration();
-    if (p && dur > 0) p.currentTime = ratio * dur;
+    if (p && dur > 0) {
+      rp.dragTime = ratio * dur;
+      if (exact || !p.seeking) p.currentTime = rp.dragTime;
+    }
     rpRender();
   };
+  rpPlayer()?.addEventListener('seeked', () => {
+    const p = rpPlayer();
+    if (rp.drag && rp.dragTime != null && Math.abs(p.currentTime - rp.dragTime) > 0.05) p.currentTime = rp.dragTime;
+  });
   wrap.addEventListener('pointerdown', (evt) => {
     if (evt.button !== 0 || evt.target.closest('.rp-chapter')) return;
     rp.drag = true;
     wrap.setPointerCapture(evt.pointerId);
+    // Grabbing the time bubble or the knob keeps the spot under the pointer: no jump on the press,
+    // and the drag moves the time by as much as the pointer moves
+    rp.grabOffset = 0;
+    if (evt.target.closest('.rp-bubble, .rp-knob')) {
+      const p = rpPlayer(), dur = rpDuration();
+      if (p && dur > 0) { rp.grabOffset = p.currentTime / dur - ratioAt(evt); return; }
+    }
     seekTo(ratioAt(evt));
   });
   wrap.addEventListener('pointermove', (evt) => {
-    if (rp.drag) seekTo(ratioAt(evt));
+    if (rp.drag) seekTo(Math.max(0, Math.min(1, ratioAt(evt) + (rp.grabOffset || 0))), false);
     else { state.playerHoverRatio = ratioAt(evt); rpRender(); }
   });
-  const end = () => { if (rp.drag) { rp.drag = false; rpRender(); } };
+  const end = () => {
+    if (!rp.drag) return;
+    const p = rpPlayer();
+    if (p && rp.dragTime != null) p.currentTime = rp.dragTime;
+    rp.drag = false;
+    rp.dragTime = null;
+    rpRender();
+  };
   wrap.addEventListener('pointerup', end);
   wrap.addEventListener('pointercancel', end);
   wrap.addEventListener('pointerleave', () => { state.playerHoverRatio = -1; rpRender(); });
@@ -536,7 +559,7 @@ function rpJumpToText(t) {
     if (typeof scrollToSegment === 'function') scrollToSegment(seg.id);
     const el = document.getElementById(`seg-${seg.id}`);
     if (!el) return;
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.scrollIntoView({ behavior: scrollMotion(), block: 'center' });
     el.classList.remove('rp-jump');
     void el.offsetWidth;
     el.classList.add('rp-jump');
@@ -623,7 +646,7 @@ function rpSetB() {
   const p = rpPlayer();
   if (!rp.ab) { rpSetA(); return; }
   const b = Math.floor((p && p.currentTime) || 0);
-  if (b <= rp.ab.a + 1) { showToast(t('rdPlyrAbTooShort')); return; }
+  if (b <= rp.ab.a + 1) { showWarning(t('rdPlyrAbTooShort')); return; }
   rp.ab = { a: rp.ab.a, b };
   if (p) p.currentTime = rp.ab.a;
   rpClosePop();
@@ -684,14 +707,14 @@ function rpClosePop() {
 }
 
 function rpRenderPop() {
-  ['video', 'sound', 'speed', 'more'].forEach(k => {
+  ['sound', 'speed', 'more'].forEach(k => {
     const pop = document.getElementById(`rp-pop-${k}`);
-    const btn = document.getElementById({ video: 'rp-video-btn', sound: 'rp-sound-btn', speed: 'speed-cycle-btn', more: 'rp-more-btn' }[k]);
+    const btn = document.getElementById({ sound: 'rp-sound-btn', speed: 'speed-cycle-btn', more: 'rp-more-btn' }[k]);
     const on = rp.open === k;
     if (btn) btn.setAttribute('aria-expanded', String(on));
     if (!pop) return;
     pop.classList.toggle('hidden', !on);
-    if (on) pop.innerHTML = { video: rpVideoMenuHtml, sound: rpSoundHtml, speed: rpSpeedHtml, more: rpMoreHtml }[k]();
+    if (on) pop.innerHTML = { sound: rpSoundHtml, speed: rpSpeedHtml, more: rpMoreHtml }[k]();
   });
 }
 
@@ -850,26 +873,32 @@ function rpSaveClean() {
   requestCut('clean');
 }
 
-// «Видео: …»: in the panel, small, theatre, a window over the other programs
-function rpVideoModeKey() {
-  const p = rpPlayer();
-  if (document.pictureInPictureElement && document.pictureInPictureElement === p) return 'window';
-  if (state.theatre) return 'theatre';
-  return state.videoMode === 'mini' ? 'mini' : 'panel';
-}
-
+// The video's own buttons sit on the black panel beside it (static/parts/workspace.html #video-tools):
+// smaller, theatre, a window over the other programs; the small one opens back with a click
 function rpRenderVideoButton() {
-  const anchor = document.getElementById('rp-video-anchor');
-  const btn = document.getElementById('rp-video-btn');
-  if (!anchor || !btn) return;
-  anchor.classList.toggle('hidden', !state.hasVideo && !state.theatre);
-  btn.textContent = `${t('rdPlyrVideo')}: ${t(`rdPlyrVideo_${rpVideoModeKey()}`)}`;
+  document.getElementById('video-tool-window')?.classList.toggle('hidden', !document.pictureInPictureEnabled);
+  rpFitRight();
 }
 
-function rpVideoMenuHtml() {
-  const cur = rpVideoModeKey();
-  const item = (k, key) => rpItem(t(`rdPlyrVideo_${k}`), 'rpSetVideo', [k], { role: 'menuitemradio', checked: cur === k, mark: cur === k ? '✓' : '', key });
-  return item('panel', '') + item('mini', '') + item('theatre', 'F') + (document.pictureInPictureEnabled ? item('window', '') : '');
+// The chips on the right keep only their icons (their tooltips name them) and the volume gets
+// shorter when the row would run into the transport buttons in the middle
+let rpRightObserver = null;
+function rpFitRight() {
+  const right = document.querySelector('.rp-right');
+  if (!right) return;
+  if (!rpRightObserver && window.ResizeObserver) {
+    rpRightObserver = new ResizeObserver(() => rpFitRight());
+    rpRightObserver.observe(right.parentElement);
+  }
+  // flex-end: what does not fit runs out on the left, where scrollWidth does not count it
+  const over = () => {
+    const kids = [...right.children].filter(el => el.offsetWidth);
+    const gap = parseFloat(getComputedStyle(right).columnGap) || 0;
+    return kids.reduce((n, el) => n + el.offsetWidth, 0) + gap * Math.max(0, kids.length - 1) > right.clientWidth + 1;
+  };
+  right.classList.remove('rp-tight', 'rp-crowded');
+  if (over()) right.classList.add('rp-tight');
+  if (over()) right.classList.add('rp-crowded');
 }
 
 async function rpSetVideo(k) {
@@ -877,11 +906,8 @@ async function rpSetVideo(k) {
   const p = rpPlayer();
   if (document.pictureInPictureElement === p && k !== 'window') await document.exitPictureInPicture().catch(() => {});
   if (k === 'theatre') { if (!state.theatre) toggleTheatre(); }
-  else {
-    if (state.theatre) exitTheatre();
-    if (k === 'window') toggleVideoPip();
-    else setVideoMode(k === 'mini' ? 'mini' : 'expanded');
-  }
+  else if (k === 'window') { if (state.theatre) exitTheatre(); toggleVideoPip(); }
+  else videoFlight(() => { if (state.theatre) exitTheatre(); setVideoMode(k === 'mini' ? 'mini' : 'expanded', false); });
   rpRenderVideoButton();
 }
 
@@ -975,7 +1001,7 @@ function rpRenderInfo() {
   const probe = info.probe || {};
   const v = probe.video, a = probe.audio;
   const row = (k, val, opts = {}) => (val == null || val === '') ? '' :
-    `<div class="ri-row"><span class="ri-k">${escapeHtml(k)}</span><span class="ri-v ${opts.cls || ''}" title="${escapeHtml(opts.full || String(val))}"${opts.mono ? ' style="font-family: \'JetBrains Mono\', monospace; font-size: 12px"' : ''}>${opts.html ? val : escapeHtml(String(val))}</span></div>`;
+    `<div class="ri-row"><span class="ri-k">${escapeHtml(k)}</span><span class="ri-v ${opts.cls || ''}" title="${escapeHtml(opts.full || String(val))}"${opts.mono ? ' style="font-family: var(--font-mono); font-size: 12px"' : ''}>${opts.html ? val : escapeHtml(String(val))}</span></div>`;
   const yes = (k, val) => row(k, `✓ ${val}`, { cls: 'ri-yes' });
   const no = (k, val) => row(k, `— ${val}`, { cls: 'ri-no' });
   const flag = (k, on, onText, offText) => (on ? yes : no)(k, on ? onText : offText);
@@ -1058,13 +1084,14 @@ async function rpCancelPendingExports(id) {
 function rpInfoToRecognition() {
   closeModal('recinfo');
   openRecordTab('transcript');
-  setTimeout(() => document.getElementById('tx-proc-btn')?.click(), 80);
+  toggleTxModelBar(true);  // the parameters live in the recognition row, folded while a text is shown
+  nextFrame(() => document.getElementById('tx-proc-btn')?.click());
 }
 
 function rpInfoToSound() {
   closeModal('recinfo');
   if (state.appView !== 'library') openRecordTab('transcript');
-  setTimeout(() => { rp.open = 'sound'; rpRenderPop(); }, 60);
+  nextFrame(() => { rp.open = 'sound'; rpRenderPop(); });
 }
 
 async function rpRevealCopy(cid) {
@@ -1078,7 +1105,7 @@ async function rpDeleteCopy(cid) {
   const m = state.activeMeeting;
   const c = (rp.copies || []).find(x => x.id === cid);
   if (!m || !c) return;
-  if (!(await askConfirm(t('rdPlyrDeleteCopyConfirm').replace('{name}', () => c.name), true))) return;
+  if (!(await askConfirm(t('rdPlyrDeleteCopyConfirm').replace('{name}', () => c.name), true, t('cfDeleteFile')))) return;
   const res = await fetch(`/api/meetings/${m.id}/copies/${encodeURIComponent(cid)}`, { method: 'DELETE' });
   const data = await readJson(res).catch(() => ({}));
   if (!res.ok) { showToast(errorText(data, res)); return; }

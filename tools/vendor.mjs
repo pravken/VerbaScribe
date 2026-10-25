@@ -15,8 +15,11 @@ const copies = [
   ['node_modules/dompurify/dist/purify.min.js', 'purify.min.js'],
   ['node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2', 'fonts/inter-latin-wght-normal.woff2'],
   ['node_modules/@fontsource-variable/inter/files/inter-cyrillic-wght-normal.woff2', 'fonts/inter-cyrillic-wght-normal.woff2'],
+  ['node_modules/@fontsource-variable/inter/files/inter-latin-ext-wght-normal.woff2', 'fonts/inter-latin-ext-wght-normal.woff2'],
+  ['node_modules/@fontsource-variable/inter/files/inter-cyrillic-ext-wght-normal.woff2', 'fonts/inter-cyrillic-ext-wght-normal.woff2'],
   ['node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2', 'fonts/jetbrains-mono-latin-wght-normal.woff2'],
   ['node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-cyrillic-wght-normal.woff2', 'fonts/jetbrains-mono-cyrillic-wght-normal.woff2'],
+  ['node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-ext-wght-normal.woff2', 'fonts/jetbrains-mono-latin-ext-wght-normal.woff2'],
 ];
 for (const [src, dst] of copies) {
   copyFileSync(join(root, src), join(vendor, dst));

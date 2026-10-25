@@ -51,7 +51,7 @@ async function setUiScale(v) {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: { ui_scale: String(v) } }),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  if (!res.ok) { showError(data.detail); return; }
   if (state.system) state.system.settings = data.settings;
 }
 
@@ -67,7 +67,14 @@ async function loadSystemInfo() {
     const res = await fetch('/api/system');
     const data = await readJson(res);
     state.system = data;
-    applyUiScale((data.settings || {}).ui_scale);
+    // Audit 5.5: with no scale chosen yet, the first one follows «Text size» of Windows
+    const ownScale = (data.settings || {}).ui_scale;
+    let asked = true;
+    try { asked = !!localStorage.getItem('verbascribe_ui_scale_windows'); localStorage.setItem('verbascribe_ui_scale_windows', '1'); } catch (e) {}
+    if (!asked && (!ownScale || ownScale === '100') && Number(data.text_scale) >= 110) {
+      const near = UI_SCALES.reduce((a, b) => Math.abs(b - data.text_scale) < Math.abs(a - data.text_scale) ? b : a);
+      setUiScale(near);
+    } else applyUiScale(ownScale);
     renderUiScaleButtons();
 
     const hw = data.hardware;
@@ -103,6 +110,10 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     document.getElementById('upload-model').value = s.whisper_model || 'large-v3-turbo';
     document.getElementById('set-device').value = s.device || 'cuda';
     document.getElementById('set-compute-type').value = s.compute_type || 'float16';
+    // with no choice saved yet, «automatic» is on when the values are the recommended ones
+    document.getElementById('set-device-auto').checked = s.device_auto ? s.device_auto !== 'false'
+      : (s.device || '') === (hw.recommended_device || '') && (s.compute_type || '') === (hw.recommended_compute_type || '');
+    syncDeviceAuto(false);
     document.getElementById('set-diarization').checked = s.diarization_enabled !== 'false';
     document.getElementById('set-voice-profiles').checked = s.voice_profiles !== 'false';
     syncVoiceProfilesToggle();
@@ -123,7 +134,7 @@ ${t('modelsFolder')}: ${data.paths.models}`;
     if (document.getElementById('set-clean-fillers')) {
       document.getElementById('set-clean-fillers').checked = s.clean_fillers !== 'false';
     }
-    document.getElementById('set-ollama-model').value = s.ollama_model || 'qwen2.5:7b';
+    document.getElementById('set-ollama-model').value = s.ollama_model || 'qwen3.5:4b';
     document.getElementById('set-auto-summary').checked = s.auto_summary !== 'false';
     document.getElementById('set-auto-title').checked = s.auto_title !== 'false';
     document.getElementById('set-summary-grounding').checked = s.summary_grounding !== 'false';
@@ -244,14 +255,14 @@ function renderSystemLoad(sys) {
   }
   if (cpu != null) {
     document.getElementById('cpu-text').textContent = `${Math.round(cpu)}%`;
-    document.getElementById('cpu-bar').style.width = `${Math.min(100, cpu)}%`;
+    document.getElementById('cpu-bar').style.setProperty('--fill', Math.min(100, cpu) / 100);
     document.getElementById('cpu-bar').className = `${cpu > 85 ? 'bg-apple-red/80' : 'bg-apple-green/70'}`;
   }
   if (ram) {
     const pct = (100 * ram.used_gb) / Math.max(0.1, ram.total_gb);
     document.getElementById('ram-text').textContent = `${ram.used_gb}/${ram.total_gb} ${t('unitGB')}`;
     document.getElementById('ram-name').textContent = t('hwRamName').replace('{gb}', () => Math.round(ram.total_gb));
-    document.getElementById('ram-bar').style.width = `${Math.min(100, pct)}%`;
+    document.getElementById('ram-bar').style.setProperty('--fill', Math.min(100, pct) / 100);
     document.getElementById('ram-bar').className = `${pct > 90 ? 'bg-apple-red/80' : 'bg-apple-amber/70'}`;
     document.getElementById('ram-cell').title = t('tipRamUsage').replace('{free}', () => ram.free_gb);
   }
@@ -275,7 +286,7 @@ function renderVram(data) {
   document.querySelector('#hw-block .hw-row-btn .hw-bar').classList.toggle('invisible', !gpu);
   if (gpu) {
     document.getElementById('vram-text').textContent = `${gpu.used_gb}/${gpu.total_gb} ${t('unitGB')}`;
-    document.getElementById('vram-bar').style.width = `${Math.min(100, (100 * gpu.used_gb) / Math.max(1, gpu.total_gb))}%`;
+    document.getElementById('vram-bar').style.setProperty('--fill', Math.min(1, gpu.used_gb / Math.max(1, gpu.total_gb)));
     document.querySelector('#hw-block .hw-row-btn').title = `${t('tipVramUsage').replace('{free}', () => gpu.free_gb)}\n${t('tipHwStatus')}`;
   } else {
     document.getElementById('vram-text').textContent = '';
@@ -290,41 +301,188 @@ function renderVram(data) {
       : 'bg-transparent text-apple-tertiary border-white/15 border-dashed';
     const icon = c.loaded
       ? (actionable ? '<span class="opacity-60 group-hover:opacity-100">×</span>' : '')
-      : (actionable ? '<span class="opacity-70 group-hover:opacity-100">↑</span>' : '');
+      : (actionable ? `<span class="opacity-70 group-hover:opacity-100">${MODEL_START_ICON}</span>` : '');
     return `<button data-i="${i}" data-click="vramChipClick" data-click-args='[{"$": "data", "k": "i"}]' ${actionable || c.kind === 'dub' ? '' : 'disabled'}
       title="${escapeHtml(vramChipTitle(c))}"
       class="group max-w-full inline-flex items-center gap-1 px-1.5 h-5 rounded-full border text-[11px] font-medium transition ${cls} ${actionable ? 'hover:bg-white/10' : 'cursor-default'}">
       <span class="w-1.5 h-1.5 rounded-full shrink-0 ${c.loaded || c.loading ? 'bg-current' : 'border border-current'}"></span>
       <span class="truncate">${c.default ? '★ ' : ''}${escapeHtml(vramChipLabel(c))}</span>${icon}</button>`;
   };
-  // Split by where each model runs (or will); loaded ones first. Without a video card all are on the CPU
-  const part = where => chips.map((c, i) => [c, i]).filter(([c]) => (c.where || 'gpu') === where)
+  // Split by where each model runs (or will), then by what it is for; the ones at work first.
+  // Without a video card all are on the processor
+  const at = where => chips.map((c, i) => [c, i]).filter(([c]) => (c.where || 'gpu') === where)
     .sort(([a], [b]) => (b.loaded || b.loading ? 1 : 0) - (a.loaded || a.loading ? 1 : 0));
-  const parts = { gpu: part('gpu'), cpu: part('cpu') };
-  const html = parts.gpu.map(([c, i]) => chipHtml(c, i)).join('');
-  const htmlCpu = parts.cpu.map(([c, i]) => chipHtml(c, i)).join('');
-  for (const where of ['gpu', 'cpu']) {
-    document.getElementById(`hw-models-${where}`).classList.toggle('hidden', !parts[where].length);
-    const on = parts[where].filter(([c]) => c.loaded).length;
-    document.getElementById(`hw-models-${where}-count`).textContent = t('hwModelsLoaded').replace('{n}', () => on).replace('{total}', () => parts[where].length);
-  }
+  const parts = { gpu: gpu ? at('gpu') : [], cpu: at('cpu') };
+  const working = chips.filter(c => c.loaded || c.loading).length;
+  // The tile in the sidebar: how many work, and the ones that do
+  row.title = t('tipModelsTile');
+  document.getElementById('hw-models-count').textContent = t('hwModelsLoaded').replace('{n}', () => working).replace('{total}', () => chips.length);
+  // One line per device: its CPU / GPU mark, lit while a model runs there and pulsing while one is
+  // at work on a job, then the models that run there
+  const mini = c => `<span class="mp-mini ${c.loading ? 'mp-mini-loading' : c.kind === 'dub' ? 'mp-mini-dub' : ''}"><span class="mp-mini-dot"></span><span class="truncate">${escapeHtml(vramChipLabel(c))}</span></span>`;
+  const runningHtml = ['gpu', 'cpu'].map(where => {
+    const on = parts[where].filter(([c]) => c.loaded || c.loading);
+    const none = where === 'gpu' && !gpu ? t('mpNoGpu') : t('mpDevIdle');  // both lines always, so the two can be compared
+    const busy = on.some(([c]) => c.loading || (c.loaded && !c.can_unload));
+    const tip = `${t(where === 'gpu' ? 'hwModelsGpu' : 'hwModelsCpu')}: ${on.length ? on.map(([c]) => vramChipLabel(c)).join(', ') : none}`;
+    return `<span class="mp-dev-row"><span class="mp-dev ${on.length ? 'mp-dev-on' : ''} ${busy ? 'mp-dev-busy' : ''}" title="${escapeHtml(tip)}">${where.toUpperCase()}</span>${
+      on.length ? on.map(([c]) => mini(c)).join('') : `<span class="mp-dev-none">${escapeHtml(none)}</span>`}</span>`;
+  }).join('');
+  const running = document.getElementById('hw-models-running');
+  if (running.innerHTML !== runningHtml) running.innerHTML = runningHtml;
+  running.classList.toggle('hidden', !runningHtml);
   // Unchanged chips are left alone, so a refresh never swallows a click
-  if (html + htmlCpu !== vram.html) {
-    document.getElementById('vram-chips').innerHTML = html;
-    document.getElementById('vram-chips-cpu').innerHTML = htmlCpu;
+  const html = parts.gpu.map(([c, i]) => chipHtml(c, i)).join('') + parts.cpu.map(([c, i]) => chipHtml(c, i)).join('');
+  if (html !== vram.html) {
+    vram.parts = parts;
+    vram.chipHtml = chipHtml;
     // The recording studio covers the sidebar: it shows the same chips in its header
     const studioBox = document.getElementById('studio-vram-chips');
-    if (studioBox) studioBox.innerHTML = html + htmlCpu;
-    vram.html = html + htmlCpu;
+    if (studioBox) studioBox.innerHTML = html;
+    vram.html = html;
+    if (modelsPop.open) renderModelsPop();
   }
   vram.chips = chips;
   renderIdleStatus(data.idle);
 }
 
+const MODEL_START_ICON = '<svg class="mp-start" viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 1.6 8.2 5 2.5 8.4z"/></svg>';
+const AI_MARK = '<svg class="tb-ai" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2l1.9 5.6 5.6 1.9-5.6 1.9L10 17l-1.9-5.6-5.6-1.9 5.6-1.9z"/><path d="M18.5 13l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/></svg>';
+
+// --- All the models, beside the sidebar: the tile under the hardware opens it, so the library keeps
+// its room. Where each runs, what it is for, and the ones that can still be downloaded ---
+const modelsPop = { open: false, dlOpen: true };
+try { modelsPop.dlOpen = localStorage.getItem('verbascribe_models_dl_open') !== '0'; } catch (e) {}
+
+function toggleModelsPop(e) {
+  if (e) e.stopPropagation();
+  if (modelsPop.open) { closeModelsPop(); return; }
+  modelsPop.open = true;
+  document.getElementById('vram-row').setAttribute('aria-expanded', 'true');
+  renderModelsPop();
+  const pop = document.getElementById('models-pop');
+  pop.classList.remove('hidden');
+  placeModelsPop();
+  pop.querySelector('button')?.focus();
+}
+
+function closeModelsPop() {
+  if (!modelsPop.open) return;
+  modelsPop.open = false;
+  document.getElementById('models-pop').classList.add('hidden');
+  document.getElementById('vram-row').setAttribute('aria-expanded', 'false');
+}
+
+// Right of the sidebar, its top level with the tile; moved up when it would run past the window
+function placeModelsPop() {
+  const pop = document.getElementById('models-pop');
+  const side = document.getElementById('app-sidebar').getBoundingClientRect();
+  const tile = document.getElementById('vram-row').getBoundingClientRect();
+  pop.style.left = `${zpx(side.right) + 8}px`;
+  pop.style.maxHeight = `${viewH() - 16}px`;
+  pop.style.top = `${Math.max(8, Math.min(zpx(tile.top), viewH() - pop.offsetHeight - 8))}px`;
+}
+
+// What a model is for: speech (recognition, voices, live captions, dubbing) or analysis and search
+const MODEL_GROUP = { ollama: 'ai' };
+
+// Audit 6.4. What is downloading now, from any of the three sources (a Whisper model, a GigaAM or
+// Parakeet model, a model for the analysis), with its percent: the status bar, the models window
+// and the sidebar widget all read it
+function modelDownloadsNow() {
+  const out = [];
+  const w = state.whisperPullState || ((state.system || {}).models || {}).setup_state || {};
+  if (w.active) out.push({ id: w.model_id, name: formatModelName(w.model_id || 'Whisper'), pct: w.progress || 0 });
+  for (const m of state.whisperCatalog || []) {
+    if (m.engine === 'onnx' && m.downloading) out.push({ id: m.id, name: formatModelName(m.id), pct: m.progress || 0 });
+  }
+  const o = state.ollamaPullState || {};
+  if (o.active) out.push({ id: o.model, name: formatModelName(o.model || 'LLM'), pct: o.progress || 0 });
+  return out;
+}
+
+function modelsDownloadable() {
+  const out = [];
+  const hw = (state.system || {}).hardware || {};
+  const vramGb = hw.cuda_available ? Number(hw.vram_total_gb || 0) : 0;
+  for (const m of state.whisperCatalog || []) {
+    if (m.installed) continue;
+    const setup = ((state.system || {}).models || {}).setup_state || {};
+    const downloading = (setup.active && setup.model_id === m.id) || m.downloading;
+    out.push({ id: m.id, label: formatModelName(m.id), size: modelSizeLabel(m), need: '', downloading,
+      fn: m.engine === 'onnx' ? 'startOnnxModelDownload' : 'startWhisperModelDownload' });
+  }
+  const pull = state.ollamaPullState || {};
+  for (const m of ((state.system || {}).ollama || {}).catalog || []) {
+    if (m.installed || !m.good_ru) continue;
+    const short = vramGb && m.min_vram_gb > vramGb;
+    out.push({ id: m.id, label: formatModelName(m.id), size: m.size || '', ai: true, downloading: pull.active && pull.model === m.id,
+      need: m.min_vram_gb ? t('mpNeedVram').replace('{n}', () => m.min_vram_gb) : '', short, fn: 'modelsPopPullLlm' });
+  }
+  return out;
+}
+
+function modelsPopPullLlm(id) {
+  pullOllamaModel(id, false);
+}
+
+function toggleModelsDownloads() {
+  modelsPop.dlOpen = !modelsPop.dlOpen;
+  try { localStorage.setItem('verbascribe_models_dl_open', modelsPop.dlOpen ? '1' : '0'); } catch (e) {}
+  renderModelsPop();
+}
+
+function renderModelsPop() {
+  const pop = document.getElementById('models-pop');
+  if (!pop || !modelsPop.open) return;
+  const parts = vram.parts || { gpu: [], cpu: [] };
+  const chipHtml = vram.chipHtml || (() => '');
+  const groups = list => ['speech', 'ai'].map(g => {
+    const items = list.filter(([c]) => (MODEL_GROUP[c.kind] || 'speech') === g);
+    if (!items.length) return '';
+    return `<div class="mp-group"><div class="mp-group-title">${AI_MARK}${escapeHtml(t(g === 'ai' ? 'mpGroupAi' : 'mpGroupSpeech'))}</div>
+      <div class="flex flex-wrap gap-1">${items.map(([c, i]) => chipHtml(c, i)).join('')}</div></div>`;
+  }).join('');
+  const section = (where, list) => {
+    const on = list.filter(([c]) => c.loaded || c.loading).length;
+    return `<section class="mp-sec"><div class="mp-sec-head"><span>${escapeHtml(t(where === 'gpu' ? 'hwModelsGpu' : 'hwModelsCpu'))}</span>
+      <span class="hw-models-count">${escapeHtml(t('hwModelsLoaded').replace('{n}', () => on).replace('{total}', () => list.length))}</span></div>
+      ${list.length ? groups(list) : `<p class="mp-empty">${escapeHtml(t(vram.data?.gpu ? 'mpCpuEmpty' : 'mpNone'))}</p>`}</section>`;
+  };
+  const dl = modelsDownloadable();
+  const dlRows = dl.map(m => `<div class="mp-dl-row"><span class="mp-dl-name">${m.ai ? AI_MARK : ''}<span class="truncate">${escapeHtml(m.label)}</span></span>
+      ${m.need ? `<span class="mp-dl-need ${m.short ? 'mp-dl-short' : ''}" title="${escapeHtml(m.short ? t('mpNeedMore') : '')}">${escapeHtml(m.need)}</span>` : ''}
+      ${m.downloading ? `<span class="mp-dl-btn mp-dl-busy">${escapeHtml(t('mpDownloading'))}${(() => { const d = modelDownloadsNow().find(x => x.id === m.id); return d && d.pct ? ` · ${d.pct}%` : ''; })()}</span>`
+        : `<button data-click="${m.fn}" data-click-args='[${jsArg(m.id)}]' class="mp-dl-btn" title="${escapeHtml(t('tipDownloadModel'))}">↓ ${escapeHtml(m.size)}</button>`}</div>`).join('');
+  pop.innerHTML = `<div class="mp-head"><span class="mp-title">${escapeHtml(t('mpTitle'))}</span>
+      <button data-click="closeModelsPop" class="mp-close" aria-label="${escapeHtml(t('close'))}" title="${escapeHtml(t('close'))}">×</button></div>
+    ${vram.data?.gpu ? section('gpu', parts.gpu) : ''}${section('cpu', parts.cpu)}
+    ${dl.length ? `<section class="mp-dl"><button data-click="toggleModelsDownloads" class="mp-dl-head" aria-expanded="${modelsPop.dlOpen}">
+        <span class="mp-dl-title">${AI_MARK}${escapeHtml(t('mpDownloadable').replace('{n}', () => dl.length))}</span>
+        <span class="mp-dl-toggle">${escapeHtml(t(modelsPop.dlOpen ? 'mpHide' : 'mpShow'))}</span></button>
+      ${modelsPop.dlOpen ? `<div class="mp-dl-list">${dlRows}</div>` : ''}</section>` : ''}
+    <div class="mp-legend">
+      <span><i class="mp-lg-dot mp-lg-on"></i>${escapeHtml(t('mpLgOn'))}</span>
+      <span><i class="mp-lg-dot mp-lg-loading"></i>${escapeHtml(t('mpLgLoading'))}</span>
+      <span><i class="mp-lg-dot mp-lg-idle"></i>${escapeHtml(t('mpLgIdle'))}</span>
+      <span>${MODEL_START_ICON}${escapeHtml(t('mpLgStart'))}</span>
+      <span><b class="mp-lg-x">×</b>${escapeHtml(t('mpLgStop'))}</span>
+    </div>`;
+  placeModelsPop();
+}
+
+document.addEventListener('pointerdown', (e) => {
+  if (modelsPop.open && !e.target.closest('#models-pop, #vram-row')) closeModelsPop();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && modelsPop.open) { closeModelsPop(); document.getElementById('vram-row').focus(); }
+});
+window.addEventListener('resize', () => { if (modelsPop.open) placeModelsPop(); });
+
 async function vramChipClick(index) {
   const c = (vram.chips || [])[Number(index)];
   if (!c || vram.busy) return;
-  if (c.kind === 'dub') { showToast(t('tipVramDub')); return; }
+  if (c.kind === 'dub') { showWarning(t('tipVramDub')); return; }
   const action = c.loaded ? 'unload' : 'preload';
   if (action === 'unload' && !c.can_unload) return;
   if (action === 'preload' && !c.can_preload) return;
@@ -336,7 +494,7 @@ async function vramChipClick(index) {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: c.kind, name: c.name || '' }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) showToast(data.detail || 'Error');
+    if (!res.ok) showError(data.detail);
     else renderVram(data);
   } catch (e) {
     console.error(e);
@@ -356,6 +514,7 @@ const MODEL_DISPLAY_NAMES = {
   'qwen3:14b': 'Qwen3 14B',
   'qwen3.5:4b': 'Qwen3.5 4B',
   'qwen3:4b': 'Qwen3 4B',
+  // no longer offered (bench-report/report.md), named still for those who have them
   'qwen2.5:7b': 'Qwen 7B Standard',
   'qwen2.5:14b': 'Qwen 14B Pro',
   'mistral:7b': 'Mistral 7B',
@@ -366,7 +525,7 @@ const MODEL_DISPLAY_NAMES = {
 async function startOnnxModelDownload(id) {
   const res = await fetch(`/api/onnx-models/${encodeURIComponent(id)}/download`, { method: 'POST' });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  if (!res.ok) { showError(data.detail); return; }
   showToast(t('onnxDownloading'));
   const poll = async () => {
     const models = await fetch('/api/models/status').then(r => r.json()).catch(() => null);
@@ -374,7 +533,7 @@ async function startOnnxModelDownload(id) {
     const item = models && (models.whisper_catalog || []).find(x => x.id === id);
     if (item && item.downloading) setTimeout(poll, 2000);
     else if (item && item.error) showToast(item.error);
-    else if (item && item.installed) showToast(t('onnxReady'));
+    else if (item && item.installed) showToast(t('onnxReady'), null, 'success');
   };
   setTimeout(poll, 1500);
 }
@@ -382,9 +541,12 @@ async function startOnnxModelDownload(id) {
 async function deleteOnnxModel(id) {
   const item = (state.whisperCatalog || []).find(i => i.id === id) || {};
   if (!(await confirmModelDelete(formatModelName(id), item.path))) return;
-  await fetch(`/api/onnx-models/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  // Audit 6.7: the answer is checked and said, as for Whisper
+  const res = await fetch(`/api/onnx-models/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => null);
+  if (!res || !res.ok) { showError(res ? (await readJson(res)).detail : ''); return; }
   const models = await fetch('/api/models/status').then(r => r.json()).catch(() => null);
   if (models) updateWhisperModelsUI(models);
+  showToast(t('modelDeletedToast').replace('{name}', () => formatModelName(id)), null, 'success');
 }
 
 function formatModelName(modelId) {
@@ -433,8 +595,14 @@ function syncSidebarDownloadWidget() {
     statusText = oState.status || '';
     logs = oState.logs || [];
   } else {
-    widget.classList.add('hidden');
-    return;
+    const onnx = (state.whisperCatalog || []).find(m => m.engine === 'onnx' && m.downloading);
+    if (!onnx) {
+      widget.classList.add('hidden');
+      return;
+    }
+    activeTitle = formatModelName(onnx.id);
+    pct = onnx.progress || 1;
+    statusText = t('mpDownloading');
   }
 
   widget.classList.remove('hidden');
@@ -578,6 +746,86 @@ function firstRunPicks(data, lang) {
   return { speech: speech.slice(0, 3), llm, gpu };
 }
 
+// «Выбрать модель» where nothing can analyse yet: the local analysis models with what each is good at
+// and where it is weaker, the one for this computer marked, the ones too heavy for it said so
+function llmFits(item, hw) {
+  const gpu = hw.cuda_available ? Number(hw.vram_total_gb || 0) : 0;
+  return gpu ? gpu >= Number(item.min_vram_gb || 0) : !!item.cpu_ok;
+}
+
+function openLlmPicker() {
+  const data = state.system || {};
+  const hw = data.hardware || {};
+  const catalog = ((data.ollama || {}).catalog || []).filter(m => m.good_ru);
+  if (!catalog.length) { pullFirstRunLlm(); return; }
+  const rec = firstRunPicks(data, state.uiLang).llm;
+  const en = state.uiLang === 'en';
+  const rank = m => (m.id === rec ? 0 : llmFits(m, hw) ? 1 : 2);
+  const list = catalog.slice().sort((a, b) => rank(a) - rank(b));
+  let pick = (list.find(m => m.installed && llmFits(m, hw)) || list[0]).id;
+  let showInfo = false;  // ⓘ: why a model needs more video memory than its file size
+  document.getElementById('llm-picker')?.remove();
+  const wrap = document.createElement('div');
+  wrap.id = 'llm-picker';
+  wrap.className = 'fixed inset-0 modal-backdrop z-[70] flex items-center justify-center p-4';
+  wrap.setAttribute('role', 'dialog');
+  wrap.setAttribute('aria-modal', 'true');
+  const gpuText = hw.cuda_available && hw.vram_total_gb ? `${hwDeviceLabel(hw)} · ${hw.vram_total_gb} ${t('unitGB')}` : t('llmPickNoGpu');
+  const draw = () => {
+    const cur = list.find(m => m.id === pick);
+    const cards = list.map(m => {
+      const on = m.id === pick;
+      const need = hw.cuda_available ? t('llmPickNeedVram').replace('{n}', () => m.min_vram_gb) : t('llmPickNeedGpu');
+      const tag = m.id === rec ? `<span class="llm-tag llm-tag-rec">${escapeHtml(t('llmPickRecommended'))}</span>`
+        : llmFits(m, hw) ? '' : `<span class="llm-tag llm-tag-heavy">${escapeHtml(need)}</span>`;
+      return `<button data-pick="${escapeHtml(m.id)}" role="radio" aria-checked="${on}" class="llm-card${on ? ' llm-card-on' : ''}">
+        <span class="flex items-center flex-wrap gap-1.5">
+          <span class="text-xs font-semibold text-white">${escapeHtml(formatModelName(m.id))}</span>
+          <span class="text-[11px] font-mono text-apple-tertiary">${escapeHtml(m.size || '')}</span>
+          ${tag}${m.installed ? `<span class="llm-tag">${escapeHtml(t('llmPickInstalled'))}</span>` : ''}
+        </span>
+        <span class="llm-line"><b>${escapeHtml(t('llmPickGood'))}</b> ${escapeHtml(en ? m.good_en : m.good_ru)}</span>
+        <span class="llm-line"><b>${escapeHtml(t('llmPickWeak'))}</b> ${escapeHtml(en ? m.weak_en : m.weak_ru)}</span>
+      </button>`;
+    }).join('');
+    wrap.innerHTML = `<div class="w-full max-w-lg bg-apple-card border apple-border rounded-2xl shadow-2xl p-5 space-y-3 modal-card llm-dialog">
+      <div class="text-sm font-semibold text-white">${escapeHtml(t('llmPickTitle'))}</div>
+      <p class="text-[11.5px] text-apple-secondary leading-relaxed">${escapeHtml(t('llmPickIntro'))}</p>
+      <div class="flex items-center gap-1.5 text-[11.5px] text-apple-tertiary">${escapeHtml(t('frHardware'))}: <span class="text-apple-label">${escapeHtml(gpuText)}</span>
+        <button data-a="info" class="llm-info-btn${showInfo ? ' llm-info-btn-on' : ''}" aria-expanded="${showInfo}" title="${escapeHtml(t('llmMemTitle'))}" aria-label="${escapeHtml(t('llmMemTitle'))}">i</button></div>
+      ${showInfo ? `<div class="llm-info"><div class="font-medium text-apple-label">${escapeHtml(t('llmMemTitle'))}</div>
+        <p>${escapeHtml(t('llmMemIntro'))}</p>
+        <ul><li>${escapeHtml(t('llmMemContext'))}</li><li>${escapeHtml(t('llmMemBuffers'))}</li><li>${escapeHtml(t('llmMemOthers'))}</li></ul>
+        <p>${escapeHtml(t('llmMemExample'))}</p><p>${escapeHtml(t('llmMemLess'))}</p></div>` : ''}
+      <div class="llm-list" role="radiogroup">${cards}</div>
+      <div class="flex items-center gap-2 pt-1">
+        <button data-a="cloud" class="ui-btn ui-btn-subtle">${escapeHtml(t('noAiCloud'))}</button>
+        <span class="flex-1"></span>
+        <button data-a="no" class="ui-btn ui-btn-subtle">${escapeHtml(t('cancel'))}</button>
+        <button data-a="yes" class="ui-btn ui-btn-primary">${escapeHtml(cur.installed ? t('uiSelect') : t('llmPickDownload').replace('{size}', () => cur.size || ''))}</button>
+      </div></div>`;
+    wrap.querySelector('.llm-dialog').style.maxHeight = `${Math.round(viewH() - 32)}px`;  // the page is zoomed: vh would not fit
+    wrap.querySelector('button[data-a="yes"]').focus();
+  };
+  const done = () => { wrap.remove(); document.removeEventListener('keydown', onKey, true); };
+  const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); done(); } };
+  wrap.addEventListener('click', e => {
+    const card = e.target.closest('button[data-pick]');
+    if (card) { pick = card.dataset.pick; draw(); return; }
+    const a = e.target.closest('button[data-a]');
+    if (e.target === wrap || (a && a.dataset.a === 'no')) { done(); return; }
+    if (!a) return;
+    if (a.dataset.a === 'info') { showInfo = !showInfo; draw(); wrap.querySelector('button[data-a="info"]').focus(); return; }
+    done();
+    if (a.dataset.a === 'cloud') { openModal('settings', 'analysis'); return; }
+    const m = list.find(x => x.id === pick);
+    if (m.installed) selectActiveOllamaModel(m.id); else pullOllamaModel(m.id, true);
+  });
+  document.addEventListener('keydown', onKey, true);
+  document.body.appendChild(wrap);
+  draw();
+}
+
 function openFirstRunWizard(data) {
   document.getElementById('first-run-wizard')?.remove();
   const wrap = document.createElement('div');
@@ -685,15 +933,15 @@ async function deleteWhisperModel(modelId) {
   const item = (state.whisperCatalog || []).find(i => i.id === modelId) || {};
   if (!(await confirmModelDelete(pretty, item.path))) return;
   const res = await fetch(`/api/models/${encodeURIComponent(modelId)}`, { method: 'DELETE' });
-  if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
+  if (!res.ok) { showError((await readJson(res)).detail); return; }
   await loadSystemInfo();
-  showToast(t('modelDeletedToast').replace('{name}', () => pretty));
+  showToast(t('modelDeletedToast').replace('{name}', () => pretty), null, 'success');
 }
 
 async function deleteOllamaModel(name) {
   if (!(await confirmModelDelete(formatModelName(name), ''))) return;
   const res = await fetch(`/api/ollama/models/${encodeURIComponent(name)}`, { method: 'DELETE' });
-  if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
+  if (!res.ok) { showError((await readJson(res)).detail); return; }
   updateOllamaUI(await readJson(res));
   showToast(t('modelDeleted').replace('{name}', () => formatModelName(name)));
 }
@@ -763,7 +1011,7 @@ function updateOllamaUI(ollama) {
 
   const pill = document.getElementById('settings-ollama-pill');
   const catalogBox = document.getElementById('ollama-catalog-list');
-  const activeModel = document.getElementById('set-ollama-model').value || ollama.active_model || 'qwen2.5:7b';
+  const activeModel = document.getElementById('set-ollama-model').value || ollama.active_model || 'qwen3.5:4b';
 
   if (ollama.running) {
     pill.textContent = t('uiOllamaActive');
@@ -916,16 +1164,16 @@ async function loadOrphans() {
 }
 
 async function deleteOrphans() {
-  if (!(await askConfirm(t('orphansConfirm'), true))) return;
+  if (!(await askConfirm(t('orphansConfirm'), true, t('cfDeleteFiles')))) return;
   const btn = document.getElementById('orphans-btn');
   btn.disabled = true;
   try {
     const res = await fetch('/api/storage/orphans/delete', { method: 'POST' });
     const data = await readJson(res);
-    if (!res.ok) throw new Error(data.detail || 'Error');
+    if (!res.ok) throw new Error(data.detail || t('errorGeneric'));
     showToast(t('orphansDeleted').replace('{n}', () => data.files).replace('{size}', () => formatBytes(data.bytes)));
   } catch (e) {
-    showToast(e.message);
+    showError(e.message);
   } finally {
     btn.disabled = false;
     loadOrphans();
@@ -942,7 +1190,7 @@ async function makeBackup() {
     const res = await fetch('/api/backup', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ with_media: document.getElementById('backup-with-media').checked }) });
     const data = await readJson(res);
-    if (!res.ok) throw new Error(data.detail || 'Error');
+    if (!res.ok) throw new Error(data.detail || t('errorGeneric'));
     box.textContent = data.cancelled ? '' : t('backupMade').replace('{path}', () => data.path).replace('{mb}', () => data.size_mb);
   } catch (e) {
     box.className = 'text-[11.5px] text-apple-amber';
@@ -959,7 +1207,7 @@ async function restoreBackup() {
   box.textContent = t('backupReading');
   const res = await fetch('/api/backup/restore', { method: 'POST' });
   const data = await readJson(res);
-  if (!res.ok) { box.className = 'text-[11.5px] text-apple-amber'; box.textContent = data.detail || 'Error'; return; }
+  if (!res.ok) { box.className = 'text-[11.5px] text-apple-amber'; box.textContent = data.detail || t('errorGeneric'); return; }
   if (data.cancelled) { box.textContent = ''; return; }
   box.className = 'text-[11.5px] text-apple-green';
   box.textContent = t('backupRestored').replace('{n}', () => data.recordings).replace('{m}', () => data.media_restored);
@@ -995,13 +1243,13 @@ async function loadOnnxGpu() {
 async function installOnnxGpu() {
   const res = await fetch('/api/onnx-gpu/install', { method: 'POST' });
   const data = await readJson(res);
-  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  if (!res.ok) { showError(data.detail); return; }
   document.getElementById('set-onnx-gpu').checked = true;
   renderOnnxGpu(data);
 }
 
 async function removeOnnxGpu() {
-  if (!await askConfirm(t('onnxGpuRemoveConfirm'), true)) return;
+  if (!await askConfirm(t('onnxGpuRemoveConfirm'), true, t('cfDeleteBuild'))) return;
   const data = await fetch('/api/onnx-gpu/remove', { method: 'POST' }).then(r => r.json()).catch(() => null);
   document.getElementById('set-onnx-gpu').checked = false;
   if (data) renderOnnxGpu(data);
@@ -1026,7 +1274,7 @@ async function checkCalendar() {
   await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ settings: { calendar_ics: source } }) }).catch(() => null);
   const st = await fetch('/api/calendar/upcoming?refresh=true').then(r => r.json()).catch(() => null);
-  if (!st || !st.configured) { box.textContent = source ? 'Error' : t('watchOff'); return; }
+  if (!st || !st.configured) { box.textContent = source ? t('errorGeneric') : t('watchOff'); return; }
   if (st.error) { box.className = 'text-[11.5px] text-apple-amber'; box.textContent = st.error; return; }
   box.textContent = t('calendarOk').replace('{n}', () => st.count).replace('{next}', () => st.events.length);
 }
@@ -1246,7 +1494,7 @@ async function buildSemanticIndex() {
   });
   const res = await fetch('/api/semantic/index', { method: 'POST' });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) showToast(data.detail || 'Error');
+  if (!res.ok) showError(data.detail);
   setTimeout(loadSemanticStatus, 800);
 }
 
@@ -1268,15 +1516,17 @@ function renderSummaryModelSelect() {
   const summarySelect = document.getElementById('summary-llm-select');
   const ollama = state.lastOllama;
   if (!summarySelect || !ollama || !ollama.catalog) return;
-  const activeModel = document.getElementById('set-ollama-model').value || ollama.active_model || 'qwen2.5:7b';
+  const activeModel = document.getElementById('set-ollama-model').value || ollama.active_model || 'qwen3.5:4b';
   const cloud = cloudLlmChoice();
   const onCloud = !!cloud && state.llm.mode === 'cloud';
   summarySelect.innerHTML = (cloud
     ? `<option value="__cloud" ${onCloud ? 'selected' : ''}>☁ ${escapeHtml(cloud.label)}</option>` : '')
     + ollama.catalog.map(item => {
       const pretty = formatModelName(item.id);
-      const note = localLlmNote(item.id);
-      return `<option value="${escapeHtml(item.id)}" data-off="${note ? 1 : 0}" ${!onCloud && item.id === activeModel ? 'selected' : ''}>${escapeHtml(pretty)}${note ? ` · ${escapeHtml(note)}` : ''}</option>`;
+      // Audit 7.6: «Ollama не запущен» is said once, by the banner above with its action; a model
+      // that is not downloaded is still marked here, it is a fact of that model
+      const note = localLlmState(item.id) === 'missing' ? localLlmNote(item.id) : '';
+      return `<option value="${escapeHtml(item.id)}" data-off="${localLlmState(item.id) === 'ready' ? 0 : 1}" ${!onCloud && item.id === activeModel ? 'selected' : ''}>${escapeHtml(pretty)}${note ? ` · ${escapeHtml(note)}` : ''}</option>`;
     }).join('');
   summarySelect.title = onCloud ? t('tipSummaryCloud') : t('tipSelectLlm');
 }
@@ -1418,7 +1668,7 @@ async function saveLlmSettingsNow(extra = {}) {
     body: JSON.stringify({ settings: { ...llmSettingsPayload(), ...extra } }),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) { showToast(data.detail || 'Error'); return false; }
+  if (!res.ok) { showError(data.detail); return false; }
   if (state.system) state.system.settings = data.settings;
   state.llmProviderEdited = false;
   await loadLlmStatus();
@@ -1429,7 +1679,7 @@ async function setLlmMode(mode) {
   const st = state.llm || {};
   const extra = { llm_provider: mode };
   if (mode === 'cloud' && !st.consent) {
-    if (!await askConfirm(t('llmConsentConfirm'))) return;
+    if (!await askConfirm(t('llmConsentConfirm'), false, t('cfTurnOn'))) return;
     extra.llm_cloud_consent = 'true';
   }
   state.llmShowCloud = mode === 'cloud';
@@ -1451,7 +1701,7 @@ async function saveLlmKey() {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider, key }),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) { setLlmTestResult('err', data.detail || 'Error'); return; }
+  if (!res.ok) { setLlmTestResult('err', data.detail || t('errorGeneric')); return; }
   input.value = '';
   state.llm = data;
   if ((data.models || []).length) state.llmModels = { ...(state.llmModels || {}), [provider]: data.models };
@@ -1466,7 +1716,7 @@ async function saveLlmKey() {
 
 async function deleteLlmKey() {
   const provider = document.getElementById('set-llm-provider').value;
-  if (!await askConfirm(t('llmKeyDeleteConfirm'), true)) return;
+  if (!await askConfirm(t('llmKeyDeleteConfirm'), true, t('cfDeleteKey'))) return;
   await fetch(`/api/llm/key/${provider}`, { method: 'DELETE' });
   if (state.llmModels) delete state.llmModels[provider];
   await loadLlmStatus();
@@ -1507,7 +1757,7 @@ async function testLlmConnection() {
   try {
     const res = await fetch(`/api/llm/test/${provider}`, { method: 'POST' });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || 'Error');
+    if (!res.ok) throw new Error(data.detail || t('errorGeneric'));
     setLlmTestResult('ok', t('llmTestOk').replace('{model}', () => data.model).replace('{sec}', () => data.seconds));
   } catch (e) {
     setLlmTestResult('err', e.message);
@@ -1534,7 +1784,7 @@ async function openCloudLog() {
           <p class="text-[11.5px] text-apple-secondary mt-1">${escapeHtml(t('cloudLogDesc'))}</p></div>
         <div class="flex gap-2 shrink-0">
           ${rows.length ? `<button data-a="clear" class="ui-btn ui-btn-subtle">${escapeHtml(t('cloudLogClear'))}</button>` : ''}
-          <button data-a="close" class="ui-btn ui-btn-subtle">${escapeHtml(t('close'))}</button>
+          <button data-a="close" class="dlg-x" title="${escapeHtml(t('tipCloseModal'))}" aria-label="${escapeHtml(t('tipCloseModal'))}">✕</button>
         </div>
       </div>
       <div class="flex-1 overflow-y-auto px-5 py-2">${rows.length ? rows.map(r => `<div class="py-2 border-b border-white/5 text-[11.5px]">
@@ -1609,11 +1859,28 @@ function syncStartupToggles(el) {
 // The page sends only what changed on it since it was filled (or last saved): a setting changed
 // elsewhere since (the import window's «Запомнить», the working day on the home page) is not
 // overwritten by the older value the form still shows
+// Audit 8.2. «Подбирать автоматически»: the device and precision the hardware calls for, shown in words;
+// off, the two lists of «Дополнительно» are yours
+function syncDeviceAuto(save = true) {
+  const auto = document.getElementById('set-device-auto').checked;
+  const hw = (state.system || {}).hardware || {};
+  const dev = document.getElementById('set-device'), prec = document.getElementById('set-compute-type');
+  if (auto) {
+    if (hw.recommended_device) dev.value = hw.recommended_device;
+    if (hw.recommended_compute_type) prec.value = hw.recommended_compute_type;
+  }
+  dev.disabled = prec.disabled = auto;
+  const name = (sel) => sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : '';
+  document.getElementById('device-auto-hint').textContent = auto ? t('deviceAutoNow').replace('{dev}', () => name(dev)).replace('{prec}', () => name(prec).split(' — ')[0].toLowerCase()) : t('deviceManualHint');
+  if (save) { scheduleSettingsSave(); refreshSettingsChanged(); }
+}
+
 let _settingsBaseline = null;
 
 function settingsFormValues() {
   return {
     whisper_model: document.getElementById('set-whisper-model').value,
+    device_auto: String(document.getElementById('set-device-auto').checked),
     device: document.getElementById('set-device').value,
     compute_type: document.getElementById('set-compute-type').value,
     diarization_enabled: String(document.getElementById('set-diarization').checked),
@@ -1703,13 +1970,13 @@ async function saveAllSettings() {
     });
   } catch (e) {
     setSettingsSaveState('failed');
-    showToast(t('settingsSaveFailed').replace('{why}', () => String(e.message || e)));
+    showError(t('settingsSaveFailed').replace('{why}', () => String(e.message || e)));
     return;
   }
   if (!res.ok) {
     const why = errorText(await readJson(res), res);
     setSettingsSaveState('failed');
-    showToast(t('settingsSaveFailed').replace('{why}', () => why));
+    showError(t('settingsSaveFailed').replace('{why}', () => why));
     return;
   }
   // The settings page saves each change at once and stays open
@@ -1749,7 +2016,7 @@ function startOllamaPollingLoop(model) {
 }
 
 async function pullOllamaModel(modelArg, makeActive = true) {
-  const model = (modelArg || document.getElementById('set-ollama-model').value || 'qwen2.5:7b').trim();
+  const model = (modelArg || document.getElementById('set-ollama-model').value || 'qwen3.5:4b').trim();
   let allowInstall = false;
   if (state.system && state.system.ollama && !state.system.ollama.installed) {
     allowInstall = await askConfirmt('uiOllamaIsNotInstalled');
@@ -1783,54 +2050,35 @@ async function pullOllamaModel(modelArg, makeActive = true) {
 }
 
 // --- Dictionary ---
+// Audit 7.5: the dictionary has one place, Settings → Dictionary (the sidebar button opens it)
 async function loadDictionary() {
   const res = await fetch('/api/dictionary');
   const terms = await readJson(res);
   if (!res.ok || !Array.isArray(terms)) return;
   state.dictionary = terms;
   document.getElementById('dict-count-badge').textContent = state.dictionary.filter(d => d.active).length;
-
-  const box = document.getElementById('dictionary-list');
-  document.getElementById('dict-clear-btn').classList.toggle('hidden', state.dictionary.length === 0);
-  if (state.dictionary.length === 0) {
-    box.innerHTML = `<div class="p-6 text-center text-xs text-apple-tertiary">${escapeHtml(t('emptyDictionary'))}</div>`;
-    renderSettingsDictionary();
-    return;
-  }
-
-  box.innerHTML = state.dictionary.map(item => `
-    <div class="flex items-center justify-between px-3.5 py-2 text-xs">
-      <div class="flex items-center gap-2.5">
-        <input type="checkbox" ${item.active ? 'checked' : ''}
-          data-change="toggleDictItem" data-change-args='[${item.id}, {"$": "checked"}]'
-          class="rounded bg-apple-bg border-white/20 text-apple-blue" />
-        <span class="${item.active ? 'text-white' : 'text-apple-tertiary line-through'}">${escapeHtml(item.term)}</span>
-        <span class="text-[11px] px-1.5 py-0.5 rounded bg-white/5 text-apple-secondary">${escapeHtml(item.category)}</span>
-      </div>
-      <button data-click="deleteDictItem" data-click-args='[${item.id}]' title="${escapeHtml(t('tipDeleteDictTerm'))}" class="text-apple-tertiary hover:text-apple-red transition p-1">${SVG_ICONS.closeX}</button>
-    </div>
-  `).join('');
+  document.getElementById('settings-dict-clear')?.classList.toggle('hidden', state.dictionary.length === 0);
   renderSettingsDictionary();
 }
 
-async function addDictionaryItems() {
-  const input = document.getElementById('dict-term-input');
-  const cat = document.getElementById('dict-category-input').value;
-  if (!input.value.trim()) return;
-
-  await fetch('/api/dictionary', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ term: input.value, category: cat })
-  });
-  input.value = '';
-  await loadDictionary();
-}
-
+// Audit 6.1: cleared at once; «Отменить» adds the same words back, switched off ones stay off
 async function clearDictionary() {
-  if (!await askConfirm(t('dictClearConfirm').replace('{n}', () => state.dictionary.length), true)) return;
-  await fetch('/api/dictionary', { method: 'DELETE' });
+  const words = (state.dictionary || []).map(d => ({ term: d.term, category: d.category, active: d.active }));
+  if (!words.length) return;
+  const res = await fetch('/api/dictionary', { method: 'DELETE' }).catch(() => null);
+  if (!res || !res.ok) { showError(); return; }
   await loadDictionary();
+  showToast(t('dictClearedToast').replace('{n}', () => words.length), { label: t('rdSasUndo'), onClick: async () => {
+    for (const w of words) {
+      await fetch('/api/dictionary', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ term: w.term, category: w.category }) });
+    }
+    await loadDictionary();
+    const off = new Set(words.filter(w => !w.active).map(w => w.term));
+    for (const d of state.dictionary.filter(x => off.has(x.term) && x.active)) {
+      await fetch(`/api/dictionary/${d.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active: false }) });
+    }
+    if (off.size) await loadDictionary();
+  } });
 }
 
 async function toggleDictItem(id, active) {
@@ -1968,7 +2216,7 @@ async function startBench() {
     body: JSON.stringify({ kind: bench.kind, meeting_id: meetingId, models, clip_sec: Number(document.getElementById('bench-clip').value) }),
   });
   const data = await readJson(res);
-  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  if (!res.ok) { showError(data.detail); return; }
   bench.data = { ...bench.data, ...data };
   renderBench();
   pollBench();
@@ -2272,14 +2520,21 @@ function renderSettingsDictionary() {
     </div>`).join('');
 }
 
+// Audit 6.5. A word already in the dictionary is said at the field while typing, and «Добавить» waits
+function settingsDictHas(term) {
+  const v = String(term || '').trim().toLowerCase();
+  return !!v && (state.dictionary || []).some(d => d.term.toLowerCase() === v);
+}
+function checkSettingsDictTerm() {
+  const dup = settingsDictHas(document.getElementById('settings-dict-term').value);
+  document.getElementById('settings-dict-dup').classList.toggle('hidden', !dup);
+  document.getElementById('settings-dict-add').disabled = dup;
+}
+
 async function addSettingsDictItem() {
   const input = document.getElementById('settings-dict-term');
   const term = input.value.trim();
-  if (!term) return;
-  if ((state.dictionary || []).some(d => d.term.toLowerCase() === term.toLowerCase())) {
-    showToast(t('rdSasDictDup'));
-    return;
-  }
+  if (!term || settingsDictHas(term)) { checkSettingsDictTerm(); return; }
   const category = document.getElementById('settings-dict-cat').value.trim() || t('rdSasDictCatDefault');
   await fetch('/api/dictionary', {
     method: 'POST',
@@ -2289,6 +2544,7 @@ async function addSettingsDictItem() {
   input.value = '';
   input.focus();
   await loadDictionary();
+  checkSettingsDictTerm();
 }
 
 // Deleted at once, with a way back
@@ -2333,7 +2589,7 @@ async function copySystemInfo() {
     const btn = document.getElementById('settings-copy-info');
     if (btn) { btn.textContent = t('rdSasCopied'); setTimeout(() => { btn.textContent = t('rdSasCopyInfo'); }, 1800); }
   } catch (e) {
-    showToast(t('rdSasCopyFailed'));
+    showError(t('rdSasCopyFailed'));
   }
 }
 

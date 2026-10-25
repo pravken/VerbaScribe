@@ -142,7 +142,7 @@ def init_db() -> None:
             "vad_filter": "true",
             "audio_enhance": "true",
             "clean_fillers": "true",
-            "ui_scale": "75",  # the interface scale of the page, % (static/js/core.js applyUiScale)
+            "ui_scale": "100",  # the interface scale of the page, % (static/js/core.js applyUiScale)
             "record_source_mode": "both",
             "record_mic_device": "",
             "batched_inference": "true",  # faster-whisper BatchedInferencePipeline on GPU
@@ -209,6 +209,11 @@ def init_db() -> None:
         if not cur.execute("SELECT 1 FROM settings WHERE key = 'record_default_v2'").fetchone():
             cur.execute("UPDATE settings SET value = 'both' WHERE key = 'record_source_mode' AND value = 'mic'")
             cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('record_default_v2', '1')")
+
+        # One-time switch of the interface scale default from 75 % (0.6.0-beta.1) to 100 %
+        if not cur.execute("SELECT 1 FROM settings WHERE key = 'ui_scale_default_v2'").fetchone():
+            cur.execute("UPDATE settings SET value = '100' WHERE key = 'ui_scale' AND value = '75'")
+            cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('ui_scale_default_v2', '1')")
 
         # Search by meaning (app/semantic.py): transcript chunks with their embedding vectors, and
         # which recordings are indexed with which model. A changed transcript drops its meta row.
@@ -403,7 +408,8 @@ def _move_segments_to_table(conn: sqlite3.Connection) -> int:
     return len(ids)
 
 
-SYSTEM_FOLDERS = {"recordings": "Записи", "imports": "Импорт", "dictations": "Диктовки"}
+# The names stored for a new library; the page shows its own translated ones (folderSystem_* in i18n.js)
+SYSTEM_FOLDERS = {"recordings": "Из студии", "imports": "Импортированные", "dictations": "Диктовки"}
 _VIDEO_EXTS = {".mp4", ".mkv", ".mov", ".avi", ".m4v", ".webm", ".wmv", ".flv", ".mpg", ".mpeg", ".ts", ".mts", ".3gp"}
 
 

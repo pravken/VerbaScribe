@@ -68,7 +68,7 @@ async function installUpdate() {
   if (!(info.download || {}).done) {
     if (updateState.polling) return;
     const r = await fetch('/api/update/download', { method: 'POST' });
-    if (!r.ok) { showToast((await r.json()).detail || 'Error'); return; }
+    if (!r.ok) { showError((await r.json()).detail); return; }
     updateState.info = await r.json();
     renderUpdateStatus();
     updateState.polling = true;
@@ -81,7 +81,7 @@ async function installUpdate() {
     updateState.polling = false;
     if (!updateState.info.download.done) return;
   }
-  const ok = await askConfirm(t('updInstallConfirm').replace('{v}', () => info.latest.version));
+  const ok = await askConfirm(t('updInstallConfirm').replace('{v}', () => info.latest.version), false, t('cfInstall'));
   if (!ok) return;
   const r = await fetch('/api/update/install', { method: 'POST' });
   if (!r.ok) { showToast(errorText(await readJson(r), r)); return; }
@@ -123,13 +123,17 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   player.addEventListener('enterpictureinpicture', applyVideoLayout);
   player.addEventListener('leavepictureinpicture', applyVideoLayout);
+  const txBox = document.getElementById('transcript-container');
+  const userMoved = () => { state.userScrollAt = Date.now(); };
+  ['wheel', 'pointerdown', 'keydown', 'touchmove'].forEach(ev => txBox.addEventListener(ev, userMoved, { passive: true }));
   player.addEventListener('timeupdate', () => {
     const cur = player.currentTime;
     const dur = player.duration || (state.activeMeeting && state.activeMeeting.duration) || 1;
     document.getElementById('player-current-time').textContent = formatTime(cur);
     if (player.paused) renderPlayerWaveform(Math.min(1, cur / dur));  // while playing: redesign_player.js rpTick
 
-    const follow = state.autoScroll !== false && !player.paused;
+    // Following waits while you scroll or click in the text yourself, then picks the current line up again
+    const follow = state.autoScroll !== false && !player.paused && Date.now() - (state.userScrollAt || 0) > 4000;
     const activeSegEl = updatePlaybackHighlight(cur, follow);
     updateTheatreCaption(cur);
     updateActiveChapter(cur);
@@ -139,7 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const rect = activeSegEl.getBoundingClientRect();
       const cRect = container.getBoundingClientRect();
       if (rect.top < cRect.top + 50 || rect.bottom > cRect.bottom - 50) {
-        activeSegEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        activeSegEl.scrollIntoView({ behavior: scrollMotion(), block: 'center' });
       }
     }
   });
@@ -330,19 +334,62 @@ function renderChaptersBar() {
     `<button data-click="seekPlayer" data-click-args='[${Number(c.start) || 0}]' id="chapter-${i}" title="${escapeHtml(c.desc || c.title)}"
       class="chapter-chip"><span class="font-mono text-apple-tertiary">${formatTime(c.start)}</span> ${escapeHtml(c.title)}</button>`
   ).join('');
+  document.getElementById('chapters-all').textContent = t('chaptersAll').replace('{n}', () => _chapters.length);
   rpRenderChapters();  // the same chapters as bands of the player's wave
+  updateActiveChapter(document.getElementById('media-player')?.currentTime || 0);
 }
 
 function updateActiveChapter(cur) {
   if (!_chapters.length) return;
-  let idx = -1;
+  let idx = 0;  // before the first one starts, the first is the current one
   for (let i = 0; i < _chapters.length; i++) if (_chapters[i].start <= cur + 0.25) idx = i;
   if (idx === _activeChapter) return;
   document.getElementById(`chapter-${_activeChapter}`)?.classList.remove('chapter-chip-active');
   const el = document.getElementById(`chapter-${idx}`);
   el?.classList.add('chapter-chip-active');
-  el?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   _activeChapter = idx;
+  centerActiveChapter(true);
+}
+
+// The current chapter in the middle of the row: the room before the first and after the last chip
+// lets those be centred too
+function centerActiveChapter(smooth) {
+  const list = document.getElementById('chapters-list');
+  const el = document.getElementById(`chapter-${_activeChapter}`);
+  if (!list || !el || !list.clientWidth) return;
+  const pad = Math.max(0, (list.clientWidth - el.offsetWidth) / 2);
+  list.style.paddingLeft = list.style.paddingRight = `${pad}px`;
+  const left = el.getBoundingClientRect().left - list.getBoundingClientRect().left + list.scrollLeft;
+  list.scrollTo({ left: left - pad, behavior: smooth ? scrollMotion() : 'auto' });
+}
+
+// The row shows only the chips that fit: "All chapters" lists them all, the current one ticked
+function openChaptersMenu(e) {
+  e.stopPropagation();
+  const r = e.currentTarget.getBoundingClientRect();
+  openTextMenuAt(_chapters.map((c, i) => ({
+    label: (i === _activeChapter ? '✓ ' : '') + c.title, key: formatTime(c.start), run: () => seekPlayer(c.start),
+  })), r.right, r.bottom + 4, { right: true, maxWidth: 460 });
+}
+
+// The mouse wheel scrolls the row of chapters sideways (its scrollbar is hidden)
+document.getElementById('chapters-list')?.addEventListener('wheel', (e) => {
+  const el = e.currentTarget;
+  if (el.scrollWidth <= el.clientWidth || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+  e.preventDefault();
+  el.scrollLeft += e.deltaY;
+}, { passive: false });
+// again when the row changes width or comes into view (another tab, the window, the sidebar)
+if (window.ResizeObserver && document.getElementById('chapters-list')) {
+  // Only a real change of width counts: the row's own side padding (set by the centring) changes its
+  // content box, and reacting to that turned the smooth move to the middle into a jump
+  let chaptersWidth = 0;
+  new ResizeObserver((entries) => {
+    const w = Math.round(entries[0].borderBoxSize?.[0]?.inlineSize ?? entries[0].target.offsetWidth);
+    if (w === chaptersWidth) return;
+    chaptersWidth = w;
+    centerActiveChapter(false);
+  }).observe(document.getElementById('chapters-list'), { box: 'border-box' });
 }
 
 // "Clear" (the section's ⋯): what the open section holds (an analysis, my notes, the promises)
@@ -355,19 +402,51 @@ async function clearSummaryTab(key) {
   if (!m) return;
   const tab = typeof key === 'string' ? key : state.activeSummaryTab;
   const label = anSectionInfo(tab).label || t('tabSummary');
+  // Audit 6.1: an analysis section or my notes are cleared at once, «Отменить» brings them back for
+  // 7 s and the server forgets them only after that; the promises (tasks of other pages) still ask
+  if (tab !== 'commitments') {
+    const redraw = () => {
+      if (!state.activeMeeting || state.activeMeeting.id !== m.id) return;
+      if (tab === 'chapters') renderChaptersBar();
+      renderSummaryPanel();
+    };
+    const notes = m.user_notes;
+    const section = (m.summaries || {})[tab];
+    deleteWithUndo({
+      message: t('clearTabDoneToast').replace('{tab}', () => label),
+      hide: () => {
+        if (tab === 'mynotes') m.user_notes = '';
+        else { const rest = { ...(m.summaries || {}) }; delete rest[tab]; m.summaries = rest; }
+        redraw();
+      },
+      restore: () => {
+        if (tab === 'mynotes') m.user_notes = notes;
+        else m.summaries = { ...(m.summaries || {}), [tab]: section };
+        redraw();
+      },
+      commit: async (keepalive) => {
+        const res = tab === 'mynotes'
+          ? await fetch(`/api/meetings/${m.id}/notes`, { method: 'PATCH', keepalive, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notes: '' }) })
+          : await fetch(`/api/meetings/${m.id}/summaries?key=${encodeURIComponent(tab)}`, { method: 'DELETE', keepalive });
+        if (res.ok && !keepalive && tab !== 'mynotes' && state.activeMeeting && state.activeMeeting.id === m.id) {
+          state.activeMeeting.summaries = (await readJson(res)).summaries || {};
+          redraw();
+        }
+        return res.ok;
+      },
+    });
+    return;
+  }
   if (!(await confirmDialog(t('clearTabTitle').replace('{tab}', () => label), t('clearTabText'), t('clearBtn')))) return;
   let res;
-  if (tab === 'mynotes') {
-    res = await fetch(`/api/meetings/${m.id}/notes`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notes: '' }) });
-    if (res.ok) m.user_notes = '';
-  } else if (tab === 'commitments') {
+  if (tab === 'commitments') {
     res = await fetch(`/api/meetings/${m.id}/commitments`, { method: 'DELETE' });
     if (res.ok) state.anCommit = { id: m.id, n: 0 };
   } else {
     res = await fetch(`/api/meetings/${m.id}/summaries?key=${encodeURIComponent(tab)}`, { method: 'DELETE' });
     if (res.ok) state.activeMeeting.summaries = (await readJson(res)).summaries || {};
   }
-  if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
+  if (!res.ok) { showError((await readJson(res)).detail); return; }
   if (tab === 'chapters') renderChaptersBar();
   renderSummaryPanel();
 }
@@ -440,7 +519,7 @@ function renderAnalysisHead() {
   // without a model the question field says so; a press anywhere that needs one points to the banner
   const ask = document.getElementById('custom-summary-prompt');
   if (ask) {
-    ask.placeholder = ai ? t('anAskPh') : t('anAskNeedModel');
+    ask.placeholder = t('anAskPh');  // audit 7.6: why it waits is said once, by the banner
     ask.title = ai ? t('tipAskInput') : t('anNeedModel');
     ask.closest('.an-ask')?.classList.toggle('an-ask-off', !ai);
   }
@@ -672,7 +751,7 @@ function openTemplateDialog(tpl) {
   const save = async (list) => {
     const res = await fetch('/api/summary-templates', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ templates: list }) });
     const data = await readJson(res);
-    if (!res.ok) { showToast(serverText(data.detail || 'Error')); return null; }
+    if (!res.ok) { showError(serverText(data.detail)); return null; }
     state.summaryTemplates = data;
     return data;
   };
@@ -682,8 +761,12 @@ function openTemplateDialog(tpl) {
     if (!b) return;
     const all = (state.summaryTemplates || []).map(x => ({ ...x }));
     if (b.dataset.a === 'del') {
-      if (!(await confirmDialog(t('anTplDelTitle').replace('{name}', () => tpl.name), t('anTplDelText'), t('ctxDelete')))) return;
-      if (await save(all.filter(x => x.id !== tpl.id))) { wrap.remove(); renderTemplateTabs(); }
+      // Audit 6.1: removed at once, «Отменить» saves the list as it was
+      if (await save(all.filter(x => x.id !== tpl.id))) {
+        removeWithExit(wrap);
+        renderTemplateTabs();
+        showToast(t('anTplDeletedToast').replace('{name}', () => tpl.name), { label: t('rdSasUndo'), onClick: async () => { if (await save(all)) renderTemplateTabs(); } });
+      }
       return;
     }
     if (b.dataset.a !== 'save') return;
@@ -730,7 +813,7 @@ async function createAnalysisSection(key, ev) {
       res = await fetch(`/api/meetings/${m.id}/summary`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ template: key, model: chosenModel, lang: state.uiLang }) });
     }
     const data = await readJson(res);
-    if (!res.ok) throw new Error(data.detail || 'Error');
+    if (!res.ok) throw new Error(data.detail || t('errorGeneric'));
     if (data.summaries) m.summaries = data.summaries;
     if (key === 'commitments') state.anCommit = { id: m.id, n: Array.isArray(data) ? data.length : (data.items || []).length || 0 };
     if (key === 'chapters' && state.activeMeeting === m) renderChaptersBar();
@@ -805,7 +888,7 @@ function openTemplatesEditor() {
     else if (b.dataset.add) { items.push({ id: '', name: '', prompt: '' }); draw(); }
     else if (b.dataset.a === 'save') {
       const res = await fetch('/api/summary-templates', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ templates: items }) });
-      if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
+      if (!res.ok) { showError((await readJson(res)).detail); return; }
       state.summaryTemplates = await readJson(res);
       renderTemplateTabs();
       wrap.remove();
@@ -856,7 +939,7 @@ async function exportCommitments(fmt, meetingId) {
     body: JSON.stringify({ fmt, meeting_id: meetingId, lang: state.uiLang === 'en' ? 'en' : 'ru' }),
   });
   const data = await readJson(res);
-  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  if (!res.ok) { showError(data.detail); return; }
   if (data.ok) showToast(t('commitmentsSaved'), { label: t('modelReveal'), onClick: () => revealPath(data.path) });
 }
 
@@ -864,7 +947,7 @@ async function toggleCommitment(input) {
   const res = await fetch(`/api/commitments/${input.dataset.cid}`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: input.checked ? 'done' : 'open' }),
   });
-  if (!res.ok) { input.checked = !input.checked; showToast((await readJson(res)).detail || 'Error'); return; }
+  if (!res.ok) { input.checked = !input.checked; showError((await readJson(res)).detail); return; }
   input.closest('label')?.classList.toggle('opacity-50', input.checked);
 }
 
@@ -887,7 +970,7 @@ async function openOpenCommitments() {
       <div class="px-5 pt-5 pb-3 border-b apple-border flex items-center justify-between gap-3">
         <div><div class="text-sm font-semibold text-white">${escapeHtml(t('openCommitmentsBtn'))}</div>
           <p class="text-[11.5px] text-apple-secondary mt-1">${escapeHtml(t('openCommitmentsDesc'))}</p></div>
-        <button data-a="close" class="ui-btn ui-btn-subtle">${escapeHtml(t('close'))}</button>
+        <button data-a="close" class="dlg-x" title="${escapeHtml(t('tipCloseModal'))}" aria-label="${escapeHtml(t('tipCloseModal'))}">✕</button>
       </div>
       <div class="flex-1 overflow-y-auto px-5 py-2">${items.length ? items.map(c => commitmentRowHtml(c, true)).join('') + commitmentExportBar(null)
         : `<div class="py-10 text-center text-xs text-apple-tertiary">${escapeHtml(t('commitmentsNoneOpen'))}</div>`}</div>
@@ -901,11 +984,11 @@ async function openOpenCommitments() {
 // scrolled to and lit for a moment instead of doing nothing
 function flashNoAiBanner(id = 'an-noai') {
   const b = document.getElementById(id);
-  if (!b) { showToast(t('anNeedModel')); return; }
+  if (!b) { showWarning(t('anNeedModel')); return; }
   b.classList.remove('hidden', 'an-noai-flash');
   void b.offsetWidth;
   b.classList.add('an-noai-flash');
-  b.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  b.scrollIntoView({ block: 'nearest', behavior: scrollMotion() });
 }
 
 function aiAvailable() {
@@ -935,7 +1018,7 @@ function renderMyNotesEditor(box) {
     window._notesSaveTimer = setTimeout(async () => {
       const res = await fetch(`/api/meetings/${id}/notes`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notes: text }) });
       const st = document.getElementById('my-notes-status');
-      if (st) st.textContent = res.ok ? t('notesSaved') : ((await readJson(res)).detail || 'Error');
+      if (st) st.textContent = res.ok ? t('notesSaved') : ((await readJson(res)).detail || t('errorGeneric'));
     }, 600);
   };
 }
@@ -1078,11 +1161,11 @@ async function runCustomQuestion() {
       body: JSON.stringify({ template: 'custom', custom_prompt: prompt, model: chosenModel, lang: state.uiLang }),
     });
     const data = await readJson(res);
-    if (!res.ok) throw new Error(data.detail || 'Error');
+    if (!res.ok) throw new Error(data.detail || t('errorGeneric'));
     m.summaries = data.summaries;
     input.value = '';
   } catch (e) {
-    showToast(serverText(e.message));
+    showError(serverText(e.message));
   } finally {
     state.anBusy.delete(`${m.id}:custom`);
     if (state.activeMeeting === m) { renderChaptersBar(); renderSummaryPanel(); }
@@ -1103,7 +1186,7 @@ function copySummaryText() {
   const text = anSectionText(state.activeSummaryTab).replaceAll('[?]', `(${t('unverifiedBadge')})`).trim();
   if (!text) return;
   navigator.clipboard.writeText(text);
-  showToast(t('uiCopied'));
+  showToast(t('uiCopied'), null, 'success');
 }
 
 // --- Export ---
@@ -1120,7 +1203,7 @@ async function exportMeetingById(id, fmt, opts) {
     const qs = params.toString() ? `?${params}` : '';
     const res = await fetch(`/api/meetings/${id}/export/${fmt}${qs}`);
     if (!res.ok) {
-      showToast(t('exportFailed'));
+      showError(t('exportFailed'));
       return;
     }
     const blob = await res.blob();
@@ -1184,7 +1267,7 @@ async function exportMeetingById(id, fmt, opts) {
     showToast(`${t('exportSavedTo')} ${filename}`);
   } catch (e) {
     console.error('Export error:', e);
-    showToast(t('exportFailed'));
+    showError(t('exportFailed'));
   }
 }
 
@@ -1233,7 +1316,7 @@ async function refreshRecordingsDirLabel() {
 async function pickRecordingsDir() {
   const res = await fetch('/api/recordings-dir/pick', { method: 'POST' });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  if (!res.ok) { showError(data.detail); return; }
   if (data.ok) await afterRecordingsDirChange();
 }
 
@@ -1369,7 +1452,7 @@ async function pickObsidianVault() {
   vault.dataset.path = data.folder;
   updateObsidianPreview();
   refreshObsidianStatus();
-  if (!data.is_vault) showToast(t('tipObsNotVault'));
+  if (!data.is_vault) showWarning(t('tipObsNotVault'));
 }
 
 async function openObsidianFolder() {
@@ -1382,7 +1465,7 @@ async function openObsidianFolder() {
 async function unloadAllModelsNow() {
   const res = await fetch('/api/vram/unload-all', { method: 'POST' });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  if (!res.ok) { showError(data.detail); return; }
   renderVram(data);
   showToast((data.released || []).length ? t('idleUnloadedNow') : t('idleNothingLoaded'));
 }
@@ -1422,7 +1505,7 @@ async function loadMeetingInfo() {
   try {
     const res = await fetch(`/api/meetings/${id}/info`);
     const info = await readJson(res);
-    if (!res.ok) throw new Error(info.detail || 'Error');
+    if (!res.ok) throw new Error(info.detail || t('errorGeneric'));
     if (!state.activeMeeting || state.activeMeeting.id !== id) return;
     renderMeetingInfo(info);
   } catch (e) {
@@ -1442,7 +1525,7 @@ function formatDateTime(s) {
 }
 
 function copyText(text) {
-  navigator.clipboard.writeText(text).then(() => showToast(t('copied')), () => {});
+  navigator.clipboard.writeText(text).then(() => showToast(t('copied'), null, 'success'), () => {});
 }
 
 function renderMeetingInfo(info) {
@@ -1532,7 +1615,8 @@ async function cancelPendingExports(id) {
 const TEXT_AREAS = '#studio-captions, #transcript-container, #summary-content, #ask-thread, #info-content, .markdown-body';
 
 function closeTextMenu() {
-  document.getElementById('text-menu')?.remove();
+  const menu = document.getElementById('text-menu');
+  if (menu && !menu.classList.contains('is-leaving')) { menu.id = ''; removeWithExit(menu); }
 }
 
 function textMenuItems(e) {
@@ -1650,7 +1734,7 @@ async function pasteInto(field) {
       field.dispatchEvent(new Event('input', { bubbles: true }));
     }
   } catch (e) {
-    showToast(t('ctxPasteBlocked'));
+    showWarning(t('ctxPasteBlocked'));
   }
 }
 
@@ -1708,8 +1792,8 @@ function openTextMenuAt(items, x, y, opts) {
   const clean = items.filter((it, i, a) => !it.sep || (i > 0 && !a[i - 1].sep && i < a.length - 1));
   menu.innerHTML = clean.map((it, i) => it.sep
     ? '<div class="my-1 h-px bg-white/10"></div>'
-    : `<button class="macos-menu-item gap-6" data-i="${i}" ${it.disabled ? 'disabled style="opacity:.4"' : ''}><span>${escapeHtml(it.label)}</span>`
-      + `<span class="text-[11px] opacity-80 font-mono">${escapeHtml(it.key || '')}</span></button>`).join('');
+    : `<button class="macos-menu-item gap-6" data-i="${i}" ${it.disabled ? 'disabled style="opacity:.4"' : ''}><span class="min-w-0 truncate">${escapeHtml(it.label)}</span>`
+      + `<span class="tm-key">${escapeHtml(it.key || '')}</span></button>`).join('');
   // Keeps the selection: a click in the menu must not clear it before the action reads it
   menu.addEventListener('mousedown', ev => ev.preventDefault());
   menu.addEventListener('click', (ev) => {
@@ -1719,6 +1803,9 @@ function openTextMenuAt(items, x, y, opts) {
     closeTextMenu();
     clean[Number(b.dataset.i)].run();
   });
+  if (opts && opts.maxWidth) menu.style.maxWidth = `${opts.maxWidth}px`;
+  menu.style.maxHeight = `${viewH() - 8}px`;  // a long list scrolls instead of leaving the window
+  menu.style.overflowY = 'auto';
   document.body.appendChild(menu);
   // x, y are a point of the window (clientX/Y); the menu is placed in the page's own pixels.
   // opts.right: x is the menu's right edge (a menu under a button at the right)
@@ -1730,7 +1817,8 @@ function openTextMenuAt(items, x, y, opts) {
 document.addEventListener('click', closeTextMenu);
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeTextMenu(); });
 window.addEventListener('blur', closeTextMenu);
-document.addEventListener('scroll', closeTextMenu, true);
+// The page scrolling under the menu closes it; a long menu scrolling its own list does not
+document.addEventListener('scroll', (e) => { if (!(e.target instanceof Element && e.target.closest('#text-menu'))) closeTextMenu(); }, true);
 
 // --- About (GET /api/about) and its easter eggs: the willow hears everything ---
 const ABOUT_LINES = {

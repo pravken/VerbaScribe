@@ -31,7 +31,6 @@
             <button data-click="impShowRow" data-click-args='["link"]' class="imp-btn" data-i18n="impPasteLink">Вставить ссылку</button>
             <button data-click="impShowRow" data-click-args='["path"]' class="imp-btn" data-i18n-title="impPathTitle" title="Файл или папка на диске добавляются без копирования" data-i18n="impPath">Путь на диске</button>
             <span class="flex-1"></span>
-            <span class="imp-hint" data-i18n="impOrDrop">или перетащите сюда</span>
           </div>
           <p id="imp-link-note" class="imp-hint hidden" data-i18n="urlImportHint">Скачивается только звук. Используйте для записей, которые вы вправе скачивать.</p>
         </div>
@@ -61,7 +60,7 @@
                 <option value="en">English (EN)</option>
               </select>
             </label>
-            <label class="imp-field"><span data-i18n="speakersCountLabel">Число участников</span>
+            <label class="imp-field imp-more-item"><span data-i18n="speakersCountLabel">Число участников</span>
               <select id="upload-speakers" class="imp-select" data-i18n-title="tipSelectSpeakersCount" title="Укажите точное число участников или оставьте Auto">
                 <option value="0" data-i18n="impLangAuto">Определить сам</option>
                 <option value="1">1</option>
@@ -75,7 +74,12 @@
           </div>
         </section>
 
-        <section class="imp-sec">
+        <!-- Audit 8.3: the usual path is the model and the language; the rest opens on «Изменить» -->
+        <div class="imp-more-row">
+          <span id="imp-more-summary" class="imp-more-summary"></span>
+          <button id="imp-more-btn" data-click="impToggleMore" class="imp-link" aria-expanded="false" data-i18n="impMoreOpen">Изменить</button>
+        </div>
+        <section class="imp-sec imp-more-item">
           <div class="imp-sec-head">
             <span class="imp-sec-title" data-i18n="impSound">Звук перед распознаванием</span>
             <span class="imp-hint" data-i18n="impSoundNote">только для копии, которую слушает модель; сами файлы не меняются</span>
@@ -85,16 +89,16 @@
           <div id="imp-sound" class="imp-grid2"></div>
         </section>
 
-        <section class="imp-sec">
+        <section class="imp-sec imp-more-item">
           <div class="imp-sec-head"><span class="imp-sec-title" data-i18n="impAfter">После распознавания</span></div>
           <div id="imp-after" class="imp-grid2"></div>
         </section>
       </div>
 
       <div class="imp-foot">
-        <label class="imp-check" data-i18n-title="impRememberTip" title="Эти параметры сохранятся в настройках и будут выбраны при следующем импорте">
+        <label class="imp-check imp-more-item" data-i18n-title="impRememberTip" title="Эти параметры сохранятся в настройках и будут выбраны при следующем импорте">
           <input id="imp-remember" type="checkbox" /> <span data-i18n="impRemember">Запомнить для следующих импортов</span></label>
-        <label class="imp-check" data-i18n-title="impNoAskTip" title="Импорт будет начинаться сразу. Это окно открывается из меню кнопки «Импорт» → «Файлы с настройками…»">
+        <label class="imp-check imp-more-item" data-i18n-title="impNoAskTip" title="Импорт будет начинаться сразу. Это окно открывается из меню кнопки «Импорт» → «Файлы с настройками…»">
           <input id="imp-noask" type="checkbox" /> <span data-i18n="impNoAsk">Больше не спрашивать</span></label>
         <span class="flex-1"></span>
         <button data-click="closeModal" data-click-args='["import"]' class="imp-btn imp-btn-lg" data-i18n="cancel">Отмена</button>

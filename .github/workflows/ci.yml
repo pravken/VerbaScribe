@@ -52,9 +52,12 @@ jobs:
           PYTHONPATH: tests/stubs
         run: |
           export VERBASCRIBE_DATA_DIR="$RUNNER_TEMP/data" VERBASCRIBE_MODELS_DIR="$RUNNER_TEMP/models"
+          mkdir -p "$VERBASCRIBE_DATA_DIR"
+          python tests/ui/seed.py  # demo recordings for the scenarios (a temporary folder only)
           python -m uvicorn app.main:app --port 8799 > "$RUNNER_TEMP/server.log" 2>&1 &
           for i in $(seq 1 30); do curl -s -o /dev/null http://127.0.0.1:8799/ && break; sleep 1; done
           node tests/ui/smoke.mjs || (cat "$RUNNER_TEMP/server.log"; exit 1)
+          node tests/ui/scenarios.mjs || (cat "$RUNNER_TEMP/server.log"; exit 1)
 
   dependencies:
     runs-on: ubuntu-latest

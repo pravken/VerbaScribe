@@ -7,8 +7,24 @@ let _selectSeq = 0;
 async function selectMeeting(id, reloadPlayer = true) {
   // Only the last request wins: a slow answer for an earlier click must not replace the open recording
   const seq = ++_selectSeq;
-  const res = await fetch(`/api/meetings/${id}`);
-  if (!res.ok || seq !== _selectSeq) return;
+  // Audit 3.2. The click answers at once: the row lights up and the title shows the recording,
+  // the rest comes with the server's answer
+  const known = (state.meetings || []).find(x => x.id === id);
+  if (known && (!state.activeMeeting || state.activeMeeting.id !== id)) {
+    state.pendingMeetingId = id;
+    renderMeetingsSidebar();
+    document.getElementById('meeting-title-input').value = known.title || '';
+  }
+  const res = await fetch(`/api/meetings/${id}`).catch(() => null);
+  if (seq !== _selectSeq) return;
+  if (state.pendingMeetingId === id) {
+    state.pendingMeetingId = null;
+    if (!res || !res.ok) {
+      renderMeetingsSidebar();
+      if (state.activeMeeting) document.getElementById('meeting-title-input').value = state.activeMeeting.title || '';
+    }
+  }
+  if (!res || !res.ok) return;
   const m = await readJson(res);
   const prevId = state.activeMeeting ? state.activeMeeting.id : null;
   state.activeMeeting = m;
@@ -46,6 +62,7 @@ async function selectMeeting(id, reloadPlayer = true) {
   renderTranslationControls();
   renderChaptersBar();
   renderTranscript();
+  rpRender();  // the speaker under the player and the colours of the wave follow the text (deleted, a new model)
   renderSummaryPanel();
   renderMeetingsSidebar();
   if (state.activeWorkspaceTab === 'info' && (prevId !== m.id || reloadPlayer)) loadMeetingInfo();
@@ -62,15 +79,26 @@ function txModelChoices(m) {
   return { list, done };
 }
 
+function toggleTxModelBar(open) {
+  state.txBarOpen = typeof open === 'boolean' ? open : !state.txBarOpen;
+  renderTxModelBar();
+}
+
 function renderTxModelBar() {
   const m = state.activeMeeting;
   const bar = document.getElementById('tx-model-bar');
   if (!bar) return;
-  bar.classList.toggle('hidden', !m);
-  if (!m) return;
-  if (state.txModelFor !== m.id) { state.txModelFor = m.id; state.txModelPick = null; }
+  const chip = document.getElementById('tx-model-chip');
+  if (!m) { bar.classList.add('hidden'); chip.classList.add('hidden'); return; }
+  if (state.txModelFor !== m.id) { state.txModelFor = m.id; state.txModelPick = null; state.txBarOpen = false; }
   const { list, done } = txModelChoices(m);
   const shown = (m.segments || []).length ? (m.transcript_model || '') : '';
+  // Audit 8.4: when a text is shown and nothing is running, the row folds into the model's mark
+  const folded = !!shown && DONE_STATUSES.includes(m.status) && !state.txBarOpen;
+  bar.classList.toggle('hidden', folded);
+  chip.classList.toggle('hidden', !shown || !DONE_STATUSES.includes(m.status));
+  chip.setAttribute('aria-expanded', String(!folded));
+  chip.innerHTML = `<span class="tx-model-chip-dot" aria-hidden="true"></span><span>${escapeHtml(formatModelName(shown))}</span><span aria-hidden="true">${folded ? '▾' : '▴'}</span>`;
   const pick = state.txModelPick || shown || m.model_name || (list[0] && list[0].id) || '';
   const lang = String(m.language || '').slice(0, 2);
   const sel = document.getElementById('tx-model-select');
@@ -89,7 +117,11 @@ function renderTxModelBar() {
   btn.disabled = busy || !!m.media_removed;  // without the sound there is nothing to transcribe
   btn.classList.toggle('opacity-40', btn.disabled);
   btn.classList.toggle('hidden', pick === 'merged');  // the merged text is not made by a model
-  document.getElementById('tx-transcribe-label').textContent = t(pick && pick === shown ? 'txTranscribeAgain' : 'txTranscribe');
+  const again = !!pick && pick === shown;
+  document.getElementById('tx-transcribe-label').textContent = t(again ? 'txTranscribeAgain' : 'txTranscribe');
+  // The next step while the picked model has no text yet: the call to action stands out in blue
+  btn.classList.toggle('ui-btn-primary', !again);
+  btn.classList.toggle('ui-btn-subtle', again);
   // Merging: once two models have transcribed the recording
   const mergeBtn = document.getElementById('tx-merge-btn');
   mergeBtn.classList.toggle('hidden', [...done].filter(x => x !== 'merged').length < 2);
@@ -305,7 +337,7 @@ function updateProcessingBanner(m) {
     const failed = m.status === 'failed';
     // the reason in words; the server's technical text (an exception, a path) only behind «Подробнее»
     const err = humanError(m.error_message || '');
-    document.getElementById('workspace-stage-text').textContent = m.status === 'cleared' ? t('statusCleared')
+    document.getElementById('workspace-stage-text').textContent = m.status === 'cleared' ? t(Object.keys(m.summaries || {}).length ? 'statusNoText' : 'statusCleared')
       : (failed ? t('statusFailed') : t('statusCancelled')) + (m.error_message ? `: ${err.short}` : m.stage_text ? `: ${serverText(m.stage_text)}` : '');
     document.getElementById('workspace-stage-text').title = m.error_message ? err.short : '';
     document.getElementById('workspace-stage-text').classList.toggle('truncate', !failed);  // a reason is read in full
@@ -328,7 +360,7 @@ async function retryActiveMeeting() {
   const m = state.activeMeeting;
   if (!m) return;
   const res = await fetch(`/api/meetings/${m.id}/retry`, { method: 'POST' });
-  if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
+  if (!res.ok) { showError((await readJson(res)).detail); return; }
   await loadMeetingsList();
   await selectMeeting(m.id, false);
 }
@@ -394,7 +426,7 @@ async function saveDubFile(lang, kind) {
     showToast(`${t('exportSavedTo')} ${data.filename}`, { label: t('showInFolder'), title: t('tipShowInFolder'), onClick: () => revealPath(data.path) });
   } catch (e) {
     console.error(e);
-    showToast(t('exportFailed'));
+    showError(t('exportFailed'));
   }
 }
 
@@ -491,7 +523,7 @@ async function startDubSetup() {
   const question = (state.dubEnvInstalled ? t('sdubRepairConfirm') : t('dubSetupConfirm'))
     .replace('{gb}', () => st.download_gb ?? 6)
     .replace('{dir}', () => st.venv || '.venv-dub');
-  if (!await askConfirm(question)) return;
+  if (!await askConfirm(question, false, t(state.dubEnvInstalled ? 'cfReinstall' : 'cfDownloadInstall'))) return;
   let res = null;
   try { res = await fetch('/api/dub/setup', { method: 'POST' }); } catch (e) { console.error(e); }
   const setup = res ? await res.json().catch(() => ({})) : {};
@@ -524,7 +556,7 @@ async function pollDubSetup() {
       renderDubSetup(env, 'sdub');
       updateDubStartButton();
       if (!env.setup || !env.setup.active) {
-        if (env.installed) showToast(t('dubSetupDone'));
+        if (env.installed) showToast(t('dubSetupDone'), null, 'success');
         loadDubInfo();
         break;
       }
@@ -645,7 +677,10 @@ async function downloadDubWeights(ids) {
     .replace('{names}', () => items.map(i => i.name).join(', '))
     .replace('{size}', () => formatBytes(total))
     .replace('{dir}', () => state.dubInfo.weights.dir);
-  if (!await askConfirm(question)) return;
+  // Audit 6.6: the size is on the button, so it just downloads; it asks only when the disk is short
+  const disk = await fetch('/api/disk').then(r => r.json()).catch(() => null);
+  const short = !disk || disk.free_bytes < 0 || disk.free_bytes < total * 1.2;
+  if (short && !await askConfirm(`${question}\n\n${t('sdubDiskShort').replace('{free}', () => formatBytes(Math.max(0, (disk && disk.free_bytes) || 0)))}`, false, t('cfDownload'))) return;
   const res = await fetch('/api/dub/weights/download', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ models: items.map(i => i.id) }),
   });
@@ -661,7 +696,7 @@ async function cancelDubWeights() {
 
 async function deleteDubWeights(id) {
   const item = ((state.dubInfo && state.dubInfo.weights.items) || []).find(i => i.id === id);
-  if (!item || !await askConfirm(t('sdubDeleteConfirm').replace('{name}', () => item.name).replace('{size}', () => formatBytes(item.size_bytes)), true)) return;
+  if (!item || !await askConfirm(t('sdubDeleteConfirm').replace('{name}', () => item.name).replace('{size}', () => formatBytes(item.size_bytes)), true, t('cfDeleteWeights'))) return;
   const res = await fetch(`/api/dub/weights/${encodeURIComponent(id)}`, { method: 'DELETE' });
   const data = await res.json().catch(() => ({}));
   if (data.error) showToast(data.error);
@@ -675,7 +710,7 @@ async function verifyDubEnv() {
   try {
     const res = await fetch('/api/dub/verify', { method: 'POST' });
     const data = await res.json().catch(() => ({}));
-    showToast(res.ok ? (data.ok ? t('sdubVerifyOk') : t('sdubVerifyFailed')) : (data.detail || 'Error'));
+    showError(res.ok ? (data.ok ? t('sdubVerifyOk') : t('sdubVerifyFailed')) : (data.detail));
   } finally {
     btn.disabled = false;
     btn.textContent = t('sdubVerifyBtn');
@@ -779,7 +814,7 @@ async function startDub() {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    showToast(data.detail || 'Error');
+    showError(data.detail);
     return;
   }
   closeModal('dub');
@@ -808,7 +843,7 @@ async function revealDub(lang) {
   const res = await fetch(`/api/meetings/${m.id}/dub/${lang}/reveal`, { method: 'POST' });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    showToast(data.detail || 'Error');
+    showError(data.detail);
   }
 }
 
@@ -968,7 +1003,7 @@ async function startTranslation(onlyChanged, lang) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    showToast(data.detail || 'Error');
+    showError(data.detail);
     return;
   }
   state.txLang = target;
@@ -977,20 +1012,48 @@ async function startTranslation(onlyChanged, lang) {
   await loadMeetingsList();
 }
 
-async function deleteTranslation(lang) {
+// Audit 6.1. A translation goes at once and «Отменить» brings it back for 7 s; the server forgets it
+// only after that (or when the window closes)
+function removeTranslationWithUndo(lang) {
   const m = state.activeMeeting;
-  if (!m || !await askConfirm(t('translateDeleteConfirm').replace('{lang}', () => langName(lang)), true)) return;
-  const res = await fetch(`/api/meetings/${m.id}/translations/${encodeURIComponent(lang)}`, { method: 'DELETE' });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    showToast(data.detail || 'Error');
-    return;
-  }
-  state.activeMeeting = data;
-  renderTranslateResults();
-  renderSubsControls();
-  renderTranslationControls();
-  renderTranscript();
+  if (!m || !meetingTranslations(m)[lang]) return;
+  const kept = meetingTranslations(m)[lang];
+  const wasView = state.txView, wasLang = state.txLang;
+  const redraw = () => {
+    if (!state.activeMeeting || state.activeMeeting.id !== m.id) return;
+    renderTranslateResults();
+    renderSubsControls();
+    renderTranslationControls();
+    renderTranscript();
+  };
+  deleteWithUndo({
+    message: t('translationDeletedToast').replace('{lang}', () => langName(lang)),
+    hide: () => {
+      const rest = { ...meetingTranslations(m) };
+      delete rest[lang];
+      m.translations = rest;
+      if (state.txLang === lang) state.txView = 'orig';
+      redraw();
+    },
+    restore: () => {
+      m.translations = { ...meetingTranslations(m), [lang]: kept };
+      state.txView = wasView;
+      state.txLang = wasLang;
+      redraw();
+    },
+    commit: async (keepalive) => {
+      const res = await fetch(`/api/meetings/${m.id}/translations/${encodeURIComponent(lang)}`, { method: 'DELETE', keepalive });
+      if (res.ok && !keepalive && state.activeMeeting && state.activeMeeting.id === m.id) {
+        const data = await res.json().catch(() => null);
+        if (data) { state.activeMeeting = data; redraw(); }
+      }
+      return res.ok;
+    },
+  });
+}
+
+function deleteTranslation(lang) {
+  removeTranslationWithUndo(lang);
 }
 
 function showTranslation(lang) {
@@ -1018,7 +1081,7 @@ async function makeSubtitles(mode) {
 async function requestVideoSubtitles(lang, variant, mode, askPath) {
   const m = state.activeMeeting;
   if (!m) return false;
-  if (mode === 'burn' && !await askConfirm(t('subsBurnConfirm'))) return false;
+  if (mode === 'burn' && !await askConfirm(t('subsBurnConfirm'), false, t('cfBurnSubs'))) return false;
   showToast(mode === 'soft' ? t('subsSoftWorking') : t('subsBurnWorking'));
   const res = await fetch(`/api/meetings/${m.id}/subtitles`, {
     method: 'POST',
@@ -1027,7 +1090,7 @@ async function requestVideoSubtitles(lang, variant, mode, askPath) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    showToast(data.detail || 'Error');
+    showError(data.detail);
     return false;
   }
   if (data.cancelled) return false;
@@ -1093,18 +1156,9 @@ function renderTranslationControls() {
 }
 
 // From the "Text language" menu of the transcript (deleteTranslation above is the Translate window's)
-async function deleteTranslationFromMenu(lang) {
+function deleteTranslationFromMenu(lang) {
   hideTxViewMenu();
-  const m = state.activeMeeting;
-  if (!m || !(await confirmDialog(t('txDeleteTrTitle').replace('{lang}', () => langName(lang)), t('txDeleteTrText'), t('txDeleteTr')))) return;
-  const res = await fetch(`/api/meetings/${m.id}/translations/${encodeURIComponent(lang)}`, { method: 'DELETE' });
-  const data = await readJson(res);
-  if (!res.ok) { showToast(errorText(data, res)); return; }
-  if (state.txLang === lang) state.txView = 'orig';
-  state.activeMeeting = data;  // the player keeps playing where it was
-  renderSubsControls();
-  renderTranslationControls();
-  renderTranscript();
+  removeTranslationWithUndo(lang);
 }
 
 
@@ -1114,7 +1168,7 @@ async function deleteActiveDub() {
   if (!m || !lang || lang === 'orig') return;
   if (!(await confirmDialog(t('dubDeleteTitle').replace('{lang}', () => lang.toUpperCase()), t('dubDeleteText'), t('dubDelete')))) return;
   const res = await fetch(`/api/meetings/${m.id}/dubs/${encodeURIComponent(lang)}`, { method: 'DELETE' });
-  if (!res.ok) { showToast((await readJson(res)).detail || 'Error'); return; }
+  if (!res.ok) { showError((await readJson(res)).detail); return; }
   setAudioTrack('orig');
   await selectMeeting(m.id, true);
 }
@@ -1170,7 +1224,7 @@ async function cancelProcessing(id) {
   const res = await fetch(`/api/meetings/${id}/cancel`, { method: 'POST' });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    showToast(data.detail || 'Error');
+    showError(data.detail);
     return;
   }
   showToast(t('uiCancelling'));
@@ -1386,7 +1440,8 @@ function renderTranscript() {
   if (filtered.length === 0) {
     const m = state.activeMeeting || {};
     const why = segments.length ? 'emptyTxFiltered'
-      : m.status === 'cleared' ? 'emptyTxCleared'
+      // the only transcript deleted with «Очистить»: the analysis made from it stays
+      : m.status === 'cleared' ? (Object.keys(m.summaries || {}).length ? 'emptyTxAnalysisKept' : 'emptyTxCleared')
       : ['failed', 'cancelled'].includes(m.status) ? 'emptyTxFailed'
       : DONE_STATUSES.includes(m.status) ? 'emptyTxNoSpeech' : 'emptyTxProcessing';
     container.innerHTML = `<div class="py-20 text-center text-xs text-apple-tertiary">${escapeHtml(t(why))}</div>`;
@@ -1525,7 +1580,7 @@ function transcriptSegmentHtml(seg, idx) {
             </button>
           </div>
         </div>
-        <div id="seg-text-${seg.id}" class="text-[13.5px] text-apple-label/90 leading-relaxed" data-dblclick="openInlineSegmentEditor" data-dblclick-args='[${Number(seg.id)}]'>
+        <div id="seg-text-${seg.id}" class="text-[13.5px] text-apple-label/90 leading-relaxed">
           ${bodyHtml}
         </div>
       </div>

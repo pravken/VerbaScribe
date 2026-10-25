@@ -26,9 +26,11 @@ class SecretStoreTest(unittest.TestCase):
         secret_store.set_secret("test_key", "sk-secret-value-5678")
         self.assertEqual(secret_store.get_secret("test_key"), "sk-secret-value-5678")
         self.assertEqual(secret_store.hint("test_key")["last4"], "…5678")
-        stored = secret_store.protect("abc")
-        self.assertNotIn("abc", stored if stored.startswith("dpapi:") else "")
-        self.assertEqual(secret_store.unprotect(stored), "abc")
+        # a long plain text: a short one ("abc") turns up in the base64 of the encrypted blob by chance
+        plain = "sk-plain-text-must-not-show-9137"
+        stored = secret_store.protect(plain)
+        self.assertNotIn(plain, stored if stored.startswith("dpapi:") else "")
+        self.assertEqual(secret_store.unprotect(stored), plain)
         self.assertIsNone(secret_store.unprotect("dpapi:bm90LWEtYmxvYg=="))  # foreign or broken data
         secret_store.delete_secret("test_key")
         self.assertIsNone(secret_store.get_secret("test_key"))

@@ -75,7 +75,7 @@ start.bat
 
 On first launch `setup.bat` creates a Python virtual environment (`.venv`) and installs the exact package versions from `requirements.txt` (a lock file with SHA-256 hashes, generated from `requirements.in`). The app then opens a setup screen where you choose which Whisper model to download. To build the launcher yourself, run `python build_exe.py`; it uses the C# compiler bundled with the .NET Framework.
 
-In a folder cloned with git the app still reports new versions but never installs them itself: update it with `git pull` (and run `setup.bat` again if `requirements.txt` changed).
+In a folder cloned with git the app still reports new versions but never installs them itself: run `update.bat` (or `update.bat <branch>` to switch branches). It puts files changed in the folder aside with `git stash`, updates the branch and installs the packages when `requirements.txt` changed.
 
 **"This app is partially blocked" (Smart App Control).** Windows 11 with Smart App Control on blocks program files without a digital signature, and Python libraries often have none. `setup.bat` notices it and builds the environment on the signed Python from python.org (installing Python 3.10 with winget if needed), but some library files may still be blocked. If the app does not start or a feature fails, turn Smart App Control off: **Windows Security → App & browser control → Smart App Control settings → Off** (it cannot be turned back on without reinstalling Windows; Defender keeps protecting the PC). An environment made by an older `setup.bat` uses an unsigned Python: delete the `.venv` folder and run `setup.bat` again.
 
@@ -169,7 +169,7 @@ VerbaScribe's own code is released under the [MIT License](LICENSE). Models and 
 | [NVIDIA Parakeet TDT 0.6B v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) (ONNX export by istupakov) | [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/): credit "Parakeet TDT 0.6B v3 by NVIDIA" |
 | BGE-M3 embeddings (BAAI) | MIT |
 | SpeechBrain ECAPA-TDNN (`spkrec-ecapa-voxceleb`) | Apache 2.0 |
-| Qwen3.5 4B, Qwen3 8B / 14B, Qwen 2.5 1.5B / 7B / 14B, Mistral 7B | Apache 2.0 |
+| Qwen3.5 4B, Qwen3 8B / 14B, Qwen 2.5 1.5B | Apache 2.0 |
 | Ollama, FastAPI, pywebview | MIT / BSD-3 |
 | ONNX Runtime, CTranslate2, pythonnet | MIT |
 | scikit-learn, httpx, uvicorn | BSD-3 |
@@ -229,7 +229,7 @@ To update Python dependencies, edit `requirements.in` and regenerate the lock (c
 - **Три раздела программы**: **Медиатека** (записи, расшифровки, анализ), **Студия** (запись с живыми субтитрами и переводом в реальном времени, текст печатается без мерцания; можно развернуть на всё окно) и **Вопросы** (к одной записи, к папке или ко всей медиатеке).
 - **Живые субтитры** во время записи, по желанию — сразу с переводом.
 - **Главы** с заголовками для длинных записей и **вопросы к папке или ко всей медиатеке**: небольшая папка читается целиком, большая — через поиск; в ответе есть ссылки на моменты записей.
-- **Папки в медиатеке**: записи из программы попадают в «Записи», импортированные файлы — в «Импорт»; можно создавать вложенные папки и раскладывать записи перетаскиванием. У видео есть превью, а на вкладке **«Сведения»** видно, где лежит файл, его формат, даты и состояние обработки.
+- **Папки в медиатеке**: записи из программы попадают в «Из студии», импортированные файлы — в «Импортированные»; можно создавать вложенные папки и раскладывать записи перетаскиванием. У видео есть превью, а на вкладке **«Сведения»** видно, где лежит файл, его формат, даты и состояние обработки.
 - **Названия по содержанию**: запись с безликим названием («Запись 14-05», «zoom_0») после обработки получает название по тексту.
 - **Профили голосов**: стоит один раз назвать участника по имени, и в новых записях его голос узнаётся автоматически (хранится только в локальной базе).
 - **Значок в трее** показывает, чем занято приложение, и запускает или останавливает запись из меню.
@@ -276,7 +276,7 @@ start.bat
 
 При первом запуске `setup.bat` создаёт виртуальное окружение Python (`.venv`) и ставит точные версии пакетов из `requirements.txt` (lock-файл с хешами SHA-256, собирается из `requirements.in`). Затем открывается экран настройки, где вы выбираете модель Whisper для скачивания. Чтобы собрать лаунчер самостоятельно, выполните `python build_exe.py`; он использует компилятор C# из комплекта .NET Framework.
 
-В папке, склонированной через git, приложение сообщает о новых версиях, но само их не устанавливает: обновляйте её командой `git pull` (и снова запустите `setup.bat`, если изменился `requirements.txt`).
+В папке, склонированной через git, приложение сообщает о новых версиях, но само их не устанавливает: запустите `update.bat` (или `update.bat <ветка>`, чтобы перейти на другую ветку). Он откладывает изменённые в папке файлы через `git stash`, обновляет ветку и ставит пакеты, если изменился `requirements.txt`.
 
 **«Это приложение частично заблокировано» (интеллектуальное управление приложениями).** В Windows 11 с включённым Smart App Control блокируются файлы программ без цифровой подписи, а у библиотек Python её часто нет. `setup.bat` это замечает и собирает окружение на подписанном Python с python.org (при необходимости ставит Python 3.10 через winget), но отдельные файлы библиотек всё равно могут блокироваться. Если приложение не запускается или какая-то функция не работает, выключите эту защиту: **Безопасность Windows → Управление приложениями/браузером → Параметры интеллектуального управления приложениями → Выкл.** (обратно её включить можно только переустановкой Windows; Defender продолжает защищать компьютер). Окружение, созданное старым `setup.bat`, использует неподписанный Python: удалите папку `.venv` и снова запустите `setup.bat`.
 

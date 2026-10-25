@@ -49,11 +49,8 @@ await step('import window', async () => {
   if (!(await page.isVisible('#imp-link-row'))) throw new Error('not opened');
   await page.evaluate(() => closeModal('import'));
 });
-await step('status bar details', async () => {
-  await page.click('.sb-load');
-  await page.waitForTimeout(200);
-  if (!(await page.isVisible('#sb-hw-pop'))) throw new Error('not opened');
-  await page.mouse.click(700, 400);
+await step('hardware in the sidebar', async () => {
+  if (!(await page.isVisible('#app-sidebar #hw-block'))) throw new Error('not shown');
 });
 await step('settings', () => page.evaluate(() => openModal('settings', 'general')));
 for (const tab of await page.evaluate(() => SETTINGS_TABS)) {

@@ -279,9 +279,9 @@ async function assistantCopyChat() {
   if (!chat) return;
   try {
     await navigator.clipboard.writeText(assistantChatText(chat));
-    showToast(t('rdSasCopied'));
+    showToast(t('rdSasCopied'), null, 'success');
   } catch (e) {
-    showToast(t('rdSasCopyFailed'));
+    showError(t('rdSasCopyFailed'));
   }
 }
 
@@ -575,7 +575,7 @@ async function assistantCopy(itemId, btn) {
     await navigator.clipboard.writeText(assistantAnswerText(item));
     if (btn) { btn.textContent = t('rdSasCopied'); setTimeout(() => { btn.textContent = t('rdSasCopy'); }, 1600); }
   } catch (e) {
-    showToast(t('rdSasCopyFailed'));
+    showError(t('rdSasCopyFailed'));
   }
 }
 

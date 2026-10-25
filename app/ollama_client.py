@@ -24,6 +24,12 @@ RECOMMENDED_LLM_MODELS: List[Dict[str, Any]] = [
         "license": "Apache",
         "desc_ru": "Рекомендуется: в сравнении на реальных записях не хуже моделей вдвое больше, а памяти нужно меньше всех; подходит и для ноутбуков",
         "desc_en": "Recommended: on real recordings as good as models twice its size, with the least memory; fine for laptops too",
+        "good_ru": "Протоколы, задачи и ответы по записям на русском и английском; быстрая работа, в том числе без видеокарты",
+        "good_en": "Summaries, tasks and answers for Russian and English recordings; fast, including without a GPU",
+        "weak_ru": "На длинных записях и сложных вопросах возможны пропуски деталей; без видеокарты ответ формируется дольше",
+        "weak_en": "Details may be missed on long recordings and complex questions; slower without a GPU",
+        "min_vram_gb": 4,  # 0: fine without a GPU too
+        "cpu_ok": True,
     },
     {
         "id": "qwen3:8b",
@@ -34,6 +40,12 @@ RECOMMENDED_LLM_MODELS: List[Dict[str, Any]] = [
         "license": "Apache",
         "desc_ru": "Новое поколение Qwen: лучше русский, длинные тексты и точность, та же свободная лицензия",
         "desc_en": "The new Qwen generation: better Russian, long texts and accuracy, same free license",
+        "good_ru": "Более высокая точность на длинных встречах, связность анализа всего разговора",
+        "good_en": "Higher accuracy on long meetings, coherent analysis of the whole conversation",
+        "weak_ru": "Требуется видеокарта с 10 ГБ памяти; без неё работает медленно",
+        "weak_en": "Requires a GPU with 10 GB of memory; slow without one",
+        "min_vram_gb": 10,  # 0: fine without a GPU too
+        "cpu_ok": False,
     },
     {
         "id": "qwen3:14b",
@@ -44,36 +56,12 @@ RECOMMENDED_LLM_MODELS: List[Dict[str, Any]] = [
         "license": "Apache",
         "desc_ru": "Самый глубокий анализ для видеокарт с 12 ГБ и больше",
         "desc_en": "The deepest analysis for GPUs with 12 GB or more",
-    },
-    {
-        "id": "qwen2.5:7b",
-        "name": "Qwen 7B Standard",
-        "badge": "4.7 GB · Apache",
-        "size": "4.7 GB",
-        "vram": "8+ GB VRAM",
-        "license": "Apache",
-        "desc_ru": "Прошлое поколение Qwen: хороший русский и английский, свободная коммерческая лицензия",
-        "desc_en": "The previous Qwen generation: good RU & EN quality, free commercial license",
-    },
-    {
-        "id": "qwen2.5:14b",
-        "name": "Qwen 14B Pro",
-        "badge": "9 GB · Apache",
-        "size": "9 GB",
-        "vram": "12–24 GB VRAM",
-        "license": "Apache",
-        "desc_ru": "Максимальный интеллект и глубина анализа",
-        "desc_en": "Maximum reasoning & detailed analysis",
-    },
-    {
-        "id": "mistral:7b",
-        "name": "Mistral 7B",
-        "badge": "4.1 GB · Apache",
-        "size": "4.1 GB",
-        "vram": "6–8 GB VRAM",
-        "license": "Apache",
-        "desc_ru": "Европейская открытая модель от Mistral AI",
-        "desc_en": "Open-weights model by Mistral AI",
+        "good_ru": "Самый подробный анализ: сложные вопросы, длинные записи, выводы по нескольким записям",
+        "good_en": "The most detailed analysis: hard questions, long recordings, conclusions across recordings",
+        "weak_ru": "Требуется видеокарта с 12 ГБ памяти; работает медленнее остальных, без видеокарты не рекомендуется",
+        "weak_en": "Requires a GPU with 12 GB of memory; slower than the others, not recommended without a GPU",
+        "min_vram_gb": 12,  # 0: fine without a GPU too
+        "cpu_ok": False,
     },
     {
         "id": "qwen2.5:1.5b",
@@ -84,6 +72,12 @@ RECOMMENDED_LLM_MODELS: List[Dict[str, Any]] = [
         "license": "Apache",
         "desc_ru": "Сверхлегкая и быстрая модель для слабых ПК и процессоров",
         "desc_en": "Ultra-lightweight model for low-VRAM GPUs and CPUs",
+        "good_ru": "Наименьшие требования и высокая скорость: компьютеры без видеокарты, короткие записи",
+        "good_en": "The lowest requirements and high speed: computers without a GPU, short recordings",
+        "weak_ru": "Протоколы менее подробные, точность в деталях ниже",
+        "weak_en": "Less detailed summaries, lower accuracy in details",
+        "min_vram_gb": 0,  # 0: fine without a GPU too
+        "cpu_ok": True,
     },
 ]
 
@@ -92,6 +86,7 @@ _LLM_DISPLAY_NAMES: Dict[str, str] = {
     "qwen3:14b": "Qwen3 14B",
     "qwen3:4b": "Qwen3 4B",
     "qwen3.5:4b": "Qwen3.5 4B",
+    # no longer offered (bench-report/report.md), named still for those who have them
     "qwen2.5:7b": "Qwen 7B Standard",
     "qwen2.5:14b": "Qwen 14B Pro",
     "mistral:7b": "Mistral 7B",
@@ -264,7 +259,7 @@ def get_ollama_status(base_url: Optional[str] = None) -> Dict[str, Any]:
     if not base_url:
         base_url = settings.get("ollama_url", "http://127.0.0.1:11434")
     base_url = base_url.replace("localhost", "127.0.0.1")
-    active_model = settings.get("ollama_model", "qwen2.5:7b")
+    active_model = settings.get("ollama_model", "qwen3.5:4b")
 
     exe = find_ollama_executable()
     # Status polling never starts background processes: Ollama is only launched after an

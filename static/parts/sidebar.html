@@ -38,6 +38,44 @@
 
     </div>
 
+    <div class="px-3.5 py-2.5 border-b apple-border shrink-0">
+      <!-- Hardware: the processor, memory and video card, then the models in a frame of their own,
+           split by where they run (renderVram in static/js/settings.js) -->
+      <div id="hw-block" class="hw-block">
+        <div id="sys-row" class="hidden space-y-1">
+          <div class="hw-row" data-i18n-title="tipCpuUsage" title="Загрузка процессора всеми программами" id="cpu-cell">
+            <span class="hw-label"><svg class="hw-icon" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 002.25-2.25V6.75a2.25 2.25 0 00-2.25-2.25H6.75A2.25 2.25 0 004.5 6.75v10.5a2.25 2.25 0 002.25 2.25zm.75-12h9v9h-9v-9z"/></svg>CPU</span>
+            <span id="cpu-name" class="hw-name truncate"></span>
+            <span class="hw-bar"><span id="cpu-bar" class="bg-apple-green/70"></span></span>
+            <span id="cpu-text" class="hw-value"></span>
+          </div>
+          <div class="hw-row" id="ram-cell">
+            <span class="hw-label"><svg class="hw-icon" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7.5h18v8.25H3V7.5zM6.75 10.5v2.25m3.75-2.25v2.25m3.75-2.25v2.25m3.75-2.25v2.25M6 15.75v2.25m4-2.25v2.25m4-2.25v2.25m4-2.25v2.25"/></svg>RAM</span>
+            <span id="ram-name" class="hw-name truncate"></span>
+            <span class="hw-bar"><span id="ram-bar" class="bg-apple-amber/70"></span></span>
+            <span id="ram-text" class="hw-value"></span>
+          </div>
+        </div>
+        <button data-click="openModal" data-click-args='["settings", "recognition"]' class="hw-row hw-row-btn" data-i18n-title="tipHwStatus" title="Открыть настройки оборудования и моделей ИИ">
+          <span class="hw-label"><svg class="hw-icon" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 6.75h19.5v10.5H2.25V6.75zM4.5 17.25v2.25M9 13.875a1.875 1.875 0 100-3.75 1.875 1.875 0 000 3.75zM14.25 9.75h4.5m-4.5 2.25h4.5m-4.5 2.25h4.5"/></svg>GPU</span>
+          <span class="hw-name"><span id="hw-dot" class="w-1.5 h-1.5 rounded-full bg-apple-green shrink-0"></span><span id="hw-text" class="truncate">…</span></span>
+          <span class="hw-bar"><span id="vram-bar" class="bg-apple-blue/70"></span></span>
+          <span id="vram-text" class="hw-value"></span>
+        </button>
+        <!-- The models: how many work and which; a click opens all of them beside the sidebar (#models-pop) -->
+        <button id="vram-row" data-click="toggleModelsPop" data-click-args='[{"$": "event"}]' class="hidden hw-models-tile" aria-haspopup="dialog" aria-expanded="false"
+          data-i18n-title="tipModelsTile" title="Все модели: какие работают, какие установлены и какие можно скачать">
+          <span class="hw-tile-head">
+            <svg class="tb-ai" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2l1.9 5.6 5.6 1.9-5.6 1.9L10 17l-1.9-5.6-5.6-1.9 5.6-1.9z"/><path d="M18.5 13l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/></svg>
+            <span class="hw-tile-title" data-i18n="mpTitle">Модели</span>
+            <span id="hw-models-count" class="hw-models-count"></span>
+            <svg class="hw-tile-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+          </span>
+          <span id="hw-models-running" class="hw-tile-chips hidden"></span>
+        </button>
+      </div>
+    </div>
+
     <!-- ===== Sidebar: library ===== -->
     <div id="side-library" class="flex-1 min-h-0 flex flex-col">
       <div class="px-3.5 pt-2.5">
@@ -64,7 +102,8 @@
 
     <!-- Global Full-Text Search Across All Recordings -->
     <div class="px-3 pt-2.5 pb-1">
-      <div class="relative">
+      <div class="flex items-center gap-1.5">
+      <div class="relative flex-1 min-w-0">
         <svg class="w-3.5 h-3.5 text-apple-tertiary absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/>
         </svg>
@@ -76,6 +115,15 @@
           placeholder="Поиск по всем записям…"
           class="w-full h-7 bg-white/5 focus:bg-apple-card border border-transparent focus:border-apple-blue/60 rounded-lg pl-8 pr-6 text-xs text-white placeholder-apple-tertiary focus:outline-none transition" />
       </div>
+      <!-- Filters of the library: type, source, state, what is ready, language (library.js, LIB_FILTERS) -->
+      <button id="lib-filter-btn" data-click="openLibFilterMenu" data-click-args='[{"$": "event"}]'
+        data-i18n-title="tipLibFilter" title="Показать только записи нужного типа, источника, состояния или языка"
+        class="lib-filter-btn" aria-haspopup="true" aria-expanded="false">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 5.25h16.5l-6.4 7.6v5.4l-3.7 1.5v-6.9z"/></svg>
+        <span id="lib-filter-count" class="lib-filter-count hidden"></span>
+      </button>
+      </div>
+      <div id="lib-filter-chips" class="hidden lib-filter-chips"></div>
     </div>
 
     <!-- Processing queue (shown only while something is queued or running) -->
@@ -141,7 +189,7 @@
 
     <!-- Sidebar Footer: Dictionary, Settings & RU/EN Switcher -->
     <div class="px-2.5 py-2.5 border-t apple-border flex items-center justify-between gap-1.5 bg-apple-sidebar/90 shrink-0">
-      <button data-click="openModal" data-click-args='["dictionary"]'
+      <button data-click="openModal" data-click-args='["settings", "dictionary"]'
         data-i18n-title="tipDictBtn"
         title="Открыть пользовательский словарь имён и терминов"
         class="ui-btn ui-btn-subtle flex-1 min-w-0 justify-between !px-2 text-[11.5px]">
@@ -154,7 +202,7 @@
         <span id="dict-count-badge" class="text-[11px] font-mono text-apple-tertiary shrink-0 ml-1">0</span>
       </button>
 
-      <button data-click="openModal" data-click-args='["settings"]'
+      <button id="sb-settings-btn" data-click="openModal" data-click-args='["settings"]'
         data-i18n-title="tipSettingsBtn"
         title="Открыть настройки приложения, звука и моделей ИИ"
         class="ui-btn ui-btn-subtle flex-1 min-w-0 justify-center !px-2 text-[11.5px]">

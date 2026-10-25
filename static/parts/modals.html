@@ -4,7 +4,7 @@
       <div class="p-6 space-y-3">
         <div class="flex items-center justify-between">
           <h3 class="text-sm font-semibold text-white" data-i18n="shortcutsTitle">Горячие клавиши</h3>
-          <button data-click="closeModal" data-click-args='["shortcuts"]' data-i18n-title="tipCloseModal" title="Закрыть окно" class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
+          <button data-click="closeModal" data-click-args='["shortcuts"]' data-i18n-title="tipCloseModal" title="Закрыть окно" data-i18n-aria="tipCloseModal" aria-label="Закрыть окно" class="dlg-x">✕</button>
         </div>
         <div>
           <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
@@ -32,8 +32,8 @@
             <kbd class="sc-kbd">Ctrl + O</kbd>
           </div>
           <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
-            <span class="text-xs text-apple-label" data-i18n="scAppTabs">Вкладки: Редактор, Студия, Ассистент</span>
-            <kbd class="sc-kbd">Ctrl + 1 2 3</kbd>
+            <span class="text-xs text-apple-label" data-i18n="scAppTabs">Разделы по порядку панели: Сегодня, Задачи, запись, Студия, Ассистент</span>
+            <kbd class="sc-kbd">Ctrl + 1…5</kbd>
           </div>
           <div class="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
             <span class="text-xs text-apple-label" data-i18n="scRecord">Новая запись звука (с подтверждением)</span>
@@ -72,8 +72,8 @@
     <div class="w-full max-w-md bg-apple-card border apple-border rounded-2xl shadow-2xl overflow-hidden modal-card">
       <div class="p-6 space-y-4">
         <div class="flex items-center justify-between">
-          <h3 class="text-sm font-semibold text-white" data-i18n="reconfigTitle">Параметры обработки записи</h3>
-          <button data-click="closeModal" data-click-args='["reconfigure"]' data-i18n-title="tipCloseModal" title="Закрыть окно" class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
+          <h3 class="text-sm font-semibold text-white" data-i18n="reconfigTitle">Расшифровать заново</h3>
+          <button data-click="closeModal" data-click-args='["reconfigure"]' data-i18n-title="tipCloseModal" title="Закрыть окно" data-i18n-aria="tipCloseModal" aria-label="Закрыть окно" class="dlg-x">✕</button>
         </div>
         <p id="reconfig-recording-name" class="text-xs text-apple-secondary truncate"></p>
 
@@ -89,7 +89,7 @@
           <div>
             <label class="block text-[11.5px] text-apple-secondary mb-1" data-i18n="speechLangLabel">Язык речи</label>
             <select id="reconfig-language" data-i18n-title="tipSelectSpeechLang" title="Выберите язык речи" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none">
-              <option value="auto">Auto (RU / EN)</option>
+              <option value="auto" data-i18n="impLangAuto">Определить сам</option>
               <option value="mixed" data-i18n="langMixed">Несколько языков (RU + EN вперемешку)</option>
               <option value="ru">Русский (RU)</option>
               <option value="en">English (EN)</option>
@@ -98,7 +98,7 @@
           <div>
             <label class="block text-[11.5px] text-apple-secondary mb-1" data-i18n="speakersCountLabel">Число участников</label>
             <select id="reconfig-speakers" data-i18n-title="tipSelectSpeakersCount" title="Выберите количество участников" class="w-full bg-apple-sidebar border apple-border rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none">
-              <option value="0">Auto</option>
+              <option value="0" data-i18n="impLangAuto">Определить сам</option>
               <option value="1">1</option>
               <option value="2">2</option>
               <option value="3">3</option>
@@ -111,7 +111,7 @@
 
         <div class="pt-2 flex justify-end gap-2">
           <button data-click="closeModal" data-click-args='["reconfigure"]' data-i18n-title="tipCancelBtn" title="Отменить изменения" class="ui-btn ui-btn-subtle px-3.5" data-i18n="cancel">Отмена</button>
-          <button data-click="submitReconfigure" data-i18n-title="tipRerunBtn" title="Запустить повторную расшифровку записи с новыми параметрами" class="ui-btn ui-btn-primary px-4" data-i18n="rerunBtn">Обработать заново</button>
+          <button data-click="submitReconfigure" data-i18n-title="tipRerunBtn" title="Расшифровать запись заново с этими параметрами" class="ui-btn ui-btn-primary px-4" data-i18n="rerunBtn">Расшифровать заново</button>
         </div>
       </div>
     </div>
@@ -125,7 +125,7 @@
       <div class="p-6 space-y-4 overflow-y-auto" style="max-height: 85vh">
         <div class="flex items-center justify-between">
           <h3 class="text-sm font-semibold text-white" data-i18n="translateTitle">Перевод текста</h3>
-          <button data-click="closeModal" data-click-args='["translate"]' class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
+          <button data-click="closeModal" data-click-args='["translate"]' data-i18n-title="tipCloseModal" title="Закрыть окно" data-i18n-aria="tipCloseModal" aria-label="Закрыть окно" class="dlg-x">✕</button>
         </div>
         <p class="text-xs text-apple-secondary leading-relaxed" data-i18n="translateIntro">Каждая реплика переводится выбранной моделью Ollama на этом компьютере — текст никуда не отправляется. Это машинный перевод: качество зависит от модели, имена и термины стоит проверить. Таймкоды реплик сохраняются.</p>
         <div id="translate-last-error" class="hidden text-xs rounded-lg border border-apple-red/30 bg-apple-red/15 text-apple-red px-3 py-2"></div>
@@ -188,7 +188,7 @@
       <div class="p-6 space-y-4 overflow-y-auto" style="max-height: 85vh">
         <div class="flex items-center justify-between">
           <h3 class="text-sm font-semibold text-white"><span data-i18n="dubTitle">Перевод и дубляж</span> <span class="text-[11px] font-normal text-apple-secondary" data-i18n="dubProto">(бета)</span></h3>
-          <button data-click="closeModal" data-click-args='["dub"]' class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
+          <button data-click="closeModal" data-click-args='["dub"]' data-i18n-title="tipCloseModal" title="Закрыть окно" data-i18n-aria="tipCloseModal" aria-label="Закрыть окно" class="dlg-x">✕</button>
         </div>
         <p class="text-xs text-apple-secondary leading-relaxed" data-i18n="dubIntro">Каждая фраза переводится локальной моделью Ollama, озвучивается клоном голоса её участника (Chatterbox Multilingual), фон сохраняется (Demucs), результат пишется в новый файл. Всё работает локально.</p>
         <div id="dub-env-panel" class="hidden rounded-xl border apple-border bg-apple-amber/15 p-3 space-y-2">
@@ -249,49 +249,6 @@
         </div>
 
         <div id="dub-results" class="space-y-2 pt-2 border-t apple-border"></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- =========================================================================
-       MODAL 3: CUSTOM DICTIONARY
-       ========================================================================= -->
-  <div id="modal-dictionary" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4" data-click="closeModalOnBackdrop" data-click-args='[{"$": "event"}, "dictionary"]'>
-    <div class="w-full max-w-lg bg-apple-card border apple-border rounded-2xl shadow-2xl overflow-hidden max-h-[80vh] flex flex-col modal-card">
-      <div class="p-6 space-y-4 flex-1 flex flex-col overflow-hidden">
-        <div class="flex items-center justify-between shrink-0">
-          <div>
-            <h3 class="text-sm font-semibold text-white" data-i18n="dictTitle">Пользовательский словарь</h3>
-            <p class="text-[11.5px] text-apple-secondary" data-i18n="dictSubtitle">Имена, бренды и профильные термины для точного распознавания</p>
-          </div>
-          <button data-click="closeModal" data-click-args='["dictionary"]' data-i18n-title="tipCloseModal" title="Закрыть окно" class="ui-btn ui-btn-subtle" data-i18n="close">Закрыть</button>
-        </div>
-
-        <div class="flex gap-2 shrink-0">
-          <input id="dict-term-input" type="text"
-            data-keydown="onEnter" data-keydown-args='[{"$": "event"}, "addDictionaryItems"]'
-            data-i18n-title="tipDictInput"
-            title="Введите одно или несколько слов через запятую"
-            data-i18n-placeholder="dictInputPh"
-            placeholder="Слова через запятую…"
-            class="flex-1 h-8 bg-apple-sidebar border apple-border rounded-lg px-3 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
-          <select id="dict-category-input" data-i18n-title="tipDictCategory" title="Категория термина" class="h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white focus:outline-none">
-            <option value="Имя" data-i18n="dictCatName">Имя</option>
-            <option value="Проект" data-i18n="dictCatProject">Проект</option>
-            <option value="Термин" data-i18n="dictCatTerm">Термин</option>
-          </select>
-          <button data-click="addDictionaryItems"
-            data-i18n-title="tipDictAddBtn"
-            title="Добавить слово в пользовательский словарь"
-            class="ui-btn ui-btn-primary h-8 px-3.5" data-i18n="addBtnText">Добавить</button>
-        </div>
-
-        <div id="dictionary-list" class="flex-1 overflow-y-auto divide-y divide-white/5 border apple-border rounded-xl bg-apple-sidebar">
-          <!-- Populated dynamically -->
-        </div>
-        <div class="flex justify-end shrink-0">
-          <button id="dict-clear-btn" data-click="clearDictionary" class="hidden ui-btn ui-btn-subtle h-7 px-3 text-[11.5px] hover:text-apple-red" data-i18n="dictClear">Очистить словарь</button>
-        </div>
       </div>
     </div>
   </div>

@@ -137,14 +137,14 @@ function impShowRow(kind) {
   const row = document.getElementById(kind === 'link' ? 'imp-link-row' : 'imp-path-row');
   row.classList.remove('hidden');
   if (kind === 'link') document.getElementById('imp-link-note').classList.remove('hidden');
-  setTimeout(() => row.querySelector('input').focus(), 30);
+  nextFrame(() => row.querySelector('input').focus());
 }
 
 function impAddLink() {
   const input = document.getElementById('url-import-input');
   const url = input.value.trim();
   if (!url) return;
-  if (!/^https?:\/\/\S+$/i.test(url)) { showToast(t('impBadLink')); return; }
+  if (!/^https?:\/\/\S+$/i.test(url)) { showWarning(t('impBadLink')); return; }
   const imp = state.imp;
   if (!imp.items.some(x => x.kind === 'link' && x.url === url)) imp.items.push({ id: ++imp.seq, kind: 'link', url });
   input.value = '';
@@ -253,11 +253,23 @@ function renderImport() {
   document.getElementById('imp-sound').innerHTML = IMP_SOUND.map(card).join('');
   document.getElementById('imp-after').innerHTML = IMP_AFTER.map(([k, l, h]) => card([k, l, h, ''])).join('');
   const def = impDefaults();
+  const asSettings = IMP_SOUND.every(([k]) => imp.proc[k] === def[k]) && IMP_AFTER.every(([k]) => imp.proc[k] === def[k]);
   document.getElementById('imp-reset').classList.toggle('hidden', IMP_SOUND.every(([k]) => imp.proc[k] === def[k]));
+  // audit 8.3: one line says how the files will be processed; the switches open under «Изменить»
+  document.querySelector('#modal-import .imp-card').classList.toggle('imp-more-open', !!imp.moreOpen);
+  document.getElementById('imp-more-summary').textContent = t(asSettings ? 'impMoreAsSettings' : 'impMoreChanged');
+  const moreBtn = document.getElementById('imp-more-btn');
+  moreBtn.textContent = t(imp.moreOpen ? 'impMoreClose' : 'impMoreOpen');
+  moreBtn.setAttribute('aria-expanded', String(!!imp.moreOpen));
 
   const go = document.getElementById('imp-go');
   go.textContent = items.length ? `${t('impGo')} ${plural(items.length, t('impItemsForms'))}` : t('impGo');
   go.disabled = !items.length;
+}
+
+function impToggleMore() {
+  state.imp.moreOpen = !state.imp.moreOpen;
+  renderImport();
 }
 
 function impToggle(key, on) {
@@ -305,7 +317,7 @@ async function impSubmit() {
       imp.items = imp.items.filter(i => i !== x);  // what went is not sent twice if a later one fails
     }
   } catch (err) {
-    showToast(humanError(err.message || err).short);
+    showError(humanError(err.message || err).short);
     renderImport();
     if (created.length) await loadMeetingsList();
     return;
@@ -334,6 +346,6 @@ async function impSubmit() {
 
 async function impSaveSettings(values) {
   const res = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: values }) });
-  if (!res.ok) { showToast(serverText((await readJson(res)).detail) || 'Error'); return; }
+  if (!res.ok) { showError(serverText((await readJson(res)).detail)); return; }
   if (state.system) state.system.settings = { ...(state.system.settings || {}), ...values };
 }

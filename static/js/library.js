@@ -399,7 +399,7 @@ async function makeBrief() {
         lang: state.uiLang === 'en' ? 'en' : 'ru' }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || 'Error');
+    if (!res.ok) throw new Error(data.detail || t('errorGeneric'));
     item.data = data;
     item.status = 'done';
   } catch (e) {
@@ -422,7 +422,7 @@ async function makeDigest(days) {
       body: JSON.stringify({ folder_id: scope.type === 'folder' ? scope.id : null, days: days || null, lang: state.uiLang === 'en' ? 'en' : 'ru' }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || 'Error');
+    if (!res.ok) throw new Error(data.detail || t('errorGeneric'));
     item.data = data;
     item.status = 'done';
   } catch (e) {
@@ -470,7 +470,10 @@ function openMeeting(id) {
 async function selectMeetingAndSeek(meetingId, startSec) {
   await selectMeeting(meetingId, true);
   switchWorkspaceTab('transcript');
-  setTimeout(() => seekPlayer(startSec), 220);
+  // The moment is shown as soon as the media can seek, not after a delay that showed the start first
+  const p = document.getElementById('media-player');
+  if (!p || p.readyState >= 1) seekPlayer(startSec);
+  else p.addEventListener('loadedmetadata', () => seekPlayer(startSec), { once: true });
 }
 
 // --- Library: recordings in folders, sorted by dragging ---
@@ -526,7 +529,7 @@ async function createFolderPrompt(parentId) {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, parent_id: parentId }),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) { showToast(data.detail || 'Error'); return; }
+  if (!res.ok) { showError(data.detail); return; }
   if (parentId != null) {
     const set = collapsedFolders();
     if (set.delete(parentId)) try { localStorage.setItem('verbascribe_folders_collapsed', JSON.stringify([...set])); } catch (e) {}
@@ -540,7 +543,7 @@ async function patchFolder(id, body) {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) { showToast(data.detail || 'Error'); return false; }
+  if (!res.ok) { showError(data.detail); return false; }
   await loadFolders();
   renderMeetingsSidebar();
   return true;
@@ -549,14 +552,22 @@ async function patchFolder(id, body) {
 async function moveMeetingToFolder(meetingId, folderId) {
   const m = state.meetings.find(x => x.id === meetingId);
   if (!m || (m.folder_id ?? null) === folderId) return;
+  // The row moves at once; the server confirms, or the row goes back with the reason
+  const before = m.folder_id ?? null;
+  const setFolder = (id) => {
+    m.folder_id = id;
+    if (state.activeMeeting && state.activeMeeting.id === meetingId) state.activeMeeting.folder_id = id;
+    renderMeetingsSidebar();
+  };
+  setFolder(folderId);
+  flashFolderRow(folderId);
   const res = await fetch(`/api/meetings/${meetingId}/folder`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ folder_id: folderId }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) { showToast(data.detail || 'Error'); return; }
-  m.folder_id = folderId;
-  if (state.activeMeeting && state.activeMeeting.id === meetingId) state.activeMeeting.folder_id = folderId;
-  renderMeetingsSidebar();
+  }).catch(() => null);
+  if (res && res.ok) return;
+  const data = res ? await res.json().catch(() => ({})) : {};
+  setFolder(before);
+  showToast(data.detail || t('errorGeneric'));
 }
 
 // Folder menu (right click or •••)
@@ -575,12 +586,12 @@ function openFolderMenu(e, id) {
   document.getElementById('fctx-local').disabled = inherited;
   document.getElementById('fctx-local').style.opacity = inherited ? '.5' : '';
   menu.classList.remove('hidden');
-  menu.style.left = `${Math.min(zpx(e.clientX), viewW() - 230)}px`;
-  menu.style.top = `${Math.min(zpx(e.clientY), viewH() - 190)}px`;
+  placeMenuAt(menu, e);
 }
 
 function hideFolderMenu() {
-  document.getElementById('folder-context-menu')?.classList.add('hidden');
+  const menu = document.getElementById('folder-context-menu');
+  if (menu) hideWithExit(menu);
 }
 
 async function fctxRename() {
@@ -621,12 +632,32 @@ async function fctxDelete() {
   hideFolderMenu();
   const f = folderById(state.contextFolderId);
   if (!f || f.system_key) return;
-  if (!await askConfirm(t('folderDeleteConfirm').replace('{name}', () => folderName(f)), true)) return;
-  const res = await fetch(`/api/folders/${f.id}`, { method: 'DELETE' });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) { showToast(data.detail || 'Error'); return; }
-  await Promise.all([loadFolders(), loadMeetingsList()]);
-  renderMeetingsSidebar();
+  // Audit 6.1: the folder goes at once and what was in it moves up a level, as the server will do;
+  // «Отменить» within 7 s brings it back as it was. A reload meanwhile keeps the folder hidden
+  const parent = f.parent_id ?? null;
+  const hideFolder = () => {
+    state.folders = (state.folders || []).filter(x => x.id !== f.id);
+    state.folders.forEach(x => { if ((x.parent_id ?? null) === f.id) x.parent_id = parent; });
+    (state.meetings || []).forEach(m => { if ((m.folder_id ?? null) === f.id) m.folder_id = parent; });
+  };
+  const folders = (state.folders || []).map(x => ({ ...x }));
+  const inside = (state.meetings || []).filter(m => (m.folder_id ?? null) === f.id).map(m => m.id);
+  deleteWithUndo({
+    message: t('folderDeletedToast').replace('{name}', () => folderName(f)),
+    hide: () => { state.libPendingHides = [...(state.libPendingHides || []), hideFolder]; renderMeetingsSidebar(); },
+    restore: () => {
+      state.libPendingHides = (state.libPendingHides || []).filter(h => h !== hideFolder);
+      state.folders = folders;
+      (state.meetings || []).forEach(m => { if (inside.includes(m.id)) m.folder_id = f.id; });
+      renderMeetingsSidebar();
+    },
+    commit: async (keepalive) => {
+      const res = await fetch(`/api/folders/${f.id}`, { method: 'DELETE', keepalive });
+      state.libPendingHides = (state.libPendingHides || []).filter(h => h !== hideFolder);
+      if (!keepalive) { await Promise.all([loadFolders(), loadMeetingsList()]); renderMeetingsSidebar(); }
+      return res.ok;
+    },
+  });
 }
 
 // Drag and drop inside the library: a recording or a folder onto a folder, or onto the list (top level)
@@ -656,15 +687,35 @@ function libraryDragOver(e, folderId) {
   e.dataTransfer.dropEffect = 'move';
   document.querySelectorAll('#meetings-list .drop-target').forEach(el => { if (el !== e.currentTarget) el.classList.remove('drop-target'); });
   e.currentTarget.classList.add('drop-target');
+  // A collapsed folder held under the pointer for 0.6 s opens, to drop deeper into it
+  if (folderId != null && collapsedFolders().has(folderId) && _libSpringFolder !== folderId) {
+    clearTimeout(_libSpringTimer);
+    _libSpringFolder = folderId;
+    _libSpringTimer = setTimeout(() => { if (_libDrag && collapsedFolders().has(folderId)) toggleFolderCollapsed(folderId); }, 600);
+  }
+}
+let _libSpringTimer = null, _libSpringFolder = null;
+
+// The folder a recording went to lights up for a moment, so it is clear where it is now
+function flashFolderRow(folderId) {
+  const row = folderId == null ? null : document.querySelector(`[data-folder-row="${folderId}"]`);
+  if (!row) return;
+  row.classList.remove('lib-flash');
+  void row.offsetWidth;
+  row.classList.add('lib-flash');
 }
 
 function libraryDragLeave(e) {
   if (e.currentTarget.contains(e.relatedTarget)) return;
   e.currentTarget.classList.remove('drop-target');
+  clearTimeout(_libSpringTimer);
+  _libSpringFolder = null;
 }
 
 function clearLibraryDrag() {
   _libDrag = null;
+  clearTimeout(_libSpringTimer);
+  _libSpringFolder = null;
   document.querySelectorAll('#meetings-list .drop-target').forEach(el => el.classList.remove('drop-target'));
   document.getElementById('meetings-list')?.classList.remove('drop-target', 'lib-dragging');
 }
@@ -745,7 +796,7 @@ function meetingRowHtml(m, depth) {
           <button data-click="openRecordingContextMenu" data-click-args='[{"$": "event"}, ${m.id}]' title="${escapeHtml(t('tipItemMenu'))}"
             class="row-more opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 px-1 rounded hover:bg-black/20 text-xs shrink-0 transition">•••</button>
         </div>
-        <div class="flex items-center justify-between gap-2 text-[11.5px] mt-0.5 ${isSelected ? 'text-white/80' : 'text-apple-secondary'}">
+        <div class="flex items-center justify-between gap-2 text-[11.5px] mt-0.5 ${isSelected ? 'text-white' : 'text-apple-secondary'}">
           <span class="flex items-center gap-1.5 min-w-0">
             <span class="font-mono shrink-0">${isBusy ? `${m.progress}%` : formatTime(m.duration)}</span>
             <span class="rec-badges">${recordingBadgesHtml(m)}</span>
@@ -871,7 +922,7 @@ function dateRowHtml(id, label, count, depth, open) {
     <div data-click="toggleDateCollapsed" data-click-args='[{"$": "data", "k": "id"}]' data-id="${escapeHtml(id)}" tabindex="0" role="button"
          class="flex items-center gap-1.5 pr-2 py-1 rounded-lg cursor-pointer text-apple-secondary hover:bg-white/5 transition"
          style="padding-left:${6 + depth * 14}px" title="${escapeHtml(label)}">
-      <span class="shrink-0 text-apple-tertiary transition-transform ${open ? 'rotate-90' : ''}">${ICON_CHEVRON}</span>
+      <span class="shrink-0 text-apple-tertiary ${open ? 'rotate-90' : ''}">${ICON_CHEVRON}</span>
       <span class="text-[11.5px] font-semibold truncate flex-1">${escapeHtml(label)}</span>
       ${!open && libHere().dates.has(id) ? `<span class="lib-here-dot" title="${escapeHtml(t('tipLibHere'))}"></span>` : ''}
       <span class="text-[11px] font-mono text-apple-tertiary">${count}</span>
@@ -911,20 +962,14 @@ function libComparator(prefs) {
   };
 }
 
-function openLibViewMenu(e) {
-  e.preventDefault();
-  e.stopPropagation();
-  const had = document.getElementById('lib-view-menu');
-  closeLibViewMenu();
-  if (had) return;
+// The ⇅ menu: a pick applies at once and the menu stays open (several settings at a time); it
+// closes on a click outside, on Esc or on ⇅ again
+function libViewMenuHtml() {
   const p = libPrefs();
   const item = (key, value, label, on, extra = '') => `<button class="macos-menu-item" data-k="${key}" data-v="${value}">`
     + `<span>${escapeHtml(label)}</span><span class="text-[11px] opacity-70">${on ? (extra || '✓') : ''}</span></button>`;
   const arrow = p.dir === 'asc' ? '↑' : '↓';
-  const menu = document.createElement('div');
-  menu.id = 'lib-view-menu';
-  menu.className = 'fixed w-56 macos-menu z-50';
-  menu.innerHTML = `<div class="px-2.5 py-1 text-[11px] text-apple-tertiary">${escapeHtml(t('libView'))}</div>`
+  return `<div class="px-2.5 py-1 text-[11px] text-apple-tertiary">${escapeHtml(t('libView'))}</div>`
     + LIB_VIEWS.map(v => item('view', v, t(`libView_${v}`), p.view === v)).join('')
     + `<div class="my-1 h-px bg-white/10"></div><div class="px-2.5 py-1 text-[11px] text-apple-tertiary">${escapeHtml(t('libSort'))}</div>`
     + LIB_SORTS.map(v => item('sort', v, t(`libSort_${v}`), p.sort === v, arrow)).join('')
@@ -936,12 +981,24 @@ function openLibViewMenu(e) {
     + `<div class="my-1 h-px bg-white/10"></div><div class="px-2.5 py-1 text-[11px] text-apple-tertiary">${escapeHtml(t('libBadges'))}</div>`
     + item('badges', 'smart', t('libBadges_smart'), p.badges === 'smart')
     + item('badges', 'all', t('libBadges_all'), p.badges === 'all');
+}
+
+function openLibViewMenu(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const had = document.getElementById('lib-view-menu');
+  closeLibViewMenu();
+  if (had) return;
+  const menu = document.createElement('div');
+  menu.id = 'lib-view-menu';
+  menu.className = 'fixed w-56 macos-menu z-50';
+  menu.innerHTML = libViewMenuHtml();
   menu.addEventListener('click', (ev) => {
     const b = ev.target.closest('button[data-k]');
     ev.stopPropagation();
     if (!b) return;
     setLibPref(b.dataset.k, b.dataset.v);
-    closeLibViewMenu();
+    menu.innerHTML = libViewMenuHtml();  // the ticks and the sort arrow move, the menu stays
   });
   document.body.appendChild(menu);
   const r = e.currentTarget.getBoundingClientRect();
@@ -954,6 +1011,171 @@ function closeLibViewMenu() {
 }
 
 document.addEventListener('click', closeLibViewMenu);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLibViewMenu(); });
+
+// --- Filters of the library: within a group any ticked option fits (OR), every group with a tick
+// has to fit (AND). They apply to the folders' list and to the search results, and are kept per
+// viewer in localStorage. The language options are the languages the recordings have.
+const LIB_FILTERS = {
+  kind: { audio: m => !m.is_video, video: m => !!m.is_video },
+  // A link import is stored as an import, so the list cannot tell it apart
+  src: {
+    rec: m => m.source === 'recording' && !m.is_video,
+    screen: m => m.source === 'recording' && !!m.is_video,
+    import: m => m.source === 'import' || m.source === 'local',
+    dict: m => m.source === 'dictation',
+  },
+  state: {
+    busy: m => !DONE_STATUSES.includes(m.status),
+    failed: m => m.status === 'failed',
+    local: m => !!m.local_only || folderLocalOnly(m.folder_id),
+  },
+  has: {
+    summary: m => !!m.has_summary,
+    translation: m => !!(m.translations_langs || []).length,
+    dub: m => !!(m.dub_langs || []).length,
+  },
+};
+const LIB_FILTER_GROUPS = [...Object.keys(LIB_FILTERS), 'lang'];
+const LIB_FILTER_KEY = 'verbascribe_library_filters';
+let _libFilters = null;
+
+function libFilters() {
+  if (_libFilters) return _libFilters;
+  let raw = {};
+  try { raw = JSON.parse(localStorage.getItem(LIB_FILTER_KEY) || '{}') || {}; } catch (e) {}
+  _libFilters = Object.fromEntries(LIB_FILTER_GROUPS.map(g => [g, new Set(Array.isArray(raw[g]) ? raw[g].map(String) : [])]));
+  return _libFilters;
+}
+
+function libFilterCount() {
+  return Object.values(libFilters()).reduce((n, s) => n + s.size, 0);
+}
+
+function libFilterTest(group, id, m) {
+  if (group === 'lang') return (m.language || '') === id;
+  const test = LIB_FILTERS[group] && LIB_FILTERS[group][id];
+  return !!(test && test(m));
+}
+
+function libFilterMatch(m) {
+  for (const [g, ids] of Object.entries(libFilters())) {
+    if (ids.size && ![...ids].some(id => libFilterTest(g, id, m))) return false;
+  }
+  return true;
+}
+
+function libLangOptions() {
+  const langs = new Set(libFilters().lang);
+  for (const m of state.meetings) if (m.language && m.language !== 'auto') langs.add(m.language);
+  return [...langs].sort();
+}
+
+function libFilterLabel(group, id) {
+  if (group !== 'lang') return t(`libFlt_${group}_${id}`);
+  return id === 'mixed' ? t('langMixed') : langName(id);
+}
+
+function libFilterMenuHtml() {
+  const f = libFilters();
+  const groups = [...Object.keys(LIB_FILTERS).map(g => [g, Object.keys(LIB_FILTERS[g])]), ['lang', libLangOptions()]];
+  let html = '';
+  for (const [g, ids] of groups) {
+    if (!ids.length) continue;
+    if (html) html += '<div class="my-1 h-px bg-white/10"></div>';
+    html += `<div class="px-2.5 py-1 text-[11px] text-apple-tertiary">${escapeHtml(t(`libFlt_${g}`))}</div>`;
+    for (const id of ids) {
+      const on = f[g].has(id);
+      const n = state.meetings.filter(m => libFilterTest(g, id, m)).length;
+      html += `<button class="macos-menu-item" role="menuitemcheckbox" aria-checked="${on}"${!n && !on ? ' aria-disabled="true"' : ''} data-g="${g}" data-v="${escapeHtml(id)}">`
+        + `<span class="flex items-center gap-2"><span class="w-3">${on ? '✓' : ''}</span>${escapeHtml(libFilterLabel(g, id))}</span>`
+        + `<span class="text-[11px] opacity-70 font-mono">${n}</span></button>`;
+    }
+  }
+  if (libFilterCount()) {
+    html += `<div class="my-1 h-px bg-white/10"></div><button class="macos-menu-item" data-reset="1"><span>${escapeHtml(t('libFilterResetAll'))}</span><span></span></button>`;
+  }
+  return html;
+}
+
+// The menu stays open while options are ticked: it closes on a click outside, Esc or the funnel
+function openLibFilterMenu(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const had = document.getElementById('lib-filter-menu');
+  closeLibFilterMenu();
+  if (had) return;
+  const menu = document.createElement('div');
+  menu.id = 'lib-filter-menu';
+  menu.setAttribute('role', 'menu');
+  menu.className = 'fixed w-56 macos-menu z-50';
+  menu.innerHTML = libFilterMenuHtml();
+  menu.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    const b = ev.target.closest('button');
+    if (!b) return;
+    if (b.dataset.reset) { resetLibFilters(); return; }
+    if (!b.dataset.g || b.getAttribute('aria-disabled') === 'true') return;
+    const ids = libFilters()[b.dataset.g];
+    if (ids.has(b.dataset.v)) ids.delete(b.dataset.v); else ids.add(b.dataset.v);
+    applyLibFilters();
+  });
+  document.body.appendChild(menu);
+  const btn = e.currentTarget;
+  btn.setAttribute('aria-expanded', 'true');
+  const r = btn.getBoundingClientRect();
+  menu.style.left = `${Math.max(4, Math.min(zpx(r.right) - 224, viewW() - 228))}px`;
+  menu.style.top = `${zpx(r.bottom) + 4}px`;
+  menu.style.maxHeight = `${viewH() - zpx(r.bottom) - 12}px`;
+  menu.style.overflowY = 'auto';
+}
+
+function closeLibFilterMenu() {
+  document.getElementById('lib-filter-menu')?.remove();
+  document.getElementById('lib-filter-btn')?.setAttribute('aria-expanded', 'false');
+}
+
+document.addEventListener('click', closeLibFilterMenu);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLibFilterMenu(); });
+
+function applyLibFilters() {
+  const f = libFilters();
+  try { localStorage.setItem(LIB_FILTER_KEY, JSON.stringify(Object.fromEntries(Object.entries(f).map(([g, s]) => [g, [...s]])))); } catch (e) {}
+  const menu = document.getElementById('lib-filter-menu');
+  if (menu) menu.innerHTML = libFilterMenuHtml();
+  renderLibFilterUi();
+  renderMeetingsSidebar();
+}
+
+function removeLibFilter(group, id) {
+  libFilters()[group]?.delete(id);
+  applyLibFilters();
+}
+
+function resetLibFilters() {
+  for (const s of Object.values(libFilters())) s.clear();
+  applyLibFilters();
+}
+
+// The funnel's count and the active filters as chips under the search
+function renderLibFilterUi() {
+  const n = libFilterCount();
+  document.getElementById('lib-filter-btn')?.classList.toggle('on', n > 0);
+  const count = document.getElementById('lib-filter-count');
+  if (count) { count.textContent = n; count.classList.toggle('hidden', !n); }
+  const box = document.getElementById('lib-filter-chips');
+  if (!box) return;
+  box.classList.toggle('hidden', !n);
+  if (!n) { box.innerHTML = ''; return; }
+  const chips = [];
+  for (const [g, ids] of Object.entries(libFilters())) {
+    for (const id of ids) {
+      chips.push(`<span class="lib-filter-chip">${escapeHtml(libFilterLabel(g, id))}<button ${pageCall('click', 'removeLibFilter', [g, id])}`
+        + ` aria-label="${escapeHtml(t('libFilterRemove'))}" title="${escapeHtml(t('libFilterRemove'))}">×</button></span>`);
+    }
+  }
+  box.innerHTML = chips.join('') + `<button class="lib-filter-reset" ${pageCall('click', 'resetLibFilters')}>${escapeHtml(t('libFilterReset'))}</button>`;
+}
 
 function formatSize(bytes) {
   return bytes ? formatBytes(bytes) : '';
@@ -972,7 +1194,9 @@ state.multi = new Set();
 let _libAnchor = null;
 
 function libIsSelected(m) {
-  return state.multi.size ? state.multi.has(m.id) : !!(state.activeMeeting && state.activeMeeting.id === m.id);
+  if (state.multi.size) return state.multi.has(m.id);
+  if (state.pendingMeetingId != null) return state.pendingMeetingId === m.id;  // clicked, still loading
+  return !!(state.activeMeeting && state.activeMeeting.id === m.id);
 }
 
 function libVisibleIds() {
@@ -1073,13 +1297,13 @@ async function bulkRename() {
   }
   await loadMeetingsList();
   if (state.activeMeeting && state.multi.has(state.activeMeeting.id)) openMeeting(state.activeMeeting.id);
-  if (failed) showToast(t('bulkSomeFailed').replace('{n}', () => failed));
+  if (failed) showError(t('bulkSomeFailed').replace('{n}', () => failed));
 }
 
 // Titles made by the analysis model from each transcript
 async function bulkAutoTitles() {
   const list = libSelectedInOrder().filter(m => m.status === 'completed');
-  if (!list.length) { showToast(t('bulkNoTranscripts')); return; }
+  if (!list.length) { showWarning(t('bulkNoTranscripts')); return; }
   let failed = 0;
   for (const [i, m] of list.entries()) {
     showToast(t('bulkAutoTitleWorking').replace('{i}', () => i + 1).replace('{n}', () => list.length));
@@ -1140,10 +1364,10 @@ function meetingCompactRowHtml(m, depth) {
          class="group cursor-pointer pr-2 py-1 rounded-md transition flex items-center gap-2 text-[12px] ${
            isSelected ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'
          }" style="padding-left:${10 + depth * 14}px">
-      <span class="shrink-0 ${isSelected ? 'text-white/80' : 'text-apple-tertiary'}">${m.is_video ? ICON_FILE_VIDEO : ICON_FILE_AUDIO}</span>
+      <span class="shrink-0 ${isSelected ? 'text-white' : 'text-apple-tertiary'}">${m.is_video ? ICON_FILE_VIDEO : ICON_FILE_AUDIO}</span>
       <span class="truncate flex-1 min-w-0">${escapeHtml(libTitle(m))}</span>
-      <span class="rec-badges shrink-0 ${isSelected ? 'text-white/80' : 'text-apple-secondary'}">${recordingBadgesHtml(m)}</span>
-      <span class="font-mono text-[11px] shrink-0 ${isSelected ? 'text-white/80' : 'text-apple-tertiary'}">${isBusy ? `${m.progress}%` : libPrefs().sort === 'size' ? formatSize(m.size_bytes) : formatTime(m.duration)}</span>
+      <span class="rec-badges shrink-0 ${isSelected ? 'text-white' : 'text-apple-secondary'}">${recordingBadgesHtml(m)}</span>
+      <span class="font-mono text-[11px] shrink-0 ${isSelected ? 'text-white' : 'text-apple-tertiary'}">${isBusy ? `${m.progress}%` : libPrefs().sort === 'size' ? formatSize(m.size_bytes) : formatTime(m.duration)}</span>
       ${rowMoreButton(m)}
     </div>`;
 }
@@ -1165,7 +1389,7 @@ function meetingTileHtml(m) {
       </div>
       <div class="px-1.5 pt-1 pb-1.5 min-w-0">
         <div class="text-[11.5px] font-medium leading-tight line-clamp-2">${escapeHtml(libTitle(m))}</div>
-        <div class="flex items-center justify-between gap-1 mt-1 text-[11px] ${isSelected ? 'text-white/80' : 'text-apple-secondary'}">
+        <div class="flex items-center justify-between gap-1 mt-1 text-[11px] ${isSelected ? 'text-white' : 'text-apple-secondary'}">
           <span class="rec-badges">${recordingBadgesHtml(m)}</span>
           <span class="shrink-0">${escapeHtml(libSortValue(m))}</span>
         </div>
@@ -1183,9 +1407,9 @@ function folderRowHtml(f, depth, collapsed) {
     <div data-click="toggleFolderCollapsed" data-click-args='[${f.id}]' tabindex="0" role="button" data-contextmenu="openFolderMenu" data-contextmenu-args='[{"$": "event"}, ${f.id}]'
          ${f.system_key ? '' : `draggable="true" data-dragstart="libraryDragStart" data-dragstart-args='[{"$": "event"}, "f", ${f.id}]'`}
          data-dragover="libraryDragOver" data-dragover-args='[{"$": "event"}, ${f.id}]' data-dragleave="libraryDragLeave" data-dragleave-args='[{"$": "event"}]' data-drop="libraryDrop" data-drop-args='[{"$": "event"}, ${f.id}]'
-         class="folder-row group flex items-center gap-1.5 pr-2 py-1.5 rounded-lg cursor-pointer text-apple-label hover:bg-white/5 transition"
+         data-folder-row="${f.id}" class="folder-row group flex items-center gap-1.5 pr-2 py-1.5 rounded-lg cursor-pointer text-apple-label hover:bg-white/5 transition"
          style="padding-left:${6 + depth * 14}px" title="${escapeHtml(folderName(f))}">
-      <span class="shrink-0 text-apple-tertiary transition-transform ${open ? 'rotate-90' : ''}">${ICON_CHEVRON}</span>
+      <span class="shrink-0 text-apple-tertiary ${open ? 'rotate-90' : ''}">${ICON_CHEVRON}</span>
       <span class="shrink-0 ${f.system_key ? 'text-apple-blue' : 'text-apple-secondary'}">${folderIcon(f)}</span>
       <span class="text-[12px] font-semibold truncate flex-1">${escapeHtml(folderName(f))}</span>
       ${f.local_only ? `<span class="shrink-0 text-apple-tertiary" title="${escapeHtml(t('tipLocalOnly'))}">${ICON_LOCK}</span>` : ''}
@@ -1197,21 +1421,30 @@ function folderRowHtml(f, depth, collapsed) {
 }
 
 function renderMeetingsSidebar() {
+  (state.libPendingHides || []).forEach(hide => hide());  // removals still waiting on «Отменить»
   const listEl = document.getElementById('meetings-list');
+  renderLibFilterUi();
+
+  const filtering = libFilterCount() > 0;
+  const shownIds = filtering ? new Set(state.meetings.filter(libFilterMatch).map(m => m.id)) : null;
+  const filterEmpty = () => `<div class="px-3 py-8 text-center text-xs text-apple-tertiary space-y-2">`
+    + `<div>${escapeHtml(t('libFilterNone'))}</div><button class="lib-filter-reset" ${pageCall('click', 'resetLibFilters')}>${escapeHtml(t('libFilterResetAll'))}</button></div>`;
 
   if (state.globalSearchQuery && state.globalSearchResults) {
+    const results = filtering ? state.globalSearchResults.filter(item => shownIds.has(item.meeting_id)) : state.globalSearchResults;
     const askHtml = `
       <button data-click="askLibraryAboutSearch" title="${escapeHtml(t('tipLibraryAsk'))}"
         class="w-full mb-1.5 px-2.5 py-2 rounded-lg border border-apple-blue/30 bg-apple-blue/10 hover:bg-apple-blue/20 text-left text-[11.5px] text-white transition flex items-center gap-2">
         ${SVG_SPARK}<span class="truncate">${escapeHtml(t('libraryAskFromSearch'))}</span>
       </button>`;
-    if (state.globalSearchResults.length === 0) {
+    if (results.length === 0) {
       listEl._keyed = false;
-      listEl.innerHTML = askHtml + `<div class="px-3 py-8 text-center text-xs text-apple-tertiary">${escapeHtml(t('noMatches'))}</div>`;
+      listEl.innerHTML = askHtml + (filtering && state.globalSearchResults.length ? filterEmpty()
+        : `<div class="px-3 py-8 text-center text-xs text-apple-tertiary">${escapeHtml(t('noMatches'))}</div>`);
       return;
     }
     listEl._keyed = false;
-    listEl.innerHTML = askHtml + state.globalSearchResults.map(item => `
+    listEl.innerHTML = askHtml + results.map(item => `
       <div class="rounded-lg bg-white/[0.03] border apple-border p-2.5 space-y-1.5 mb-1.5">
         <div data-click="openMeeting" data-click-args='[${item.meeting_id}, true]' tabindex="0" role="button"
              title="${escapeHtml(item.title)}"
@@ -1241,9 +1474,15 @@ function renderMeetingsSidebar() {
     return;
   }
 
+  if (filtering && !shownIds.size) {
+    listEl._keyed = false;
+    listEl.innerHTML = filterEmpty();
+    return;
+  }
   const known = new Set(folders.map(f => f.id));
   const byFolder = new Map();
   for (const m of state.meetings) {
+    if (filtering && !shownIds.has(m.id)) continue;
     const key = known.has(m.folder_id) ? m.folder_id : null;
     if (!byFolder.has(key)) byFolder.set(key, []);
     byFolder.get(key).push(m);
@@ -1283,6 +1522,7 @@ function renderMeetingsSidebar() {
     for (const f of sortedFolders(parentId)) {
       // An empty system folder only takes room
       if (f.system_key && !meetingsInFolderTree(f.id).length && !sortedFolders(f.id).length) continue;
+      if (filtering && !meetingsInFolderTree(f.id).some(m => shownIds.has(m.id))) continue;
       parts.push([`f${f.id}`, folderRowHtml(f, depth, collapsed)]);
       if (collapsed.has(f.id)) continue;
       walk(f.id, depth + 1);
@@ -1456,7 +1696,7 @@ async function handleFileSelect(fileList) {
     await selectMeeting(created[0].id, true);
     return created;
   } catch (err) {
-    showToast(String(err.message || err));
+    showError(String(err.message || err));
   }
 }
 
@@ -1488,17 +1728,23 @@ function setSidebarWidth(w, save) {
     handle.setPointerCapture(e.pointerId);
     handle.classList.add('dragging');
     document.body.classList.add('sidebar-dragging');
-    const left = document.getElementById('app-sidebar').getBoundingClientRect().left;
-    const move = (ev) => setSidebarWidth(zpx(ev.clientX - left), false);
+    // The width follows the pointer from where it took the handle (no jump of a few pixels on the
+    // press), and the drag ends also when the capture is lost (Alt+Tab), never leaving the page unselectable
+    const sb = document.getElementById('app-sidebar').getBoundingClientRect();
+    const grab = e.clientX - sb.right;
+    const widthAt = (ev) => zpx(ev.clientX - grab - sb.left);
+    const move = (ev) => setSidebarWidth(widthAt(ev), false);
     const up = (ev) => {
-      setSidebarWidth(zpx(ev.clientX - left), true);
+      setSidebarWidth(widthAt(ev), true);
       handle.classList.remove('dragging');
       document.body.classList.remove('sidebar-dragging');
       handle.removeEventListener('pointermove', move);
       handle.removeEventListener('pointerup', up);
+      handle.removeEventListener('lostpointercapture', up);
     };
     handle.addEventListener('pointermove', move);
     handle.addEventListener('pointerup', up);
+    handle.addEventListener('lostpointercapture', up);
   });
 })();
 

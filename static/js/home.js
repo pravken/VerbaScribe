@@ -19,7 +19,7 @@ function hmPad(n) { return String(n).padStart(2, '0'); }
 
 async function hmSave(values) {
   const res = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: values }) });
-  if (!res.ok) { showToast(serverText((await readJson(res)).detail) || 'Error'); return false; }
+  if (!res.ok) { showError(serverText((await readJson(res)).detail)); return false; }
   if (state.system) state.system.settings = { ...(state.system.settings || {}), ...values };
   return true;
 }
@@ -140,7 +140,7 @@ function renderHomeRecent() {
       ? '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/></svg>'
       : '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/></svg>';
     const line = busy
-      ? `<span class="hm-busy"><span class="hm-bar"><span style="width: ${Math.max(2, m.progress || 0)}%"></span></span>${escapeHtml(t('hmProcessing').replace('{pct}', () => m.progress || 0))}</span>`
+      ? `<span class="hm-busy"><span class="hm-bar"><span style="--fill: ${Math.max(2, m.progress || 0) / 100}"></span></span>${escapeHtml(t('hmProcessing').replace('{pct}', () => m.progress || 0))}</span>`
       : r.summary ? `<span class="hm-sum"><svg class="hm-ai" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2l1.9 5.6 5.6 1.9-5.6 1.9L10 17l-1.9-5.6-5.6-1.9 5.6-1.9z"/><path d="M18.5 13l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/></svg><span class="truncate">${escapeHtml(r.summary)}</span></span>` : '';
     const tag = r.tasks ? `<span class="hm-tag">${escapeHtml(plural(r.tasks, t('hmTaskForms')))}</span>` : '';
     return `<button ${pageCall('click', 'openMeeting', [r.id])} class="hm-rec">
@@ -170,6 +170,8 @@ function renderHomeMeetings() {
   document.getElementById('hm-day-range').textContent = d.len === 24 ? t('hmAllDay') : `${hmPad(d.start)}–${hmPad(d.end)}`;
   document.getElementById('hm-cal-off').classList.toggle('hidden', home.calConfigured);
   document.getElementById('hm-cal-on').classList.toggle('hidden', !home.calConfigured);
+  // audit 8.7: the working hours only matter for the meetings of a calendar
+  document.getElementById('hm-day-btn').closest('.hm-day-wrap')?.classList.toggle('hidden', !home.calConfigured);
   const now = new Date();
   // the shown hours: the day, stretched for meetings that run a little past its edges
   let a = d.from.getTime(), b = d.to.getTime();
@@ -326,8 +328,6 @@ document.addEventListener('click', (e) => {
     pop.classList.add('hidden');
     document.getElementById('hm-day-btn').setAttribute('aria-expanded', 'false');
   }
-  const hw = document.getElementById('sb-hw-pop');
-  if (hw && !hw.classList.contains('hidden') && !e.target.closest('.sb-load')) hw.classList.add('hidden');
 });
 
 // --- In work: the queue of the library ---
@@ -340,7 +340,7 @@ function renderHomeQueue() {
     const pct = run ? (m.progress ?? q.progress ?? 0) : 0;
     return `<button ${pageCall('click', 'openMeeting', [q.id])} class="hm-q">
         <span class="flex items-center gap-2 min-w-0"><b class="hm-q-title">${escapeHtml(q.title || m.title || '')}</b><span class="${run ? 'hm-q-run' : 'hm-q-wait'}">${escapeHtml(run ? `${queueKindLabel(q)} · ${pct}%` : t('hmWaiting'))}</span></span>
-        <span class="hm-bar hm-bar-wide"><span style="width: ${run ? Math.max(2, pct) : 0}%"></span></span>
+        <span class="hm-bar hm-bar-wide"><span style="--fill: ${run ? Math.max(2, pct) / 100 : 0}"></span></span>
       </button>`;
   }).join('');
   return items.length;
@@ -377,7 +377,7 @@ function renderHomeTasks() {
 
 async function hmTaskDone(id) {
   const res = await fetch(`/api/commitments/${Number(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'done' }) });
-  if (!res.ok) { showToast(serverText((await readJson(res)).detail) || 'Error'); return; }
+  if (!res.ok) { showError(serverText((await readJson(res)).detail)); return; }
   home.tasks = home.tasks.filter(c => c.id !== Number(id));
   refreshTasksCount(true);
   renderHomeNow();
@@ -469,7 +469,7 @@ let hmDictTimer = null;
 async function hmDictToggle() {
   const res = await fetch('/api/dictation/toggle', { method: 'POST' });
   const data = await readJson(res);
-  if (!res.ok) { showToast(serverText(data.detail) || 'Error'); return; }
+  if (!res.ok) { showError(serverText(data.detail)); return; }
   hmDictShow(data.state === 'started' ? 'listen' : 'busy');
   clearInterval(hmDictTimer);
   hmDictTimer = setInterval(hmDictPoll, 500);
@@ -515,8 +515,8 @@ async function hmDictCancel() {
 }
 
 async function hmDictCopy() {
-  try { await navigator.clipboard.writeText(document.getElementById('hm-dict-text').textContent); showToast(t('copied')); }
-  catch (e) { showToast(String(e.message || e)); }
+  try { await navigator.clipboard.writeText(document.getElementById('hm-dict-text').textContent); showToast(t('copied'), null, 'success'); }
+  catch (e) { showError(String(e.message || e)); }
 }
 
 // The tray's "Open the last recording" (run.py): the newest one of the library
@@ -525,12 +525,6 @@ function openLastRecording() {
     String(y.recorded_at || y.created_at || '').localeCompare(String(x.recorded_at || x.created_at || '')))[0];
   if (last) openMeeting(last.id);
   else switchAppView('home');
-}
-
-// --- The status bar: the details of the load ---
-function sbToggleHw(e) {
-  e.stopPropagation();
-  document.getElementById('sb-hw-pop').classList.toggle('hidden');
 }
 
 registerView('home', { show: renderHome, refresh: (changed) => { if (changed) home.recentAt = 0; renderHome(); } });
