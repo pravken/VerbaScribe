@@ -408,7 +408,8 @@ def _move_segments_to_table(conn: sqlite3.Connection) -> int:
     return len(ids)
 
 
-SYSTEM_FOLDERS = {"recordings": "Записи", "imports": "Импорт", "dictations": "Диктовки"}
+# The names stored for a new library; the page shows its own translated ones (folderSystem_* in i18n.js)
+SYSTEM_FOLDERS = {"recordings": "Из студии", "imports": "Импортированные", "dictations": "Диктовки"}
 _VIDEO_EXTS = {".mp4", ".mkv", ".mov", ".avi", ".m4v", ".webm", ".wmv", ".flv", ".mpg", ".mpeg", ".ts", ".mts", ".3gp"}
 
 
