@@ -5,13 +5,45 @@
 
 ## 0.6.0
 
+### Во второй бете (0.6.0-beta.2)
+- **Меню и всплывающие панели** — одно настоящее стекло; растут из места, где их открыли, и так же
+  плавно закрываются. При выключенных эффектах прозрачности Windows — сплошной фон.
+- **«Отменить» вместо вопросов:** задача, папка, перевод, раздел анализа, набор записи, свой шаблон
+  и словарь удаляются сразу, 7 секунд можно вернуть. Вопрос остался только для необратимого, и его
+  кнопка называет действие («Удалить папку», а не «OK»).
+- **Уведомления четырёх видов:** состояние, готово, предупреждение, ошибка. Ошибка держится до закрытия,
+  ни одно уведомление не исчезает под курсором.
+- **Названия:** «Главная» → «Сегодня», системные папки «Из студии» и «Импортированные»,
+  «Расшифровать заново» везде одинаково, вкладка «Модели речи».
+- **Настройки:** «Интерфейс» вошёл в «Общие», сравнение моделей и дубляж — в группе «Для опытных»;
+  в «Распознавании» — «Подбирать автоматически», точность словами в «Дополнительно»; масштаб до 150 %,
+  при первом запуске — по размеру текста Windows.
+- **Над текстом** строка распознавания свёрнута в метку модели «GigaAM v3 ▾»; **окно импорта** — модель
+  и язык, остальное по «Изменить».
+- **Модели:** плитка под оборудованием открывает все модели рядом с медиатекой — работающие,
+  установленные и те, что можно скачать; отметки CPU и GPU горят, пока на устройстве работает модель.
+  Выбор модели анализа подсказывает, что подойдёт этому компьютеру и сколько видеопамяти нужно.
+  Из каталога убраны Qwen 7B Standard, Qwen 14B Pro и Mistral 7B.
+- **Запись:** у микрофона и звука компьютера свои уровни — в красной кнопке и в студии.
+- **Плеер и текст:** пузырёк времени над волной можно тянуть; текущая глава всегда посередине ленты;
+  кнопки видео — на чёрной панели рядом с картинкой; двойной щелчок по строке больше не открывает
+  редактор. Название записи — один раз, полностью, над текстом.
+- **Медиатека:** фильтры по типу, источнику, состоянию, готовности и языку; меню ⇅ не закрывается
+  после выбора; перетаскивание раскрывает папку и переносит запись сразу.
+- **Шрифты и доступность:** семь размеров текста вместо 25; контраст подписей и синих кнопок до нормы;
+  режимы Windows «меньше движения» и «больше контраста»; мягкие края у прокрутки; ничего мельче 11 px.
+- **update.bat** — обновление папки, склонированной через git, рядом с VerbaScribe.exe.
+- Исправлено: окно не закрывается, если выделение текста отпустить на фоне; меню у нижнего края окна
+  открывается вверх; автопрокрутка не тянет текст, пока вы его листаете; «Запись» в открытой студии
+  пишет с показанным источником; часы и бейджи снова моноширинным шрифтом, буквы ą, č, ł из Inter.
+
 ### Новый вид программы
-- **Верхняя панель вместо вкладок:** «Главная», «Задачи», открытая запись («Расшифровка», «✦ Анализ»,
+- **Верхняя панель вместо вкладок:** «Сегодня», «Задачи», открытая запись («Расшифровка», «✦ Анализ»,
   «Участники», меню ⋯), «Студия», «✦ Ассистент». Внизу строка состояния: процессор, видеокарта,
-  память и очередь. Масштаб интерфейса — в «Настройки → Общие» (75–115 %).
+  память и очередь. Масштаб интерфейса — в «Настройки → Общие» (75–150 %).
 - **Красная кнопка «Запись»** пишет сразу, в любом окне, с последними настройками студии. Второе
   нажатие останавливает запись, она уходит на распознавание.
-- **Главная:** недавние записи с итогами, встречи календаря на рабочий день (его начало и конец
+- **Сегодня:** недавние записи с итогами, встречи календаря на рабочий день (его начало и конец
   задаются, в том числе через полночь), автозапись всех встреч с исключениями и вопросом перед очной
   встречей, очередь обработки, «Мои задачи», диктовка.
 - **Окно импорта:** файлы, ссылки и пути одним списком; модель, язык, число участников, обработка
@@ -72,13 +104,46 @@
 
 ## 0.6.0 — English
 
+### In the second beta (0.6.0-beta.2)
+- **Menus and popovers** are one real glass; they grow from where they were opened and leave the same
+  way. With Windows transparency effects off the fill is solid.
+- **Undo instead of questions:** a task, a folder, a translation, an analysis section, a record preset,
+  an own template and the dictionary go at once and can be brought back for 7 s. Questions stay for
+  what cannot be undone, and their button names the action.
+- **Four kinds of notices:** status, done, warning, error. An error stays until closed; none leaves
+  while the pointer is on it.
+- **Names:** Home is «Today», the system folders are «From the Studio» and «Imported», «Transcribe
+  again» everywhere, the «Speech models» tab.
+- **Settings:** Interface is part of General, model comparison and dubbing are under «Advanced»;
+  Recognition starts with «Choose automatically», precision in words under «More»; scale up to 150 %,
+  on the first start following the Windows text size.
+- **Above the text** the recognition row folds into the model mark «GigaAM v3 ▾»; the **import window**
+  shows the model and language, the rest under «Change».
+- **Models:** a tile under the hardware opens every model beside the library — running, installed and
+  downloadable; the CPU and GPU marks light while a model works there. The analysis model choice says
+  what suits this computer and how much video memory it needs. Qwen 7B Standard, Qwen 14B Pro and
+  Mistral 7B are no longer offered.
+- **Recording:** the microphone and the computer sound each show their own level.
+- **Player and text:** drag the time bubble over the wave; the current chapter stays in the middle;
+  video buttons on the black panel beside the picture; a double click on a line no longer opens the
+  editor. The recording's name is shown once, in full, above the text.
+- **Library:** filters by type, source, state, readiness and language; the ⇅ menu stays open; dragging
+  opens folders and moves the recording at once.
+- **Type and accessibility:** seven text sizes instead of 25; captions and blue buttons up to the
+  contrast norm; Windows «show less motion» and «more contrast»; soft edges of scrolled lists; nothing
+  under 11 px.
+- **update.bat** updates a git-cloned folder next to VerbaScribe.exe.
+- Fixed: a dialog no longer closes when a text selection is released over its backdrop; a menu at the
+  bottom of the window opens upward; following the playback waits while you scroll; Record in the open
+  Studio uses the source it shows; clocks and badges are monospace again, letters like ą, č, ł from Inter.
+
 ### A new look
-- **A top bar instead of tabs:** Home, Tasks, the open recording (Transcript, ✦ Analysis, Speakers,
+- **A top bar instead of tabs:** Today, Tasks, the open recording (Transcript, ✦ Analysis, Speakers,
   ⋯ menu), Studio, ✦ Assistant; a status bar below (processor, video card, memory, queue). Interface
-  scale in Settings → General (75–115 %).
+  scale in Settings → General (75–150 %).
 - **The red Record button** records at once in any view with the last studio settings; a second press
   stops and queues the recording.
-- **Home:** recent recordings with their summaries, today's calendar meetings over a working day you
+- **Today:** recent recordings with their summaries, today's calendar meetings over a working day you
   set (also past midnight), auto-recording of all meetings with exceptions and a question before
   in-person ones, the queue, My tasks, dictation.
 - **Import window:** files, links and paths in one list; model, language, speakers, sound processing
