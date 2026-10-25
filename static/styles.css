@@ -2078,3 +2078,40 @@ input[type="range"].rp-volume::-webkit-slider-thumb { -webkit-appearance: none; 
 .text-\[22px\], .text-\[19px\], .text-xl, .xl\:text-2xl { line-height: 1.15; }
 .text-\[17px\] { line-height: 1.3; }
 .text-\[11px\], .text-\[11\.5px\], .text-\[12px\] { line-height: 1.35; }
+
+/* Audit 4.2, 4.10, 4.8. One material for every menu and popover: real glass. The page shows
+   through a 60% dark fill under a strong blur, the radius is 12 and the shadow is the menu one;
+   inside, the grey captions are lighter and a touch bolder, so they read on the glass */
+:root {
+  --material-menu: rgba(16, 17, 21, 0.6);
+  --material-blur: blur(24px) saturate(1.4);
+}
+.macos-menu, .rp-pop, .tk-pop, .an-pop, .hm-pop, .tb-pop, .models-pop, .hm-ask, .hm-dict {
+  background: var(--material-menu);
+  backdrop-filter: var(--material-blur);
+  -webkit-backdrop-filter: var(--material-blur);
+  border: 1px solid var(--hc-line, rgba(255, 255, 255, 0.12));
+  border-radius: 12px;
+  box-shadow: var(--shadow-menu);
+  --hc-dim: #C7C7CC;
+}
+:is(.macos-menu, .rp-pop, .tk-pop, .an-pop, .hm-pop, .tb-pop, .models-pop, .hm-ask, .hm-dict) :is(.text-apple-secondary, .text-apple-tertiary) {
+  color: #C7C7CC;
+}
+:is(.macos-menu, .rp-pop, .tk-pop, .an-pop, .hm-pop, .tb-pop, .models-pop) :is(.mp-group-title, .rp-speed-title, .rp-switch-hint, .mp-legend) {
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+/* «Transparency effects» off in Windows: no blur, a solid fill */
+@media (prefers-reduced-transparency: reduce) {
+  .macos-menu, .rp-pop, .tk-pop, .an-pop, .hm-pop, .tb-pop, .models-pop, .hm-ask, .hm-dict {
+    background: #1C1D21;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .modal-backdrop, .apple-blur, .drop-overlay { backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .modal-backdrop { background-color: rgba(10, 11, 14, 0.9); }
+}
+@media (prefers-contrast: more) {
+  .macos-menu, .rp-pop, .tk-pop, .an-pop, .hm-pop, .tb-pop, .models-pop, .hm-ask, .hm-dict { background: #1C1D21; }
+}
