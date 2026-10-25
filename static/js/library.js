@@ -1674,17 +1674,23 @@ function setSidebarWidth(w, save) {
     handle.setPointerCapture(e.pointerId);
     handle.classList.add('dragging');
     document.body.classList.add('sidebar-dragging');
-    const left = document.getElementById('app-sidebar').getBoundingClientRect().left;
-    const move = (ev) => setSidebarWidth(zpx(ev.clientX - left), false);
+    // The width follows the pointer from where it took the handle (no jump of a few pixels on the
+    // press), and the drag ends also when the capture is lost (Alt+Tab), never leaving the page unselectable
+    const sb = document.getElementById('app-sidebar').getBoundingClientRect();
+    const grab = e.clientX - sb.right;
+    const widthAt = (ev) => zpx(ev.clientX - grab - sb.left);
+    const move = (ev) => setSidebarWidth(widthAt(ev), false);
     const up = (ev) => {
-      setSidebarWidth(zpx(ev.clientX - left), true);
+      setSidebarWidth(widthAt(ev), true);
       handle.classList.remove('dragging');
       document.body.classList.remove('sidebar-dragging');
       handle.removeEventListener('pointermove', move);
       handle.removeEventListener('pointerup', up);
+      handle.removeEventListener('lostpointercapture', up);
     };
     handle.addEventListener('pointermove', move);
     handle.addEventListener('pointerup', up);
+    handle.addEventListener('lostpointercapture', up);
   });
 })();
 
