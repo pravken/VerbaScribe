@@ -666,7 +666,10 @@ async function downloadDubWeights(ids) {
     .replace('{names}', () => items.map(i => i.name).join(', '))
     .replace('{size}', () => formatBytes(total))
     .replace('{dir}', () => state.dubInfo.weights.dir);
-  if (!await askConfirm(question, false, t('cfDownload'))) return;
+  // Audit 6.6: the size is on the button, so it just downloads; it asks only when the disk is short
+  const disk = await fetch('/api/disk').then(r => r.json()).catch(() => null);
+  const short = !disk || disk.free_bytes < 0 || disk.free_bytes < total * 1.2;
+  if (short && !await askConfirm(`${question}\n\n${t('sdubDiskShort').replace('{free}', () => formatBytes(Math.max(0, (disk && disk.free_bytes) || 0)))}`, false, t('cfDownload'))) return;
   const res = await fetch('/api/dub/weights/download', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ models: items.map(i => i.id) }),
   });

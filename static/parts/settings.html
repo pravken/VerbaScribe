@@ -737,14 +737,15 @@
             <p class="text-[11.5px] text-apple-secondary leading-snug mt-0.5" data-i18n="rdSasDictDesc">Имена, термины и названия, которые модель должна писать правильно. Подсказки применяются ко всем новым распознаваниям.</p>
           </div>
           <div class="flex items-center gap-2">
-            <input id="settings-dict-term" type="text" data-keydown="onEnter" data-keydown-args='[{"$": "event"}, "addSettingsDictItem"]'
+            <input id="settings-dict-term" type="text" data-keydown="onEnter" data-keydown-args='[{"$": "event"}, "addSettingsDictItem"]' data-input="checkSettingsDictTerm"
               data-i18n-placeholder="rdSasDictTermPh" placeholder="Слово или фраза" data-i18n-title="rdSasDictTermPh" title="Слово или фраза"
               class="flex-1 min-w-0 h-8 bg-apple-sidebar border apple-border rounded-lg px-3 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
             <input id="settings-dict-cat" type="text" data-keydown="onEnter" data-keydown-args='[{"$": "event"}, "addSettingsDictItem"]'
               data-i18n-placeholder="rdSasDictCatPh" placeholder="Группа" data-i18n-title="rdSasDictCatPh" title="Группа"
               class="w-36 h-8 bg-apple-sidebar border apple-border rounded-lg px-3 text-xs text-white placeholder-apple-tertiary focus:outline-none focus:border-apple-blue" />
-            <button data-click="addSettingsDictItem" class="ui-btn ui-btn-primary h-8 px-3 text-[11.5px]" data-i18n="rdSasDictAdd">Добавить</button>
+            <button id="settings-dict-add" data-click="addSettingsDictItem" class="ui-btn ui-btn-primary h-8 px-3 text-[11.5px]" data-i18n="rdSasDictAdd">Добавить</button>
           </div>
+          <div id="settings-dict-dup" class="dict-dup hidden" role="status" data-i18n="rdSasDictDup">Это слово уже есть в словаре</div>
           <div id="settings-dict-list" class="rounded-lg border apple-border divide-y divide-white/5 max-h-[420px] overflow-y-auto"></div>
           <div id="settings-dict-count" class="text-[11.5px] text-apple-tertiary"></div>
         </div>

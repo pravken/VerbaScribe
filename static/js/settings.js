@@ -530,9 +530,12 @@ async function startOnnxModelDownload(id) {
 async function deleteOnnxModel(id) {
   const item = (state.whisperCatalog || []).find(i => i.id === id) || {};
   if (!(await confirmModelDelete(formatModelName(id), item.path))) return;
-  await fetch(`/api/onnx-models/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  // Audit 6.7: the answer is checked and said, as for Whisper
+  const res = await fetch(`/api/onnx-models/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => null);
+  if (!res || !res.ok) { showError(res ? (await readJson(res)).detail : ''); return; }
   const models = await fetch('/api/models/status').then(r => r.json()).catch(() => null);
   if (models) updateWhisperModelsUI(models);
+  showToast(t('modelDeletedToast').replace('{name}', () => formatModelName(id)), null, 'success');
 }
 
 function formatModelName(modelId) {
@@ -921,7 +924,7 @@ async function deleteWhisperModel(modelId) {
   const res = await fetch(`/api/models/${encodeURIComponent(modelId)}`, { method: 'DELETE' });
   if (!res.ok) { showError((await readJson(res)).detail); return; }
   await loadSystemInfo();
-  showToast(t('modelDeletedToast').replace('{name}', () => pretty));
+  showToast(t('modelDeletedToast').replace('{name}', () => pretty), null, 'success');
 }
 
 async function deleteOllamaModel(name) {
@@ -2520,14 +2523,21 @@ function renderSettingsDictionary() {
     </div>`).join('');
 }
 
+// Audit 6.5. A word already in the dictionary is said at the field while typing, and «Добавить» waits
+function settingsDictHas(term) {
+  const v = String(term || '').trim().toLowerCase();
+  return !!v && (state.dictionary || []).some(d => d.term.toLowerCase() === v);
+}
+function checkSettingsDictTerm() {
+  const dup = settingsDictHas(document.getElementById('settings-dict-term').value);
+  document.getElementById('settings-dict-dup').classList.toggle('hidden', !dup);
+  document.getElementById('settings-dict-add').disabled = dup;
+}
+
 async function addSettingsDictItem() {
   const input = document.getElementById('settings-dict-term');
   const term = input.value.trim();
-  if (!term) return;
-  if ((state.dictionary || []).some(d => d.term.toLowerCase() === term.toLowerCase())) {
-    showWarning(t('rdSasDictDup'));
-    return;
-  }
+  if (!term || settingsDictHas(term)) { checkSettingsDictTerm(); return; }
   const category = document.getElementById('settings-dict-cat').value.trim() || t('rdSasDictCatDefault');
   await fetch('/api/dictionary', {
     method: 'POST',
@@ -2537,6 +2547,7 @@ async function addSettingsDictItem() {
   input.value = '';
   input.focus();
   await loadDictionary();
+  checkSettingsDictTerm();
 }
 
 // Deleted at once, with a way back
