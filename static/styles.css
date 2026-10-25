@@ -1999,3 +1999,15 @@ input[type="range"].rp-volume::-webkit-slider-thumb { -webkit-appearance: none; 
 
 /* The first-run banner: its one action, under the text */
 .first-run-btn { margin-top: 6px; }
+
+/* Audit 3.1. A press is felt everywhere, not only on the plain buttons: buttons, tabs, player
+   controls, chapters and speaker circles shrink a little while held; menu items and list rows
+   darken instead, since a row that shrinks would shift its text */
+.tb-rec:active, .tb-tab:active, .tb-subtab:active, .tb-dots:active, .tb-pop-btn:active,
+.rp-icon-btn:active, .rp-chip:active, .rp-small-btn:active, .video-tool:active,
+.chapter-chip:active, .chapter-all:active, .spk-chip:active, .sb-icon-btn:active,
+.imp-btn:active, .an-btn-primary:active, .tk-btn-primary:active, .as-send:active, .sp-ask-yes:active {
+  transform: scale(0.97);
+}
+.macos-menu-item:active { background-color: #0062C4; }
+.macos-menu-item-danger:active { background-color: #B80012; }
