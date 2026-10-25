@@ -375,6 +375,21 @@ function placeModelsPop() {
 // What a model is for: speech (recognition, voices, live captions, dubbing) or analysis and search
 const MODEL_GROUP = { ollama: 'ai' };
 
+// Audit 6.4. What is downloading now, from any of the three sources (a Whisper model, a GigaAM or
+// Parakeet model, a model for the analysis), with its percent: the status bar, the models window
+// and the sidebar widget all read it
+function modelDownloadsNow() {
+  const out = [];
+  const w = state.whisperPullState || ((state.system || {}).models || {}).setup_state || {};
+  if (w.active) out.push({ id: w.model_id, name: formatModelName(w.model_id || 'Whisper'), pct: w.progress || 0 });
+  for (const m of state.whisperCatalog || []) {
+    if (m.engine === 'onnx' && m.downloading) out.push({ id: m.id, name: formatModelName(m.id), pct: m.progress || 0 });
+  }
+  const o = state.ollamaPullState || {};
+  if (o.active) out.push({ id: o.model, name: formatModelName(o.model || 'LLM'), pct: o.progress || 0 });
+  return out;
+}
+
 function modelsDownloadable() {
   const out = [];
   const hw = (state.system || {}).hardware || {};
@@ -426,7 +441,7 @@ function renderModelsPop() {
   const dl = modelsDownloadable();
   const dlRows = dl.map(m => `<div class="mp-dl-row"><span class="mp-dl-name">${m.ai ? AI_MARK : ''}<span class="truncate">${escapeHtml(m.label)}</span></span>
       ${m.need ? `<span class="mp-dl-need ${m.short ? 'mp-dl-short' : ''}" title="${escapeHtml(m.short ? t('mpNeedMore') : '')}">${escapeHtml(m.need)}</span>` : ''}
-      ${m.downloading ? `<span class="mp-dl-btn mp-dl-busy">${escapeHtml(t('mpDownloading'))}</span>`
+      ${m.downloading ? `<span class="mp-dl-btn mp-dl-busy">${escapeHtml(t('mpDownloading'))}${(() => { const d = modelDownloadsNow().find(x => x.id === m.id); return d && d.pct ? ` · ${d.pct}%` : ''; })()}</span>`
         : `<button data-click="${m.fn}" data-click-args='[${jsArg(m.id)}]' class="mp-dl-btn" title="${escapeHtml(t('tipDownloadModel'))}">↓ ${escapeHtml(m.size)}</button>`}</div>`).join('');
   pop.innerHTML = `<div class="mp-head"><span class="mp-title">${escapeHtml(t('mpTitle'))}</span>
       <button data-click="closeModelsPop" class="mp-close" aria-label="${escapeHtml(t('close'))}" title="${escapeHtml(t('close'))}">×</button></div>
@@ -566,8 +581,14 @@ function syncSidebarDownloadWidget() {
     statusText = oState.status || '';
     logs = oState.logs || [];
   } else {
-    widget.classList.add('hidden');
-    return;
+    const onnx = (state.whisperCatalog || []).find(m => m.engine === 'onnx' && m.downloading);
+    if (!onnx) {
+      widget.classList.add('hidden');
+      return;
+    }
+    activeTitle = formatModelName(onnx.id);
+    pct = onnx.progress || 1;
+    statusText = t('mpDownloading');
   }
 
   widget.classList.remove('hidden');

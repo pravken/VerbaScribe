@@ -251,6 +251,17 @@ function leaveSettingsPage() {
 
 // --- The status bar: the queue (the load of the computer is in the sidebar) ---
 function renderStatusbar() {
+  // Audit 6.4: a model downloading in the background is seen from every page
+  const dl = document.getElementById('sb-dl');
+  const downloads = typeof modelDownloadsNow === 'function' ? modelDownloadsNow() : [];
+  if (dl) {
+    dl.classList.toggle('hidden', !downloads.length);
+    if (downloads.length) {
+      const d = downloads[0];
+      const label = `↓ ${d.name} · ${d.pct || 0}%${downloads.length > 1 ? ` · ${t('sbQueueMore').replace('{n}', () => downloads.length - 1)}` : ''}`;
+      if (dl.textContent !== label) dl.textContent = label;
+    }
+  }
   const text = (id) => (document.getElementById(id)?.textContent || '').trim();
   const put = (id, v) => { const el = document.getElementById(id); if (el && el.textContent !== v) el.textContent = v || '—'; };
   const items = state.queue || [];
@@ -269,6 +280,10 @@ function renderStatusbar() {
     ? `${queueKindLabel(run)} · ${pct}% — «${run.title}»${more ? ` · ${t('sbQueueMore').replace('{n}', () => more)}` : ''}`
     : t('sbQueueWaiting').replace('{n}', () => items.length);
   q.classList.add('sb-queue-busy');
+}
+
+function openStatusbarDownloads(e) {
+  if (typeof toggleModelsPop === 'function') toggleModelsPop(e);
 }
 
 function openStatusbarQueue() {

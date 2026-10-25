@@ -2209,3 +2209,7 @@ input[type="range"].rp-volume::-webkit-slider-thumb { -webkit-appearance: none; 
 #media-player { view-transition-name: rec-video; }
 ::view-transition-group(rec-video) { animation-duration: 0.25s; animation-timing-function: var(--ease-out); }
 ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+
+/* Audit 6.4: the model download in the status bar, left of the queue */
+.sb-dl { color: #64B5FF; font-variant-numeric: tabular-nums; }
+.sb-dl.hidden { display: none; }
