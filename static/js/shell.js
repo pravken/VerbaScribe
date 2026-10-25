@@ -87,7 +87,9 @@ function renderTopbar() {
   set('nav-studio', view === 'studio');
   set('nav-ask', view === 'ask');
   const m = state.activeMeeting;
-  document.getElementById('tb-record')?.classList.toggle('hidden', !m);
+  // Audit 8.5: the tabs of a recording appear once you have opened one, not for the one picked at start
+  if (view === 'library') state.recordSeen = true;
+  document.getElementById('tb-record')?.classList.toggle('hidden', !m || !state.recordSeen);
   set('nav-transcript', view === 'library' && tab === 'transcript');
   set('nav-summary', view === 'library' && tab === 'summary');
   set('nav-speakers', view === 'library' && tab === 'speakers');

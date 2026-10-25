@@ -170,6 +170,8 @@ function renderHomeMeetings() {
   document.getElementById('hm-day-range').textContent = d.len === 24 ? t('hmAllDay') : `${hmPad(d.start)}–${hmPad(d.end)}`;
   document.getElementById('hm-cal-off').classList.toggle('hidden', home.calConfigured);
   document.getElementById('hm-cal-on').classList.toggle('hidden', !home.calConfigured);
+  // audit 8.7: the working hours only matter for the meetings of a calendar
+  document.getElementById('hm-day-btn').closest('.hm-day-wrap')?.classList.toggle('hidden', !home.calConfigured);
   const now = new Date();
   // the shown hours: the day, stretched for meetings that run a little past its edges
   let a = d.from.getTime(), b = d.to.getTime();
