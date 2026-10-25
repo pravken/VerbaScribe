@@ -1129,7 +1129,7 @@ async function loadOrphans() {
 }
 
 async function deleteOrphans() {
-  if (!(await askConfirm(t('orphansConfirm'), true))) return;
+  if (!(await askConfirm(t('orphansConfirm'), true, t('cfDeleteFiles')))) return;
   const btn = document.getElementById('orphans-btn');
   btn.disabled = true;
   try {
@@ -1214,7 +1214,7 @@ async function installOnnxGpu() {
 }
 
 async function removeOnnxGpu() {
-  if (!await askConfirm(t('onnxGpuRemoveConfirm'), true)) return;
+  if (!await askConfirm(t('onnxGpuRemoveConfirm'), true, t('cfDeleteBuild'))) return;
   const data = await fetch('/api/onnx-gpu/remove', { method: 'POST' }).then(r => r.json()).catch(() => null);
   document.getElementById('set-onnx-gpu').checked = false;
   if (data) renderOnnxGpu(data);
@@ -1642,7 +1642,7 @@ async function setLlmMode(mode) {
   const st = state.llm || {};
   const extra = { llm_provider: mode };
   if (mode === 'cloud' && !st.consent) {
-    if (!await askConfirm(t('llmConsentConfirm'))) return;
+    if (!await askConfirm(t('llmConsentConfirm'), false, t('cfTurnOn'))) return;
     extra.llm_cloud_consent = 'true';
   }
   state.llmShowCloud = mode === 'cloud';
@@ -1679,7 +1679,7 @@ async function saveLlmKey() {
 
 async function deleteLlmKey() {
   const provider = document.getElementById('set-llm-provider').value;
-  if (!await askConfirm(t('llmKeyDeleteConfirm'), true)) return;
+  if (!await askConfirm(t('llmKeyDeleteConfirm'), true, t('cfDeleteKey'))) return;
   await fetch(`/api/llm/key/${provider}`, { method: 'DELETE' });
   if (state.llmModels) delete state.llmModels[provider];
   await loadLlmStatus();
@@ -2041,7 +2041,7 @@ async function addDictionaryItems() {
 }
 
 async function clearDictionary() {
-  if (!await askConfirm(t('dictClearConfirm').replace('{n}', () => state.dictionary.length), true)) return;
+  if (!await askConfirm(t('dictClearConfirm').replace('{n}', () => state.dictionary.length), true, t('cfDeleteWords'))) return;
   await fetch('/api/dictionary', { method: 'DELETE' });
   await loadDictionary();
 }

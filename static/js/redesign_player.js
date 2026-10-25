@@ -1091,7 +1091,7 @@ async function rpDeleteCopy(cid) {
   const m = state.activeMeeting;
   const c = (rp.copies || []).find(x => x.id === cid);
   if (!m || !c) return;
-  if (!(await askConfirm(t('rdPlyrDeleteCopyConfirm').replace('{name}', () => c.name), true))) return;
+  if (!(await askConfirm(t('rdPlyrDeleteCopyConfirm').replace('{name}', () => c.name), true, t('cfDeleteFile')))) return;
   const res = await fetch(`/api/meetings/${m.id}/copies/${encodeURIComponent(cid)}`, { method: 'DELETE' });
   const data = await readJson(res).catch(() => ({}));
   if (!res.ok) { showToast(errorText(data, res)); return; }

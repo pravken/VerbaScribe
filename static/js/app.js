@@ -81,7 +81,7 @@ async function installUpdate() {
     updateState.polling = false;
     if (!updateState.info.download.done) return;
   }
-  const ok = await askConfirm(t('updInstallConfirm').replace('{v}', () => info.latest.version));
+  const ok = await askConfirm(t('updInstallConfirm').replace('{v}', () => info.latest.version), false, t('cfInstall'));
   if (!ok) return;
   const r = await fetch('/api/update/install', { method: 'POST' });
   if (!r.ok) { showToast(errorText(await readJson(r), r)); return; }

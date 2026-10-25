@@ -293,7 +293,7 @@ function confirmDialog(title, text, okLabel, danger = true, opts = {}) {
     wrap.setAttribute('aria-modal', 'true');
     wrap.innerHTML = `<div class="w-full max-w-md bg-apple-card border apple-border rounded-2xl shadow-2xl p-5 space-y-4 modal-card">
       <div class="text-sm font-semibold text-white">${escapeHtml(title)}</div>
-      <p class="text-xs text-apple-secondary leading-relaxed whitespace-pre-line break-words">${escapeHtml(text)}</p>
+      ${text ? `<p class="text-xs text-apple-secondary leading-relaxed whitespace-pre-line break-words">${escapeHtml(text)}</p>` : ''}
       <div class="flex justify-end gap-2">
         ${opts.single ? '' : `<button data-a="no" class="ui-btn ui-btn-subtle">${escapeHtml(opts.cancel || t('cancel'))}</button>`}
         <button data-a="yes" class="ui-btn ${danger ? 'bg-apple-red text-white hover:opacity-90' : 'ui-btn-primary'}">${escapeHtml(okLabel)}</button>
@@ -313,8 +313,21 @@ function confirmDialog(title, text, okLabel, danger = true, opts = {}) {
 
 // Short forms for the old browser dialogs (window.confirm / prompt / alert), in the app's style.
 // danger: the button is red (deleting, discarding); said by the caller, not guessed from the words
-function askConfirm(text, danger = false) {
-  return confirmDialog(t('confirmTitle'), text, t('ok'), danger);
+// The question is the title and the button names the action («Удалить папку», not «OK»).
+// text: the question with its explanation, in either order ("Удалить X? Записи останутся." or
+// "Места мало. Начать запись?"); okLabel: the verb of the action
+function askConfirm(text, danger = false, okLabel = '') {
+  const [title, body] = splitQuestion(text);
+  return confirmDialog(title, body, okLabel || t('ok'), danger);
+}
+function splitQuestion(text) {
+  const s = String(text);
+  const i = s.indexOf('?');
+  if (i < 0) return [t('confirmTitle'), s];
+  const rest = s.slice(i + 1).trim();
+  if (rest) return [s.slice(0, i + 1).trim(), rest];
+  const m = s.match(/^([\s\S]*[.!])\s+([^.!?]+\?)$/);
+  return m ? [m[2].trim(), m[1].trim()] : [s.trim(), ''];
 }
 
 function askText(label, value = '', opts = {}) {
@@ -618,7 +631,7 @@ async function applyVoiceProfilesToLibrary() {
 }
 
 async function deleteVoiceProfile(id, name) {
-  if (!await askConfirm(t('voiceProfileDeleteConfirm').replace('{name}', () => name || ''), true)) return;
+  if (!await askConfirm(t('voiceProfileDeleteConfirm').replace('{name}', () => name || ''), true, t('cfDeleteProfile'))) return;
   const res = await fetch(`/api/voice-profiles/${id}`, { method: 'DELETE' });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {

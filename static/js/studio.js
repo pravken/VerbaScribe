@@ -456,7 +456,7 @@ async function updateRecordPreset() {
 async function deleteRecordPreset() {
   const id = document.getElementById('record-preset-select').value;
   const p = recordPresets().find(x => x.id === id);
-  if (!p || p.builtin || !await askConfirm(t('presetDeleteConfirm').replace('{name}', () => p.name), true)) return;
+  if (!p || p.builtin || !await askConfirm(t('presetDeleteConfirm').replace('{name}', () => p.name), true, t('cfDeletePreset'))) return;
   const own = recordPresets().filter(x => !x.builtin && x.id !== id);
   await saveRecordPresetSettings(own, defaultRecordPresetId() === id ? 'call' : null);
   applyRecordPreset(defaultRecordPresetId());
@@ -1383,7 +1383,7 @@ async function startLiveRecording() {
     }
     if (disk && disk.low && !await askConfirm(t('diskLowConfirm')
       .replace('{free}', () => formatSize(disk.free_bytes))
-      .replace('{min}', () => recMinutesLeft(disk.free_bytes, !!_recVideoStream || !!appTarget)))) {
+      .replace('{min}', () => recMinutesLeft(disk.free_bytes, !!_recVideoStream || !!appTarget)), false, t('cfStartRecording'))) {
       _recVideoStream?.getTracks().forEach(tr => tr.stop());
       document.getElementById('record-video-preview').classList.add('hidden');
       return;
@@ -1627,7 +1627,7 @@ function _cleanupRecordingResources() {
 
 async function cancelLiveRecording() {
   if (!isRecording()) return;
-  if (!await askConfirm(t('recCancelConfirm'), true)) return;
+  if (!await askConfirm(t('recCancelConfirm'), true, t('cfDiscardRecording'))) return;
   if (_mediaRecorder && _mediaRecorder.state !== 'inactive') {
     _mediaRecorder.ondataavailable = null;
     _mediaRecorder.onstop = null;
