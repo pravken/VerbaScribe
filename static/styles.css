@@ -639,7 +639,8 @@ label.settings-toggle { display: flex; }
 .hw-models-count { font-family: var(--font-mono); font-weight: 400; }
 .hw-name { display: flex; align-items: center; gap: 6px; min-width: 0; color: #D1D1D6; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .hw-bar { position: relative; height: 4px; border-radius: 9999px; background: rgba(255, 255, 255, 0.10); overflow: hidden; }
-.hw-bar > span { position: absolute; inset: 0 auto 0 0; border-radius: 9999px; transition: width var(--dur-slow) ease; }
+/* audit 3.13: the fill is clipped, not resized, so the bar never lays the page out again */
+.hw-bar > span { position: absolute; inset: 0; border-radius: 9999px; clip-path: inset(0 calc((1 - var(--fill, 0)) * 100%) 0 0 round 9999px); transition: clip-path var(--dur-slow) ease; }
 .hw-value { font-family: var(--font-mono); font-size: 11px; line-height: 1.35; color: var(--hc-dim, #98989D); text-align: right; white-space: nowrap; }
 
 
@@ -858,10 +859,11 @@ label:has(> .vs-switch.vs-sm) { min-height: 24px; }
 .rec-src-item svg { width: 13px; height: 13px; flex: none; }
 .rec-src-on { opacity: 1; }
 .rec-src-bars { display: inline-flex; align-items: center; gap: 2px; height: 14px; }
-.rec-src-bars i { width: 3px; border-radius: 2px; background: currentColor; height: 3px; transition: height var(--dur-fast) linear; }
-.rec-src-bars i:nth-child(1) { height: calc(3px + 7px * var(--lv)); }
-.rec-src-bars i:nth-child(2) { height: calc(3px + 11px * var(--lv)); }
-.rec-src-bars i:nth-child(3) { height: calc(3px + 5px * var(--lv)); }
+/* audit 3.13: the level bars scale instead of changing height (no layout on every frame) */
+.rec-src-bars i { width: 3px; border-radius: 2px; background: currentColor; transition: transform var(--dur-fast) linear; }
+.rec-src-bars i:nth-child(1) { height: 10px; transform: scaleY(calc((3 + 7 * var(--lv)) / 10)); }
+.rec-src-bars i:nth-child(2) { height: 14px; transform: scaleY(calc((3 + 11 * var(--lv)) / 14)); }
+.rec-src-bars i:nth-child(3) { height: 8px; transform: scaleY(calc((3 + 5 * var(--lv)) / 8)); }
 .rec-src-tb { padding-left: 9px; margin-left: 1px; border-left: 1px solid var(--hc-line, rgba(255, 255, 255, 0.35)); }
 .rec-src-studio { color: #30D158; margin-right: 4px; }
 .rec-src-studio .rec-src-item:not(.rec-src-on) { color: var(--hc-dim, #8E8E93); }
@@ -1004,7 +1006,7 @@ label:has(> .vs-switch.vs-sm) { min-height: 24px; }
 .rp-ring { position: absolute; inset: 0; transform: rotate(-90deg); }
 .rp-ring-track { fill: rgba(255, 255, 255, 0.06); stroke: rgba(255, 255, 255, 0.42); stroke-width: 1.5; transition: fill var(--dur), stroke var(--dur); }
 .rp-play:hover .rp-ring-track { fill: rgba(255, 255, 255, 0.12); stroke: rgba(255, 255, 255, 0.7); }
-.rp-ring-fill { fill: none; stroke: #0A84FF; stroke-width: 2; stroke-linecap: round; transition: stroke-dasharray var(--dur-slow) linear, stroke var(--dur-slow); }
+.rp-ring-fill { fill: none; stroke: #0A84FF; stroke-width: 2; stroke-linecap: round; transition: stroke var(--dur-slow);  /* audit 3.12: the dash follows each frame itself, a transition only made it lag */ }
 .rp-play-core { position: relative; width: 48px; height: 48px; border-radius: 24px; color: #fff; display: inline-flex; align-items: center; justify-content: center; transition: transform var(--dur) ease; }
 .rp-play:active .rp-play-core { transform: scale(0.96); }
 .rp-icon-play { margin-left: 3px; }
@@ -1146,7 +1148,7 @@ input[type="range"].rp-volume::-webkit-slider-thumb { -webkit-appearance: none; 
 .hm-ai { width: 11px; height: 11px; flex: none; fill: url(#vs-ai-grad); }
 .hm-busy { display: flex; align-items: center; gap: 8px; font-size: 12px; line-height: 1.35; color: #8CC4FF; }
 .hm-bar { width: 120px; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.1); overflow: hidden; flex: none; }
-.hm-bar > span { display: block; height: 100%; background: #0A84FF; transition: width var(--dur-slow) ease; }
+.hm-bar > span { display: block; width: 100%; height: 100%; background: #0A84FF; clip-path: inset(0 calc((1 - var(--fill, 0)) * 100%) 0 0 round 9999px); transition: clip-path var(--dur-slow) ease; }
 .hm-bar-wide { width: 100%; }
 .hm-tag { padding: 1px 8px; border-radius: 9px; background: rgba(255, 255, 255, 0.08); color: #C7C7CC; font-size: 11.5px; line-height: 1.35; white-space: nowrap; }
 .hm-chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border: 1px solid var(--hc-line, rgba(255, 255, 255, 0.12)); border-radius: 13px; color: #C7C7CC; font-size: 12px; line-height: 1.35; }
@@ -1230,12 +1232,12 @@ input[type="range"].rp-volume::-webkit-slider-thumb { -webkit-appearance: none; 
 .hm-dict-text { font-size: 12px; line-height: 1.35; color: var(--hc-dim, #AEAEB2); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; user-select: text; }
 .hm-lvl { display: inline-flex; align-items: center; gap: 3px; height: 18px; flex: none; }
 .hm-lvl.hidden { display: none; }
-.hm-lvl > span { width: 3px; height: 6px; border-radius: 2px; background: #30D158; animation: hm-lvl 0.9s ease-in-out infinite; }
+.hm-lvl > span { width: 3px; height: 16px; border-radius: 2px; background: #30D158; transform: scaleY(0.375); animation: hm-lvl 0.9s ease-in-out infinite; }
 .hm-lvl > span:nth-child(2) { animation-delay: -0.3s; }
 .hm-lvl > span:nth-child(3) { animation-delay: -0.6s; }
 .hm-lvl > span:nth-child(4) { animation-delay: -0.15s; }
-@keyframes hm-lvl { 50% { height: 16px; } }
-@media (prefers-reduced-motion: reduce) { .hm-lvl > span { animation: none; height: 10px; } }
+@keyframes hm-lvl { 50% { transform: scaleY(1); } }
+@media (prefers-reduced-motion: reduce) { .hm-lvl > span { animation: none; transform: scaleY(0.625); } }
 
 /* --- The import window (static/parts/import.html, static/js/importdlg.js) --- */
 .imp-card { width: 100%; max-width: 860px; max-height: calc(92vh / var(--ui-zoom, 1)); display: flex; flex-direction: column; gap: 16px; padding: 22px 24px 18px; border-radius: 18px; background: #1C1D21; border: 1px solid var(--hc-line, rgba(255, 255, 255, 0.1)); box-shadow: var(--shadow-dialog); }

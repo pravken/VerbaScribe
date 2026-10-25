@@ -244,14 +244,14 @@ function renderSystemLoad(sys) {
   }
   if (cpu != null) {
     document.getElementById('cpu-text').textContent = `${Math.round(cpu)}%`;
-    document.getElementById('cpu-bar').style.width = `${Math.min(100, cpu)}%`;
+    document.getElementById('cpu-bar').style.setProperty('--fill', Math.min(100, cpu) / 100);
     document.getElementById('cpu-bar').className = `${cpu > 85 ? 'bg-apple-red/80' : 'bg-apple-green/70'}`;
   }
   if (ram) {
     const pct = (100 * ram.used_gb) / Math.max(0.1, ram.total_gb);
     document.getElementById('ram-text').textContent = `${ram.used_gb}/${ram.total_gb} ${t('unitGB')}`;
     document.getElementById('ram-name').textContent = t('hwRamName').replace('{gb}', () => Math.round(ram.total_gb));
-    document.getElementById('ram-bar').style.width = `${Math.min(100, pct)}%`;
+    document.getElementById('ram-bar').style.setProperty('--fill', Math.min(100, pct) / 100);
     document.getElementById('ram-bar').className = `${pct > 90 ? 'bg-apple-red/80' : 'bg-apple-amber/70'}`;
     document.getElementById('ram-cell').title = t('tipRamUsage').replace('{free}', () => ram.free_gb);
   }
@@ -275,7 +275,7 @@ function renderVram(data) {
   document.querySelector('#hw-block .hw-row-btn .hw-bar').classList.toggle('invisible', !gpu);
   if (gpu) {
     document.getElementById('vram-text').textContent = `${gpu.used_gb}/${gpu.total_gb} ${t('unitGB')}`;
-    document.getElementById('vram-bar').style.width = `${Math.min(100, (100 * gpu.used_gb) / Math.max(1, gpu.total_gb))}%`;
+    document.getElementById('vram-bar').style.setProperty('--fill', Math.min(1, gpu.used_gb / Math.max(1, gpu.total_gb)));
     document.querySelector('#hw-block .hw-row-btn').title = `${t('tipVramUsage').replace('{free}', () => gpu.free_gb)}\n${t('tipHwStatus')}`;
   } else {
     document.getElementById('vram-text').textContent = '';

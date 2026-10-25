@@ -140,7 +140,7 @@ function renderHomeRecent() {
       ? '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/></svg>'
       : '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/></svg>';
     const line = busy
-      ? `<span class="hm-busy"><span class="hm-bar"><span style="width: ${Math.max(2, m.progress || 0)}%"></span></span>${escapeHtml(t('hmProcessing').replace('{pct}', () => m.progress || 0))}</span>`
+      ? `<span class="hm-busy"><span class="hm-bar"><span style="--fill: ${Math.max(2, m.progress || 0) / 100}"></span></span>${escapeHtml(t('hmProcessing').replace('{pct}', () => m.progress || 0))}</span>`
       : r.summary ? `<span class="hm-sum"><svg class="hm-ai" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2l1.9 5.6 5.6 1.9-5.6 1.9L10 17l-1.9-5.6-5.6-1.9 5.6-1.9z"/><path d="M18.5 13l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/></svg><span class="truncate">${escapeHtml(r.summary)}</span></span>` : '';
     const tag = r.tasks ? `<span class="hm-tag">${escapeHtml(plural(r.tasks, t('hmTaskForms')))}</span>` : '';
     return `<button ${pageCall('click', 'openMeeting', [r.id])} class="hm-rec">
@@ -338,7 +338,7 @@ function renderHomeQueue() {
     const pct = run ? (m.progress ?? q.progress ?? 0) : 0;
     return `<button ${pageCall('click', 'openMeeting', [q.id])} class="hm-q">
         <span class="flex items-center gap-2 min-w-0"><b class="hm-q-title">${escapeHtml(q.title || m.title || '')}</b><span class="${run ? 'hm-q-run' : 'hm-q-wait'}">${escapeHtml(run ? `${queueKindLabel(q)} · ${pct}%` : t('hmWaiting'))}</span></span>
-        <span class="hm-bar hm-bar-wide"><span style="width: ${run ? Math.max(2, pct) : 0}%"></span></span>
+        <span class="hm-bar hm-bar-wide"><span style="--fill: ${run ? Math.max(2, pct) / 100 : 0}"></span></span>
       </button>`;
   }).join('');
   return items.length;
