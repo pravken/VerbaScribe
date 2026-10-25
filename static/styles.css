@@ -2181,3 +2181,8 @@ input[type="range"].rp-volume::-webkit-slider-thumb { -webkit-appearance: none; 
 /* Audit 3.9. The folder a recording was dropped into lights up for a moment */
 @keyframes lib-flash { 0%, 40% { background-color: rgba(10, 132, 255, 0.28); } 100% { background-color: transparent; } }
 .folder-row.lib-flash { animation: lib-flash 0.9s ease-out; }
+
+/* Audit 3.10. Only the video takes part in its flight; the rest of the page changes at once */
+#media-player { view-transition-name: rec-video; }
+::view-transition-group(rec-video) { animation-duration: 0.25s; animation-timing-function: var(--ease-out); }
+::view-transition-old(root), ::view-transition-new(root) { animation: none; }

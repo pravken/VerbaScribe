@@ -890,11 +890,8 @@ async function rpSetVideo(k) {
   const p = rpPlayer();
   if (document.pictureInPictureElement === p && k !== 'window') await document.exitPictureInPicture().catch(() => {});
   if (k === 'theatre') { if (!state.theatre) toggleTheatre(); }
-  else {
-    if (state.theatre) exitTheatre();
-    if (k === 'window') toggleVideoPip();
-    else setVideoMode(k === 'mini' ? 'mini' : 'expanded');
-  }
+  else if (k === 'window') { if (state.theatre) exitTheatre(); toggleVideoPip(); }
+  else videoFlight(() => { if (state.theatre) exitTheatre(); setVideoMode(k === 'mini' ? 'mini' : 'expanded', false); });
   rpRenderVideoButton();
 }
 
