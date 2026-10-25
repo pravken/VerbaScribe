@@ -2115,3 +2115,29 @@ input[type="range"].rp-volume::-webkit-slider-thumb { -webkit-appearance: none; 
 @media (prefers-contrast: more) {
   .macos-menu, .rp-pop, .tk-pop, .an-pop, .hm-pop, .tb-pop, .models-pop, .hm-ask, .hm-dict { background: #1C1D21; }
 }
+
+/* Audit 4.3. One dialog style on the dialog surface: the older dialogs (bg-apple-card) and the
+   newer ones share the fill, the hairline and the dialog shadow */
+.modal-card.bg-apple-card, .imp-card, .an-dlg, .ri-dialog, .tk-dlg {
+  background-color: var(--surface-dialog);
+  border-color: var(--hc-line, rgba(255, 255, 255, 0.1));
+  box-shadow: var(--shadow-dialog);
+}
+
+/* Audit 4.4. One backdrop under every dialog: black 50% with a light blur. A dialog opened over
+   another one dims it less, and the one beneath steps back a little instead of going black */
+.modal-backdrop, .tk-veil:not(.hidden) {
+  background-color: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+:is(.modal-backdrop, .tk-veil):not(.hidden) ~ .modal-backdrop:not(.hidden) {
+  background-color: rgba(0, 0, 0, 0.25);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+:is(.modal-backdrop, .tk-veil):not(.hidden):has(~ .modal-backdrop:not(.hidden)) > :is(.modal-card, .tk-dlg) {
+  transform: scale(0.97);
+  filter: brightness(0.75);
+  transition: transform var(--dur) var(--ease-out), filter var(--dur) var(--ease-out);
+}
