@@ -744,7 +744,7 @@ function meetingRowHtml(m, depth) {
           <button data-click="openRecordingContextMenu" data-click-args='[{"$": "event"}, ${m.id}]' title="${escapeHtml(t('tipItemMenu'))}"
             class="row-more opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 px-1 rounded hover:bg-black/20 text-xs shrink-0 transition">•••</button>
         </div>
-        <div class="flex items-center justify-between gap-2 text-[11.5px] mt-0.5 ${isSelected ? 'text-white/80' : 'text-apple-secondary'}">
+        <div class="flex items-center justify-between gap-2 text-[11.5px] mt-0.5 ${isSelected ? 'text-white' : 'text-apple-secondary'}">
           <span class="flex items-center gap-1.5 min-w-0">
             <span class="font-mono shrink-0">${isBusy ? `${m.progress}%` : formatTime(m.duration)}</span>
             <span class="rec-badges">${recordingBadgesHtml(m)}</span>
@@ -1310,10 +1310,10 @@ function meetingCompactRowHtml(m, depth) {
          class="group cursor-pointer pr-2 py-1 rounded-md transition flex items-center gap-2 text-[12px] ${
            isSelected ? 'bg-apple-blue text-white' : 'text-apple-label hover:bg-white/5'
          }" style="padding-left:${10 + depth * 14}px">
-      <span class="shrink-0 ${isSelected ? 'text-white/80' : 'text-apple-tertiary'}">${m.is_video ? ICON_FILE_VIDEO : ICON_FILE_AUDIO}</span>
+      <span class="shrink-0 ${isSelected ? 'text-white' : 'text-apple-tertiary'}">${m.is_video ? ICON_FILE_VIDEO : ICON_FILE_AUDIO}</span>
       <span class="truncate flex-1 min-w-0">${escapeHtml(libTitle(m))}</span>
-      <span class="rec-badges shrink-0 ${isSelected ? 'text-white/80' : 'text-apple-secondary'}">${recordingBadgesHtml(m)}</span>
-      <span class="font-mono text-[11px] shrink-0 ${isSelected ? 'text-white/80' : 'text-apple-tertiary'}">${isBusy ? `${m.progress}%` : libPrefs().sort === 'size' ? formatSize(m.size_bytes) : formatTime(m.duration)}</span>
+      <span class="rec-badges shrink-0 ${isSelected ? 'text-white' : 'text-apple-secondary'}">${recordingBadgesHtml(m)}</span>
+      <span class="font-mono text-[11px] shrink-0 ${isSelected ? 'text-white' : 'text-apple-tertiary'}">${isBusy ? `${m.progress}%` : libPrefs().sort === 'size' ? formatSize(m.size_bytes) : formatTime(m.duration)}</span>
       ${rowMoreButton(m)}
     </div>`;
 }
@@ -1335,7 +1335,7 @@ function meetingTileHtml(m) {
       </div>
       <div class="px-1.5 pt-1 pb-1.5 min-w-0">
         <div class="text-[11.5px] font-medium leading-tight line-clamp-2">${escapeHtml(libTitle(m))}</div>
-        <div class="flex items-center justify-between gap-1 mt-1 text-[11px] ${isSelected ? 'text-white/80' : 'text-apple-secondary'}">
+        <div class="flex items-center justify-between gap-1 mt-1 text-[11px] ${isSelected ? 'text-white' : 'text-apple-secondary'}">
           <span class="rec-badges">${recordingBadgesHtml(m)}</span>
           <span class="shrink-0">${escapeHtml(libSortValue(m))}</span>
         </div>
