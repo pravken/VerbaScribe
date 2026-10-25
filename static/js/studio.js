@@ -456,10 +456,16 @@ async function updateRecordPreset() {
 async function deleteRecordPreset() {
   const id = document.getElementById('record-preset-select').value;
   const p = recordPresets().find(x => x.id === id);
-  if (!p || p.builtin || !await askConfirm(t('presetDeleteConfirm').replace('{name}', () => p.name), true, t('cfDeletePreset'))) return;
-  const own = recordPresets().filter(x => !x.builtin && x.id !== id);
-  await saveRecordPresetSettings(own, defaultRecordPresetId() === id ? 'call' : null);
+  if (!p || p.builtin) return;
+  // Audit 6.1: removed at once; «Отменить» puts the same preset back (and the default with it)
+  const before = recordPresets().filter(x => !x.builtin);
+  const wasDefault = defaultRecordPresetId() === id;
+  await saveRecordPresetSettings(before.filter(x => x.id !== id), wasDefault ? 'call' : null);
   applyRecordPreset(defaultRecordPresetId());
+  showToast(t('presetDeletedToast').replace('{name}', () => presetLabel(p)), { label: t('rdSasUndo'), onClick: async () => {
+    await saveRecordPresetSettings(before, wasDefault ? id : null);
+    applyRecordPreset(id);
+  } });
 }
 
 async function setDefaultRecordPreset() {

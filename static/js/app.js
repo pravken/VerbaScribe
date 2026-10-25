@@ -402,12 +402,44 @@ async function clearSummaryTab(key) {
   if (!m) return;
   const tab = typeof key === 'string' ? key : state.activeSummaryTab;
   const label = anSectionInfo(tab).label || t('tabSummary');
+  // Audit 6.1: an analysis section or my notes are cleared at once, «Отменить» brings them back for
+  // 7 s and the server forgets them only after that; the promises (tasks of other pages) still ask
+  if (tab !== 'commitments') {
+    const redraw = () => {
+      if (!state.activeMeeting || state.activeMeeting.id !== m.id) return;
+      if (tab === 'chapters') renderChaptersBar();
+      renderSummaryPanel();
+    };
+    const notes = m.user_notes;
+    const section = (m.summaries || {})[tab];
+    deleteWithUndo({
+      message: t('clearTabDoneToast').replace('{tab}', () => label),
+      hide: () => {
+        if (tab === 'mynotes') m.user_notes = '';
+        else { const rest = { ...(m.summaries || {}) }; delete rest[tab]; m.summaries = rest; }
+        redraw();
+      },
+      restore: () => {
+        if (tab === 'mynotes') m.user_notes = notes;
+        else m.summaries = { ...(m.summaries || {}), [tab]: section };
+        redraw();
+      },
+      commit: async (keepalive) => {
+        const res = tab === 'mynotes'
+          ? await fetch(`/api/meetings/${m.id}/notes`, { method: 'PATCH', keepalive, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notes: '' }) })
+          : await fetch(`/api/meetings/${m.id}/summaries?key=${encodeURIComponent(tab)}`, { method: 'DELETE', keepalive });
+        if (res.ok && !keepalive && tab !== 'mynotes' && state.activeMeeting && state.activeMeeting.id === m.id) {
+          state.activeMeeting.summaries = (await readJson(res)).summaries || {};
+          redraw();
+        }
+        return res.ok;
+      },
+    });
+    return;
+  }
   if (!(await confirmDialog(t('clearTabTitle').replace('{tab}', () => label), t('clearTabText'), t('clearBtn')))) return;
   let res;
-  if (tab === 'mynotes') {
-    res = await fetch(`/api/meetings/${m.id}/notes`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notes: '' }) });
-    if (res.ok) m.user_notes = '';
-  } else if (tab === 'commitments') {
+  if (tab === 'commitments') {
     res = await fetch(`/api/meetings/${m.id}/commitments`, { method: 'DELETE' });
     if (res.ok) state.anCommit = { id: m.id, n: 0 };
   } else {
@@ -729,8 +761,12 @@ function openTemplateDialog(tpl) {
     if (!b) return;
     const all = (state.summaryTemplates || []).map(x => ({ ...x }));
     if (b.dataset.a === 'del') {
-      if (!(await confirmDialog(t('anTplDelTitle').replace('{name}', () => tpl.name), t('anTplDelText'), t('ctxDelete')))) return;
-      if (await save(all.filter(x => x.id !== tpl.id))) { wrap.remove(); renderTemplateTabs(); }
+      // Audit 6.1: removed at once, «Отменить» saves the list as it was
+      if (await save(all.filter(x => x.id !== tpl.id))) {
+        removeWithExit(wrap);
+        renderTemplateTabs();
+        showToast(t('anTplDeletedToast').replace('{name}', () => tpl.name), { label: t('rdSasUndo'), onClick: async () => { if (await save(all)) renderTemplateTabs(); } });
+      }
       return;
     }
     if (b.dataset.a !== 'save') return;

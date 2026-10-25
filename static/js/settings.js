@@ -2040,10 +2040,24 @@ async function addDictionaryItems() {
   await loadDictionary();
 }
 
+// Audit 6.1: cleared at once; «Отменить» adds the same words back, switched off ones stay off
 async function clearDictionary() {
-  if (!await askConfirm(t('dictClearConfirm').replace('{n}', () => state.dictionary.length), true, t('cfDeleteWords'))) return;
-  await fetch('/api/dictionary', { method: 'DELETE' });
+  const words = (state.dictionary || []).map(d => ({ term: d.term, category: d.category, active: d.active }));
+  if (!words.length) return;
+  const res = await fetch('/api/dictionary', { method: 'DELETE' }).catch(() => null);
+  if (!res || !res.ok) { showError(); return; }
   await loadDictionary();
+  showToast(t('dictClearedToast').replace('{n}', () => words.length), { label: t('rdSasUndo'), onClick: async () => {
+    for (const w of words) {
+      await fetch('/api/dictionary', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ term: w.term, category: w.category }) });
+    }
+    await loadDictionary();
+    const off = new Set(words.filter(w => !w.active).map(w => w.term));
+    for (const d of state.dictionary.filter(x => off.has(x.term) && x.active)) {
+      await fetch(`/api/dictionary/${d.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active: false }) });
+    }
+    if (off.size) await loadDictionary();
+  } });
 }
 
 async function toggleDictItem(id, active) {

@@ -133,6 +133,7 @@ async function loadTasks() {
   const res = await fetch('/api/tasks').catch(() => null);
   if (!res || !res.ok) return;
   TK.data = await res.json();
+  if (TK.pendingDelete && TK.pendingDelete.size) TK.data.tasks = TK.data.tasks.filter(x => !TK.pendingDelete.has(x.id));  // removed, «Отменить» still open
   TK.loaded = true;
   const open = TK.data.tasks.filter(x => !tkIsDone(x)).length;
   badge('nav-tasks-n', open);
@@ -526,14 +527,28 @@ function editTaskText(id) {
 async function deleteTask(id) {
   const x = tkTask(id);
   if (!x) return;
-  const ok = await confirmDialog(t('tkDeleteTitle'), t('tkDeleteText').replace('{task}', () => x.what), t('tkDelete'));
-  if (!ok) return;
-  const res = await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
-  if (!res.ok) { showError(t('tkSaveFailed')); return; }
-  TK.data.tasks = TK.data.tasks.filter(y => y.id !== id);
-  if (TK.sel === id) TK.sel = null;
-  TK.report = null;
-  await tkRefreshPeople();
+  const at = TK.data.tasks.indexOf(x);
+  deleteWithUndo({
+    message: t('tkDeletedToast'),
+    hide: () => {
+      (TK.pendingDelete = TK.pendingDelete || new Set()).add(id);
+      TK.data.tasks = TK.data.tasks.filter(y => y.id !== id);
+      if (TK.sel === id) TK.sel = null;
+      TK.report = null;
+      renderTasks();
+    },
+    restore: () => {
+      TK.pendingDelete.delete(id);
+      if (!tkTask(id)) TK.data.tasks.splice(Math.min(at, TK.data.tasks.length), 0, x);
+      renderTasks();
+    },
+    commit: async (keepalive) => {
+      const res = await fetch(`/api/tasks/${id}`, { method: 'DELETE', keepalive });
+      TK.pendingDelete.delete(id);
+      if (res.ok && !keepalive) await tkRefreshPeople();
+      return res.ok;
+    },
+  });
 }
 
 // --- The people filter: several people or departments at once; and who "me" is ---

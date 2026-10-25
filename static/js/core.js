@@ -550,6 +550,31 @@ function showToast(msg, action, kind) {
   arm(life);
   return dismiss;
 }
+// Audit 6.1. A reversible removal happens at once and the notice offers «Отменить» for 7 s; the
+// server is told only then (or when the window closes), so undoing needs nothing from it.
+// hide() and restore() change the page; commit(keepalive) sends the removal and resolves true
+// when it went through (on false the item comes back with an error)
+function deleteWithUndo({ message, hide, restore, commit }) {
+  hide();
+  let settled = false;
+  const onLeave = () => { if (!settled) { settled = true; commit(true); } };
+  const finish = async () => {
+    if (settled) return;
+    settled = true;
+    window.removeEventListener('pagehide', onLeave);
+    const ok = await Promise.resolve(commit(false)).catch(() => false);
+    if (ok === false) { restore(); showError(t('errorGeneric')); }
+  };
+  window.addEventListener('pagehide', onLeave);
+  const timer = setTimeout(finish, 7000);
+  showToast(message, { label: t('rdSasUndo'), onClick: () => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timer);
+    window.removeEventListener('pagehide', onLeave);
+    restore();
+  } });
+}
 function showError(msg, action) { return showToast(msg || t('errorGeneric'), action, 'error'); }
 function showWarning(msg, action) { return showToast(msg, action, 'warning'); }
 

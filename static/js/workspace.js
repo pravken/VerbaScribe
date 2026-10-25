@@ -998,20 +998,48 @@ async function startTranslation(onlyChanged, lang) {
   await loadMeetingsList();
 }
 
-async function deleteTranslation(lang) {
+// Audit 6.1. A translation goes at once and «Отменить» brings it back for 7 s; the server forgets it
+// only after that (or when the window closes)
+function removeTranslationWithUndo(lang) {
   const m = state.activeMeeting;
-  if (!m || !await askConfirm(t('translateDeleteConfirm').replace('{lang}', () => langName(lang)), true, t('cfDeleteTranslation'))) return;
-  const res = await fetch(`/api/meetings/${m.id}/translations/${encodeURIComponent(lang)}`, { method: 'DELETE' });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    showError(data.detail);
-    return;
-  }
-  state.activeMeeting = data;
-  renderTranslateResults();
-  renderSubsControls();
-  renderTranslationControls();
-  renderTranscript();
+  if (!m || !meetingTranslations(m)[lang]) return;
+  const kept = meetingTranslations(m)[lang];
+  const wasView = state.txView, wasLang = state.txLang;
+  const redraw = () => {
+    if (!state.activeMeeting || state.activeMeeting.id !== m.id) return;
+    renderTranslateResults();
+    renderSubsControls();
+    renderTranslationControls();
+    renderTranscript();
+  };
+  deleteWithUndo({
+    message: t('translationDeletedToast').replace('{lang}', () => langName(lang)),
+    hide: () => {
+      const rest = { ...meetingTranslations(m) };
+      delete rest[lang];
+      m.translations = rest;
+      if (state.txLang === lang) state.txView = 'orig';
+      redraw();
+    },
+    restore: () => {
+      m.translations = { ...meetingTranslations(m), [lang]: kept };
+      state.txView = wasView;
+      state.txLang = wasLang;
+      redraw();
+    },
+    commit: async (keepalive) => {
+      const res = await fetch(`/api/meetings/${m.id}/translations/${encodeURIComponent(lang)}`, { method: 'DELETE', keepalive });
+      if (res.ok && !keepalive && state.activeMeeting && state.activeMeeting.id === m.id) {
+        const data = await res.json().catch(() => null);
+        if (data) { state.activeMeeting = data; redraw(); }
+      }
+      return res.ok;
+    },
+  });
+}
+
+function deleteTranslation(lang) {
+  removeTranslationWithUndo(lang);
 }
 
 function showTranslation(lang) {
@@ -1114,18 +1142,9 @@ function renderTranslationControls() {
 }
 
 // From the "Text language" menu of the transcript (deleteTranslation above is the Translate window's)
-async function deleteTranslationFromMenu(lang) {
+function deleteTranslationFromMenu(lang) {
   hideTxViewMenu();
-  const m = state.activeMeeting;
-  if (!m || !(await confirmDialog(t('txDeleteTrTitle').replace('{lang}', () => langName(lang)), t('txDeleteTrText'), t('txDeleteTr')))) return;
-  const res = await fetch(`/api/meetings/${m.id}/translations/${encodeURIComponent(lang)}`, { method: 'DELETE' });
-  const data = await readJson(res);
-  if (!res.ok) { showToast(errorText(data, res)); return; }
-  if (state.txLang === lang) state.txView = 'orig';
-  state.activeMeeting = data;  // the player keeps playing where it was
-  renderSubsControls();
-  renderTranslationControls();
-  renderTranscript();
+  removeTranslationWithUndo(lang);
 }
 
 

@@ -632,12 +632,32 @@ async function fctxDelete() {
   hideFolderMenu();
   const f = folderById(state.contextFolderId);
   if (!f || f.system_key) return;
-  if (!await askConfirm(t('folderDeleteConfirm').replace('{name}', () => folderName(f)), true, t('cfDeleteFolder'))) return;
-  const res = await fetch(`/api/folders/${f.id}`, { method: 'DELETE' });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) { showError(data.detail); return; }
-  await Promise.all([loadFolders(), loadMeetingsList()]);
-  renderMeetingsSidebar();
+  // Audit 6.1: the folder goes at once and what was in it moves up a level, as the server will do;
+  // «Отменить» within 7 s brings it back as it was. A reload meanwhile keeps the folder hidden
+  const parent = f.parent_id ?? null;
+  const hideFolder = () => {
+    state.folders = (state.folders || []).filter(x => x.id !== f.id);
+    state.folders.forEach(x => { if ((x.parent_id ?? null) === f.id) x.parent_id = parent; });
+    (state.meetings || []).forEach(m => { if ((m.folder_id ?? null) === f.id) m.folder_id = parent; });
+  };
+  const folders = (state.folders || []).map(x => ({ ...x }));
+  const inside = (state.meetings || []).filter(m => (m.folder_id ?? null) === f.id).map(m => m.id);
+  deleteWithUndo({
+    message: t('folderDeletedToast').replace('{name}', () => folderName(f)),
+    hide: () => { state.libPendingHides = [...(state.libPendingHides || []), hideFolder]; renderMeetingsSidebar(); },
+    restore: () => {
+      state.libPendingHides = (state.libPendingHides || []).filter(h => h !== hideFolder);
+      state.folders = folders;
+      (state.meetings || []).forEach(m => { if (inside.includes(m.id)) m.folder_id = f.id; });
+      renderMeetingsSidebar();
+    },
+    commit: async (keepalive) => {
+      const res = await fetch(`/api/folders/${f.id}`, { method: 'DELETE', keepalive });
+      state.libPendingHides = (state.libPendingHides || []).filter(h => h !== hideFolder);
+      if (!keepalive) { await Promise.all([loadFolders(), loadMeetingsList()]); renderMeetingsSidebar(); }
+      return res.ok;
+    },
+  });
 }
 
 // Drag and drop inside the library: a recording or a folder onto a folder, or onto the list (top level)
@@ -1401,6 +1421,7 @@ function folderRowHtml(f, depth, collapsed) {
 }
 
 function renderMeetingsSidebar() {
+  (state.libPendingHides || []).forEach(hide => hide());  // removals still waiting on «Отменить»
   const listEl = document.getElementById('meetings-list');
   renderLibFilterUi();
 
