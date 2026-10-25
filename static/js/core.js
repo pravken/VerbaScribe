@@ -14,6 +14,10 @@ function uiZoom() { return Number(document.documentElement.dataset.zoom) || 1; }
 function zpx(v) { return v / uiZoom(); }
 function viewW() { return window.innerWidth / uiZoom(); }
 function viewH() { return window.innerHeight / uiZoom(); }
+// «Show less motion» in Windows: scrolls jump instead of gliding (CSS covers the rest)
+function scrollMotion() {
+  return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+}
 // Puts a shown menu at the pointer by its real size: where it does not fit below, it opens upward
 // from the pointer, and where it does not fit to the right, leftward; it never leaves the window
 function placeMenuAt(menu, e) {

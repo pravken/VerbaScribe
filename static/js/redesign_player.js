@@ -543,7 +543,7 @@ function rpJumpToText(t) {
     if (typeof scrollToSegment === 'function') scrollToSegment(seg.id);
     const el = document.getElementById(`seg-${seg.id}`);
     if (!el) return;
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.scrollIntoView({ behavior: scrollMotion(), block: 'center' });
     el.classList.remove('rp-jump');
     void el.offsetWidth;
     el.classList.add('rp-jump');

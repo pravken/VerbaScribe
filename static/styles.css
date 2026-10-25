@@ -2025,3 +2025,16 @@ input[type="range"].rp-volume::-webkit-slider-thumb { -webkit-appearance: none; 
 .tm-key { flex: none; font-family: var(--font-mono); font-size: 11px; color: #AEAEB2; }
 .macos-menu-item:hover .tm-key { color: #FFFFFF; }
 #dict-count-badge, #settings-dict-count { color: #AEAEB2; }
+
+/* Audit 3.3. «Show less motion» in Windows: windows and tabs only fade, nothing slides or grows,
+   blinking and spinning marks stand still, scrolling jumps */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-property: opacity, color, background-color, border-color !important;
+    scroll-behavior: auto !important;
+  }
+  .ui-btn:active, .tb-rec:active, .tb-tab:active, .tb-subtab:active, .rp-icon-btn:active,
+  .chapter-chip:active, .spk-chip:active { transform: none; }
+}

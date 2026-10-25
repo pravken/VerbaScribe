@@ -143,7 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const rect = activeSegEl.getBoundingClientRect();
       const cRect = container.getBoundingClientRect();
       if (rect.top < cRect.top + 50 || rect.bottom > cRect.bottom - 50) {
-        activeSegEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        activeSegEl.scrollIntoView({ behavior: scrollMotion(), block: 'center' });
       }
     }
   });
@@ -360,7 +360,7 @@ function centerActiveChapter(smooth) {
   const pad = Math.max(0, (list.clientWidth - el.offsetWidth) / 2);
   list.style.paddingLeft = list.style.paddingRight = `${pad}px`;
   const left = el.getBoundingClientRect().left - list.getBoundingClientRect().left + list.scrollLeft;
-  list.scrollTo({ left: left - pad, behavior: smooth ? 'smooth' : 'auto' });
+  list.scrollTo({ left: left - pad, behavior: smooth ? scrollMotion() : 'auto' });
 }
 
 // The row shows only the chips that fit: "All chapters" lists them all, the current one ticked
@@ -944,7 +944,7 @@ function flashNoAiBanner(id = 'an-noai') {
   b.classList.remove('hidden', 'an-noai-flash');
   void b.offsetWidth;
   b.classList.add('an-noai-flash');
-  b.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  b.scrollIntoView({ block: 'nearest', behavior: scrollMotion() });
 }
 
 function aiAvailable() {
