@@ -5,6 +5,26 @@
 
 ## 0.6.0
 
+### В третьей бете (0.6.0-beta.3)
+Исправления по независимому аудиту.
+- **Восстановление резервной копии** чужого архива больше ничего не делает на этом компьютере: из базы
+  копии убираются её собственные команды, очередь удаления файлов и пути, ведущие к вашим файлам;
+  звук возвращается только в папки записей. Срок хранения звука остаётся вашим.
+- **Приватные записи** («только локальный анализ») не попадают в облачную модель через «С прошлого раза»,
+  а вопрос ко всей медиатеке не отправляет в облако все остальные расшифровки целиком.
+- **Экспорт «Без запинок»** больше не сдвигает переводы на соседние реплики и не теряет перевод диктовки.
+- **Установка Ollama** из программы снова работает.
+- **Горячие клавиши диктовки:** «Отключить» сохраняет настройку; у диктовки видно, работает ли клавиша.
+  Нажатие во время распознавания прошлой диктовки ничего не сбивает.
+- **Экспорт, который ждал расшифровку или перевод,** сохраняется с выбранными опциями, в папку по дате и
+  появляется в копиях записи. Смена языка в окне дубляжа не теряет такой экспорт.
+- **Дубляж** не останавливается на 88 %, если модели из настроек нет в Ollama.
+- **Субтитры к видео:** исходный файл, выбранный по ошибке как место сохранения, не попадает в «Копии».
+- **Импорт:** принимаются только звук и видео; добавлены .opus, .m4v, .mka и другие.
+- В переведённых SRT и VTT работает галочка «Имена».
+- «Открыть последнюю запись» из трея сразу после запуска, отмена отложенного экспорта с сообщением об
+  ошибке, `update.bat` не оставляет файл во временной папке.
+
 ### Во второй бете (0.6.0-beta.2)
 - **Меню и всплывающие панели** — одно настоящее стекло; растут из места, где их открыли, и так же
   плавно закрываются. При выключенных эффектах прозрачности Windows — сплошной фон.
@@ -103,6 +123,27 @@
   обрываются без сообщения после того, как сделаны.
 
 ## 0.6.0 — English
+
+### In the third beta (0.6.0-beta.3)
+Fixes after an independent audit.
+- **Restoring a backup** from someone else does nothing on this computer any more: the copy's own
+  database commands, its queue of files to delete and paths leading to your files are removed; sound
+  goes back only into the recording folders. Your sound retention setting stays.
+- **Private recordings** (local analysis only) stay out of a cloud model in «Since last time», and a
+  question about the whole library no longer sends all other transcripts in full.
+- **Export without fillers** no longer moves translations onto neighbouring lines or loses a dictation's
+  translation.
+- **Installing Ollama** from the app works again.
+- **Dictation hotkeys:** «Turn off» is saved; the dictation hotkey shows whether it works. A press while
+  the last dictation is recognized no longer upsets it.
+- **An export waiting for a transcript or translation** keeps its options, goes into the date folder and
+  is listed with the recording. Changing the language in the Dub window keeps it.
+- **Dubbing** no longer stops at 88 % when the model of the settings is not in Ollama.
+- **Video subtitles:** the source picked as the output by mistake is not listed under Copies.
+- **Import** takes sound and video only; .opus, .m4v, .mka and more are added.
+- Translated SRT and VTT follow the «Names» option.
+- «Open the last recording» from the tray right after start, a failed cancel of a pending export is
+  reported, `update.bat` leaves no file in the temp folder.
 
 ### In the second beta (0.6.0-beta.2)
 - **Menus and popovers** are one real glass; they grow from where they were opened and leave the same
