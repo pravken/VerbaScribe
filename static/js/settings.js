@@ -2019,7 +2019,7 @@ async function pullOllamaModel(modelArg, makeActive = true) {
   const model = (modelArg || document.getElementById('set-ollama-model').value || 'qwen3.5:4b').trim();
   let allowInstall = false;
   if (state.system && state.system.ollama && !state.system.ollama.installed) {
-    allowInstall = await askConfirmt('uiOllamaIsNotInstalled');
+    allowInstall = await askConfirm(t('uiOllamaIsNotInstalled'), false, t('cfInstall'));
     if (!allowInstall) return;
   }
   if (makeActive) document.getElementById('set-ollama-model').value = model;  // not for the embedding model
