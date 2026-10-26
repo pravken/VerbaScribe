@@ -222,6 +222,7 @@ def ask_library(
     if meeting_ids is not None and not meeting_ids:
         raise ValueError("В выбранной папке нет записей")
 
+    chosen = meeting_ids is not None  # a folder or recordings the user chose, not the whole library
     try:
         llm = target(model_name)  # an explicit user action: Ollama may be started
         # Recordings marked "local analysis only" never reach a cloud model: they are left out of
@@ -246,7 +247,8 @@ def ask_library(
     max_chars = MAX_CONTEXT_CHARS * scale
     fragments: List[Dict[str, Any]] = []
     scope_meetings: List[Dict[str, Any]] = []
-    if meeting_ids is not None:
+    # The whole library without its private recordings is still searched, not read in full
+    if chosen:
         scope_meetings = [m for m in (get_meeting(i) for i in meeting_ids) if m and m.get("segments")]
         if not scope_meetings:
             return {"answer": "", "sources": [], "found": False, "mode": mode}
@@ -256,7 +258,7 @@ def ask_library(
             fragments = full_fragments(scope_meetings)
     if mode == "search":
         fragments = retrieve(question, meeting_ids, limit=MAX_FRAGMENTS * (3 if llm.is_cloud else 1))
-        if meeting_ids is not None and len(fragments) < 3:
+        if chosen and len(fragments) < 3:
             # Few keyword hits in a folder: its overviews still say what the recordings are about
             fragments = summary_fragments(scope_meetings)[:MAX_FRAGMENTS] + fragments
     if not fragments:

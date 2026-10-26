@@ -254,6 +254,22 @@ class LibraryScopeTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             library_qa.ask_library("вопрос", meeting_ids=[])
 
+    def test_whole_library_is_searched_with_a_cloud_model_even_with_a_private_recording(self):
+        from types import SimpleNamespace
+
+        from app import library_qa
+
+        _done_meeting()
+        private = _done_meeting()
+        conn = database.get_connection()
+        conn.execute("UPDATE meetings SET local_only = 1 WHERE id = ?", (private["id"],))
+        conn.commit()
+        conn.close()
+        cloud = SimpleNamespace(is_cloud=True, label="cloud", max_chars=212000, chat=lambda system, user, **kw: "О релизе [1].")
+        with mock.patch("app.llm.target", lambda *a, **k: cloud), mock.patch.object(library_qa, "retrieve", return_value=[]):
+            res = library_qa.ask_library("о чём это?")
+        self.assertEqual(res["mode"], "search")  # leaving one recording out does not send the rest in full
+
 
 class SystemTest(unittest.TestCase):
     def test_memory_and_cpu(self):
