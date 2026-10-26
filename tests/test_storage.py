@@ -225,6 +225,27 @@ class UploadDiskSpaceTest(unittest.TestCase):
             self.assertEqual(set(main.UPLOADS_DIR.iterdir()), before)
 
 
+class SubtitlesPathTest(unittest.TestCase):
+    def test_the_source_picked_as_the_output_is_not_listed_as_a_copy(self):
+        from fastapi import HTTPException
+
+        import app.main  # noqa: F401 - the routers import their helpers from it
+        from app.api import media as media_api
+
+        database.init_db()
+        video = Path(tempfile.mkdtemp()) / "call.mp4"
+        video.write_bytes(b"video")
+        m = database.create_meeting("Видео", "call.mp4", str(video))
+        database.save_meeting_results(m["id"], segments=[{"id": 1, "start": 0.0, "end": 2.0, "text": "Привет"}], language="ru")
+        database.update_meeting_progress(m["id"], status="completed", progress=100)
+        with mock.patch("app.video_subtitles.probe_media", return_value={"has_video": True}), \
+                mock.patch.object(media_api, "_pick_export_path", return_value=str(video)), \
+                self.assertRaises(HTTPException) as ctx:
+            media_api.api_video_subtitles(m["id"], media_api.SubtitlesRequestPayload(ask_path=True))
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertNotIn(str(video), database.get_meeting(m["id"]).get("exports") or [])
+
+
 class ShutdownTest(unittest.TestCase):
     def test_work_processes_end_with_the_app(self):
         import subprocess

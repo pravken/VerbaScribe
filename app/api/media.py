@@ -440,11 +440,12 @@ def api_video_subtitles(meeting_id: int, payload: SubtitlesRequestPayload) -> Di
         out_path = Path(chosen)
         if out_path.suffix.lower() != ext:
             out_path = out_path.with_name(out_path.name + ext)
-        _remember_export(meeting_id, out_path)
     try:
         check_output_path(media, out_path)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    if payload.ask_path:  # only a path that passed: the source picked by mistake is never listed as a copy
+        _remember_export(meeting_id, out_path)
 
     title = (
         f"{track_lang.upper()} + {(m.get('language') or '').upper()} (AI translation)" if variant == "bilingual"
