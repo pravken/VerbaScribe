@@ -916,12 +916,13 @@ def main() -> None:
                 break
             time.sleep(0.2)
         args.port, already_running = choose_port(args.host, args.port)
+        server_thread = None
         try:
             import webview
 
             if not already_running:
                 print("Starting VerbaScribe local AI server...")
-                start_server_in_thread(args.host, args.port)
+                server_thread = start_server_in_thread(args.host, args.port)
 
             webview.settings["ALLOW_DOWNLOADS"] = True
             # The app's page once the server answers; until then a loading screen (see open_app_when_ready)
@@ -992,6 +993,12 @@ def main() -> None:
             os._exit(0)
         except Exception as e:
             print(f"[!] Native window fallback to browser ({e})...")
+        if server_thread is not None:
+            # The server already runs in this process: a second one would only fail on the busy port
+            wait_for_server(args.host, args.port)
+            webbrowser.open(app_url(args.host, args.port))
+            server_thread.join()
+            return
 
     # Fallback: regular browser mode
     if already_running:
