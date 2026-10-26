@@ -36,7 +36,7 @@ def normalize(item: Dict[str, Any]) -> Dict[str, Any]:
     if kind in ("dub_media", "dub_srt") and not lang:
         raise ValueError("Не указан язык дубляжа")
     if kind == "doc" and lang and fmt == "json":
-        raise ValueError("Перевод экспортируется в DOCX, MD, TXT или SRT")
+        raise ValueError("Перевод экспортируется в DOCX, MD, TXT, SRT или VTT")
     raw_opts = item.get("opts") if isinstance(item.get("opts"), dict) else {}
     # The options of the export menu (time stamps, names, without fillers), applied when the file is written
     opts = {"times": raw_opts.get("times", True) is not False, "names": raw_opts.get("names", True) is not False,
