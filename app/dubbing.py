@@ -174,6 +174,16 @@ def _shorten(base_url: str, model: str, source: str, current: str, max_chars: in
     return res if 0 < len(res) < len(current) else current
 
 
+def _ollama_model(base_url: str, preferred: str) -> str:
+    """The model the dub talks to: the one of the settings if Ollama has it, else the first it has
+    (the settings may name a model that was never downloaded)."""
+    st = get_ollama_status(base_url)
+    usable = st.get("chat_models", st["models"])
+    if not st["running"] or not usable:
+        raise RuntimeError("Ollama не запущена или в ней нет моделей — перевод невозможен")
+    return preferred if preferred in usable else usable[0]
+
+
 def translate_units(
     units: List[Dict[str, Any]],
     src_code: str,
@@ -187,12 +197,7 @@ def translate_units(
     base_url = (settings.get("ollama_url") or "http://127.0.0.1:11434").replace("localhost", "127.0.0.1").rstrip("/")
     model = settings.get("ollama_model") or "qwen3.5:4b"
     ensure_ollama_running(base_url)
-    st = get_ollama_status(base_url)
-    usable = st.get("chat_models", st["models"])
-    if not st["running"] or not usable:
-        raise RuntimeError("Ollama не запущена или в ней нет моделей — перевод невозможен")
-    if model not in usable:
-        model = usable[0]
+    model = _ollama_model(base_url, model)
     src = DUB_LANGUAGES.get(src_code, src_code)
     tgt = DUB_LANGUAGES[tgt_code]
 
@@ -915,7 +920,11 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
             units = sorted(units_ok, key=lambda u: u["id"])
             if not units:
                 raise RuntimeError("Модель Ollama не вернула перевод ни для одной фразы")
-            _unload_ollama(ollama_url, settings_now.get("ollama_model") or "", wait=True)
+            try:  # the model the translation used, not one the settings name and Ollama lacks
+                used = _ollama_model(ollama_url, settings_now.get("ollama_model") or "qwen3.5:4b")
+            except RuntimeError:
+                used = settings_now.get("ollama_model") or ""
+            _unload_ollama(ollama_url, used, wait=True)
             # Its VRAM is free now: more processes for the remaining phrases
             pool.grow(extra_tts_workers(tts_setting, pool.size(), _free_vram_for_tts(pool), cpu_count))
             res = stream.wait()
@@ -973,7 +982,7 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
                 check_cancel()
                 progress(88, f"Сокращение {len(too_long)} слишком длинных фраз...")
                 src_name, tgt_name = DUB_LANGUAGES.get(src_lang, src_lang), DUB_LANGUAGES[target_lang]
-                model = settings_now.get("ollama_model") or "qwen3.5:4b"
+                model = _ollama_model(ollama_url, settings_now.get("ollama_model") or "qwen3.5:4b")
                 # The LLM is loaded again. Next to three TTS processes it may not fit in VRAM and then
                 # runs on the CPU, many times slower (measured: 203 s instead of 19 s for 7 phrases),
                 # so only one process stays. Each shortened phrase is voiced while the next is shortened.

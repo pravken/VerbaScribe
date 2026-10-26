@@ -566,6 +566,19 @@ class DubMemoryTest(unittest.TestCase):
         self.assertLess(dub_memory_gb(3600), 7)          # an hour fits 16 GB
         self.assertGreater(dub_memory_gb(3 * 3600), 14)  # three hours do not
 
+    def test_the_model_ollama_has_when_the_settings_name_another(self):
+        from unittest import mock
+
+        from app import dubbing
+
+        status = {"running": True, "models": ["qwen3:8b"], "chat_models": ["qwen3:8b"]}
+        with mock.patch.object(dubbing, "get_ollama_status", return_value=status):
+            self.assertEqual(dubbing._ollama_model("http://127.0.0.1:11434", "qwen3.5:4b"), "qwen3:8b")
+            self.assertEqual(dubbing._ollama_model("http://127.0.0.1:11434", "qwen3:8b"), "qwen3:8b")
+        with mock.patch.object(dubbing, "get_ollama_status", return_value={"running": False, "models": []}):
+            with self.assertRaises(RuntimeError):
+                dubbing._ollama_model("http://127.0.0.1:11434", "qwen3.5:4b")
+
 
 class WorkAudioTest(unittest.TestCase):
     def test_wav_goes_waveform_stays(self):
