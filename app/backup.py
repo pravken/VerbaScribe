@@ -12,9 +12,10 @@ In the copy:
 A restore puts the database aside and takes the copy's at the next start (the running app holds the
 current one): the database in use is kept as meetings.before-restore-<date>.db. A copy is a file the
 user may have been sent, so nothing in it decides where files go or where data is sent:
-- media files are put back where they were only inside this computer's data folder or recordings
-  folder (never over an existing file); a file that lived anywhere else goes to the recordings folder
-  under RESTORED_FOLDER, and the restored database points to it;
+- media files are put back where they were only inside the folders this computer keeps media in
+  (uploads, audio, recordings; never over an existing file, never under another extension); a file
+  that lived anywhere else goes to the recordings folder under RESTORED_FOLDER, and the restored
+  database points to it;
 - the settings that hold addresses, folders and the cloud choice (LOCAL_SETTINGS) stay this computer's,
   and so do the cloud API keys (they are moved into the restored database at the next start);
 - the copy's database brings data only: its triggers and views are dropped (SQL of its own that would
@@ -156,13 +157,14 @@ def _drop_own_sql(conn: sqlite3.Connection) -> None:
 def _clean_paths(conn: sqlite3.Connection, roots: List[Path], restored: Dict[int, str]) -> None:
     """The paths in the copy's recordings are deleted or moved by later actions (deleting a recording,
     its copies or its note, the Obsidian export): kept only where they cannot reach other files."""
+    from app.database import get_all_settings
     from app.obsidian import vault_dir
     from app.paths import AUDIO_DIR
 
     if conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'pending_deletes'").fetchone():
         conn.execute("DELETE FROM pending_deletes")  # deleted at the next start without a question
     cols = {r[1] for r in conn.execute("PRAGMA table_info(meetings)").fetchall()}
-    vault = vault_dir(_settings_here())
+    vault = vault_dir(get_all_settings())
     rows = conn.execute("SELECT * FROM meetings").fetchall()
     names = [d[0] for d in conn.execute("SELECT * FROM meetings LIMIT 0").description]
     for row in rows:
@@ -187,6 +189,7 @@ def _clean_paths(conn: sqlite3.Connection, roots: List[Path], restored: Dict[int
         note = str(m.get("obsidian_path") or "") if "obsidian_path" in cols else ""
         if note and not (Path(note).suffix.lower() == ".md" and vault is not None and _inside(Path(note), [vault.resolve()])):
             fields.update(obsidian_path="", obsidian_hash="")
+        fields = {k: v for k, v in fields.items() if k in cols}  # a copy made before a column existed
         if fields:
             conn.execute(f"UPDATE meetings SET {', '.join(f'{k} = ?' for k in fields)} WHERE id = ?", (*fields.values(), mid))
 
@@ -209,12 +212,6 @@ def _clean_dubs(raw: Any) -> Optional[str]:
 
     kept = [d for d in dubs if isinstance(d, dict) and all(fine(d.get(k)) for k in ("path", "srt_path"))]
     return None if len(kept) == len(dubs) else json.dumps(kept, ensure_ascii=False)
-
-
-def _settings_here() -> Dict[str, str]:
-    from app.database import get_all_settings
-
-    return get_all_settings()
 
 
 def _keep_local_settings(conn: sqlite3.Connection) -> None:
@@ -241,9 +238,7 @@ def restore(src: Path) -> Dict[str, Any]:
 
 def _restore(src: Path) -> Dict[str, Any]:
     from app.database import get_all_settings
-    from app.paths import recordings_dir
-
-    from app.paths import AUDIO_DIR, UPLOADS_DIR
+    from app.paths import AUDIO_DIR, UPLOADS_DIR, recordings_dir
 
     rec_dir = recordings_dir(get_all_settings().get("recordings_dir") or "")
     roots = [UPLOADS_DIR.resolve(), AUDIO_DIR.resolve(), rec_dir.resolve()]  # where the app keeps media
