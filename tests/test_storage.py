@@ -47,7 +47,7 @@ class MigrationTest(unittest.TestCase):
         conn.close()
         self.assertEqual(Path(rows[1][0]), self.target / "uploads" / "a_call.mp4")
         self.assertEqual(Path(rows[1][1]), self.target / "audio" / "meeting_1.wav")
-        self.assertEqual(rows[2][0], "D:\Calls\external.mkv")  # files outside data/ stay where they are
+        self.assertEqual(rows[2][0], r"D:\Calls\external.mkv")  # files outside data/ stay where they are
         # Second start: nothing left to migrate
         self.assertFalse(migrate_legacy_data_dir(self.legacy, self.target))
 
