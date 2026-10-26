@@ -163,12 +163,14 @@ def filler_view(segments: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def clean_filler_words_in_segments(
-    segments: List[Dict[str, Any]],
+    segments: List[Dict[str, Any]], renumber: bool = True,
 ) -> Tuple[List[Dict[str, Any]], int]:
     """
     Removes vocal hesitations, a few unambiguous filler phrases and stuttered short words.
     When word timestamps exist, the cleanup runs on words and the text is rebuilt from them,
     so the displayed words and the exported text always stay identical.
+    renumber: the lines get ids 1, 2, ... again (a transcript being made); False keeps the ids, which
+    the translations of a stored transcript are keyed by.
     Returns (cleaned_segments, removed_count).
     """
     removed_total = 0
@@ -203,8 +205,9 @@ def clean_filler_words_in_segments(
 
         cleaned.append(seg_copy)
 
-    for idx, s in enumerate(cleaned):
-        s["id"] = idx + 1
+    if renumber:
+        for idx, s in enumerate(cleaned):
+            s["id"] = idx + 1
     return cleaned, removed_total
 
 

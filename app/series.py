@@ -154,6 +154,9 @@ def since_last_time(meeting_id: int, model_name: Optional[str] = None, answer_la
     from app import commitments
 
     earlier = [x for x in commitments.open_for_series(int(m["series_id"])) if x["meeting_id"] != m["id"]]
+    if llm.is_cloud:  # the tasks of the series' private meetings (and their titles) stay on this computer
+        private = local_only_ids()
+        earlier = [x for x in earlier if x["meeting_id"] not in private]
     promised = (f"Открытые задачи из прошлых встреч серии (проверь каждую):\n{commitments.as_text(earlier)}\n\n"
                 if earlier else "")
     user = (f"{promised}Прошлая встреча «{prev.get('title')}» ({_when(prev)[:10]}):\n{_outcomes(prev)}\n\n"

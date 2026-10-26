@@ -282,8 +282,14 @@ def api_dub_save(meeting_id: int, lang: str, kind: str) -> Dict[str, Any]:
 def api_dub_reveal(meeting_id: int, lang: str) -> Dict[str, Any]:
     import subprocess
 
+    from app.paths import DATA_DIR
+
     d = _find_dub(meeting_id, lang)
-    subprocess.Popen(["explorer.exe", f"/select,{Path(d['path']).resolve()}"])
+    path = Path(d["path"]).resolve()
+    # A dub is made in the data folder (database._dub_paths_to_storage): a path elsewhere is not shown
+    if not path.is_file() or DATA_DIR.resolve() not in path.parents:
+        raise HTTPException(status_code=404, detail="Файл дубляжа не найден")
+    subprocess.Popen(["explorer.exe", f"/select,{path}"])
     return {"ok": True}
 
 # --- Translate text ---
@@ -440,11 +446,12 @@ def api_video_subtitles(meeting_id: int, payload: SubtitlesRequestPayload) -> Di
         out_path = Path(chosen)
         if out_path.suffix.lower() != ext:
             out_path = out_path.with_name(out_path.name + ext)
-        _remember_export(meeting_id, out_path)
     try:
         check_output_path(media, out_path)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    if payload.ask_path:  # only a path that passed: the source picked by mistake is never listed as a copy
+        _remember_export(meeting_id, out_path)
 
     title = (
         f"{track_lang.upper()} + {(m.get('language') or '').upper()} (AI translation)" if variant == "bilingual"

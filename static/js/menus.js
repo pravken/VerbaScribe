@@ -162,7 +162,8 @@ async function runExport(item) {
   let res, data;
   try {
     res = await fetch(`/api/meetings/${m.id}/export-request`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(item),
+      // the menu's options (time stamps, names, without fillers) go with an export written later too
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...item, opts: rpExportOptions() }),
     });
     data = await res.json().catch(() => ({}));
   } catch (e) {

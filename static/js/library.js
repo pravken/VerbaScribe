@@ -1577,7 +1577,8 @@ function patchKeyedList(box, parts) {
 }
 
 // --- Files dragged onto the window: a full-window overlay shows that they can be dropped ---
-const MEDIA_EXT = /\.(mp4|mkv|mov|webm|avi|m4v|mpg|mpeg|ts|mts|3gp|wmv|flv|mp3|wav|m4a|aac|flac|ogg|oga|opus|wma|amr|aiff?)$/i;
+// The same list as MEDIA_EXTENSIONS of the server (app/paths.py)
+const MEDIA_EXT = /\.(mp4|mkv|mov|webm|avi|m4v|mpg|mpeg|3gp|wmv|flv|mp3|wav|m4a|aac|flac|ogg|oga|opus|wma|amr|aiff?|mka)$/i;
 let _dragDepth = 0;
 let _dragSupported = true;
 

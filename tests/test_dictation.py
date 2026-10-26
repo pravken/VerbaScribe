@@ -22,6 +22,22 @@ class _Target:
         return self.answer
 
 
+class DictationBusyTest(unittest.TestCase):
+    def test_a_press_while_the_last_one_is_recognized_starts_nothing(self):
+        with dictation._lock:
+            saved = dict(dictation._state)
+            dictation._state.update(active=False, busy=True, translate_to="de")
+        try:
+            with mock.patch.object(dictation, "_start") as start:
+                self.assertEqual(dictation.toggle(translate=True), "busy")
+            start.assert_not_called()
+            self.assertEqual(dictation.status()["translate_to"], "de")
+        finally:
+            with dictation._lock:
+                dictation._state.clear()
+                dictation._state.update(saved)
+
+
 class DictationTranslateTest(unittest.TestCase):
     def setUp(self):
         init_db()

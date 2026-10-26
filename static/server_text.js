@@ -168,7 +168,6 @@ const SERVER_TEXT_EN = {
   "Перевод доступен только для полностью обработанной записи": "Translation is available only for a fully processed recording",
   "Перевод отменён": "Translation cancelled",
   "Перевод уже актуален": "The translation is up to date",
-  "Перевод экспортируется в DOCX, MD, TXT или SRT": "A translation is exported as DOCX, MD, TXT or SRT",
   "Перевод экспортируется в DOCX, MD, TXT, SRT или VTT": "A translation is exported as DOCX, MD, TXT, SRT or VTT",
   "Повторная обработка с новыми параметрами...": "Processing again with the new settings...",
   "Повторная постановка в очередь...": "Queued again...",

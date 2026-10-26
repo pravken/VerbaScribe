@@ -311,6 +311,10 @@ async def api_upload_meetings(
     is_recording = source == "recording"
     target_dir = _recordings_dir() if is_recording else UPLOADS_DIR
 
+    for uf in files:  # all checked before any is stored; the extension stays in the stored file's name
+        ext = Path(uf.filename or "recording.mp4").suffix.lower() or ".mp4"
+        if ext not in SUPPORTED_EXTENSIONS:
+            raise HTTPException(status_code=400, detail=f"Формат файла {ext} не поддерживается")
     created = []
     for i, uf in enumerate(files):
         orig_name = uf.filename or "recording.mp4"

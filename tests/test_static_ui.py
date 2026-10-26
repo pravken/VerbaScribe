@@ -131,16 +131,34 @@ class StaticUiTest(unittest.TestCase):
         head = (ROOT / "static" / "vendor" / "marked.min.js").read_text(encoding="utf-8")[:200]
         self.assertIn(f"marked v{deps['marked']} ", head)
 
-    def test_toasts_call_existing_functions(self):
-        """showToastt('…') (a typo of showToast(t('…'))) threw after the action it was to confirm."""
-        defined = set()
-        calls = {}
-        for f in sorted((ROOT / "static" / "js").glob("*.js")):
+    def test_calls_reach_defined_functions(self):
+        """showToastt('…') and askConfirmt('…') (typos of showToast(t('…'))) threw only when their
+        branch ran. Every bare call in the page's scripts names a function, variable or parameter
+        declared there, a browser function, or a local callback listed here."""
+        browser = {"setTimeout", "clearTimeout", "setInterval", "clearInterval", "requestAnimationFrame",
+                   "cancelAnimationFrame", "getComputedStyle", "parseInt", "parseFloat", "isNaN", "isFinite",
+                   "encodeURIComponent", "decodeURIComponent", "fetch", "alert", "structuredClone", "queueMicrotask"}
+        syntax = {"if", "for", "while", "switch", "catch", "function", "return", "async", "await", "of", "constructor",
+                  "typeof", "super", "import"}
+        # Parameters and object methods called by their short name
+        local = {"change", "commit", "endOf", "get", "jump", "onSeek", "preventDefault", "render", "resolve",
+                 "restore", "startOf", "stopPropagation"}
+        files = sorted((ROOT / "static" / "js").glob("*.js")) + [ROOT / "static" / "i18n.js", ROOT / "static" / "server_text.js"]
+        defined, calls = set(), {}
+        for f in files:
             text = f.read_text(encoding="utf-8")
-            defined.update(re.findall(r"^(?:async )?function ([A-Za-z0-9_]+)\(", text, flags=re.M))
-            for m in re.finditer(r"\b(showToast[A-Za-z0-9_]*)\(", text):
+            defined.update(re.findall(r"\bfunction\s*\*?\s*([A-Za-z_$][\w$]*)\s*\(", text))
+            defined.update(re.findall(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=", text))
+            defined.update(re.findall(r"\bwindow\.([A-Za-z_$][\w$]*)\s*=", text))
+            defined.update(re.findall(r"\(\s*([A-Za-z_$][\w$]*)\s*(?:,|\)\s*=>)", text))
+            defined.update(re.findall(r"typeof\s+([A-Za-z_$][\w$]*)\s*===?\s*'function'", text))  # guarded
+            code = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+            code = re.sub(r"(^|[^:\\])//.*$", r"\1", code, flags=re.M)
+            code = re.sub(r"'(?:\\.|[^'\\\n])*'|\"(?:\\.|[^\"\\\n])*\"|`(?:\\.|[^`\\])*`", "''", code)
+            for m in re.finditer(r"(?<![.\w$])([a-z_$][\w$]*)\s*\(", code):
                 calls.setdefault(m.group(1), f.name)
-        self.assertEqual(sorted(set(calls) - defined), [])
+        missing = {n: f for n, f in calls.items() if n not in defined | browser | syntax | local}
+        self.assertEqual(missing, {})
 
     def test_no_inline_handlers(self):
         """The page's CSP runs no inline script: events are data-<event> (see PAGE_EVENTS in core.js)."""

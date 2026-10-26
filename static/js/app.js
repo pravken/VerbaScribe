@@ -1604,7 +1604,8 @@ function renderMeetingInfo(info) {
 }
 
 async function cancelPendingExports(id) {
-  await fetch(`/api/meetings/${id}/pending-exports`, { method: 'DELETE' });
+  const res = await fetch(`/api/meetings/${id}/pending-exports`, { method: 'DELETE' }).catch(() => null);
+  if (!res || !res.ok) { showError(errorText(res ? await readJson(res) : null, res)); return; }
   loadMeetingInfo();
 }
 

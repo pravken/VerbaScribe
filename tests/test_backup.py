@@ -98,6 +98,65 @@ class BackupTest(unittest.TestCase):
         backup.PENDING.unlink()
         inside.unlink()
 
+    def test_a_foreign_database_brings_data_only(self):
+        """Its triggers, its queue of deletions and the paths in its recordings cannot reach this computer."""
+        import json
+
+        from app.database import create_meeting, get_all_settings, init_db, update_settings
+        from app.paths import DATA_DIR
+
+        init_db()
+        update_settings({"ollama_url": "http://127.0.0.1:11434"})
+        own = create_meeting("Своя", "own.m4a", str(DATA_DIR / "uploads" / "own.m4a"))
+        victim = Path(tempfile.mkdtemp()) / "thesis.docx"
+        victim.write_text("keep me")
+        out = Path(tempfile.mkdtemp()) / "copy.zip"
+        backup.make(out)
+        with zipfile.ZipFile(out) as z:
+            db = Path(z.extract("meetings.db", tempfile.mkdtemp()))
+        conn = sqlite3.connect(str(db))
+        conn.execute("CREATE TRIGGER evil AFTER UPDATE ON settings BEGIN "
+                     "UPDATE settings SET value = 'http://attacker.example' WHERE key = 'ollama_url'; END")
+        conn.execute("CREATE TRIGGER evil_insert AFTER INSERT ON settings BEGIN "
+                     "UPDATE settings SET value = 'http://attacker.example' WHERE key = 'ollama_url'; END")
+        conn.execute("CREATE VIEW peek AS SELECT * FROM settings")
+        conn.execute("CREATE TABLE IF NOT EXISTS pending_deletes (path TEXT PRIMARY KEY, since TEXT NOT NULL)")
+        conn.execute("INSERT INTO pending_deletes VALUES (?, '2026-01-01')", (str(victim),))
+        tool = DATA_DIR / "bin" / "ffmpeg.exe"
+        conn.execute("INSERT INTO meetings (title, filename, media_path, audio_path, exports_json, obsidian_path, "
+                     "owns_media, dubs_json, created_at) VALUES ('Чужая', 'a.mp3', ?, ?, ?, ?, 1, ?, '2026-01-01')",
+                     (str(tool), str(DATA_DIR / "meetings.db"), json.dumps([str(victim)]), str(victim),
+                      json.dumps([{"lang": "en", "path": str(victim)}, {"lang": "de", "path": "dubs/1_de.wav"}])))
+        evil_id = conn.execute("SELECT max(id) FROM meetings").fetchone()[0]
+        conn.execute("UPDATE meetings SET owns_media = 1, media_path = ? WHERE id = ?", (str(victim.with_suffix(".mp4")), own["id"]))
+        conn.commit()
+        conn.close()
+        bad = Path(tempfile.mkdtemp()) / "bad.zip"
+        media = [{"id": evil_id, "path": str(tool), "name": f"media/{evil_id}_a.mp3"}]
+        with zipfile.ZipFile(bad, "w") as z:
+            z.writestr("manifest.json", json.dumps({"format": 1, "app": "VerbaScribe", "media": media}))
+            z.write(db, "meetings.db")
+            z.writestr(media[0]["name"], b"MZ")
+        backup.restore(bad)
+        self.assertFalse(tool.exists())  # a media file of the copy never becomes a program
+        conn = sqlite3.connect(str(backup.PENDING))
+        try:
+            self.assertEqual(conn.execute("SELECT count(*) FROM sqlite_master WHERE type IN ('trigger', 'view')").fetchone()[0], 0)
+            self.assertEqual(conn.execute("SELECT value FROM settings WHERE key = 'ollama_url'").fetchone()[0],
+                             get_all_settings()["ollama_url"])
+            self.assertEqual(conn.execute("SELECT count(*) FROM pending_deletes").fetchone()[0], 0)
+            row = conn.execute("SELECT media_path, audio_path, exports_json, obsidian_path, dubs_json FROM meetings WHERE id = ?",
+                               (evil_id,)).fetchone()
+            self.assertEqual(Path(row[0]).parent.name, backup.RESTORED_FOLDER)  # the sound went to the recordings folder
+            self.assertEqual(row[1:4], ("", "[]", ""))
+            self.assertEqual([d["lang"] for d in json.loads(row[4])], ["de"])
+            self.assertEqual(conn.execute("SELECT owns_media FROM meetings WHERE id = ?", (own["id"],)).fetchone()[0], 0)
+        finally:
+            conn.close()
+        Path(row[0]).unlink(missing_ok=True)
+        backup.PENDING.unlink()
+        self.assertEqual(victim.read_text(), "keep me")
+
     def test_not_a_backup(self):
         bad = Path(tempfile.mkdtemp()) / "x.zip"
         with zipfile.ZipFile(bad, "w") as z:

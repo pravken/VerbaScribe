@@ -255,6 +255,14 @@ class LibraryApiTest(unittest.TestCase):
         self.assertEqual(m["folder_id"], folders["recordings"])
         self.assertEqual(imp["folder_id"], folders["imports"])
 
+    def test_upload_takes_media_files_only(self):
+        c = self._client()
+        before = len(c.get("/api/meetings").json())
+        r = c.post("/api/meetings/upload", files=[("files", ("talk.opus", b"opus", "audio/ogg")),
+                                                  ("files", ("tool.exe", b"MZ", "audio/mpeg"))])
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(len(c.get("/api/meetings").json()), before)  # nothing of the batch was stored
+
     def test_folder_endpoints_and_details(self):
         c = self._client()
         f = c.post("/api/folders", json={"name": "Клиенты"}).json()

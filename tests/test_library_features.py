@@ -221,6 +221,20 @@ class PendingExportTest(unittest.TestCase):
         self.assertIn("Let us discuss the release.", files[0].read_text(encoding="utf-8"))
         self.assertEqual(database.get_pending_exports(m["id"]), [])
 
+    def test_a_later_export_keeps_the_menu_options_and_the_date_folder(self):
+        m = _done_meeting()
+        update_settings({"date_folders": "day"})
+        try:
+            database.set_pending_exports(m["id"], [{"kind": "doc", "fmt": "txt", "opts": {"times": False, "names": False}}])
+            pending_exports.process(m["id"])
+        finally:
+            update_settings({"date_folders": "off"})
+        files = [f for f in self.out.rglob("*") if f.is_file()]
+        self.assertEqual(len(files), 1)
+        self.assertNotEqual(files[0].parent, self.out)  # in the recording's date folder
+        self.assertNotIn("[00:00]", files[0].read_text(encoding="utf-8"))
+        self.assertIn(str(files[0]), database.get_meeting(m["id"]).get("exports") or [])
+
     def test_failed_job_drops_the_export(self):
         m = _done_meeting()
         database.set_pending_exports(m["id"], [{"kind": "doc", "fmt": "txt", "lang": "de", "variant": "translated", "tries": 1}])
@@ -253,6 +267,22 @@ class LibraryScopeTest(unittest.TestCase):
         self.assertIn("Тестирование до пятницы.", chat.call_args[0][3])
         with self.assertRaises(ValueError):
             library_qa.ask_library("вопрос", meeting_ids=[])
+
+    def test_whole_library_is_searched_with_a_cloud_model_even_with_a_private_recording(self):
+        from types import SimpleNamespace
+
+        from app import library_qa
+
+        _done_meeting()
+        private = _done_meeting()
+        conn = database.get_connection()
+        conn.execute("UPDATE meetings SET local_only = 1 WHERE id = ?", (private["id"],))
+        conn.commit()
+        conn.close()
+        cloud = SimpleNamespace(is_cloud=True, label="cloud", max_chars=212000, chat=lambda system, user, **kw: "О релизе [1].")
+        with mock.patch("app.llm.target", lambda *a, **k: cloud), mock.patch.object(library_qa, "retrieve", return_value=[]):
+            res = library_qa.ask_library("о чём это?")
+        self.assertEqual(res["mode"], "search")  # leaving one recording out does not send the rest in full
 
 
 class SystemTest(unittest.TestCase):

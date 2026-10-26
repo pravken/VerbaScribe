@@ -6,7 +6,10 @@ if not defined VS_UPDATE_DIR (
     set "VS_UPDATE_DIR=%~dp0"
     copy /y "%~f0" "%TEMP%\verbascribe-update.bat" >nul
     call "%TEMP%\verbascribe-update.bat" %*
-    exit /b !errorlevel!
+    set "VS_RC=!errorlevel!"
+    rem the block was read whole before it ran: the copy can go
+    del "%TEMP%\verbascribe-update.bat" >nul 2>nul
+    exit /b !VS_RC!
 )
 cd /d "%VS_UPDATE_DIR%"
 

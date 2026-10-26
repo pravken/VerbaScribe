@@ -251,3 +251,32 @@ class UpdateSourceTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PinnedDownloadsTest(unittest.TestCase):
+    """What the app downloads is fixed: the GPU wheel by a hash, Hugging Face models by a commit."""
+
+    def test_the_gpu_wheel_has_a_hash_for_the_pinned_onnxruntime(self):
+        import re
+        from pathlib import Path
+
+        from app.onnx_gpu import WHEEL_HASHES
+
+        req = (Path(__file__).resolve().parents[1] / "requirements.txt").read_text(encoding="utf-8")
+        version = re.search(r"^onnxruntime==([\w.]+)", req, flags=re.M).group(1)
+        self.assertIn((version, "cp310"), WHEEL_HASHES)  # setup.bat and the release build use Python 3.10
+
+    def test_hugging_face_downloads_name_a_revision(self):
+        import re
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1] / "app"
+        # Not pinned yet: the commit has to be read on the PC (Hugging Face is closed to the cloud session)
+        known = {("dub_worker.py", '"adefossez/HTDemucs", "htdemucs.yaml"'), ("dub_worker.py", '"adefossez/HTDemucs", f"{sig}.safetensors"')}
+        loose = []
+        for f in sorted(root.glob("*.py")):
+            for m in re.finditer(r"\b(?:hf_hub_download|snapshot_download)\(([^()]*(?:\([^()]*\)[^()]*)*)\)", f.read_text(encoding="utf-8")):
+                args = m.group(1)
+                if "revision=" not in args and "*args" not in args and (f.name, args.strip()) not in known:
+                    loose.append(f"{f.name}: {args.strip()[:80]}")
+        self.assertEqual(loose, [])
