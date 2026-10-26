@@ -46,7 +46,8 @@ def with_options(m: Dict[str, Any], opts: Optional[Dict[str, Any]], fmt: str = "
     if opts.get("nofill") and fmt in NOFILL_FORMATS:
         from app.text_utils import clean_filler_words_in_segments
 
-        out["segments"], _ = clean_filler_words_in_segments(m.get("segments") or [])
+        # The ids stay: the translations are found by them
+        out["segments"], _ = clean_filler_words_in_segments(m.get("segments") or [], renumber=False)
     return out
 
 

@@ -111,6 +111,25 @@ class ExportOptionsTest(unittest.TestCase):
         js = build_export_bytes(m, "json", opts={"nofill": True})[0].decode("utf-8")
         self.assertIn("Эээ", js)
 
+    def test_without_fillers_keeps_each_translation_on_its_line(self):
+        try:
+            from app.export_build import build_export_bytes
+        except ImportError:  # python-docx is not installed
+            self.skipTest("app dependencies not installed")
+
+        def srt(segs, tr):
+            m = {"id": 1, "title": "T", "created_at": "2026-01-01 10:00:00", "segments": segs, "speakers": {},
+                 "translations": {"en": {"model": "x", "segments": {k: {"text": v, "stale": False} for k, v in tr.items()}}}}
+            return build_export_bytes(m, "srt", lang="en", opts={"nofill": True})[0].decode("utf-8")
+
+        # A dictation's only line has the id 0
+        self.assertIn("Hello world", srt([{"id": 0, "start": 0.0, "end": 2.0, "text": "Привет мир"}], {"0": "Hello world"}))
+        # A line of fillers only is left out: the next lines keep their own translations
+        out = srt([{"id": 1, "start": 0.0, "end": 1.0, "text": "Э-э."}, {"id": 2, "start": 1.0, "end": 2.0, "text": "Первая."},
+                   {"id": 3, "start": 2.0, "end": 3.0, "text": "Вторая."}], {"1": "Uh.", "2": "First.", "3": "Second."})
+        self.assertNotIn("Uh.", out)
+        self.assertLess(out.index("First."), out.index("Second."))
+
 
 if __name__ == "__main__":
     unittest.main()
