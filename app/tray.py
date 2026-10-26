@@ -390,6 +390,7 @@ class Tray:
         if msg == WM_CLOSE:
             user32.UnregisterHotKey(hwnd, HOTKEY_ID)
             user32.UnregisterHotKey(hwnd, DICTATION_HOTKEY_ID)
+            user32.UnregisterHotKey(hwnd, TRANSLATE_HOTKEY_ID)
             shell32.Shell_NotifyIconW(NIM_DELETE, ctypes.byref(self._nid(0)))
             user32.DestroyWindow(hwnd)
             return 0

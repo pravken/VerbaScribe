@@ -1361,17 +1361,22 @@ function captureHotkey(e) {
   refreshSettingsChanged();
 }
 
-function clearHotkey() {
-  document.getElementById('set-record-hotkey').value = '';
-  document.getElementById('hotkey-status').textContent = t('rdSasHotkeySaved');
+// «Отключить» of a hotkey: the empty value is saved like a new combination
+function clearHotkey(inputId = 'set-record-hotkey') {
+  document.getElementById(inputId).value = '';
+  const status = { 'set-record-hotkey': 'hotkey-status', 'set-dictation-hotkey': 'dictation-hotkey-status',
+                   'set-translate-hotkey': 'translate-hotkey-status' }[inputId];
+  const box = status && document.getElementById(status);
+  if (box) { box.textContent = t('rdSasHotkeySaved'); box.className = 'text-[11.5px] text-apple-tertiary'; }
   scheduleSettingsSave();
   refreshSettingsChanged();
 }
 
 async function loadHotkeyStatus() {
   const st = await fetch('/api/hotkey').then(r => r.json()).catch(() => null);
-  // The recording hotkey, and the dictation with translation (registered by the tray, app/tray.py)
-  for (const [id, one] of [['hotkey-status', st], ['translate-hotkey-status', st && st.translate]]) {
+  // The recording hotkey and the two of the dictation (registered by the tray, app/tray.py)
+  for (const [id, one] of [['hotkey-status', st], ['dictation-hotkey-status', st && st.dictation],
+                           ['translate-hotkey-status', st && st.translate]]) {
     const box = document.getElementById(id);
     if (!box) continue;
     if (!one || one.ok === null || one.ok === undefined) { box.textContent = ''; continue; }

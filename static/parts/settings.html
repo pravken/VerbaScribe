@@ -690,12 +690,13 @@
               <input id="set-dictation-hotkey" type="text" readonly data-keydown="captureHotkey" data-keydown-args='[{"$": "event"}]' data-focus="selectOnFocus" data-focus-args='[{"$": "el"}]'
                 data-i18n-title="tipDictation" title="Нажмите сочетание: начнётся запись микрофона; нажмите ещё раз — текст появится там, где стоит курсор (в любой программе)"
                 class="w-44 h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono focus:outline-none focus:border-apple-blue cursor-pointer" />
-              <button data-click="clearField" data-click-args='["set-dictation-hotkey"]' class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11.5px]" data-i18n="hotkeyClear">Отключить</button>
+              <button data-click="clearHotkey" data-click-args='["set-dictation-hotkey"]' class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11.5px]" data-i18n="hotkeyClear">Отключить</button>
               <select id="set-dictation-language" data-i18n-title="a11yDictationLang" title="Язык диктовки" class="h-7 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none">
                 <option value="auto" data-i18n="studioSpeechAuto">Авто</option>
                 <option value="ru">Русский</option>
                 <option value="en">English</option>
               </select>
+              <span id="dictation-hotkey-status" class="text-[11.5px] text-apple-tertiary"></span>
             </div>
             <p class="text-[11px] text-apple-tertiary mt-1" data-i18n="dictationHint">Нажмите и говорите, нажмите ещё раз — текст напечатается там, где стоит курсор, в любой программе. Только микрофон, в медиатеку ничего не сохраняется.</p>
           </div>
@@ -706,7 +707,7 @@
               <input id="set-translate-hotkey" type="text" readonly data-keydown="captureHotkey" data-keydown-args='[{"$": "event"}]' data-focus="selectOnFocus" data-focus-args='[{"$": "el"}]'
                 data-i18n-title="tipDictTr" title="Нажмите сочетание: говорите на своём языке, а в программу вставится перевод"
                 class="w-44 h-8 bg-apple-sidebar border apple-border rounded-lg px-2.5 text-xs text-white font-mono focus:outline-none focus:border-apple-blue cursor-pointer" />
-              <button data-click="clearField" data-click-args='["set-translate-hotkey"]' class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11.5px]" data-i18n="hotkeyClear">Отключить</button>
+              <button data-click="clearHotkey" data-click-args='["set-translate-hotkey"]' class="ui-btn ui-btn-subtle h-7 px-2.5 text-[11.5px]" data-i18n="hotkeyClear">Отключить</button>
               <label for="set-dictation-translate-to" class="text-[11.5px] text-apple-secondary" data-i18n="dictTrTo">на</label>
               <select id="set-dictation-translate-to" class="h-7 bg-apple-sidebar border apple-border rounded-lg px-2 text-xs text-white focus:outline-none">
                 <option value="en">English</option>

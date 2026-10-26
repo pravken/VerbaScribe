@@ -151,7 +151,6 @@ function preventThen(ev, name, ...args) { ev.preventDefault(); window[name](...a
 function onEnter(ev, name, ...args) { if (ev.key === 'Enter') window[name](...args); }
 function blurOnEnter(ev, el) { if (ev.key === 'Enter') el.blur(); }
 function selectOnFocus(el) { el.select(); }
-function clearField(id) { document.getElementById(id).value = ''; }
 function clickElement(id) { document.getElementById(id).click(); }
 function showFixed2(el, id) { document.getElementById(id).textContent = Number(el.value).toFixed(2); }
 function removeElement(el) { el.remove(); }
