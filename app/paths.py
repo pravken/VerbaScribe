@@ -233,6 +233,13 @@ def _resolve_data_dir() -> Path:
     return DATA_DIR
 
 
+# The sound and video files the app takes in (import, the watched folder, a backup's media); the same
+# list as MEDIA_EXT of the page (static/js/library.js). ".ts" is left out: TypeScript files share it.
+MEDIA_EXTENSIONS = frozenset({
+    ".mp4", ".mkv", ".mov", ".webm", ".avi", ".m4v", ".mpg", ".mpeg", ".3gp", ".wmv", ".flv",
+    ".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".oga", ".opus", ".wma", ".amr", ".aif", ".aiff", ".mka",
+})
+
 DATA_DIR = _resolve_data_dir()
 UPLOADS_DIR = DATA_DIR / "uploads"
 AUDIO_DIR = DATA_DIR / "audio"

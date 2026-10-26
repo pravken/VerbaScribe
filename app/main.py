@@ -17,7 +17,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from app import __version__
-from app.paths import APP_DIR as BASE_DIR, SESSION_TOKEN_FILE, UPLOADS_DIR, recordings_dir
+from app.paths import APP_DIR as BASE_DIR, MEDIA_EXTENSIONS, SESSION_TOKEN_FILE, UPLOADS_DIR, recordings_dir
 from app.settings_schema import as_int
 from app.database import (
     create_meeting,
@@ -55,20 +55,7 @@ def _ensure_not_processing(meeting_id: int) -> None:
 STATIC_DIR = BASE_DIR / "static"
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
-SUPPORTED_EXTENSIONS = {
-    ".mp4",
-    ".mkv",
-    ".webm",
-    ".mov",
-    ".avi",
-    ".mp3",
-    ".wav",
-    ".m4a",
-    ".ogg",
-    ".flac",
-    ".aac",
-    ".wma",
-}
+SUPPORTED_EXTENSIONS = MEDIA_EXTENSIONS
 
 # --- Local session security ---
 # The server only listens on localhost, but any web page open in a browser can still send

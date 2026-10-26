@@ -31,7 +31,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from app.paths import DATA_DIR, DB_PATH
+from app.paths import DATA_DIR, DB_PATH, MEDIA_EXTENSIONS
 
 PENDING = DATA_DIR / "meetings.restore-pending.db"
 busy = 0  # a copy is being written or read (app/app_status.py: the app does not quit in the middle)
@@ -41,7 +41,6 @@ RESTORED_FOLDER = "Восстановлено из копии"
 LOCAL_SETTINGS = ("ollama_url", "llm_provider", "llm_cloud_provider", "llm_cloud_consent", "llm_base_url_openai_compat",
                   "calendar_ics", "recordings_dir", "export_dir", "obsidian_vault", "obsidian_subfolder",
                   "watch_folder", "watch_folder_baseline", "watch_folder_recursive", "media_retention_days")
-MEDIA_EXTENSIONS = {".mp4", ".mkv", ".webm", ".mov", ".avi", ".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac", ".wma"}
 
 
 def _media_files() -> List[Dict[str, Any]]:
