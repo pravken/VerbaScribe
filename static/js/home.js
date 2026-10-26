@@ -519,8 +519,10 @@ async function hmDictCopy() {
   catch (e) { showError(String(e.message || e)); }
 }
 
-// The tray's "Open the last recording" (run.py): the newest one of the library
-function openLastRecording() {
+// The tray's "Open the last recording" (run.py): the newest one of the library (read first when the
+// window was just opened and the list has not come yet)
+async function openLastRecording() {
+  if (!(state.meetings || []).length) await loadMeetingsList().catch(() => {});
   const last = [...(state.meetings || [])].sort((x, y) =>
     String(y.recorded_at || y.created_at || '').localeCompare(String(x.recorded_at || x.created_at || '')))[0];
   if (last) openMeeting(last.id);
