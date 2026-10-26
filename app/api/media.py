@@ -282,8 +282,14 @@ def api_dub_save(meeting_id: int, lang: str, kind: str) -> Dict[str, Any]:
 def api_dub_reveal(meeting_id: int, lang: str) -> Dict[str, Any]:
     import subprocess
 
+    from app.paths import DATA_DIR
+
     d = _find_dub(meeting_id, lang)
-    subprocess.Popen(["explorer.exe", f"/select,{Path(d['path']).resolve()}"])
+    path = Path(d["path"]).resolve()
+    # A dub is made in the data folder (database._dub_paths_to_storage): a path elsewhere is not shown
+    if not path.is_file() or DATA_DIR.resolve() not in path.parents:
+        raise HTTPException(status_code=404, detail="Файл дубляжа не найден")
+    subprocess.Popen(["explorer.exe", f"/select,{path}"])
     return {"ok": True}
 
 # --- Translate text ---

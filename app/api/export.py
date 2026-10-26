@@ -83,8 +83,9 @@ def api_reveal_path(payload: RevealPayload) -> Dict[str, Any]:
     """Highlights a saved file (or opens a folder) in Windows Explorer."""
     import subprocess
 
-    p = Path(payload.path)
-    if not p.exists():
+    try:
+        p = Path(payload.path).resolve(strict=True)  # a full path without "..": Explorer is never handed a relative one
+    except (OSError, RuntimeError, ValueError):
         raise HTTPException(status_code=404, detail="Файл не найден")
     try:
         if p.is_dir():
