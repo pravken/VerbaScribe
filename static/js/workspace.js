@@ -820,11 +820,13 @@ async function startDub() {
   closeModal('dub');
   const pending = state.pendingDubExport;
   state.pendingDubExport = null;
-  if (pending && pending.lang === document.getElementById('dub-lang').value) {
-    // The export that asked for this dub is saved when the dub is ready
+  if (pending) {
+    // The export that asked for this dub is saved when the dub is ready, in the language the window
+    // ended with (it may have been changed there)
     try {
       const r = await fetch(`/api/meetings/${m.id}/export-request`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(pending),
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...pending, lang: document.getElementById('dub-lang').value }),
       });
       const d = await r.json().catch(() => ({}));
       showToast(r.ok && d.status === 'queued' ? t('exportQueued').replace('{what}', () => t('exportWaiting_dub')).replace('{dir}', () => d.folder || '') : t('dubQueued'));
