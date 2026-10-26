@@ -16,7 +16,10 @@ user may have been sent, so nothing in it decides where files go or where data i
   folder (never over an existing file); a file that lived anywhere else goes to the recordings folder
   under RESTORED_FOLDER, and the restored database points to it;
 - the settings that hold addresses, folders and the cloud choice (LOCAL_SETTINGS) stay this computer's,
-  and so do the cloud API keys (they are moved into the restored database at the next start).
+  and so do the cloud API keys (they are moved into the restored database at the next start);
+- the copy's database brings data only: its triggers and views are dropped (SQL of its own that would
+  run here), its queue of files to delete is emptied, and the paths in its recordings are kept only
+  where they cannot reach this computer's other files (_clean_paths).
 """
 
 import json
@@ -37,7 +40,7 @@ RESTORED_FOLDER = "Восстановлено из копии"
 # Where data is sent and where files are written: taken from this computer, not from the copy
 LOCAL_SETTINGS = ("ollama_url", "llm_provider", "llm_cloud_provider", "llm_cloud_consent", "llm_base_url_openai_compat",
                   "calendar_ics", "recordings_dir", "export_dir", "obsidian_vault", "obsidian_subfolder",
-                  "watch_folder", "watch_folder_baseline", "watch_folder_recursive")
+                  "watch_folder", "watch_folder_baseline", "watch_folder_recursive", "media_retention_days")
 MEDIA_EXTENSIONS = {".mp4", ".mkv", ".webm", ".mov", ".avi", ".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac", ".wma"}
 
 
@@ -127,15 +130,92 @@ def _inside(path: Path, roots: List[Path]) -> bool:
     return any(p == r or r in p.parents for r in roots)
 
 
+def _is_media(path: str) -> bool:
+    return Path(path).suffix.lower() in MEDIA_EXTENSIONS
+
+
 def _media_target(original: str, zip_name: str, roots: List[Path], restored_dir: Path) -> Optional[Path]:
-    """Where a media file of the copy goes on this computer, or None when it is not a media file."""
+    """Where a media file of the copy goes on this computer, or None when it is not a media file. Only
+    a media file goes back to its own place, and only in a folder the app keeps media in (roots)."""
     name = Path(zip_name.replace("\\", "/")).name
-    if not name or Path(name).suffix.lower() not in MEDIA_EXTENSIONS:
+    if not name or not _is_media(name):
         return None
     target = Path(original) if original else None
-    if target is not None and target.name and target.is_absolute() and _inside(target, roots):
+    if (target is not None and target.name and target.is_absolute() and _is_media(original)
+            and target.suffix.lower() == Path(name).suffix.lower() and _inside(target, roots)):
         return target
     return restored_dir / name  # "<id>_<file name>": unique per recording
+
+
+def _drop_own_sql(conn: sqlite3.Connection) -> None:
+    """Triggers and views of the copy run their own SQL on this computer (a trigger can undo
+    _keep_local_settings): dropped. The app makes its own triggers again at the start (init_db)."""
+    for kind, name in conn.execute("SELECT type, name FROM sqlite_master WHERE type IN ('trigger', 'view')").fetchall():
+        conn.execute(f'DROP {"TRIGGER" if kind == "trigger" else "VIEW"} IF EXISTS "{name.replace(chr(34), chr(34) * 2)}"')
+
+
+def _clean_paths(conn: sqlite3.Connection, roots: List[Path], restored: Dict[int, str]) -> None:
+    """The paths in the copy's recordings are deleted or moved by later actions (deleting a recording,
+    its copies or its note, the Obsidian export): kept only where they cannot reach other files."""
+    from app.obsidian import vault_dir
+    from app.paths import AUDIO_DIR
+
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'pending_deletes'").fetchone():
+        conn.execute("DELETE FROM pending_deletes")  # deleted at the next start without a question
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(meetings)").fetchall()}
+    vault = vault_dir(_settings_here())
+    rows = conn.execute("SELECT * FROM meetings").fetchall()
+    names = [d[0] for d in conn.execute("SELECT * FROM meetings LIMIT 0").description]
+    for row in rows:
+        m = dict(zip(names, row))
+        mid = int(m["id"])
+        fields: Dict[str, Any] = {}
+        media = restored.get(mid) or str(m.get("media_path") or "")
+        if media and not _is_media(media):
+            fields.update(media_path="", media_removed=1)
+            media = ""
+        if "owns_media" in cols and m.get("owns_media") and not (mid in restored or (media and _inside(Path(media), roots))):
+            fields["owns_media"] = 0  # a file the app made itself lives in its folders
+        audio = str(m.get("audio_path") or "")
+        if audio and not (_is_media(audio) and _inside(Path(audio), [AUDIO_DIR.resolve()])):
+            fields["audio_path"] = ""
+        if "exports_json" in cols and (m.get("exports_json") or "[]") != "[]":
+            fields["exports_json"] = "[]"  # files saved anywhere: the copy cannot say which are its own
+        if "dubs_json" in cols:
+            dubs = _clean_dubs(m.get("dubs_json"))
+            if dubs is not None:
+                fields["dubs_json"] = dubs
+        note = str(m.get("obsidian_path") or "") if "obsidian_path" in cols else ""
+        if note and not (Path(note).suffix.lower() == ".md" and vault is not None and _inside(Path(note), [vault.resolve()])):
+            fields.update(obsidian_path="", obsidian_hash="")
+        if fields:
+            conn.execute(f"UPDATE meetings SET {', '.join(f'{k} = ?' for k in fields)} WHERE id = ?", (*fields.values(), mid))
+
+
+def _clean_dubs(raw: Any) -> Optional[str]:
+    """Dub files are stored relative to the data folder (database._dub_paths_to_storage): an entry with
+    an absolute path or one that leaves the folder is dropped. None: nothing to change."""
+    try:
+        dubs = json.loads(raw or "[]")
+    except (TypeError, ValueError):
+        return "[]"
+    if not isinstance(dubs, list):
+        return "[]"
+
+    def fine(p: Any) -> bool:
+        if not p:
+            return True
+        q = Path(str(p).replace("\\", "/"))
+        return not q.is_absolute() and not q.drive and ".." not in q.parts
+
+    kept = [d for d in dubs if isinstance(d, dict) and all(fine(d.get(k)) for k in ("path", "srt_path"))]
+    return None if len(kept) == len(dubs) else json.dumps(kept, ensure_ascii=False)
+
+
+def _settings_here() -> Dict[str, str]:
+    from app.database import get_all_settings
+
+    return get_all_settings()
 
 
 def _keep_local_settings(conn: sqlite3.Connection) -> None:
@@ -164,8 +244,10 @@ def _restore(src: Path) -> Dict[str, Any]:
     from app.database import get_all_settings
     from app.paths import recordings_dir
 
+    from app.paths import AUDIO_DIR, UPLOADS_DIR
+
     rec_dir = recordings_dir(get_all_settings().get("recordings_dir") or "")
-    roots = [DATA_DIR.resolve(), rec_dir.resolve()]
+    roots = [UPLOADS_DIR.resolve(), AUDIO_DIR.resolve(), rec_dir.resolve()]  # where the app keeps media
     restored_dir = rec_dir / RESTORED_FOLDER
     with zipfile.ZipFile(src) as z:
         manifest = _check(z)
@@ -176,9 +258,12 @@ def _restore(src: Path) -> Dict[str, Any]:
             try:
                 if conn.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
                     raise ValueError("База в копии повреждена")
+                _drop_own_sql(conn)
+                conn.commit()
                 n = conn.execute("SELECT COUNT(*) FROM meetings").fetchone()[0]
                 known = {int(r[0]): str(r[1] or "") for r in conn.execute("SELECT id, media_path FROM meetings")}
                 restored = skipped = 0
+                put_back: Dict[int, str] = {}
                 for f in manifest.get("media") or []:
                     name = str(f.get("name") or "")
                     try:
@@ -199,7 +284,9 @@ def _restore(src: Path) -> Dict[str, Any]:
                         shutil.copyfileobj(fin, fout)
                     if str(target) != original:  # moved into the recordings folder: the app owns this copy
                         conn.execute("UPDATE meetings SET media_path = ?, owns_media = 1 WHERE id = ?", (str(target), mid))
+                    put_back[mid] = str(target)
                     restored += 1
+                _clean_paths(conn, roots, put_back)
                 _keep_local_settings(conn)
                 conn.execute("DROP TABLE IF EXISTS secrets")  # keys come from this computer (apply_pending)
                 conn.commit()
