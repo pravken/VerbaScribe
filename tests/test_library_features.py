@@ -221,6 +221,20 @@ class PendingExportTest(unittest.TestCase):
         self.assertIn("Let us discuss the release.", files[0].read_text(encoding="utf-8"))
         self.assertEqual(database.get_pending_exports(m["id"]), [])
 
+    def test_a_later_export_keeps_the_menu_options_and_the_date_folder(self):
+        m = _done_meeting()
+        update_settings({"date_folders": "day"})
+        try:
+            database.set_pending_exports(m["id"], [{"kind": "doc", "fmt": "txt", "opts": {"times": False, "names": False}}])
+            pending_exports.process(m["id"])
+        finally:
+            update_settings({"date_folders": "off"})
+        files = [f for f in self.out.rglob("*") if f.is_file()]
+        self.assertEqual(len(files), 1)
+        self.assertNotEqual(files[0].parent, self.out)  # in the recording's date folder
+        self.assertNotIn("[00:00]", files[0].read_text(encoding="utf-8"))
+        self.assertIn(str(files[0]), database.get_meeting(m["id"]).get("exports") or [])
+
     def test_failed_job_drops_the_export(self):
         m = _done_meeting()
         database.set_pending_exports(m["id"], [{"kind": "doc", "fmt": "txt", "lang": "de", "variant": "translated", "tries": 1}])

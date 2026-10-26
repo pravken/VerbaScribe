@@ -37,7 +37,11 @@ def normalize(item: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError("Не указан язык дубляжа")
     if kind == "doc" and lang and fmt == "json":
         raise ValueError("Перевод экспортируется в DOCX, MD, TXT или SRT")
-    return {"kind": kind, "fmt": fmt, "lang": lang, "variant": variant, "tries": int(item.get("tries") or 0)}
+    raw_opts = item.get("opts") if isinstance(item.get("opts"), dict) else {}
+    # The options of the export menu (time stamps, names, without fillers), applied when the file is written
+    opts = {"times": raw_opts.get("times", True) is not False, "names": raw_opts.get("names", True) is not False,
+            "nofill": raw_opts.get("nofill") is True}
+    return {"kind": kind, "fmt": fmt, "lang": lang, "variant": variant, "opts": opts, "tries": int(item.get("tries") or 0)}
 
 
 def _has_translation(m: Dict[str, Any], lang: str) -> bool:
@@ -112,14 +116,20 @@ def request(meeting_id: int, raw: Dict[str, Any], model: Optional[str] = None) -
 
 
 def perform(m: Dict[str, Any], item: Dict[str, Any]) -> Optional[Path]:
-    """Writes one export into the export folder; returns the file (None for a queued video)."""
-    folder = default_export_dir()
+    """Writes one export into the export folder (the recording's date folder there when that is on),
+    as a Save would; returns the file (None for a queued video)."""
+    from app.database import add_export_path
+    from app.naming import in_date_folder
+    from app.obsidian import meeting_datetime
+
+    folder = in_date_folder(default_export_dir(), meeting_datetime(m))
     folder.mkdir(parents=True, exist_ok=True)
     kind = item["kind"]
     if kind == "doc":
-        content, _type, name = build_export_bytes(m, item["fmt"], item["lang"], item["variant"])
+        content, _type, name = build_export_bytes(m, item["fmt"], item["lang"], item["variant"], opts=item.get("opts"))
         out = unique_path(folder, name)
         out.write_bytes(content)
+        add_export_path(int(m["id"]), str(out))  # listed with the recording, like a saved export
         return out
     if kind in ("dub_media", "dub_srt"):
         d = _dub(m, item["lang"]) or {}
@@ -128,6 +138,7 @@ def perform(m: Dict[str, Any], item: Dict[str, Any]) -> Optional[Path]:
             raise LookupError("Файл дубляжа не найден")
         out = unique_path(folder, src.name)
         shutil.copy2(src, out)
+        add_export_path(int(m["id"]), str(out))
         return out
     if kind == "obsidian":
         from app.obsidian import export_meeting
@@ -156,6 +167,9 @@ def _video_subtitles(m: Dict[str, Any], item: Dict[str, Any], folder: Path) -> O
     out = default_output_path(m.get("title") or media.stem, media, track_lang or "orig", variant, mode)
     out = unique_path(folder, out.name)
     check_output_path(media, out)
+    from app.database import add_export_path
+
+    add_export_path(int(m["id"]), str(out))
     if mode == "soft":
         title = f"{track_lang.upper()} (AI translation)" if lang else (track_lang.upper() or "Subtitles")
         return mux_soft_subtitles(media, srt_text, track_lang, title, out)

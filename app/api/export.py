@@ -382,6 +382,7 @@ class ExportRequestPayload(BaseModel):
     fmt: str = ""
     lang: Optional[str] = None
     variant: str = "translated"
+    opts: Optional[Dict[str, Any]] = None  # times, names, nofill of the export menu
     model: Optional[str] = None
 
 @router.post("/api/meetings/{meeting_id}/export-request")
