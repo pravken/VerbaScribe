@@ -78,10 +78,10 @@ def build_export_bytes(
         from app.translation import build_cues, cues_to_srt, cues_to_vtt
 
         # Subtitles in readable pieces: the original is cut by its word timings, a translation in
-        # proportion to its length; the original names the speaker at the start of each phrase
+        # proportion to its length; with «Имена» the speaker is named at the start of each phrase
         cues = build_cues(
             m.get("segments") or [], (m.get("translations") or {}).get(lang) if lang else None,
-            variant=variant if lang else "original", speakers=m.get("speakers"), with_speaker=not lang and m["_export"]["names"],
+            variant=variant if lang else "original", speakers=m.get("speakers"), with_speaker=m["_export"]["names"],
         )
         if fmt == "vtt":
             return cues_to_vtt(cues).encode("utf-8"), "text/vtt; charset=utf-8", f"{base}.vtt"

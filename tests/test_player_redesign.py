@@ -130,6 +130,19 @@ class ExportOptionsTest(unittest.TestCase):
         self.assertNotIn("Uh.", out)
         self.assertLess(out.index("First."), out.index("Second."))
 
+    def test_names_option_applies_to_translated_subtitles(self):
+        try:
+            from app.export_build import build_export_bytes
+        except ImportError:  # python-docx is not installed
+            self.skipTest("app dependencies not installed")
+        m = {"id": 1, "title": "T", "created_at": "2026-01-01 10:00:00", "speakers": {"S1": {"name": "Анна"}},
+             "segments": [{"id": 1, "start": 0.0, "end": 2.0, "text": "Привет", "speaker": "S1"}],
+             "translations": {"en": {"model": "x", "segments": {"1": {"text": "Hello", "stale": False}}}}}
+        named = build_export_bytes(m, "srt", lang="en")[0].decode("utf-8")
+        bare = build_export_bytes(m, "srt", lang="en", opts={"names": False})[0].decode("utf-8")
+        self.assertIn("[Анна] Hello", named)
+        self.assertNotIn("Анна", bare)
+
 
 if __name__ == "__main__":
     unittest.main()
