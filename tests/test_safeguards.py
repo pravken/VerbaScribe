@@ -272,7 +272,7 @@ class PinnedDownloadsTest(unittest.TestCase):
 
         root = Path(__file__).resolve().parents[1] / "app"
         # Not pinned yet: the commit has to be read on the PC (Hugging Face is closed to the cloud session)
-        known = {("dub_worker.py", '"adefossez/HTDemucs", "htdemucs.yaml"'), ("dub_worker.py", '"adefossez/HTDemucs", f"{sig}.safetensors"')}
+        known = set()
         loose = []
         for f in sorted(root.glob("*.py")):
             for m in re.finditer(r"\b(?:hf_hub_download|snapshot_download)\(([^()]*(?:\([^()]*\)[^()]*)*)\)", f.read_text(encoding="utf-8")):
