@@ -99,7 +99,7 @@ jobs:
       # lock file modes and ACLs). filelock is here only for huggingface-hub and torch, locking in the
       # user's own model and cache folders; 4.2 needs Python 3.11 and the app runs on 3.10, and 4.0.9
       # brings two more of the same (-112912, -112934). Accepted until the move to Python 3.11
-      # (docs/python311-session.md), which drops them.
+      # (docs/pc-session-next.md, part A), which drops them.
       - name: pip-audit
         run: >-
           pip-audit -r requirements.txt --disable-pip --no-deps --progress-spinner off
