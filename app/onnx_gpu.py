@@ -156,6 +156,8 @@ def install_async() -> Dict[str, Any]:
 # The GPU wheel is checked like every package of requirements.txt: by its hash on PyPI (the Python
 # 3.10 build setup.bat makes the environment with). A version without a known hash is not installed.
 WHEEL_HASHES = {
+    ("1.23.2", "cp311"): "054282614c2fc9a4a27d74242afbae706a410f1f63cc35bc72f99709029a5ba4",
+    # An installation whose environment could not move to Python 3.11 yet (the update keeps the old one)
     ("1.23.2", "cp310"): "deba091e15357355aa836fd64c6c4ac97dd0c4609c38b08a69675073ea46b321",
 }
 

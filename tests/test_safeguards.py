@@ -264,7 +264,7 @@ class PinnedDownloadsTest(unittest.TestCase):
 
         req = (Path(__file__).resolve().parents[1] / "requirements.txt").read_text(encoding="utf-8")
         version = re.search(r"^onnxruntime==([\w.]+)", req, flags=re.M).group(1)
-        self.assertIn((version, "cp310"), WHEEL_HASHES)  # setup.bat and the release build use Python 3.10
+        self.assertIn((version, "cp311"), WHEEL_HASHES)  # setup.bat and the release build use Python 3.11
 
     def test_hugging_face_downloads_name_a_revision(self):
         import re

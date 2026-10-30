@@ -4,6 +4,11 @@
 // app/ is here.
 const SERVER_TEXT_EN = {
   " на видеокарте": " on the video card",
+  "Не удалось найти или установить Python 3.11 с python.org": "Could not find or install Python 3.11 from python.org",
+  "Нет ни uv, ни Python 3.11: запустите setup.bat": "Neither uv nor Python 3.11 is installed: run setup.bat",
+  "Не удалось создать окружение Python 3.11": "Could not create the Python 3.11 environment",
+  "Новое окружение не создано": "The new environment was not created",
+  "VerbaScribe не закрылся за две минуты": "VerbaScribe did not close within two minutes",
   "FFmpeg не найден. Установите его в Настройках (кнопка «Скачать FFmpeg») или добавьте ffmpeg в PATH.": "FFmpeg was not found. Install it in Settings (\"Download FFmpeg\") or add ffmpeg to PATH.",
   "Ollama вернула не все векторы": "Ollama did not return all vectors",
   "Ollama не запущена или в ней нет моделей — перевод невозможен": "Ollama is not running or has no models — translation is not possible",
