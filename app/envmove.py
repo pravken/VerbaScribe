@@ -228,6 +228,11 @@ def _main(argv) -> int:
     ap.add_argument("--pid", type=int, default=0)
     ap.add_argument("--no-restart", action="store_true")  # update.bat: it starts the app itself
     a = ap.parse_args(argv)
+    for stream in (sys.stdout, sys.stderr):  # update.bat's window or a log in another code page
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
     app_dir = Path(a.app_dir)
     if a.data_dir:
         data_dir = Path(a.data_dir)
