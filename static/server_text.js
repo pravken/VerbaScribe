@@ -111,7 +111,7 @@ const SERVER_TEXT_EN = {
   "Не удалось свести запись, и её части пусты": "The recording could not be mixed, and its parts are empty",
   "Не удалось сделать кадр": "Could not take a frame",
   "Не удалось сохранить звук": "Could not save the sound",
-  "Не удалось создать окружение .venv-dub (нужен Python 3.10 или uv)": "Could not create the .venv-dub environment (Python 3.10 or uv is needed)",
+  "Не удалось создать окружение .venv-dub (нужен Python 3.11 или uv)": "Could not create the .venv-dub environment (Python 3.11 or uv is needed)",
   "Не удалось убрать шум из фона (FFmpeg)": "Could not remove the background noise (FFmpeg)",
   "Не удалось установить chatterbox-tts (подробности в журнале)": "Could not install chatterbox-tts (details in the log)",
   "Не удалось установить библиотеки (подробности в logs\\update.log)": "Could not install the libraries (details in logs\\update.log)",

@@ -167,6 +167,18 @@ def _run(cmd: List[str], start_pct: int, end_pct: int, env: Dict[str, str]) -> i
     return rc
 
 
+def _venv_python_version() -> tuple:
+    """The Python of .venv-dub from its pyvenv.cfg ("version_info = 3.10.11"); (0,) when unknown."""
+    try:
+        for line in (DUB_VENV / "pyvenv.cfg").read_text(encoding="utf-8").splitlines():
+            key, _, value = line.partition("=")
+            if key.strip() in ("version_info", "version"):
+                return tuple(int(x) for x in value.strip().split(".")[:2])
+    except (OSError, ValueError):
+        pass
+    return (0,)
+
+
 def _install() -> None:
     env = dict(os.environ)
     env["PATH"] = os.pathsep.join(
@@ -177,16 +189,20 @@ def _install() -> None:
     try:
         DUB_READY_MARKER.unlink(missing_ok=True)
         _set(step="venv", progress=2)
+        if DUB_PYTHON.is_file() and _venv_python_version() < (3, 11):
+            # Made on Python 3.10 before: the lock is for 3.11 now, the environment is made again
+            _log("Окружение дубляжа на Python 3.10: создаётся заново на 3.11")
+            shutil.rmtree(DUB_VENV, ignore_errors=True)
         if not DUB_PYTHON.is_file():
             if uv:
                 # A uv-managed Python avoids the Store Python's AppData virtualization
-                if _run([uv, "venv", str(DUB_VENV), "--python", "3.10", "--python-preference", "only-managed"], 2, 8, env) != 0:
-                    _run([uv, "venv", str(DUB_VENV), "--python", "3.10"], 2, 8, env)
+                if _run([uv, "venv", str(DUB_VENV), "--python", "3.11", "--python-preference", "only-managed"], 2, 8, env) != 0:
+                    _run([uv, "venv", str(DUB_VENV), "--python", "3.11"], 2, 8, env)
             if not DUB_PYTHON.is_file():
                 base = getattr(sys, "_base_executable", None) or sys.executable
                 _run([base, "-m", "venv", str(DUB_VENV)], 2, 8, env)
             if not DUB_PYTHON.is_file():
-                raise RuntimeError("Не удалось создать окружение .venv-dub (нужен Python 3.10 или uv)")
+                raise RuntimeError("Не удалось создать окружение .venv-dub (нужен Python 3.11 или uv)")
 
         _set(step="packages", progress=8)
         if uv:

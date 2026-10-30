@@ -101,8 +101,8 @@ jobs:
           --ignore-vuln PYSEC-2026-3447 --ignore-vuln GHSA-xmj3-9gf7-h52w
 
       # The dubbing environment's lock. Its findings cannot be fixed there for now: chatterbox-tts 0.1.7
-      # pins transformers 5.2.0 and diffusers 0.29.0, perth needs setuptools<81, and Pillow 13 needs
-      # Python 3.11 (the environment is 3.10). So they are listed as a warning instead of failing.
+      # pins transformers 5.2.0 and diffusers 0.29.0 and perth needs setuptools<81. So they are listed
+      # as a warning instead of failing.
       - name: pip-audit (dubbing environment)
         run: |
           pip-audit -r requirements-dub.txt -r requirements-dub-chatterbox.txt --disable-pip --no-deps --progress-spinner off \
