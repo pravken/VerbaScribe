@@ -9,14 +9,18 @@ echo ==============================================================
 set "DUBPY=.venv-dub\Scripts\python.exe"
 set "TORCH_INDEX=https://download.pytorch.org/whl/cu124"
 
-if not exist "%DUBPY%" (
-    where uv >nul 2>nul && (uv venv .venv-dub --python 3.10 --python-preference only-managed || uv venv .venv-dub --python 3.10)
+rem An environment made on Python 3.10 before: the lock is for 3.11 now, it is made again
+if exist "%DUBPY%" (
+    "%DUBPY%" -c "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)" || rmdir /s /q .venv-dub
 )
 if not exist "%DUBPY%" (
-    py -3.10 -m venv .venv-dub
+    where uv >nul 2>nul && (uv venv .venv-dub --python 3.11 --python-preference only-managed || uv venv .venv-dub --python 3.11)
 )
 if not exist "%DUBPY%" (
-    echo Could not create .venv-dub. Install Python 3.10 or run setup.bat first.
+    py -3.11 -m venv .venv-dub
+)
+if not exist "%DUBPY%" (
+    echo Could not create .venv-dub. Install Python 3.11 or run setup.bat first.
     exit /b 1
 )
 

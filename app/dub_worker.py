@@ -51,18 +51,33 @@ def _device() -> str:
 _demucs_model = None
 
 
+def _load_demucs():
+    """demucs get_model("htdemucs") from the fixed commit: the same steps as demucs.hf.get_hf_model
+    (demucs 4.1), which always takes main."""
+    import yaml
+    from demucs.apply import BagOfModels
+    from demucs.hf import load_safetensors_model
+    from huggingface_hub import hf_hub_download
+
+    with open(hf_hub_download("adefossez/HTDemucs", "htdemucs.yaml", revision=DEMUCS_REVISION)) as f:
+        bag = yaml.safe_load(f)
+    models = [load_safetensors_model(hf_hub_download("adefossez/HTDemucs", f"{sig}.safetensors", revision=DEMUCS_REVISION))
+              for sig in bag["models"]]
+    model = BagOfModels(models, bag.get("weights"), bag.get("segment"))
+    model.eval()
+    return model
+
+
 def cmd_separate(req):
     global _demucs_model
     import numpy as np
     import soundfile as sf
     import torch
     from demucs.apply import apply_model
-    from demucs.pretrained import get_model
 
     dev = _device()
     if _demucs_model is None:
-        _demucs_model = get_model("htdemucs")
-        _demucs_model.eval()
+        _demucs_model = _load_demucs()
     model = _demucs_model
     out_dir = Path(req["out_dir"])
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -233,6 +248,9 @@ def cmd_tts(req):
 
 # Same file list as ChatterboxMultilingualTTS.from_pretrained (0.1.7), from a fixed commit
 CHATTERBOX_REVISION = "5bb1f6ee58e50c3b8d408bc82a6d3740c2db6e18"
+# Demucs weights from a fixed commit too (the code is MIT; the card lost its license line on
+# 2026-08-31, so a later commit is taken only after checking it)
+DEMUCS_REVISION = "cbc8a9b1a87023b7fd74e7b3412e6321c0eab003"
 _CHATTERBOX_FILES = ["ve.pt", "t3_mtl23ls_v2.safetensors", "s3gen.pt", "grapheme_mtl_merged_expanded_v1.json",
                      "conds.pt", "Cangjie5_TC.json"]
 
@@ -248,10 +266,10 @@ def cmd_download(req):
         elif name == "demucs":
             import yaml
 
-            with open(hf_hub_download("adefossez/HTDemucs", "htdemucs.yaml")) as f:
+            with open(hf_hub_download("adefossez/HTDemucs", "htdemucs.yaml", revision=DEMUCS_REVISION)) as f:
                 bag = yaml.safe_load(f)
             for sig in bag["models"]:
-                hf_hub_download("adefossez/HTDemucs", f"{sig}.safetensors")
+                hf_hub_download("adefossez/HTDemucs", f"{sig}.safetensors", revision=DEMUCS_REVISION)
         else:
             raise RuntimeError(f"unknown model {name!r}")
         done.append(name)

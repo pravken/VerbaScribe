@@ -4,6 +4,11 @@
 // app/ is here.
 const SERVER_TEXT_EN = {
   " на видеокарте": " on the video card",
+  "Не удалось найти или установить Python 3.11 с python.org": "Could not find or install Python 3.11 from python.org",
+  "Нет ни uv, ни Python 3.11: запустите setup.bat": "Neither uv nor Python 3.11 is installed: run setup.bat",
+  "Не удалось создать окружение Python 3.11": "Could not create the Python 3.11 environment",
+  "Новое окружение не создано": "The new environment was not created",
+  "VerbaScribe не закрылся за две минуты": "VerbaScribe did not close within two minutes",
   "FFmpeg не найден. Установите его в Настройках (кнопка «Скачать FFmpeg») или добавьте ffmpeg в PATH.": "FFmpeg was not found. Install it in Settings (\"Download FFmpeg\") or add ffmpeg to PATH.",
   "Ollama вернула не все векторы": "Ollama did not return all vectors",
   "Ollama не запущена или в ней нет моделей — перевод невозможен": "Ollama is not running or has no models — translation is not possible",
@@ -106,7 +111,7 @@ const SERVER_TEXT_EN = {
   "Не удалось свести запись, и её части пусты": "The recording could not be mixed, and its parts are empty",
   "Не удалось сделать кадр": "Could not take a frame",
   "Не удалось сохранить звук": "Could not save the sound",
-  "Не удалось создать окружение .venv-dub (нужен Python 3.10 или uv)": "Could not create the .venv-dub environment (Python 3.10 or uv is needed)",
+  "Не удалось создать окружение .venv-dub (нужен Python 3.11 или uv)": "Could not create the .venv-dub environment (Python 3.11 or uv is needed)",
   "Не удалось убрать шум из фона (FFmpeg)": "Could not remove the background noise (FFmpeg)",
   "Не удалось установить chatterbox-tts (подробности в журнале)": "Could not install chatterbox-tts (details in the log)",
   "Не удалось установить библиотеки (подробности в logs\\update.log)": "Could not install the libraries (details in logs\\update.log)",

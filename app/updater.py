@@ -49,7 +49,8 @@ DOWNLOAD_PREFIX = f"https://github.com/{GITHUB_REPO}/releases/download/"
 # checksum alone is checked, as before the key existed.
 RELEASE_PUBLIC_KEY = "RWT8fmjh8HjA/sAFcnc7vHWhzK+i+OircfoKXDPiKs5QnNnrGdiRRIpB"
 # Never replaced by an update: user data, models and the Python environments
-PROTECTED = {".venv", ".venv-dub", ".python", "models", "data", "node_modules", ".git"}
+# .venv-new and .venv-old: the move to Python 3.11 (app/envmove.py)
+PROTECTED = {".venv", ".venv-new", ".venv-old", ".venv-dub", ".python", "models", "data", "node_modules", ".git"}
 
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
 
