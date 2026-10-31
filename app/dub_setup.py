@@ -78,11 +78,22 @@ def _marked_requirements() -> Optional[str]:
     return m.group(1) if m else None
 
 
+def _has_voxcpm() -> bool:
+    """The voice model's package is in .venv-dub (an environment made before 0.7.0 has Chatterbox)."""
+    return any(DUB_VENV.glob("Lib/site-packages/voxcpm")) or any(DUB_VENV.glob("lib/python*/site-packages/voxcpm"))
+
+
 def is_outdated() -> bool:
     """The environment was made for an older requirements-dub.txt (an update changed it): it needs
-    its packages installed again before dubbing."""
+    its packages installed again before dubbing. A ready mark without the requirements it was made
+    with (an old version, or a folder updated with git) counts as outdated when the voice model's
+    package is missing: such an environment was made for Chatterbox."""
+    if not DUB_READY_MARKER.is_file():
+        return False
     marked = _marked_requirements()
-    return marked is not None and marked != _requirements_hash()
+    if marked is None:
+        return not _has_voxcpm()
+    return marked != _requirements_hash()
 
 
 def _verify() -> bool:

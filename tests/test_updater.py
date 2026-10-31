@@ -193,6 +193,21 @@ class ApplyUpdateTest(unittest.TestCase):
             self.assertFalse(dub_setup.is_outdated())
             self.assertTrue(dub_setup.is_installed())
 
+    def test_an_old_mark_without_voxcpm_is_outdated(self):
+        """A folder updated with git keeps the mark of its Chatterbox environment, with no
+        requirements in it: without the voxcpm package the environment is not ready."""
+        from app import dub_setup
+
+        venv = self.app / ".venv-dub"
+        marker = venv / "verbascribe-dub-ready.txt"
+        marker.parent.mkdir()
+        marker.write_text("Verified 2026-01-01: cuda=True\n")
+        with mock.patch.object(dub_setup, "DUB_READY_MARKER", marker), mock.patch.object(dub_setup, "DUB_VENV", venv):
+            self.assertTrue(dub_setup.is_outdated())
+            self.assertFalse(dub_setup.is_installed())
+            (venv / "Lib" / "site-packages" / "voxcpm").mkdir(parents=True)
+            self.assertFalse(dub_setup.is_outdated())
+
 
 
 class AutoUpdateTest(unittest.TestCase):
