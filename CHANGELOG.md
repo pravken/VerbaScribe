@@ -8,6 +8,13 @@ Betas (`vX.Y.Z-beta.N`) show the sections of their coming version.
 
 ## 0.7.0 — English
 
+### In the second beta (0.7.0-beta.2)
+- **Dubbing:** an environment made for Chatterbox before (updated with git or by an older version) is
+  no longer taken as ready, which failed the dub with «No module named 'voxcpm'». The Dub window offers to
+  install the environment again.
+- Release pages and this changelog put English first; the README has a cover; the license names
+  pravken as the copyright holder.
+
 ### In the first beta (0.7.0-beta.1)
 Everything of the 0.6.0 betas (Python 3.11, the audit fixes, the new look), and:
 - **Dubbing in the VoxCPM2 voice instead of Chatterbox.** In a blind listening test the new model won every pair:
@@ -19,6 +26,13 @@ Everything of the 0.6.0 betas (Python 3.11, the audit fixes, the new look), and:
 - Dubbing environment: transformers 5.22 closes four vulnerability advisories.
 
 ## 0.7.0
+
+### Во второй бете (0.7.0-beta.2)
+- **Дубляж:** окружение, сделанное раньше для Chatterbox (обновлённое через git или старой версией), больше
+  не считается готовым — из-за этого дубляж падал с «No module named 'voxcpm'». Окно «Дубляж» предлагает
+  установить окружение заново.
+- На страницах релизов и в этом журнале английский раздел идёт первым; в README появилась обложка; в лицензии
+  правообладатель — pravken.
 
 ### В первой бете (0.7.0-beta.1)
 Всё из бет 0.6.0 (Python 3.11, исправления по аудиту, новый вид программы) и:
