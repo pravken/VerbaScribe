@@ -621,8 +621,10 @@ function renderDubInfo(info) {
     let action;
     if (downloading) {
       action = `<span class="ui-btn bg-apple-blue/20 text-apple-blue font-mono animate-pulse">${dl.progress || 1}%</span>`;
-    } else if (item.installed) {
-      action = `<span class="ui-btn bg-apple-green/20 text-apple-green">${SVG_ICONS.check}<span>${escapeHtml(t('sdubWeightsReady'))}</span></span>
+    } else if (item.installed || item.legacy) {
+      // An old model (Chatterbox before 0.6.0) is only ever deleted
+      action = (item.legacy ? `<span class="ui-btn bg-white/5 text-apple-secondary">${escapeHtml(t('sdubWeightsOld'))}</span>`
+        : `<span class="ui-btn bg-apple-green/20 text-apple-green">${SVG_ICONS.check}<span>${escapeHtml(t('sdubWeightsReady'))}</span></span>`) + `
         <button data-id="${escapeHtml(item.id)}" data-click="deleteDubWeights" data-click-args='[{"$": "data", "k": "id"}]' ${busy ? 'disabled style="opacity:.4"' : ''}
           title="${escapeHtml(t('tipDeleteModel'))}" class="ui-btn ui-btn-subtle px-2 hover:text-apple-red">${SVG_ICONS.trash}</button>`;
     } else {
@@ -670,7 +672,7 @@ function renderDubInfo(info) {
 
 async function downloadDubWeights(ids) {
   const items = ((state.dubInfo && state.dubInfo.weights && state.dubInfo.weights.items) || [])
-    .filter(i => !i.installed && (!ids || ids.includes(i.id)));
+    .filter(i => !i.installed && !i.legacy && (!ids || ids.includes(i.id)));
   if (!items.length) return;
   const total = items.reduce((a, i) => a + (i.expected_bytes || 0), 0);
   const question = t('sdubDownloadConfirm')
@@ -731,12 +733,9 @@ function fillDubSettings(s) {
   const val = (k, d) => (s[k] == null || s[k] === '' ? d : s[k]);
   document.getElementById('set-dub-workers').value = val('dub_tts_workers', 'auto');
   document.getElementById('set-dub-stretch').value = val('dub_stretch', 'atempo');
-  const cfg = Number(val('dub_cfg_weight', '0.3'));
-  const exag = Number(val('dub_exaggeration', '0.5'));
+  const cfg = Number(val('dub_voice_cfg', '2'));
   document.getElementById('set-dub-cfg').value = cfg;
   document.getElementById('set-dub-cfg-val').textContent = cfg.toFixed(2);
-  document.getElementById('set-dub-exag').value = exag;
-  document.getElementById('set-dub-exag-val').textContent = exag.toFixed(2);
   document.getElementById('set-dub-denoise').checked = val('dub_denoise', 'false') === 'true';
   document.getElementById('set-dub-roomtone').checked = val('dub_room_tone', 'true') === 'true';
   syncDubNoiseControls('set');
@@ -746,8 +745,7 @@ function dubSettingsPayload() {
   return {
     dub_tts_workers: document.getElementById('set-dub-workers').value,
     dub_stretch: document.getElementById('set-dub-stretch').value,
-    dub_cfg_weight: String(document.getElementById('set-dub-cfg').value),
-    dub_exaggeration: String(document.getElementById('set-dub-exag').value),
+    dub_voice_cfg: String(document.getElementById('set-dub-cfg').value),
     dub_denoise: String(document.getElementById('set-dub-denoise').checked),
     dub_room_tone: String(document.getElementById('set-dub-roomtone').checked),
   };

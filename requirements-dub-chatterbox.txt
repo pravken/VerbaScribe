@@ -1,5 +1,0 @@
-# chatterbox-tts for the dubbing environment, installed with --no-deps (its demo-only gradio is not
-# needed; the runtime deps are in requirements-dub.txt). Hashes from PyPI, chatterbox-tts 0.1.7 (MIT).
-chatterbox-tts==0.1.7 \
-    --hash=sha256:83782500e3ad4e7c919132e9d7eb8755f29f57c5bde5ec48c655ca23a4eb113c \
-    --hash=sha256:ed8afae83819b40a25927c2ef3bcc67f928bdfcf434c1376c972e6039252a187

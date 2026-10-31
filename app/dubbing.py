@@ -6,7 +6,7 @@ Pipeline for a completed recording:
   2. translate the units with the local Ollama model, asking for a similar spoken length
   3. separate voice and background with Demucs                     (GPU worker, .venv-dub)
   4. synthesize every unit in the original speaker's voice with
-     Chatterbox Multilingual, using a reference cut from the clean vocals (GPU worker)
+     VoxCPM2, using a reference cut from the clean vocals (GPU worker)
   5. re-translate units that came out far too long, then time-fit each clip to its slot (FFmpeg atempo)
   6. mix the dubbed voice over the background and mux it into a new, clearly labelled file
 
@@ -60,7 +60,8 @@ def dub_memory_gb(duration_sec: float) -> float:
     return DUB_BASE_GB + max(0.0, float(duration_sec or 0)) * DUB_BYTES_PER_SEC / 2**30
 DUBS_DIR = DATA_DIR / "dubs"
 
-# Languages supported by Chatterbox Multilingual (code -> English name used in LLM prompts)
+# Languages of the dub (code -> English name used in LLM prompts): VoxCPM2 speaks 30, these are
+# the ones checked with it (bench-report/tts-candidates.md)
 DUB_LANGUAGES: Dict[str, str] = {
     "ar": "Arabic", "da": "Danish", "de": "German", "el": "Greek", "en": "English",
     "es": "Spanish", "fi": "Finnish", "fr": "French", "he": "Hebrew", "hi": "Hindi",
@@ -594,7 +595,7 @@ def _trim_silence(x: np.ndarray, sr: int, thresh_db: float = -42.0) -> np.ndarra
 def _cut_trailing_artifacts(x: np.ndarray, sr: int, expected_sec: float,
                             gap_sec: float = 0.4, silent_db: float = -35.0) -> np.ndarray:
     """
-    Chatterbox sometimes keeps generating after the sentence: a pause, then breaths, mumbling or
+    A voice model sometimes keeps generating after the sentence: a pause, then breaths, mumbling or
     noise. Cuts at the first long pause that starts after most of the expected speech, so that tail
     is neither played nor counted when the clip is fitted into its time slot.
     """
@@ -767,10 +768,8 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
     settings = get_all_settings()
     use_rubberband = settings.get("dub_stretch", "atempo") == "rubberband" and _ffmpeg_has_filter("rubberband")
     keep_original = settings.get("dub_keep_original_track", "true").lower() == "true"
-    # Chatterbox tip: a reference in another language than the target transfers its accent; a lower
-    # CFG weight reduces that at the cost of slightly less faithful pacing.
-    cfg_weight = float(settings.get("dub_cfg_weight", "0.3"))
-    exaggeration = float(settings.get("dub_exaggeration", "0.5"))
+    # VoxCPM2 guidance: higher follows the reference voice and manner closer, lower is freer
+    cfg_value = float(settings.get("dub_voice_cfg", "2.0"))
     # "Убрать шум": steady noise is removed from the dub's background and from the original track.
     # Otherwise the background stays as recorded and, optionally, the synthetic voice gets the
     # recording's own noise floor (room tone) so it does not sound pasted onto the scene.
@@ -808,7 +807,7 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
         total_dur = get_media_duration(orig_wav)
         _lap("prepare")
 
-        # 2-4. Translation (Ollama), voice/background separation (Demucs) and synthesis (Chatterbox)
+        # 2-4. Translation (Ollama), voice/background separation (Demucs) and synthesis (VoxCPM2)
         # overlap: Demucs runs while the first phrases are translated, and every translated batch is
         # voiced right away. The LLM and one or two TTS processes share the GPU until the translation
         # ends; then the LLM is unloaded and more TTS processes join for the rest.
@@ -878,7 +877,7 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
                 stats["tts_peak_vram_gb"] = max(float(stats.get("tts_peak_vram_gb") or 0.0), float(res.get("peak_vram_gb") or 0.0))
                 stats["tts_gen_sec"] = round(stats.get("tts_gen_sec", 0.0) + sum(by_id[u["id"]]["gen_sec"] for u in batch), 1)
 
-            tts_req = {"cfg_weight": cfg_weight, "exaggeration": exaggeration}
+            tts_req = {"cfg_value": cfg_value}
             pool = TtsPool(worker, 1, check_cancel, preload=True, threads=worker_threads)
             voiced = [0]
             voiced_lock = threading.Lock()
@@ -1082,7 +1081,7 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
         out_path = DUBS_DIR / f"{_safe_name(meeting.get('title') or media.stem)}.AI-dub.{target_lang}.{stamp}{ext}"
         notice = (
             f"AI-GENERATED DUB ({target_lang.upper()}): translated by a local LLM and voiced with a cloned "
-            "synthetic voice (Chatterbox, Perth watermark). Not the speakers' own words or voice. Made with VerbaScribe."
+            "synthetic voice (VoxCPM2, Perth watermark). Not the speakers' own words or voice. Made with VerbaScribe."
         )
         args = ["-i", str(media), "-i", str(dub_wav)]
         maps = (["-map", "0:v:0", "-c:v", "copy"] if is_video else ["-vn"]) + ["-map", "1:a:0"]

@@ -28,7 +28,7 @@ BOOLS = {
 }
 INTS = {"num_speakers": (0, 20), "idle_unload_minutes": (0, 24 * 60), "media_retention_days": (0, 3650),
         "onnx_gpu_batch": (1, 256), "work_day_start": (0, 23), "work_day_end": (0, 24)}
-FLOATS = {"dub_cfg_weight": (0.0, 2.0), "dub_exaggeration": (0.0, 2.0)}
+FLOATS = {"dub_voice_cfg": (1.0, 3.0)}  # VoxCPM2 guidance (cfg_value)
 CHOICES = {"llm_provider": {"ollama", "cloud"}, "date_folders": {"off", "day", "month", "year_month"},
            "record_source_mode": {"mic", "system", "both"}, "ui_scale": {"75", "90", "100", "115", "130", "150"}}
 FOLDERS = {"recordings_dir", "export_dir", "obsidian_vault", "watch_folder"}

@@ -2,7 +2,7 @@
 Model weights of the dub feature (models/dub) and its disk usage, for the Settings window.
 
 The weights live in a Hugging Face cache under models/dub/hf (HF_HOME of the dub worker). They are
-downloaded by the dub worker itself (the main app has no torch/chatterbox/demucs), on request from
+downloaded by the dub worker itself (the main app has no torch/voxcpm/demucs), on request from
 Settings or on the first dub. Progress is measured by the bytes that appeared on disk.
 """
 
@@ -18,16 +18,15 @@ from app.paths import MODELS_DIR, dir_size
 DUB_MODELS_DIR = MODELS_DIR / "dub"
 HF_HUB_DIR = DUB_MODELS_DIR / "hf" / "hub"
 
-# Files that ChatterboxMultilingualTTS.from_pretrained (0.1.7) and demucs get_model("htdemucs") fetch
+# The weights the dub worker loads (app/dub_worker.py: VoxCPM2 from its fixed commit, demucs htdemucs)
 DUB_WEIGHTS: List[Dict[str, Any]] = [
     {
-        "id": "chatterbox",
-        "name": "Chatterbox Multilingual",
-        "repo": "ResembleAI/chatterbox",
-        "files": ["ve.pt", "t3_mtl23ls_v2.safetensors", "s3gen.pt", "grapheme_mtl_merged_expanded_v1.json",
-                  "conds.pt", "Cangjie5_TC.json"],
-        "size_bytes": 3_200_000_000,
-        "license": "MIT",
+        "id": "voxcpm2",
+        "name": "VoxCPM2",
+        "repo": "openbmb/VoxCPM2",
+        "files": ["config.json", "model.safetensors"],
+        "size_bytes": 4_960_720_928,  # the model and its AudioVAE at the pinned commit (measured)
+        "license": "Apache-2.0",
     },
     {
         "id": "demucs",
@@ -39,7 +38,20 @@ DUB_WEIGHTS: List[Dict[str, Any]] = [
         "license": "MIT",
     },
 ]
-_BY_ID = {w["id"]: w for w in DUB_WEIGHTS}
+# The voice model of versions before 0.6.0: never downloaded any more, listed while it is on disk
+# so that its 3 GB can be deleted in Settings
+LEGACY_WEIGHTS: List[Dict[str, Any]] = [
+    {
+        "id": "chatterbox",
+        "name": "Chatterbox Multilingual",
+        "repo": "ResembleAI/chatterbox",
+        "files": ["t3_mtl23ls_v2.safetensors"],
+        "size_bytes": 3_200_000_000,
+        "license": "MIT",
+        "legacy": True,
+    },
+]
+_BY_ID = {w["id"]: w for w in DUB_WEIGHTS + LEGACY_WEIGHTS}
 
 
 def _repo_dir(repo: str) -> Path:
@@ -87,12 +99,13 @@ _cancel = threading.Event()
 
 def weights_status() -> Dict[str, Any]:
     items = []
-    for w in DUB_WEIGHTS:
+    for w in DUB_WEIGHTS + [w for w in LEGACY_WEIGHTS if _repo_dir(w["repo"]).exists()]:
         items.append({
             "id": w["id"], "name": w["name"], "repo": w["repo"], "license": w["license"],
             "installed": _weight_installed(w),
             "size_bytes": repo_size(w["repo"]),
             "expected_bytes": w["size_bytes"],
+            "legacy": bool(w.get("legacy")),
         })
     with _lock:
         st = dict(_state)
@@ -144,7 +157,7 @@ def start_download(ids: Optional[List[str]], dub_job_running: bool) -> Dict[str,
         return {**weights_status(), "error": "Сначала установите окружение дубляжа"}
     if dub_job_running:
         return {**weights_status(), "error": "Идёт дубляж — дождитесь его окончания"}
-    wanted = [i for i in (ids or [w["id"] for w in DUB_WEIGHTS]) if i in _BY_ID]
+    wanted = [i for i in (ids or [w["id"] for w in DUB_WEIGHTS]) if i in _BY_ID and not _BY_ID[i].get("legacy")]
     wanted = [i for i in wanted if not _weight_installed(_BY_ID[i])]
     if not wanted:
         return weights_status()

@@ -213,7 +213,7 @@ def vram_snapshot() -> Dict[str, Any]:
 
     workers = [w for w in live_workers() if w["purpose"] == "dub"]
     if workers:
-        chips.append({"kind": "dub", "name": "Chatterbox / Demucs", "loaded": True, "count": len(workers),
+        chips.append({"kind": "dub", "name": "VoxCPM2 / Demucs", "loaded": True, "count": len(workers),
                       "can_unload": False, "can_preload": False})
 
     from app import idle_unload, sysinfo

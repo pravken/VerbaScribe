@@ -336,7 +336,7 @@ def _sha256(path: Path) -> str:
 
 def _dub_requirements_hash(app_dir: Path) -> str:
     """The same hash app/dub_setup.py records in its ready mark: both dubbing locks together."""
-    files = [app_dir / "requirements-dub.txt", app_dir / "requirements-dub-chatterbox.txt"]
+    files = [app_dir / "requirements-dub.txt", app_dir / "requirements-dub-voxcpm.txt"]
     return hashlib.sha256(b"".join(f.read_bytes() for f in files if f.is_file())).hexdigest()
 
 

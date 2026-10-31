@@ -2,7 +2,7 @@ import tests  # noqa: F401 - keeps the real user data out of reach (see tests/__
 import threading
 import unittest
 
-from app.dub_text import TTS_MAX_WORKERS, extra_tts_workers
+from app.dub_text import TTS_MAX_WORKERS, TTS_WORKER_VRAM_GB, extra_tts_workers
 
 try:
     from app.dubbing import TtsPool
@@ -12,14 +12,15 @@ except ImportError:  # numpy/httpx are not installed (e.g. in the release CI job
 
 class ExtraWorkersTest(unittest.TestCase):
     def test_auto_fills_free_vram_up_to_the_limit(self):
-        self.assertEqual(extra_tts_workers("auto", 1, 20.0, 32), TTS_MAX_WORKERS - 1)
-        self.assertEqual(extra_tts_workers("auto", 1, 6.0, 32), 1)  # one more fits next to the LLM
-        self.assertEqual(extra_tts_workers("auto", 1, 4.0, 32), 0)
+        one = TTS_WORKER_VRAM_GB + 1.5  # room for one more process (1 GB is kept free)
+        self.assertEqual(extra_tts_workers("auto", 1, 3 * TTS_WORKER_VRAM_GB, 32), TTS_MAX_WORKERS - 1)
+        self.assertEqual(extra_tts_workers("auto", 1, one, 32), 1)  # one more fits next to the LLM
+        self.assertEqual(extra_tts_workers("auto", 1, TTS_WORKER_VRAM_GB - 1, 32), 0)
         self.assertEqual(extra_tts_workers("auto", TTS_MAX_WORKERS, 20.0, 32), 0)
         self.assertEqual(extra_tts_workers("auto", 1, 20.0, 4), 0)  # few cores
 
     def test_explicit_number_waits_for_vram_only_while_the_llm_is_loaded(self):
-        self.assertEqual(extra_tts_workers("3", 1, 6.0, 32, respect_vram=True), 1)
+        self.assertEqual(extra_tts_workers("3", 1, TTS_WORKER_VRAM_GB + 1.5, 32, respect_vram=True), 1)
         self.assertEqual(extra_tts_workers("3", 2, 2.0, 32), 1)
         self.assertEqual(extra_tts_workers("1", 1, 20.0, 32), 0)
 
@@ -104,3 +105,53 @@ class TtsStreamTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DubVoiceModelTest(unittest.TestCase):
+    def test_numbers_are_read_in_the_target_language(self):
+        try:
+            import num2words  # noqa: F401 - in the dubbing environment only
+        except ImportError:
+            self.skipTest("num2words is installed in .venv-dub only")
+        from app.dub_worker import _spell_numbers
+
+        self.assertEqual(_spell_numbers("в 14:30, 3 марта", "ru"), "в четырнадцать тридцать, третьего марта")
+        self.assertEqual(_spell_numbers("в 2026 году, к 2030 году", "ru"),
+                         "в две тысячи двадцать шестом году, к две тысячи тридцатому году")
+        self.assertEqual(_spell_numbers("с 1999 года, 2500 рублей", "ru"),
+                         "с тысяча девятьсот девяносто девятого года, две тысячи пятьсот рублей")
+        self.assertEqual(_spell_numbers("2026 год, перед 2026 годом", "ru"),
+                         "две тысячи двадцать шестой год, перед две тысячи двадцать шестым годом")
+        # A count of years stays a cardinal; a day number only with a month
+        self.assertEqual(_spell_numbers("через 3 года, 1 год, на 40 году", "ru"), "через три года, один год, на сороковом году")
+        self.assertEqual(_spell_numbers("at 9:05", "en"), "at nine oh five")
+        self.assertEqual(_spell_numbers("saa 3", "sw"), "saa 3")  # no such language there: the digits stay
+
+    def test_the_worker_imports_without_its_environment(self):
+        """The main app reads its constants; the stream setup happens only when it runs as the worker."""
+        import sys
+
+        from app import dub_worker
+
+        self.assertIsNot(sys.stdout, sys.stderr)  # main() alone sends library output to stderr
+        self.assertTrue(dub_worker.VOXCPM_REVISION)
+
+    def test_chatterbox_weights_are_offered_for_deletion_only(self):
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+
+        from app import dub_models
+
+        hub = Path(tempfile.mkdtemp())
+        (hub / "models--ResembleAI--chatterbox" / "snapshots" / "x").mkdir(parents=True)
+        with mock.patch.object(dub_models, "HF_HUB_DIR", hub):
+            items = {i["id"]: i for i in dub_models.weights_status()["items"]}
+            self.assertTrue(items["chatterbox"]["legacy"])
+            self.assertFalse(items["voxcpm2"]["legacy"])
+            with mock.patch("app.dub_setup.is_installed", return_value=True), \
+                    mock.patch.object(dub_models.threading, "Thread") as thread:
+                dub_models.start_download(["chatterbox"], dub_job_running=False)
+            thread.assert_not_called()  # never downloaded again
+        with mock.patch.object(dub_models, "HF_HUB_DIR", Path(tempfile.mkdtemp())):
+            self.assertNotIn("chatterbox", {i["id"] for i in dub_models.weights_status()["items"]})

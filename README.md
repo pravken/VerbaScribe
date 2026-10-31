@@ -104,31 +104,29 @@ what was translated before a cancel is kept.
 ### Translate & dub
 
 The **Dub** button in a recording's header translates every phrase with your local Ollama model, synthesizes it in the
-original speaker's voice with [Chatterbox Multilingual](https://github.com/resemble-ai/chatterbox) (23 languages,
+original speaker's voice with [VoxCPM2](https://github.com/OpenBMB/VoxCPM) (OpenBMB; 23 languages here,
 including Russian and English), keeps the music and ambience separated by [Demucs](https://github.com/adefossez/demucs),
 fits each phrase to the original timing and saves a new file to the `dubs` subfolder of the data folder (`%LOCALAPPDATA%\VerbaScribe\dubs`). It runs as a normal job in the
 processing queue, with progress and **Cancel**.
 
 - **Install once:** click **Install** in the Dub window (or run `setup_dub.bat`). It creates a separate environment `.venv-dub` (~6 GB of packages); about
-  3 GB of model weights are downloaded into `models\dub\` on the first job. The separate environment is needed
-  because Chatterbox pins library versions that conflict with the main app.
-- **Requirements:** NVIDIA GPU with ~4 GB free VRAM for the TTS (measured peak 3.5 GB) plus whatever your Ollama
+  5 GB of model weights are downloaded into `models\dub\` on the first job. The separate environment keeps the
+  voice model's libraries apart from the main app's.
+- **Requirements:** NVIDIA GPU with ~7 GB free VRAM for the TTS (measured peak 5.7–6.4 GB) plus whatever your Ollama
   model needs during translation (the LLM is unloaded before synthesis). A 7B+ Ollama model is recommended for
   translation quality.
-- **Speed (RTX 3090):** a 34-second clip took ~95 s on the first run (including model loading) and ~57 s warm;
-  expect roughly 1.3–1.5 minutes of processing per minute of speech. Details in [docs/dubbing.md](docs/dubbing.md).
+- **Speed (RTX 3090):** VoxCPM2 voices a second of speech in about 1.45 s (bench-report/tts-candidates.md);
+  expect roughly 2–2.5 minutes of processing per minute of speech. Details in [docs/dubbing.md](docs/dubbing.md).
 - **Consent and labelling:** the app asks you to confirm that the speakers agreed to having their voices cloned.
   Output files carry `.AI-dub.<lang>.` in the name, an "AI-generated dub" notice in the file metadata, an
-  "AI dub … synthetic cloned voice" audio-track title and Chatterbox's inaudible Perth watermark. The original
+  "AI dub … synthetic cloned voice" audio-track title and the inaudible Perth watermark on every phrase. The original
   audio is kept as a second track, and the translation is saved as `.srt` next to the file.
 - **Limitations:** no lip-sync; phrases are sped up (max 1.6×) or trimmed to fit; some accent of the source
   language remains; overlapping speech and diarization errors are carried into the dub; translation can be
   wrong, especially with small models.
-- **Licenses of the dubbing environment:** everything in it is free for commercial use; the one copyleft
-  package is [pykakasi](https://codeberg.org/miurahr/pykakasi) (**GPL v3**), which Chatterbox uses to read
-  kanji in Japanese dubs. It runs only in the separate dubbing process and is downloaded by the installer,
-  not shipped with VerbaScribe. If you do not want it: `.venv-dub\Scripts\python.exe -m pip uninstall pykakasi`
-  (Japanese dubs then skip the kanji conversion; other languages are not affected).
+- **Licenses of the dubbing environment:** everything in it is free for commercial use. Numbers are read as
+  words with [num2words](https://github.com/savoirfairelinux/num2words) (**LGPL-2.1**), which runs only in the
+  separate dubbing process and is downloaded by the installer, not shipped with VerbaScribe.
 
 <a name="network-access"></a>
 ### Network access
@@ -145,7 +143,7 @@ VerbaScribe has no telemetry. It connects to the internet only for these actions
 | You download an Ollama model | Ollama's model registry, via your local Ollama |
 | You confirm installing Ollama | winget (package `Ollama.Ollama`) |
 | You install the dubbing environment (optional) | PyPI and download.pytorch.org |
-| Your first dubbing job | Hugging Face (Chatterbox and Demucs weights) |
+| Your first dubbing job | Hugging Face (VoxCPM2 and Demucs weights) |
 | You click **Download FFmpeg** in Settings | github.com (release `9.0.2` of `GyanD/codexffmpeg`) |
 | App start, at most every 6 hours (can be turned off in Settings → General) | api.github.com: the number of the latest VerbaScribe release, nothing about you or your computer |
 | You click **Install** for an update | github.com: the release archive and `SHA256SUMS.txt`; PyPI and download.pytorch.org if the new version needs other Python packages. The checksum proves the archive arrived complete and unchanged. Once the author's release key is set up, `SHA256SUMS.txt` is also signed (`SHA256SUMS.txt.minisig`, minisign format) and the app installs only releases signed with it ([docs/release-signing.md](docs/release-signing.md)) |
@@ -181,9 +179,10 @@ VerbaScribe's own code is released under the [MIT License](LICENSE). Models and 
 | SoundCard (system audio recording) | BSD-3 |
 | yt-dlp (installed when you first import by link) | Unlicense |
 | FFmpeg (optional download, Gyan.dev essentials build) | GPL v3 |
-| Chatterbox Multilingual TTS (optional dubbing) | MIT |
+| [VoxCPM2](https://huggingface.co/openbmb/VoxCPM2) TTS (optional dubbing) | Apache 2.0 |
+| Perth watermark `resemble-perth` (optional dubbing) | MIT |
 | Demucs `htdemucs` (optional dubbing) | MIT |
-| pykakasi (optional dubbing, Japanese only, see [Translate & dub](#translate-dub)) | GPL v3 |
+| num2words (optional dubbing: numbers as words) | LGPL 2.1 |
 | Inter, JetBrains Mono fonts | SIL Open Font License |
 
 Not every Qwen 2.5 size is Apache 2.0 (the 3B and 72B models use a different license). If you download other models through Ollama, check their terms.
@@ -305,30 +304,28 @@ start.bat
 ### Перевод и дубляж
 
 Кнопка **Дубляж** в шапке записи переводит каждую фразу локальной моделью Ollama, озвучивает её голосом участника
-через [Chatterbox Multilingual](https://github.com/resemble-ai/chatterbox) (23 языка, в том числе русский и английский),
+через [VoxCPM2](https://github.com/OpenBMB/VoxCPM) (OpenBMB; здесь 23 языка, в том числе русский и английский),
 сохраняет музыку и фон, отделённые [Demucs](https://github.com/adefossez/demucs), подгоняет фразы под исходный тайминг
 и записывает новый файл в подпапку `dubs` папки данных (`%LOCALAPPDATA%\VerbaScribe\dubs`). Работает как обычная задача в очереди обработки, с прогрессом и кнопкой
 **Отменить**.
 
 - **Установка один раз:** нажмите **Установить** в окне «Дубляж» (или запустите `setup_dub.bat`). Создаётся отдельное окружение `.venv-dub` (~6 ГБ пакетов);
-  ещё ~3 ГБ весов моделей скачиваются в `models\dub\` при первом дубляже. Отдельное окружение нужно, потому что
-  Chatterbox жёстко фиксирует версии библиотек, несовместимые с основным приложением.
-- **Требования:** видеокарта NVIDIA, ~4 ГБ свободной видеопамяти под синтез (замеренный пик 3,5 ГБ) плюс память под
+  ещё ~5 ГБ весов моделей скачиваются в `models\dub\` при первом дубляже. Отдельное окружение держит библиотеки
+  модели голоса отдельно от основного приложения.
+- **Требования:** видеокарта NVIDIA, ~7 ГБ свободной видеопамяти под синтез (замеренный пик 5,7–6,4 ГБ) плюс память под
   модель Ollama на этапе перевода (перед синтезом LLM выгружается). Для качества перевода рекомендуется модель 7B+.
-- **Скорость (RTX 3090):** клип на 34 секунды — ~95 с при первом запуске (с загрузкой моделей) и ~57 с повторно;
-  ориентир — 1,3–1,5 минуты обработки на минуту речи. Подробности в [docs/dubbing.md](docs/dubbing.md).
+- **Скорость (RTX 3090):** VoxCPM2 озвучивает секунду речи примерно за 1,45 с (bench-report/tts-candidates.md);
+  ориентир — 2–2,5 минуты обработки на минуту речи. Подробности в [docs/dubbing.md](docs/dubbing.md).
 - **Согласие и маркировка:** приложение просит подтвердить, что участники согласны на клонирование голоса.
   Итоговые файлы помечены: `.AI-dub.<язык>.` в имени, пометка «AI-generated dub» в метаданных, название аудиодорожки
-  «AI dub … synthetic cloned voice» и неслышимый водяной знак Perth от Chatterbox. Оригинальный звук сохраняется второй
+  «AI dub … synthetic cloned voice» и неслышимый водяной знак Perth на каждой фразе. Оригинальный звук сохраняется второй
   дорожкой, перевод — рядом в `.srt`.
 - **Ограничения:** нет синхронизации губ; фразы ускоряются (до 1,6×) или обрезаются под тайминг; остаётся акцент
   исходного языка; перебивания и ошибки диаризации переходят в дубляж; перевод может быть неточным, особенно на
   маленьких моделях.
-- **Лицензии окружения дубляжа:** всё в нём бесплатно и для коммерческого использования; единственный пакет с
-  копилефтом — [pykakasi](https://codeberg.org/miurahr/pykakasi) (**GPL v3**), через него Chatterbox читает
-  иероглифы в японском дубляже. Он работает только в отдельном процессе дубляжа и скачивается установщиком, в
-  поставку VerbaScribe не входит. Если он вам не нужен: `.venv-dub\Scripts\python.exe -m pip uninstall pykakasi`
-  (японский дубляж тогда пропускает перевод иероглифов в каны, другие языки не затронуты).
+- **Лицензии окружения дубляжа:** всё в нём бесплатно и для коммерческого использования. Числа читаются словами
+  через [num2words](https://github.com/savoirfairelinux/num2words) (**LGPL-2.1**): он работает только в отдельном
+  процессе дубляжа и скачивается установщиком, в поставку VerbaScribe не входит.
 
 <a name="сеть"></a>
 ### Сетевые подключения
@@ -345,7 +342,7 @@ start.bat
 | Вы скачиваете модель Ollama | Реестр моделей Ollama, через вашу локальную Ollama |
 | Вы подтверждаете установку Ollama | winget (пакет `Ollama.Ollama`) |
 | Вы устанавливаете окружение дубляжа (по желанию) | PyPI и download.pytorch.org |
-| Первый запуск дубляжа | Hugging Face (веса Chatterbox и Demucs) |
+| Первый запуск дубляжа | Hugging Face (веса VoxCPM2 и Demucs) |
 | Вы нажимаете **Скачать FFmpeg** в настройках | github.com (релиз `9.0.2` репозитория `GyanD/codexffmpeg`) |
 | Запуск приложения, не чаще раза в 6 часов (отключается в «Настройки → Общие») | api.github.com: номер последней версии VerbaScribe, без каких-либо данных о вас или компьютере |
 | Вы нажимаете **Установить** для обновления | github.com: архив релиза и `SHA256SUMS.txt`; PyPI и download.pytorch.org, если новой версии нужны другие пакеты Python. Контрольная сумма подтверждает, что архив дошёл целым и неизменным. Когда настроен ключ автора, `SHA256SUMS.txt` ещё и подписан (`SHA256SUMS.txt.minisig`, формат minisign), и программа ставит только релизы с этой подписью ([docs/release-signing.md](docs/release-signing.md)) |
@@ -359,7 +356,7 @@ start.bat
 
 ### Лицензии
 
-Код VerbaScribe распространяется по [лицензии MIT](LICENSE). У моделей и библиотек свои лицензии; перед коммерческим использованием проверьте их самостоятельно (таблица выше, в английском разделе). Не все размеры Qwen 2.5 выпущены под Apache 2.0: у моделей 3B и 72B другая лицензия. Единственный пакет с копилефтом — pykakasi (GPL v3) в необязательном окружении дубляжа, только для японского (см. [Перевод и дубляж](#дубляж)). Если скачиваете через Ollama другие модели, проверьте и их условия.
+Код VerbaScribe распространяется по [лицензии MIT](LICENSE). У моделей и библиотек свои лицензии; перед коммерческим использованием проверьте их самостоятельно (таблица выше, в английском разделе). Не все размеры Qwen 2.5 выпущены под Apache 2.0: у моделей 3B и 72B другая лицензия. В необязательном окружении дубляжа есть num2words (LGPL 2.1, числа словами), см. [Перевод и дубляж](#дубляж). Если скачиваете через Ollama другие модели, проверьте и их условия.
 
 ### Поддержать проект
 
