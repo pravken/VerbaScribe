@@ -28,8 +28,8 @@ DUB_READY_MARKER = DUB_VENV / "verbascribe-dub-ready.txt"
 REQUIREMENTS = APP_DIR / "requirements-dub.txt"
 VOXCPM_REQUIREMENTS = APP_DIR / "requirements-dub-voxcpm.txt"  # installed with --no-deps
 TORCH_INDEX = "https://download.pytorch.org/whl/cu126"
-DOWNLOAD_SIZE_GB = 6
-MIN_FREE_GB = 9  # packages (~6 GB) plus room for the model weights downloaded on the first dub
+DOWNLOAD_SIZE_GB = 5  # the environment takes 4.5 GB on disk (torch 2.11+cu126, VoxCPM2, Demucs)
+MIN_FREE_GB = 10  # packages (~4.5 GB) plus room for the model weights (~5 GB) downloaded on the first dub
 
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
 # perth silently sets its watermarker to None when an import fails, which only breaks at dub time

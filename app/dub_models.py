@@ -25,7 +25,7 @@ DUB_WEIGHTS: List[Dict[str, Any]] = [
         "name": "VoxCPM2",
         "repo": "openbmb/VoxCPM2",
         "files": ["config.json", "model.safetensors"],
-        "size_bytes": 4_700_000_000,  # about: the model and its AudioVAE
+        "size_bytes": 4_960_720_928,  # the model and its AudioVAE at the pinned commit (measured)
         "license": "Apache-2.0",
     },
     {

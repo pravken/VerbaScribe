@@ -68,46 +68,50 @@ target language, a newer dub replaces the older file). A dub interrupted by an a
 
 ## VRAM / speed estimates
 
-The timings below are of the prototype with Chatterbox. VoxCPM2 synthesizes about 1.7× slower (RTF 1.45 against
-0.85 in bench-report/tts-candidates.md): a measurement of a whole dub with it is in docs/pc-session-voxcpm.md.
+Measured with VoxCPM2 (voxcpm 2.0.3, torch 2.11 + cu126, `optimize=False`) on RTX 3090 24 GB, Ollama `qwen3:8b`
+for translation, one synthesis process ("Auto" chose 1: other programs held 10–17 GB of the card). Five dubs of two
+short recordings, 2026-10-31:
 
-Measured on the prototype clip (recording #3: 33.6 s, Russian, 1 speaker, 5 phrases → English/German),
-RTX 3090 24 GB, Ollama `qwen2.5:1.5b`:
+| Dub | Recording | Phrases | Speech in the dub | Synthesis | Whole job | Failed phrases |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: |
+| #68 ru → en | 76.5 s | 18 | 51 s | 78 s | 94 s | 0 |
+| #68 ru → de | 76.5 s | 18 | 51 s | 79 s | 83 s | 0 |
+| #68 ru → es | 76.5 s | 18 | 51 s | 77 s | 82 s | 0 |
+| #53 en → ru | 66.7 s | 13 | 62 s | 104 s | 122 s | 0 |
+| #53 en → ja | 66.7 s | 13 | 62 s | 126 s | 168 s | 0 |
 
-| Stage | Cold run (first job) | Warm run | Notes |
-| :--- | ---: | ---: | :--- |
-| Phrase split + audio extract | 0.5 s | 0.1 s | |
-| Translation (Ollama) | 5 s | 3.6 s | up to ~60 s when Ollama has to load the model first |
-| Demucs separation (incl. model load) | 7.6 s | 4.8 s | ~1 GB VRAM; ≈ 40–60× real time once loaded |
-| Chatterbox load + first phrase | 61 s | 19 s | cold = loading 3 GB of weights from disk the first time |
-| Chatterbox synthesis | 36 s | 31 s | ≈ 1.1 s compute per second of generated speech (RTF ≈ 1.1) |
-| Re-translate + re-synthesize long phrases | – | 7.5 s | 1 of 5 phrases needed it in the warm run |
-| Time-fit, mix, mux | 1.4 s | 1.4 s | FFmpeg + numpy, CPU |
-| **Total** | **94.7 s** | **56.5 s** | |
+* **Synthesis** includes loading VoxCPM2 (21–26 s from disk, the first phrase ≈ 24 s with warm-up). Generation itself
+  runs at RTF ≈ 1.1–1.2 for English, German and Spanish, ≈ 1.4 for Russian; Japanese came out at ≈ 2.1 because its
+  long phrases were shortened and synthesized again (37 s of the job).
+* Demucs separation 5–7 s and translation 7–10 s per job.
+* **≈ 1.1–1.8 minutes of processing per minute of recording** (2.5 for Japanese here), plus the fixed ~25 s model load;
+  a 1-hour meeting ≈ 70–110 minutes on one process. On CPU VoxCPM2 is not practical (not measured).
+* `optimize=True` (torch.compile) needs Triton, which the Windows builds of torch do not ship: it stays off.
 
 VRAM (never used at the same time — the LLM is unloaded with `keep_alive=0` before synthesis, and Whisper is not
 loaded during a dub):
 
 | Component | VRAM |
 | :--- | :--- |
-| VoxCPM2 | **5.7–6.4 GB peak** allocated by torch (bench-report/tts-candidates.md) |
+| VoxCPM2 | **5.9 GB peak** allocated by torch per synthesis process; ≈ 6.5 GB on the card with the CUDA context |
 | Demucs htdemucs | ≈ 1 GB (segment-wise processing) |
 | Ollama translation model | 1.5B ≈ 1.5 GB · 7B ≈ 5.5 GB · 14B ≈ 10 GB |
 | **Peak for the whole job** | max(LLM, ~7 GB) → an 8 GB GPU works with a ≤ 1.5B LLM, 12 GB with a 7B LLM |
 
-Extrapolation for longer recordings (GPU, warm): synthesis dominates at ~65–70 s per minute of speech; Demucs adds
-~5 s and translation ~5–10 s (7B) per minute; plus ~25 s fixed model loading. So **≈ 1.3–1.5 minutes of processing per
-minute of speech**, i.e. a 1-hour meeting ≈ 80–90 minutes. On CPU, Chatterbox is autoregressive and is expected to be
-10–20× slower (not measured) — not practical beyond short clips.
+"Auto" synthesis processes: `TTS_WORKER_VRAM_GB = 7.5` per process and 1 GB kept free, so a free 24 GB card
+(≈ 23 GB free) runs 2 processes and 16 GB free runs 2 (15 // 7.5); with 8–15 GB free it runs 1.
 
-Disk: `.venv-dub` ≈ 5.2 GB, weights in `models/dub` ≈ 3.2 GB.
+Disk: `.venv-dub` ≈ 4.5 GB, weights in `models/dub` ≈ 5.0 GB (VoxCPM2 4.96 GB, Demucs 84 MB).
 
 Quality checks on the result:
 
-* Re-transcribing the English dub track with faster-whisper `large-v3-turbo` detects English (p = 0.99) and returns the
-  translated sentences nearly word for word → the speech is intelligible.
-* `perth.PerthImplicitWatermarker().get_watermark()` returns **1.0** on the final AAC dub track (after mixing with the
-  background and encoding) and 0.0 on the original audio.
+* The owner listened to all five VoxCPM2 dubs above and found no problems with the voice, stress or phrase endings.
+  `_cut_trailing_artifacts` (app/dubbing.py) still trims a tail now and then (1 phrase in es, 4 in ja, none in en, de,
+  ru), so it stays. Numbers are read as words in the target
+  language; Russian years and dates take the ordinal in the right case («в 2026 году» → «в две тысячи двадцать шестом
+  году», «3 марта» → «третьего марта»).
+* `perth.PerthImplicitWatermarker().get_watermark()` returns **1.0** on the final AAC dub tracks (en, ru, ja: after
+  mixing with the background and encoding) and 0.0 on the original audio.
 * Translation quality with the 1.5B model is the weakest link: it drops or invents details ("сосисочки" → "no
   sausages"; German output was noticeably worse). Use a 7B+ model for anything beyond a demo.
 
