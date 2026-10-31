@@ -1,7 +1,22 @@
-# Журнал изменений · Changelog
+# Changelog · Журнал изменений
 
-Описание каждой версии берётся отсюда в страницу релиза (раздел с её номером). Бета-версии
-(`vX.Y.Z-beta.N`) показывают раздел своей будущей версии.
+Each release page takes its text from here, the section with its number: English first, then Russian.
+Betas (`vX.Y.Z-beta.N`) show the sections of their coming version.
+
+Описание каждой версии берётся отсюда в страницу релиза (раздел с её номером): сначала английский, затем
+русский. Бета-версии (`vX.Y.Z-beta.N`) показывают раздел своей будущей версии.
+
+## 0.7.0 — English
+
+### In the first beta (0.7.0-beta.1)
+Everything of the 0.6.0 betas (Python 3.11, the audit fixes, the new look), and:
+- **Dubbing in the VoxCPM2 voice instead of Chatterbox.** In a blind listening test the new model won every pair:
+  correct Russian stress, 8 times fewer broken phrases, numbers and dates read as words in the target language.
+  About 1.7 times slower, and it needs about 7 GB of VRAM. The dubbing environment is installed again once, the
+  weights (about 5 GB) are downloaded on the first dub; the old Chatterbox weights can be deleted in Settings →
+  Speech synthesis. The one GPL package (pykakasi) has left the environment.
+- The synthesis settings have one «Reference adherence» (1–3) instead of Chatterbox's expressiveness and CFG.
+- Dubbing environment: transformers 5.22 closes four vulnerability advisories.
 
 ## 0.7.0
 
@@ -15,17 +30,130 @@
 - В настройках синтеза вместо «Выразительности» и CFG Chatterbox — одна настройка «Следование образцу» (1–3).
 - Окружение дубляжа: transformers 5.22 закрывает четыре уведомления об уязвимостях.
 
-## 0.7.0 — English
+## 0.6.0 — English
 
-### In the first beta (0.7.0-beta.1)
-Everything of the 0.6.0 betas (Python 3.11, the audit fixes, the new look), and:
-- **Dubbing in the VoxCPM2 voice instead of Chatterbox.** In a blind listening test the new model won every pair:
-  correct Russian stress, 8 times fewer broken phrases, numbers and dates read as words in the target language.
-  About 1.7 times slower, and it needs about 7 GB of VRAM. The dubbing environment is installed again once, the
-  weights (about 5 GB) are downloaded on the first dub; the old Chatterbox weights can be deleted in Settings →
-  Speech synthesis. The one GPL package (pykakasi) has left the environment.
-- The synthesis settings have one «Reference adherence» (1–3) instead of Chatterbox's expressiveness and CFG.
-- Dubbing environment: transformers 5.22 closes four vulnerability advisories.
+### In the fourth beta (0.6.0-beta.4)
+- **Python 3.11.** The app and the dubbing environment move to Python 3.11, which closes the filelock
+  and Pillow vulnerabilities that cannot be fixed on 3.10. The environment is made again once, by
+  itself, at the first start after the update: about 7 GB of libraries are downloaded (about 6 GB more
+  for dubbing when it is installed again), usually 5–15 minutes. Until the new environment is ready the
+  old one works; if the install fails, the old one stays and the next try is a day later.
+- Demucs weights (background separation in dubbing) come from a pinned version, like the other models.
+
+### In the third beta (0.6.0-beta.3)
+Fixes after an independent audit.
+- **Restoring a backup** from someone else does nothing on this computer any more: the copy's own
+  database commands, its queue of files to delete and paths leading to your files are removed; sound
+  goes back only into the recording folders. Your sound retention setting stays.
+- **Private recordings** (local analysis only) stay out of a cloud model in «Since last time», and a
+  question about the whole library no longer sends all other transcripts in full.
+- **Export without fillers** no longer moves translations onto neighbouring lines or loses a dictation's
+  translation.
+- **Installing Ollama** from the app works again.
+- **Dictation hotkeys:** «Turn off» is saved; the dictation hotkey shows whether it works. A press while
+  the last dictation is recognized no longer upsets it.
+- **An export waiting for a transcript or translation** keeps its options, goes into the date folder and
+  is listed with the recording. Changing the language in the Dub window keeps it.
+- **Dubbing** no longer stops at 88 % when the model of the settings is not in Ollama.
+- **Video subtitles:** the source picked as the output by mistake is not listed under Copies.
+- **Import** takes sound and video only; .opus, .m4v, .mka and more are added.
+- Translated SRT and VTT follow the «Names» option.
+- «Open the last recording» from the tray right after start, a failed cancel of a pending export is
+  reported, `update.bat` leaves no file in the temp folder.
+
+### In the second beta (0.6.0-beta.2)
+- **Menus and popovers** are one real glass; they grow from where they were opened and leave the same
+  way. With Windows transparency effects off the fill is solid.
+- **Undo instead of questions:** a task, a folder, a translation, an analysis section, a record preset,
+  an own template and the dictionary go at once and can be brought back for 7 s. Questions stay for
+  what cannot be undone, and their button names the action.
+- **Four kinds of notices:** status, done, warning, error. An error stays until closed; none leaves
+  while the pointer is on it.
+- **Names:** Home is «Today», the system folders are «From the Studio» and «Imported», «Transcribe
+  again» everywhere, the «Speech models» tab.
+- **Settings:** Interface is part of General, model comparison and dubbing are under «Advanced»;
+  Recognition starts with «Choose automatically», precision in words under «More»; scale up to 150 %,
+  on the first start following the Windows text size.
+- **Above the text** the recognition row folds into the model mark «GigaAM v3 ▾»; the **import window**
+  shows the model and language, the rest under «Change».
+- **Models:** a tile under the hardware opens every model beside the library — running, installed and
+  downloadable; the CPU and GPU marks light while a model works there. The analysis model choice says
+  what suits this computer and how much video memory it needs. Qwen 7B Standard, Qwen 14B Pro and
+  Mistral 7B are no longer offered.
+- **Recording:** the microphone and the computer sound each show their own level.
+- **Player and text:** drag the time bubble over the wave; the current chapter stays in the middle;
+  video buttons on the black panel beside the picture; a double click on a line no longer opens the
+  editor. The recording's name is shown once, in full, above the text.
+- **Library:** filters by type, source, state, readiness and language; the ⇅ menu stays open; dragging
+  opens folders and moves the recording at once.
+- **Type and accessibility:** seven text sizes instead of 25; captions and blue buttons up to the
+  contrast norm; Windows «show less motion» and «more contrast»; soft edges of scrolled lists; nothing
+  under 11 px.
+- **update.bat** updates a git-cloned folder next to VerbaScribe.exe.
+- Fixed: a dialog no longer closes when a text selection is released over its backdrop; a menu at the
+  bottom of the window opens upward; following the playback waits while you scroll; Record in the open
+  Studio uses the source it shows; clocks and badges are monospace again, letters like ą, č, ł from Inter.
+
+### A new look
+- **A top bar instead of tabs:** Today, Tasks, the open recording (Transcript, ✦ Analysis, Speakers,
+  ⋯ menu), Studio, ✦ Assistant; a status bar below (processor, video card, memory, queue). Interface
+  scale in Settings → General (75–150 %).
+- **The red Record button** records at once in any view with the last studio settings; a second press
+  stops and queues the recording.
+- **Today:** recent recordings with their summaries, today's calendar meetings over a working day you
+  set (also past midnight), auto-recording of all meetings with exceptions and a question before
+  in-person ones, the queue, My tasks, dictation.
+- **Import window:** files, links and paths in one list; model, language, speakers, sound processing
+  before recognition, speaker separation, analysis; an estimated time; remember the choice or stop asking.
+- **Player:** a waveform from the real loudness with speaker colours and chapters; repeat a line or an
+  A–B span, marks, speed from 0.25×; ✦ Sound — studio voice, skipping pauses without speech, the dub
+  track; a double click on the wave shows the place in the text; save the sound as MP3 / WAV, also
+  without fillers and pauses.
+- **"Without fillers"** only hides "um", "like" and repeats in the view; the recording's text stays.
+  Older recordings cleaned before get "Restore the original text". In exports it is an option next to
+  timecodes and names.
+- **Recording details** (Ctrl+I): file, dates, format, recognition, sound processing, saved copies.
+- **Analysis:** sections on the left, a configurable overview, your templates, a letter to the
+  participants, a question about the recording.
+- **Speakers:** cards with role and "This is me", voice and calendar suggestions, merge and split,
+  talk statistics; an "All people" directory of people and departments across recordings.
+- **Tasks** from all recordings: by person, due date or recording; assignees can be participants,
+  people outside the meeting, departments or companies; the quote they came from; a due date;
+  a calendar with drag and drop; a summary for a period; "+ Task".
+- **Studio:** ready-made sets of settings, levels and a microphone check, the calendar meeting, marks,
+  your notes while recording, full-window text.
+- **Assistant:** conversations with history, where to look (library, folder, period, chosen
+  recordings), answers whose sources lead to the place in a recording, saving an answer.
+- **Settings** are a page: search across all settings, reset a section, changes saved at once.
+
+### New
+- **Dictations in the library**, in a system folder "Dictations" (sound, text, translation; local analysis only).
+- **Start with Windows** in the tray without a window; closing the window keeps the app in the tray;
+  a downloaded update installs while the window is hidden and nothing runs.
+- **Recognition options per recording:** noise reduction, loudness levelling, quiet parts, skip silence,
+  speaker separation, language, number of speakers; remembered for the recording.
+- **Library:** fold / unfold everything; a dot on a folded folder or day holding the open recording.
+
+### Changed
+- "Promises" are called "Tasks" everywhere.
+- Library badges: only what needs attention always; analysis, translations, dubs on hover and on the
+  selected row ("View → Badges → All, always" for the old list).
+- The "Checked" mark above the text is gone; the model comparison takes the recording's text as the reference.
+- Recording and processing errors name the cause and lead to the setting; technical text under "Details".
+
+### Security
+- **torch 2.11** (CUDA 12.6) instead of 2.6 (PYSEC-2026-2286); the update downloads about 2.5 GB once.
+- Hugging Face models from fixed commits; the dubbing environment from a lock with hashes.
+
+### Fixed
+- Dictation with translation (and analysis, translation, dubbing) no longer picks the embedding model
+  (bge-m3) as the text model, which Ollama refused with "400 Bad Request".
+- The player waveform is back for processed recordings.
+- The library view / sort menu opens again, a folder lights up when a recording is dragged over it.
+- Copying an analysis, reprocessing, deleting a recording and a few other actions no longer end
+  silently after they are done.
+
+---
 
 ## 0.6.0
 
@@ -154,130 +282,29 @@ Everything of the 0.6.0 betas (Python 3.11, the audit fixes, the new look), and:
 - Копирование анализа, повторная обработка, удаление записи и ещё несколько действий больше не
   обрываются без сообщения после того, как сделаны.
 
-## 0.6.0 — English
-
-### In the fourth beta (0.6.0-beta.4)
-- **Python 3.11.** The app and the dubbing environment move to Python 3.11, which closes the filelock
-  and Pillow vulnerabilities that cannot be fixed on 3.10. The environment is made again once, by
-  itself, at the first start after the update: about 7 GB of libraries are downloaded (about 6 GB more
-  for dubbing when it is installed again), usually 5–15 minutes. Until the new environment is ready the
-  old one works; if the install fails, the old one stays and the next try is a day later.
-- Demucs weights (background separation in dubbing) come from a pinned version, like the other models.
-
-### In the third beta (0.6.0-beta.3)
-Fixes after an independent audit.
-- **Restoring a backup** from someone else does nothing on this computer any more: the copy's own
-  database commands, its queue of files to delete and paths leading to your files are removed; sound
-  goes back only into the recording folders. Your sound retention setting stays.
-- **Private recordings** (local analysis only) stay out of a cloud model in «Since last time», and a
-  question about the whole library no longer sends all other transcripts in full.
-- **Export without fillers** no longer moves translations onto neighbouring lines or loses a dictation's
-  translation.
-- **Installing Ollama** from the app works again.
-- **Dictation hotkeys:** «Turn off» is saved; the dictation hotkey shows whether it works. A press while
-  the last dictation is recognized no longer upsets it.
-- **An export waiting for a transcript or translation** keeps its options, goes into the date folder and
-  is listed with the recording. Changing the language in the Dub window keeps it.
-- **Dubbing** no longer stops at 88 % when the model of the settings is not in Ollama.
-- **Video subtitles:** the source picked as the output by mistake is not listed under Copies.
-- **Import** takes sound and video only; .opus, .m4v, .mka and more are added.
-- Translated SRT and VTT follow the «Names» option.
-- «Open the last recording» from the tray right after start, a failed cancel of a pending export is
-  reported, `update.bat` leaves no file in the temp folder.
-
-### In the second beta (0.6.0-beta.2)
-- **Menus and popovers** are one real glass; they grow from where they were opened and leave the same
-  way. With Windows transparency effects off the fill is solid.
-- **Undo instead of questions:** a task, a folder, a translation, an analysis section, a record preset,
-  an own template and the dictionary go at once and can be brought back for 7 s. Questions stay for
-  what cannot be undone, and their button names the action.
-- **Four kinds of notices:** status, done, warning, error. An error stays until closed; none leaves
-  while the pointer is on it.
-- **Names:** Home is «Today», the system folders are «From the Studio» and «Imported», «Transcribe
-  again» everywhere, the «Speech models» tab.
-- **Settings:** Interface is part of General, model comparison and dubbing are under «Advanced»;
-  Recognition starts with «Choose automatically», precision in words under «More»; scale up to 150 %,
-  on the first start following the Windows text size.
-- **Above the text** the recognition row folds into the model mark «GigaAM v3 ▾»; the **import window**
-  shows the model and language, the rest under «Change».
-- **Models:** a tile under the hardware opens every model beside the library — running, installed and
-  downloadable; the CPU and GPU marks light while a model works there. The analysis model choice says
-  what suits this computer and how much video memory it needs. Qwen 7B Standard, Qwen 14B Pro and
-  Mistral 7B are no longer offered.
-- **Recording:** the microphone and the computer sound each show their own level.
-- **Player and text:** drag the time bubble over the wave; the current chapter stays in the middle;
-  video buttons on the black panel beside the picture; a double click on a line no longer opens the
-  editor. The recording's name is shown once, in full, above the text.
-- **Library:** filters by type, source, state, readiness and language; the ⇅ menu stays open; dragging
-  opens folders and moves the recording at once.
-- **Type and accessibility:** seven text sizes instead of 25; captions and blue buttons up to the
-  contrast norm; Windows «show less motion» and «more contrast»; soft edges of scrolled lists; nothing
-  under 11 px.
-- **update.bat** updates a git-cloned folder next to VerbaScribe.exe.
-- Fixed: a dialog no longer closes when a text selection is released over its backdrop; a menu at the
-  bottom of the window opens upward; following the playback waits while you scroll; Record in the open
-  Studio uses the source it shows; clocks and badges are monospace again, letters like ą, č, ł from Inter.
-
-### A new look
-- **A top bar instead of tabs:** Today, Tasks, the open recording (Transcript, ✦ Analysis, Speakers,
-  ⋯ menu), Studio, ✦ Assistant; a status bar below (processor, video card, memory, queue). Interface
-  scale in Settings → General (75–150 %).
-- **The red Record button** records at once in any view with the last studio settings; a second press
-  stops and queues the recording.
-- **Today:** recent recordings with their summaries, today's calendar meetings over a working day you
-  set (also past midnight), auto-recording of all meetings with exceptions and a question before
-  in-person ones, the queue, My tasks, dictation.
-- **Import window:** files, links and paths in one list; model, language, speakers, sound processing
-  before recognition, speaker separation, analysis; an estimated time; remember the choice or stop asking.
-- **Player:** a waveform from the real loudness with speaker colours and chapters; repeat a line or an
-  A–B span, marks, speed from 0.25×; ✦ Sound — studio voice, skipping pauses without speech, the dub
-  track; a double click on the wave shows the place in the text; save the sound as MP3 / WAV, also
-  without fillers and pauses.
-- **"Without fillers"** only hides "um", "like" and repeats in the view; the recording's text stays.
-  Older recordings cleaned before get "Restore the original text". In exports it is an option next to
-  timecodes and names.
-- **Recording details** (Ctrl+I): file, dates, format, recognition, sound processing, saved copies.
-- **Analysis:** sections on the left, a configurable overview, your templates, a letter to the
-  participants, a question about the recording.
-- **Speakers:** cards with role and "This is me", voice and calendar suggestions, merge and split,
-  talk statistics; an "All people" directory of people and departments across recordings.
-- **Tasks** from all recordings: by person, due date or recording; assignees can be participants,
-  people outside the meeting, departments or companies; the quote they came from; a due date;
-  a calendar with drag and drop; a summary for a period; "+ Task".
-- **Studio:** ready-made sets of settings, levels and a microphone check, the calendar meeting, marks,
-  your notes while recording, full-window text.
-- **Assistant:** conversations with history, where to look (library, folder, period, chosen
-  recordings), answers whose sources lead to the place in a recording, saving an answer.
-- **Settings** are a page: search across all settings, reset a section, changes saved at once.
+## 0.5.0 — English
 
 ### New
-- **Dictations in the library**, in a system folder "Dictations" (sound, text, translation; local analysis only).
-- **Start with Windows** in the tray without a window; closing the window keeps the app in the tray;
-  a downloaded update installs while the window is hidden and nothing runs.
-- **Recognition options per recording:** noise reduction, loudness levelling, quiet parts, skip silence,
-  speaker separation, language, number of speakers; remembered for the recording.
-- **Library:** fold / unfold everything; a dot on a folded folder or day holding the open recording.
+- **Several models, one text.** Each model's transcript is kept; the "Recognition" row above the text
+  has the model list (✓ transcribed, ↓ not downloaded), Transcribe, Merge versions, Clear and the status.
+- **Merge versions:** one text from several models — their word where they agree; the analysis model
+  picks among the variants elsewhere, those places are underlined and a click shows every variant.
+- Models not downloaded yet are listed in Import and Re-process and download before the processing.
+- **Dictation with translation** on its own hotkey (Ctrl+Alt+T by default).
+- Calendar from Outlook on this computer; checked transcripts as references; one-click library backup;
+  About window; Ctrl+1/2/3 for the tabs; unused files found and freed; **Settings → Updates → Get beta versions**.
 
 ### Changed
-- "Promises" are called "Tasks" everywhere.
-- Library badges: only what needs attention always; analysis, translations, dubs on hover and on the
-  selected row ("View → Badges → All, always" for the old list).
-- The "Checked" mark above the text is gone; the model comparison takes the recording's text as the reference.
-- Recording and processing errors name the cause and lead to the setting; technical text under "Details".
+- GigaAM / Parakeet batched on the GPU; loudness raised part by part before speech detection.
+- Settings in cards; transcripts stored line by line (moved once on the first start).
 
 ### Security
-- **torch 2.11** (CUDA 12.6) instead of 2.6 (PYSEC-2026-2286); the update downloads about 2.5 GB once.
-- Hugging Face models from fixed commits; the dubbing environment from a lock with hashes.
+- **Updates signed with the author's key**; no inline script (CSP); requests from other pages refused;
+  self-installed packages checked by hash; updated certifi, requests, urllib3, idna, DOMPurify.
 
 ### Fixed
-- Dictation with translation (and analysis, translation, dubbing) no longer picks the embedding model
-  (bge-m3) as the text model, which Ollama refused with "400 Bad Request".
-- The player waveform is back for processed recordings.
-- The library view / sort menu opens again, a folder lights up when a recording is dragged over it.
-- Copying an analysis, reprocessing, deleting a recording and a few other actions no longer end
-  silently after they are done.
-
----
+- Everything from the full audit: no lost edits, work processes end with the app, cut-off downloads are
+  not "installed", calendar, ports, single instance, AltGr letters, English texts throughout.
 
 ## 0.5.0
 
@@ -322,27 +349,3 @@ Fixes after an independent audit.
   горячие клавиши не мешают буквам AltGr, тексты интерфейса и сообщения сервера переведены на английский.
 
 ---
-
-## 0.5.0 — English
-
-### New
-- **Several models, one text.** Each model's transcript is kept; the "Recognition" row above the text
-  has the model list (✓ transcribed, ↓ not downloaded), Transcribe, Merge versions, Clear and the status.
-- **Merge versions:** one text from several models — their word where they agree; the analysis model
-  picks among the variants elsewhere, those places are underlined and a click shows every variant.
-- Models not downloaded yet are listed in Import and Re-process and download before the processing.
-- **Dictation with translation** on its own hotkey (Ctrl+Alt+T by default).
-- Calendar from Outlook on this computer; checked transcripts as references; one-click library backup;
-  About window; Ctrl+1/2/3 for the tabs; unused files found and freed; **Settings → Updates → Get beta versions**.
-
-### Changed
-- GigaAM / Parakeet batched on the GPU; loudness raised part by part before speech detection.
-- Settings in cards; transcripts stored line by line (moved once on the first start).
-
-### Security
-- **Updates signed with the author's key**; no inline script (CSP); requests from other pages refused;
-  self-installed packages checked by hash; updated certifi, requests, urllib3, idna, DOMPurify.
-
-### Fixed
-- Everything from the full audit: no lost edits, work processes end with the app, cut-off downloads are
-  not "installed", calendar, ports, single instance, AltGr letters, English texts throughout.
