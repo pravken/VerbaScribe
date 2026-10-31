@@ -1,7 +1,7 @@
-// VerbaScribe page script, part 1 of 9: State, small helpers, dialogs and voice profiles.
+// Verbaliox page script, part 1 of 9: State, small helpers, dialogs and voice profiles.
 // The parts are classic scripts sharing one global scope, loaded in order by index.html.
 
-// VerbaScribe UI logic. Depends on vendor/marked.min.js, vendor/purify.min.js and i18n.js.
+// Verbaliox UI logic. Depends on vendor/marked.min.js, vendor/purify.min.js and i18n.js.
 const DONE_STATUSES = ['completed', 'failed', 'cancelled', 'cleared'];
 // The page opened, so the locked page (app/main.py) may again try one fresh address next time
 try { sessionStorage.removeItem('vs_relocked'); } catch (e) { /* storage off */ }
@@ -62,11 +62,11 @@ function applyUiScale(pct) {
   root.style.zoom = String(z);
   root.dataset.zoom = String(z);
   root.style.setProperty('--ui-zoom', String(z));  // body height: 100vh is not zoomed (styles.css)
-  try { localStorage.setItem('verbascribe_ui_scale', String(Math.round(z * 100))); } catch (e) {}
+  try { localStorage.setItem('verbaliox_ui_scale', String(Math.round(z * 100))); } catch (e) {}
   if (typeof scheduleFitTopbar === 'function') scheduleFitTopbar();
 }
 // Before anything is drawn: the last scale, so the window does not jump when the settings arrive
-(() => { let v = null; try { v = localStorage.getItem('verbascribe_ui_scale'); } catch (e) {} applyUiScale(v || '100'); })();
+(() => { let v = null; try { v = localStorage.getItem('verbaliox_ui_scale'); } catch (e) {} applyUiScale(v || '100'); })();
 
 // --- Events without inline handlers ---
 // The page's Content-Security-Policy runs no inline script, so markup does not say onclick="…".
@@ -166,7 +166,7 @@ let state = {
   activeWorkspaceTab: 'transcript',
   activeSummaryTab: 'protocol',
   speakerFilter: null,
-  videoMode: (() => { try { return localStorage.getItem('verbascribe_video_mode') === 'mini' ? 'mini' : 'expanded'; } catch (e) { return 'expanded'; } })(),
+  videoMode: (() => { try { return localStorage.getItem('verbaliox_video_mode') === 'mini' ? 'mini' : 'expanded'; } catch (e) { return 'expanded'; } })(),
   hasVideo: false,
   audioTrack: 'orig',
   studioVoiceActive: false,
@@ -179,9 +179,9 @@ let state = {
   voicePreviewTimer: null,
   playerPeaks: [],
   playerHoverRatio: -1,
-  volume: Number(localStorage.getItem('verbascribe_volume') ?? 100),
+  volume: Number(localStorage.getItem('verbaliox_volume') ?? 100),
   muted: false,
-  txView: (() => { try { return localStorage.getItem('verbascribe_tx_view') || 'orig'; } catch (e) { return 'orig'; } })(),
+  txView: (() => { try { return localStorage.getItem('verbaliox_tx_view') || 'orig'; } catch (e) { return 'orig'; } })(),
   txLang: null,
 };
 
@@ -604,7 +604,7 @@ function selectSettingsTab(name) {
     if (k === name) btn.setAttribute('aria-current', 'page'); else btn.removeAttribute('aria-current');
   });
   document.getElementById('modal-settings').dataset.tab = name;
-  try { localStorage.setItem('verbascribe_settings_tab', name); } catch (e) {}
+  try { localStorage.setItem('verbaliox_settings_tab', name); } catch (e) {}
   if (name === 'bench' && typeof loadBench === 'function') loadBench();
   if (typeof onSettingsTabShown === 'function') onSettingsTabShown(name);  // static/js/settings.js
 }
@@ -658,7 +658,7 @@ function openModal(name, tab) {
   if (name === 'import') onImportDialogOpen();  // importdlg.js: the list, the processing from the settings
   if (name === 'settings') {
     let last = null;
-    try { last = localStorage.getItem('verbascribe_settings_tab'); } catch (e) {}
+    try { last = localStorage.getItem('verbaliox_settings_tab'); } catch (e) {}
     selectSettingsTab(tab || last || 'general');
     syncSettingsFormFromState();  // settings.js: what the import window and the home page changed since
     loadVoiceProfiles();

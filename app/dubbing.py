@@ -334,9 +334,9 @@ def _free_vram_for_tts(pool: "TtsPool") -> float:
 
 def _worker_threads(cpu_count: int) -> Optional[int]:
     """CPU threads per dub process: by default each library thread pool would use every core, and
-    up to three TTS processes plus the main app then compete for them. VERBASCRIBE_DUB_THREADS
+    up to three TTS processes plus the main app then compete for them. VERBALIOX_DUB_THREADS
     overrides (0 = library default)."""
-    value = os.environ.get("VERBASCRIBE_DUB_THREADS", "")
+    value = os.environ.get("VERBALIOX_DUB_THREADS", "")
     if value.isdigit():
         return int(value) or None
     return max(2, cpu_count // 4)
@@ -1084,7 +1084,7 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
         out_path = DUBS_DIR / f"{_safe_name(meeting.get('title') or media.stem)}.AI-dub.{target_lang}.{stamp}{ext}"
         notice = (
             f"AI-GENERATED DUB ({target_lang.upper()}): translated by a local LLM and voiced with a cloned "
-            "synthetic voice (VoxCPM2, Perth watermark). Not the speakers' own words or voice. Made with VerbaScribe."
+            "synthetic voice (VoxCPM2, Perth watermark). Not the speakers' own words or voice. Made with Verbaliox."
         )
         args = ["-i", str(media), "-i", str(dub_wav)]
         maps = (["-map", "0:v:0", "-c:v", "copy"] if is_video else ["-vn"]) + ["-map", "1:a:0"]
@@ -1094,7 +1094,7 @@ def run_dub_job(meeting: Dict[str, Any], target_lang: str, progress: ProgressFn,
             "-c:a", "aac", "-b:a", "192k",
             "-metadata", f"title={meeting.get('title') or media.stem} [AI dub {target_lang.upper()}]",
             "-metadata", f"comment={notice}",
-            "-metadata", "encoded_by=VerbaScribe AI dub",
+            "-metadata", "encoded_by=Verbaliox AI dub",
             *_track_tags(0, target_lang, f"AI dub ({target_lang.upper()}) - synthetic cloned voice"),
             "-disposition:a:0", "default",
         ]

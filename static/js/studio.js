@@ -1,4 +1,4 @@
-// VerbaScribe page script, part 7 of 9: Recording: sources, presets, screen capture, live captions, the studio.
+// Verbaliox page script, part 7 of 9: Recording: sources, presets, screen capture, live captions, the studio.
 // The parts are classic scripts sharing one global scope, loaded in order by index.html.
 
 // =========================================================================
@@ -614,14 +614,14 @@ function studioNotesKey(e) {
 }
 
 function saveStudioNotesDraft() {
-  try { localStorage.setItem('verbascribe_studio_notes', document.getElementById('studio-notes-input').value); } catch (e) {}
+  try { localStorage.setItem('verbaliox_studio_notes', document.getElementById('studio-notes-input').value); } catch (e) {}
 }
 
 function takeStudioNotes() {
   const ta = document.getElementById('studio-notes-input');
   const v = ta ? ta.value : '';
   if (ta) ta.value = '';
-  try { localStorage.removeItem('verbascribe_studio_notes'); } catch (e) {}
+  try { localStorage.removeItem('verbaliox_studio_notes'); } catch (e) {}
   return v;
 }
 
@@ -651,7 +651,7 @@ async function prepareStudio(presetId) {
     document.getElementById('record-source-select').value = savedSource;
   }
   if (!_studioPrepared) {
-    try { document.getElementById('record-video-select').value = localStorage.getItem('verbascribe_record_video') || ''; } catch (e) {}
+    try { document.getElementById('record-video-select').value = localStorage.getItem('verbaliox_record_video') || ''; } catch (e) {}
     if (!document.getElementById('record-video-select').value) document.getElementById('record-video-select').value = '';
     loadScreenWindows().then(syncRecordWindowSelect);
   }
@@ -735,7 +735,7 @@ function upcomingBrief(i) {
 }
 
 function saveRecordVideoPref() {
-  try { localStorage.setItem('verbascribe_record_video', document.getElementById('record-video-select').value); } catch (e) {}
+  try { localStorage.setItem('verbaliox_record_video', document.getElementById('record-video-select').value); } catch (e) {}
   syncRecordWindowSelect();
   renderStudioState();
 }
@@ -754,7 +754,7 @@ function renderRecordSaveHint() {
 const liveCap = { session: null, node: null, pcm: [], pcmLen: 0, inFlight: false, timer: null, lines: new Map(), partial: '', lastId: 0 };
 
 function liveCaptionPrefs() {
-  try { return JSON.parse(localStorage.getItem('verbascribe_live_captions') || '{}'); } catch (e) { return {}; }
+  try { return JSON.parse(localStorage.getItem('verbaliox_live_captions') || '{}'); } catch (e) { return {}; }
 }
 
 // The model pickers above the captions: "Auto · <model in use>" and the downloaded models
@@ -820,7 +820,7 @@ function saveLiveCaptionPrefs() {
     draft: document.getElementById('live-draft-toggle').checked,
     draftTr: document.getElementById('live-draft-tr-toggle').checked,
   };
-  try { localStorage.setItem('verbascribe_live_captions', JSON.stringify(prefs)); } catch (e) {}
+  try { localStorage.setItem('verbaliox_live_captions', JSON.stringify(prefs)); } catch (e) {}
 }
 
 async function initLiveCaptionControls() {
@@ -845,7 +845,7 @@ const QUICK_LANGS_DEFAULT = ['ru', 'en'];
 
 function quickLangs() {
   try {
-    const v = JSON.parse(localStorage.getItem('verbascribe_quick_langs') || 'null');
+    const v = JSON.parse(localStorage.getItem('verbaliox_quick_langs') || 'null');
     if (Array.isArray(v) && v.length === 2 && v[0] !== v[1]) return v;
   } catch (e) {}
   return [...QUICK_LANGS_DEFAULT];
@@ -927,7 +927,7 @@ function setQuickLang(index, code) {
   const langs = quickLangs();
   const old = langs[index];
   langs[index] = code;
-  try { localStorage.setItem('verbascribe_quick_langs', JSON.stringify(langs)); } catch (e) {}
+  try { localStorage.setItem('verbaliox_quick_langs', JSON.stringify(langs)); } catch (e) {}
   const sel = document.getElementById('live-translate-select');
   const value = sel.value === old ? code : sel.value;
   fillTranslateSelect(_textLangs || TEXT_LANG_FALLBACK, value);
@@ -1092,7 +1092,7 @@ window.trayCommand = function (cmd, arg) {
 // --- Recording studio: large captions and their translation ---
 const studio = { view: 'under', speed: 'quality', font: 26, speech: 'auto', focus: false };
 try {
-  const saved = JSON.parse(localStorage.getItem('verbascribe_studio') || '{}');
+  const saved = JSON.parse(localStorage.getItem('verbaliox_studio') || '{}');
   Object.assign(studio, {
     view: ['under', 'side', 'tr'].includes(saved.view) ? saved.view : 'under',
     speed: saved.speed || 'quality', font: saved.font || 26, speech: saved.speech || 'auto',
@@ -1101,7 +1101,7 @@ try {
 
 function saveStudioPrefs() {
   try {
-    localStorage.setItem('verbascribe_studio', JSON.stringify({ view: studio.view, speed: studio.speed, font: studio.font, speech: studio.speech }));
+    localStorage.setItem('verbaliox_studio', JSON.stringify({ view: studio.view, speed: studio.speed, font: studio.font, speech: studio.speech }));
   } catch (e) {}
 }
 
@@ -1510,7 +1510,7 @@ async function startLiveRecording() {
     _recStartTime = Date.now();
     // Notes left from a recording that did not finish (the window was closed) are kept
     try {
-      const draft = localStorage.getItem('verbascribe_studio_notes');
+      const draft = localStorage.getItem('verbaliox_studio_notes');
       const ta = document.getElementById('studio-notes-input');
       if (ta && draft && !ta.value) ta.value = draft;
     } catch (e) {}
@@ -1781,7 +1781,7 @@ function renderStudioExtras() {
 // --- The tabs under the recording: the text, the user's notes, questions ---
 function studioTab(name) {
   studio.tab = ['text', 'notes', 'ask'].includes(name) ? name : 'text';
-  try { localStorage.setItem('verbascribe_studio_tab', studio.tab); } catch (e) {}
+  try { localStorage.setItem('verbaliox_studio_tab', studio.tab); } catch (e) {}
   renderStudioTab();
   if (studio.tab === 'notes' && isRecording()) document.getElementById('studio-notes-input')?.focus();
   if (studio.tab === 'ask') document.getElementById('studio-ask-input')?.focus();
@@ -1789,7 +1789,7 @@ function studioTab(name) {
 
 function renderStudioTab() {
   if (!studio.tab) {
-    try { studio.tab = localStorage.getItem('verbascribe_studio_tab') || 'text'; } catch (e) { studio.tab = 'text'; }
+    try { studio.tab = localStorage.getItem('verbaliox_studio_tab') || 'text'; } catch (e) { studio.tab = 'text'; }
   }
   ['text', 'notes', 'ask'].forEach(k => {
     document.getElementById(`st-pane-${k}`)?.classList.toggle('hidden', k !== studio.tab);

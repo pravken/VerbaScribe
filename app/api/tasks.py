@@ -128,7 +128,7 @@ def api_export_tasks(payload: TaskExportPayload) -> Dict[str, Any]:
     items = _chosen(payload.ids)
     if payload.fmt == "obsidian":
         text = ("# Задачи\n\n" if payload.lang != "en" else "# Tasks\n\n") + commitments.export_text(items, "md", payload.lang)
-        return _to_vault("Задачи VerbaScribe.md" if payload.lang != "en" else "VerbaScribe tasks.md", text)
+        return _to_vault("Задачи Verbaliox.md" if payload.lang != "en" else "Verbaliox tasks.md", text)
     text = commitments.export_text(items, payload.fmt, payload.lang)
     ext = "md" if payload.fmt == "md" else "csv"
     name = f"{'tasks' if payload.lang == 'en' else 'задачи'}{'-todoist' if payload.fmt == 'todoist' else ''}.{ext}"

@@ -83,7 +83,7 @@ ${FLUFF.map(([x, y, r]) => `<span class="fluff" style="left:${x}px;top:${y}px;wi
   <ellipse cx="18.2" cy="5.2" rx="1.7" ry="2.5" transform="rotate(25 18.2 5.2)" fill="#F8FAFC"/>
 </svg></div>
 <div class="right">
-  <h1>VerbaScribe</h1>
+  <h1>Verbaliox</h1>
   <p class="tag">${t.tagline}</p>
   <div class="card">
     <div class="wave">${wave()}</div>

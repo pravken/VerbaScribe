@@ -1,20 +1,20 @@
 # Промпт для локальной сессии: проверка моделей на ПК
 
-Скопируйте всё, что ниже линии, в новую сессию Claude Code на компьютере с VerbaScribe.
+Скопируйте всё, что ниже линии, в новую сессию Claude Code на компьютере с Verbaliox.
 
 ---
 
-Ты работаешь на моём Windows-ПК с установленным VerbaScribe (локальная программа расшифровки встреч). Нужно сравнить модели распознавания речи и анализа на реальном железе и дать рекомендации, какие модели оставить в программе и какие сделать по умолчанию. Отвечай мне по-русски.
+Ты работаешь на моём Windows-ПК с установленным Verbaliox (локальная программа расшифровки встреч). Нужно сравнить модели распознавания речи и анализа на реальном железе и дать рекомендации, какие модели оставить в программе и какие сделать по умолчанию. Отвечай мне по-русски.
 
 **Условие для всех моделей: бесплатно и законно для коммерческого использования.** Модель с лицензией, запрещающей коммерцию, сразу помечай как «не подходит».
 
 ## 0. Подготовка (ничего не ломать)
 
-1. Спроси меня, где установлен VerbaScribe (папка с `VerbaScribe.exe` и `.venv`). Дальше это `APP`.
+1. Спроси меня, где установлен Verbaliox (папка с `Verbaliox.exe` и `.venv`). Дальше это `APP`.
 2. Склонируй репозиторий рядом (или обнови, если уже есть) и перейди на ветку с новым кодом:
    ```
-   git clone https://github.com/pravken/VerbaScribe.git VerbaScribe-bench
-   cd VerbaScribe-bench
+   git clone https://github.com/pravken/Verbaliox.git Verbaliox-bench
+   cd Verbaliox-bench
    git checkout claude/sweet-maxwell-uaextf
    git pull
    ```
@@ -22,12 +22,12 @@
 4. **Мои данные не трогаем.** Сделай копию базы и работай с ней:
    ```
    mkdir %TEMP%\vs-bench-data
-   copy "%LOCALAPPDATA%\VerbaScribe\meetings.db" %TEMP%\vs-bench-data\
-   set VERBASCRIBE_DATA_DIR=%TEMP%\vs-bench-data
-   set VERBASCRIBE_MODELS_DIR=APP\models
+   copy "%LOCALAPPDATA%\Verbaliox\meetings.db" %TEMP%\vs-bench-data\
+   set VERBALIOX_DATA_DIR=%TEMP%\vs-bench-data
+   set VERBALIOX_MODELS_DIR=APP\models
    ```
    Если `meetings.db` лежит в другом месте, найди его: путь показан в «Настройки» программы, строка «Папка данных».
-5. Попроси меня закрыть VerbaScribe на время замеров: программа делит видеокарту, и время будет неверным.
+5. Попроси меня закрыть Verbaliox на время замеров: программа делит видеокарту, и время будет неверным.
 6. Запусти тесты, чтобы убедиться, что окружение рабочее: `PY -m unittest discover -s tests -t .`
 
 ## 1. Проверить лицензии по первоисточникам
@@ -69,7 +69,7 @@
    Если раскладка файлов в датасете `google/fleurs` изменилась и скрипт падает, поправь функцию `fleurs_clip`.
 2. **Мои записи — главный тест.** Покажи мне список расшифрованных записей (id, название, длительность, язык) из копии базы:
    ```
-   PY -c "import sqlite3,os;c=sqlite3.connect(os.environ['VERBASCRIBE_DATA_DIR']+'/meetings.db');[print(r) for r in c.execute(\"select id,title,round(duration/60,1),language from meetings where status='completed' order by id desc limit 40\")]"
+   PY -c "import sqlite3,os;c=sqlite3.connect(os.environ['VERBALIOX_DATA_DIR']+'/meetings.db');[print(r) for r in c.execute(\"select id,title,round(duration/60,1),language from meetings where status='completed' order by id desc limit 40\")]"
    ```
    Спроси, какие из них я исправлял вручную: только они годятся как эталон. Потом запусти:
    ```

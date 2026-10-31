@@ -150,7 +150,7 @@ def sign_file(seed: bytes, key_id: bytes, data: bytes, trusted_comment: str) -> 
         raise ValueError("one line of trusted comment")
     sig = sign(seed, hashlib.blake2b(data, digest_size=64).digest())
     glob = sign(seed, sig + trusted_comment.encode())
-    return (f"untrusted comment: signature from VerbaScribe release key\n"
+    return (f"untrusted comment: signature from Verbaliox release key\n"
             f"{base64.b64encode(b'ED' + key_id + sig).decode()}\n"
             f"trusted comment: {trusted_comment}\n"
             f"{base64.b64encode(glob).decode()}\n")

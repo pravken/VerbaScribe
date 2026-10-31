@@ -1,4 +1,4 @@
-// VerbaScribe page script: the Tasks page (package D, docs/redesign-plan.md). The tasks of every
+// Verbaliox page script: the Tasks page (package D, docs/redesign-plan.md). The tasks of every
 // recording (/api/tasks, app/commitments.py) as a list (by person, by due date, by recording) or a
 // month calendar; who a task is on is a kind as well as a name (someone who speaks in the recording,
 // someone only named, a department, another company, nobody). The Summary panel counts a period and

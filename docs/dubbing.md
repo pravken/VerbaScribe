@@ -49,7 +49,7 @@ Why a separate process / venv:
 * Cancel = kill the process: immediate, and all VRAM goes back to the driver.
 * The feature stays optional: users who never dub never download ~6 GB of packages and ~5 GB of weights.
 
-Paths: outputs go to `<data folder>/dubs` (`app.paths.DATA_DIR`, default `%LOCALAPPDATA%\VerbaScribe`); dub paths are stored relative to the data folder so moving it keeps them working. `.venv-dub` sits next to the program (`APP_DIR`), weights in `MODELS_DIR/dub`. The worker only receives absolute paths.
+Paths: outputs go to `<data folder>/dubs` (`app.paths.DATA_DIR`, default `%LOCALAPPDATA%\Verbaliox`); dub paths are stored relative to the data folder so moving it keeps them working. `.venv-dub` sits next to the program (`APP_DIR`), weights in `MODELS_DIR/dub`. The worker only receives absolute paths.
 
 Before the worker starts, a Whisper model still cached from a previous queued job is released (`release_whisper_model()`). Progress goes through `update_meeting_progress`, so it reaches the UI over SSE like transcription progress.
 

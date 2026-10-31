@@ -228,7 +228,7 @@ class UpdateSourceTest(unittest.TestCase):
 
         base = updater.DOWNLOAD_PREFIX + "v9.0.0/"
         release = {"tag_name": "v9.0.0", "assets": [
-            {"name": "VerbaScribe-v9.0.0.zip", "browser_download_url": base + "VerbaScribe-v9.0.0.zip", "digest": "sha256:" + "a" * 64},
+            {"name": "Verbaliox-v9.0.0.zip", "browser_download_url": base + "Verbaliox-v9.0.0.zip", "digest": "sha256:" + "a" * 64},
             {"name": "SHA256SUMS.txt", "browser_download_url": "https://evil.example/SHA256SUMS.txt"},
         ]}
         real = httpx.Client
@@ -236,11 +236,11 @@ class UpdateSourceTest(unittest.TestCase):
         db.init_db()
         with mock.patch("httpx.Client", side_effect=lambda **kw: real(transport=transport, **kw)):
             latest = updater.check(force=True)["latest"]
-        self.assertEqual(latest["zip_url"], base + "VerbaScribe-v9.0.0.zip")
+        self.assertEqual(latest["zip_url"], base + "Verbaliox-v9.0.0.zip")
         self.assertIsNone(latest["sums_url"])  # a file from another host is ignored
         self.assertEqual(latest["zip_digest"], "a" * 64)
 
-        sums = f"{'b' * 64}  VerbaScribe-v9.0.0.zip\n"
+        sums = f"{'b' * 64}  Verbaliox-v9.0.0.zip\n"
         transport = httpx.MockTransport(lambda req: httpx.Response(200, text=sums))
         # the checksums are compared here; the signature has its tests in tests/test_updater.py
         with mock.patch("httpx.Client", side_effect=lambda **kw: real(transport=transport, **kw)), \

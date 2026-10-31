@@ -11,7 +11,7 @@ from typing import Optional, Tuple
 
 BASE_DIR = Path(__file__).resolve().parent
 ICO_PATH = BASE_DIR / "assets" / "icon.ico"
-WINDOW_TITLE = "VerbaScribe"  # the launcher (build_exe.py) closes its splash when a window with this title appears
+WINDOW_TITLE = "Verbaliox"  # the launcher (build_exe.py) closes its splash when a window with this title appears
 # uvicorn and the app are imported where they are used, inside the error handling of __main__: an
 # incomplete .venv (setup interrupted, a blocked .pyd) then shows a message instead of nothing at all
 
@@ -19,12 +19,12 @@ WINDOW_TITLE = "VerbaScribe"  # the launcher (build_exe.py) closes its splash wh
 def set_app_user_model_id() -> None:
     """
     Sets an explicit Windows AppUserModelID so the taskbar groups the window
-    under VerbaScribe with our custom Willow icon rather than python.exe.
+    under Verbaliox with our custom Willow icon rather than python.exe.
     """
     if sys.platform == "win32":
         try:
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-                "VerbaScribe.Desktop.Studio.1"
+                "Verbaliox.Desktop.Studio.1"
             )
         except Exception:
             pass
@@ -74,12 +74,12 @@ def apply_native_window_icon_and_hide_console() -> None:
 
 
 # Windows of other programs that can carry the title too: Explorer showing the program's folder
-# (named VerbaScribe) is the usual one
+# (named Verbaliox) is the usual one
 _FOREIGN_WINDOW_CLASSES = {"CabinetWClass", "ExploreWClass"}
 
 
 def find_app_window(pid: Optional[int] = None) -> int:
-    """The window titled VerbaScribe (of process `pid` when given), never an Explorer window of a
+    """The window titled Verbaliox (of process `pid` when given), never an Explorer window of a
     folder with that name; 0 when there is none."""
     if sys.platform != "win32":
         return 0
@@ -114,8 +114,8 @@ def is_port_in_use(host: str, port: int) -> bool:
 
 
 def probe_server(host: str, port: int) -> bool:
-    """True when the program on the port is this user's VerbaScribe: it accepts the session token
-    from our data folder. Another program on the port (a dev server, another app) or VerbaScribe
+    """True when the program on the port is this user's Verbaliox: it accepts the session token
+    from our data folder. Another program on the port (a dev server, another app) or Verbaliox
     of another Windows user does not, and the window must not open their page."""
     import http.client
 
@@ -161,8 +161,8 @@ def read_session_token(timeout: float = 5.0) -> str:
     running server wrote (app.main)."""
     from app.paths import SESSION_TOKEN_FILE as token_file
 
-    if os.environ.get("VERBASCRIBE_TOKEN"):
-        return os.environ["VERBASCRIBE_TOKEN"]
+    if os.environ.get("VERBALIOX_TOKEN"):
+        return os.environ["VERBALIOX_TOKEN"]
 
     deadline = time.time() + timeout
     while True:
@@ -201,7 +201,7 @@ def start_server_in_thread(host: str, port: int) -> threading.Thread:
     # token file left by the previous run (the server may still be starting)
     import secrets
 
-    os.environ["VERBASCRIBE_TOKEN"] = secrets.token_urlsafe(32)
+    os.environ["VERBALIOX_TOKEN"] = secrets.token_urlsafe(32)
     register_cuda_dlls()
     config = uvicorn.Config("app.main:app", host=host, port=port, log_level="warning", access_log=False,
                             timeout_graceful_shutdown=3)
@@ -234,15 +234,15 @@ h1{font-size:18px;font-weight:600;margin:18px 0 8px}p{color:#98989D;line-height:
 pre{text-align:left;white-space:pre-wrap;background:#242426;border:1px solid #3a3a3c;border-radius:10px;padding:12px;color:#FF9F0A;font-size:12px}
 code{color:#F5F5F7}</style></head><body><div class="box" id="box">
 <div><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
-<h1>Запуск VerbaScribe…</h1><p id="hint">Первый запуск после установки может занять несколько минут:
+<h1>Запуск Verbaliox…</h1><p id="hint">Первый запуск после установки может занять несколько минут:
 Windows проверяет файлы библиотек.</p></div>
 <script>
 let t0 = Date.now();
 setInterval(() => { const s = Math.round((Date.now() - t0) / 1000); if (s > 20) document.getElementById('hint').textContent =
   'Идёт запуск (' + s + ' с). Первый запуск после установки может занять несколько минут: Windows проверяет файлы библиотек.'; }, 1000);
 function showError(text, log, sac) {
-  document.getElementById('box').innerHTML = '<h1>Сервер VerbaScribe не запустился</h1><pre></pre>'
-    + (sac ? '<p>Похоже, файл заблокировала функция Windows «Интеллектуальное управление приложениями». Выключите её: Безопасность Windows → Управление приложениями/браузером → Параметры интеллектуального управления приложениями → Выкл., затем запустите VerbaScribe снова.</p>' : '')
+  document.getElementById('box').innerHTML = '<h1>Сервер Verbaliox не запустился</h1><pre></pre>'
+    + (sac ? '<p>Похоже, файл заблокировала функция Windows «Интеллектуальное управление приложениями». Выключите её: Безопасность Windows → Управление приложениями/браузером → Параметры интеллектуального управления приложениями → Выкл., затем запустите Verbaliox снова.</p>' : '')
     + '<p>Журнал: <code></code></p>';
   document.querySelector('pre').textContent = text;
   document.querySelector('code').textContent = log;
@@ -308,9 +308,21 @@ class WindowApi:
 _instance_mutex = None
 
 
+def drop_former_launcher(app_dir: Path) -> None:
+    """The launcher of the program's former name (VerbaScribe.exe) is removed once Verbaliox.exe is
+    next to it: it waits for a window of the old title, so its splash would never close. While it is
+    the one that started this run Windows keeps it; the next start removes it."""
+    old = app_dir / "VerbaScribe.exe"
+    if sys.platform == "win32" and old.is_file() and (app_dir / "Verbaliox.exe").is_file():
+        try:
+            old.unlink()
+        except OSError:
+            pass
+
+
 def acquire_single_instance() -> bool:
     """
-    True if this is the only desktop window of VerbaScribe for this user. A named mutex is
+    True if this is the only desktop window of Verbaliox for this user. A named mutex is
     atomic, unlike checking the port: two quick double-clicks cannot both start a window.
     """
     global _instance_mutex
@@ -321,7 +333,7 @@ def acquire_single_instance() -> bool:
     # inside ctypes, may reset GetLastError)
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel32.CreateMutexW.restype = ctypes.c_void_p
-    _instance_mutex = kernel32.CreateMutexW(None, False, "Local\\VerbaScribe.Desktop.Window")
+    _instance_mutex = kernel32.CreateMutexW(None, False, "Local\\Verbaliox.Desktop.Window")
     if _instance_mutex and ctypes.get_last_error() != ERROR_ALREADY_EXISTS:
         return True
     # Our handle would keep the other instance's lock alive even after it ends
@@ -377,7 +389,7 @@ def _process_image(pid: int) -> str:
 
 
 def stuck_instance_pid() -> int:
-    """The PID from app.pid when that process is still the VerbaScribe that wrote it, else 0."""
+    """The PID from app.pid when that process is still the Verbaliox that wrote it, else 0."""
     try:
         lines = _pid_file().read_text(encoding="utf-8").split("\n")
         pid, exe = int(lines[0].strip()), (lines[1].strip() if len(lines) > 1 else "")
@@ -395,7 +407,7 @@ MB_ON_TOP = 0x40000 | 0x10000
 
 def wait_for_other_instance(timeout: float = 15.0) -> str:
     """
-    Another VerbaScribe holds the single-instance lock. Returns "activated" when its window was
+    Another Verbaliox holds the single-instance lock. Returns "activated" when its window was
     brought to the front, "acquired" when it ended meanwhile (e.g. it was just closed and is still
     shutting down) and this launch now owns the lock, or "timeout" when it neither shows a window
     nor ends.
@@ -420,20 +432,20 @@ def recover_stuck_instance() -> bool:
     if not pid:  # which process it is is not known for sure: ending a guess could hit another program
         ctypes.windll.user32.MessageBoxW(
             None,
-            "VerbaScribe уже запущен, но его окно не отвечает.\n\n"
-            "Завершите процесс python.exe программы VerbaScribe в Диспетчере задач или перезагрузите компьютер.",
-            "VerbaScribe", MB_ICONWARNING | MB_ON_TOP)
+            "Verbaliox уже запущен, но его окно не отвечает.\n\n"
+            "Завершите процесс python.exe программы Verbaliox в Диспетчере задач или перезагрузите компьютер.",
+            "Verbaliox", MB_ICONWARNING | MB_ON_TOP)
         return False
     answer = ctypes.windll.user32.MessageBoxW(
         None,
-        "VerbaScribe уже запущен, но его окно не отвечает.\n\n"
+        "Verbaliox уже запущен, но его окно не отвечает.\n\n"
         "Завершить зависший процесс и открыть программу заново? Незавершённая обработка будет прервана.",
-        "VerbaScribe", MB_YESNO | MB_ICONWARNING | MB_ON_TOP)
+        "Verbaliox", MB_YESNO | MB_ICONWARNING | MB_ON_TOP)
     if answer != IDYES:
         return False
     import subprocess
 
-    print(f"Ending the stuck VerbaScribe process {pid}")
+    print(f"Ending the stuck Verbaliox process {pid}")
     subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True,
                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     for _ in range(20):
@@ -444,7 +456,7 @@ def recover_stuck_instance() -> bool:
 
 
 def activate_existing_window(timeout: float = 30.0) -> bool:
-    """Brings the already open VerbaScribe window to the front (it may still be starting)."""
+    """Brings the already open Verbaliox window to the front (it may still be starting)."""
     if sys.platform != "win32":
         return False
     user32 = ctypes.windll.user32
@@ -547,7 +559,7 @@ class TrayController:
         elif time.time() - since > 10:
             self._hotkey_wait = None
             self._notify("Запись не остановилась" if was else "Запись не началась",
-                         "Откройте окно VerbaScribe, чтобы увидеть причину", warning=True)
+                         "Откройте окно Verbaliox, чтобы увидеть причину", warning=True)
 
     def _warn_hotkey_failures(self) -> None:
         """A hotkey that could not be registered is said once, not only on the settings page."""
@@ -622,7 +634,7 @@ class TrayController:
     def menu_items(self):
         st = self._status
         return [
-            ("Открыть VerbaScribe", "open", self._mf_default),
+            ("Открыть Verbaliox", "open", self._mf_default),
             (None, None, 0),
             (st.get("text") or "Готово к работе", None, self._mf_grayed),
             *self._quick_record_item(st),
@@ -735,7 +747,7 @@ class TrayController:
             MB_YESNO, MB_ICONWARNING, IDYES = 0x4, 0x30, 6
             what = "Идёт запись" if st.get("recording") else "Идёт обработка"
             answer = ctypes.windll.user32.MessageBoxW(
-                None, f"{what}. Выйти из VerbaScribe? Незавершённая работа будет прервана.", "VerbaScribe",
+                None, f"{what}. Выйти из Verbaliox? Незавершённая работа будет прервана.", "Verbaliox",
                 MB_YESNO | MB_ICONWARNING | MB_ON_TOP)
             if answer != IDYES:
                 return
@@ -752,11 +764,11 @@ class TrayController:
         # Something runs, or the app stays in the tray by choice (Settings → General): the window hides
         threading.Timer(0.05, self.window.hide).start()
         if self._status.get("state") != "idle":
-            self._notify("VerbaScribe работает в фоне",
+            self._notify("Verbaliox работает в фоне",
                          "Запись или обработка продолжается. Значок в трее — открыть окно или выйти.")
         elif not self._told_tray:
             self._told_tray = True
-            self._notify("VerbaScribe в трее", "Программа продолжает работать. Значок в трее — открыть окно или выйти.")
+            self._notify("Verbaliox в трее", "Программа продолжает работать. Значок в трее — открыть окно или выйти.")
         return False
 
     def _update_in_background(self) -> None:
@@ -857,7 +869,7 @@ def show_error_box(text: str) -> None:
     if sys.platform == "win32" and "--headless" not in sys.argv:
         try:
             MB_ICONERROR = 0x10
-            ctypes.windll.user32.MessageBoxW(None, text, "VerbaScribe", MB_ICONERROR | MB_ON_TOP)
+            ctypes.windll.user32.MessageBoxW(None, text, "Verbaliox", MB_ICONERROR | MB_ON_TOP)
             return
         except Exception:
             pass
@@ -875,7 +887,7 @@ def main() -> None:
 
     set_app_user_model_id()
 
-    parser = argparse.ArgumentParser(description="VerbaScribe Desktop Studio")
+    parser = argparse.ArgumentParser(description="Verbaliox Desktop Studio")
     parser.add_argument("--host", default="127.0.0.1", help="Server host")
     parser.add_argument("--port", type=int, default=8765, help="Server port")
     parser.add_argument("--browser", action="store_true", help="Open in external web browser")
@@ -886,7 +898,7 @@ def main() -> None:
 
     if args.host not in ("127.0.0.1", "localhost", "::1"):
         # Allow the explicitly chosen host in the server's Host header check
-        os.environ["VERBASCRIBE_ALLOWED_HOSTS"] = args.host
+        os.environ["VERBALIOX_ALLOWED_HOSTS"] = args.host
     args.port, already_running = choose_port(args.host, args.port)
 
     if args.headless:
@@ -894,7 +906,7 @@ def main() -> None:
             register_cuda_dlls()
             threading.Thread(
                 target=lambda: wait_for_server(args.host, args.port)
-                and print(f"VerbaScribe: {app_url(args.host, args.port)}", flush=True),
+                and print(f"Verbaliox: {app_url(args.host, args.port)}", flush=True),
                 daemon=True,
             ).start()
             uvicorn.run("app.main:app", host=args.host, port=args.port, log_level="info", access_log=False,  # the address holds the session token
@@ -906,7 +918,7 @@ def main() -> None:
             # A second double-click shows the window that is already open instead of a second copy;
             # an instance that is just closing is waited for
             outcome = wait_for_other_instance()
-            print(f"Another VerbaScribe instance: {outcome}")
+            print(f"Another Verbaliox instance: {outcome}")
             if outcome == "activated" or (outcome == "timeout" and not recover_stuck_instance()):
                 return
         # An installation made on Python 3.10 moves its environment to 3.11 once (app/envmove.py):
@@ -917,6 +929,7 @@ def main() -> None:
         if envmove.needed(APP_DIR, DATA_DIR) and envmove.launch(APP_DIR, DATA_DIR):
             return
         envmove.cleanup(APP_DIR, DATA_DIR)
+        drop_former_launcher(APP_DIR)
         write_pid_file()
         # A previous instance may still be releasing the port for a moment
         for _ in range(50):
@@ -929,7 +942,7 @@ def main() -> None:
             import webview
 
             if not already_running:
-                print("Starting VerbaScribe local AI server...")
+                print("Starting Verbaliox local AI server...")
                 server_thread = start_server_in_thread(args.host, args.port)
 
             webview.settings["ALLOW_DOWNLOADS"] = True
@@ -1030,7 +1043,7 @@ def _startup_failed(log_file) -> None:
 
     text = traceback.format_exc()
     if log_file is None:
-        log_file = Path(tempfile.gettempdir()) / "verbascribe-start-error.log"
+        log_file = Path(tempfile.gettempdir()) / "verbaliox-start-error.log"
         try:
             log_file.write_text(text, encoding="utf-8")
         except OSError:
@@ -1040,9 +1053,9 @@ def _startup_failed(log_file) -> None:
     hint = ("\n\nЕсли установка прерывалась, запустите setup.bat ещё раз." if isinstance(sys.exc_info()[1], ImportError)
             else "")
     show_error_box(
-        "Не удалось запустить VerbaScribe.\n\n"
+        "Не удалось запустить Verbaliox.\n\n"
         f"Подробности записаны в журнал:\n{log_file}{hint}\n\n"
-        "VerbaScribe could not start. Details are in the log file above."
+        "Verbaliox could not start. Details are in the log file above."
     )
 
 

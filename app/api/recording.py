@@ -259,7 +259,7 @@ class UiLangPayload(BaseModel):
 
 @router.post("/api/ui/lang")
 def api_ui_lang(payload: UiLangPayload) -> Dict[str, Any]:
-    """Remembers the UI language for the launcher's splash screen (read by VerbaScribe.exe)."""
+    """Remembers the UI language for the launcher's splash screen (read by Verbaliox.exe)."""
     lang = "en" if payload.lang == "en" else "ru"
     try:
         (DATA_DIR / "ui-lang.txt").write_text(lang, encoding="utf-8")

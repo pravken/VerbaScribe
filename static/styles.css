@@ -33,7 +33,7 @@
   --btn-h-lg: 34px;
 }
 
-/* VerbaScribe UI styles (on top of the compiled Tailwind in vendor/tailwind.css) */
+/* Verbaliox UI styles (on top of the compiled Tailwind in vendor/tailwind.css) */
 body {
   font-family: 'Inter Variable', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
   background-color: #141416;

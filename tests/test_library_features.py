@@ -153,7 +153,7 @@ class ObsidianTest(unittest.TestCase):
         self.assertEqual(path, self.vault / "Meetings" / "2024" / "2024-05-12 Релиз план итоги.md")
         text = path.read_text(encoding="utf-8")
         self.assertIn("date: 2024-05-12", text)
-        self.assertIn(f"verbascribe_id: {m['id']}", text)
+        self.assertIn(f"verbaliox_id: {m['id']}", text)
         self.assertIn('  - "Анна"', text)
         self.assertIn("**Борис** `01:05` Тестирование до пятницы.", text)
         self.assertIn("## Резюме", text)
@@ -191,6 +191,22 @@ class ObsidianTest(unittest.TestCase):
 
 
 @needs_deps
+class FormerNameNoteTest(unittest.TestCase):
+    """Notes written while the program was called VerbaScribe stay recognised as its own."""
+
+    def test_old_id_and_notes_marker(self):
+        from app import obsidian
+
+        with tempfile.TemporaryDirectory() as tmp:
+            note = Path(tmp) / "n.md"
+            note.write_text("---\nverbascribe_id: 5\n---\n# T\n", encoding="utf-8")
+            self.assertTrue(obsidian._is_ours(note, 5))
+            self.assertFalse(obsidian._is_ours(note, 6))
+        ours, user = obsidian.split_user_notes("# T\nbody\n<!-- verbascribe:notes -->\n## Мои заметки\n- [x] done\n")
+        self.assertEqual(ours, "# T\nbody\n")
+        self.assertTrue(user.startswith(obsidian.NOTES_MARKER + "\n## Мои заметки"))
+
+
 class PendingExportTest(unittest.TestCase):
     def setUp(self):
         init_db()

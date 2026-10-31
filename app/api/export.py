@@ -300,7 +300,7 @@ def api_pick_recordings_dir() -> Dict[str, Any]:
         return {"ok": False, "cancelled": True}
     try:
         Path(chosen).mkdir(parents=True, exist_ok=True)
-        probe = Path(chosen) / f".verbascribe-write-test-{uuid.uuid4().hex[:6]}"
+        probe = Path(chosen) / f".verbaliox-write-test-{uuid.uuid4().hex[:6]}"
         probe.write_bytes(b"")
         probe.unlink()
     except OSError as e:

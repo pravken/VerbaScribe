@@ -1,4 +1,4 @@
-// VerbaScribe page script, part 2 of 9: The export menu and the recording context menu.
+// Verbaliox page script, part 2 of 9: The export menu and the recording context menu.
 // The parts are classic scripts sharing one global scope, loaded in order by index.html.
 
 // --- Export: every format in one menu. What the recording does not have yet (a translation, a

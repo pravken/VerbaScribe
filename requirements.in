@@ -1,4 +1,4 @@
-# Top-level dependencies of VerbaScribe (Python 3.11, Windows x64, NVIDIA CUDA 12.6 wheels).
+# Top-level dependencies of Verbaliox (Python 3.11, Windows x64, NVIDIA CUDA 12.6 wheels).
 # requirements.txt is the exact, hash-checked lock generated from this file; regenerate it with:
 #   uv pip compile requirements.in -o requirements.txt --generate-hashes --python-version 3.11 ^
 #     --python-platform x86_64-pc-windows-msvc --index-strategy unsafe-best-match ^

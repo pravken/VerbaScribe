@@ -1,5 +1,5 @@
 {
-  "name": "verbascribe-ui-vendor",
+  "name": "verbaliox-ui-vendor",
   "private": true,
   "description": "Build-time only: compiles Tailwind CSS and copies pinned front-end libraries into static/vendor. End users do not need Node.js.",
   "scripts": {

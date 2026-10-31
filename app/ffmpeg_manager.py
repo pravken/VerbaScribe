@@ -1,7 +1,7 @@
 """
 Locates FFmpeg and, only when the user asks for it, downloads a pinned Windows build.
 
-Lookup order: the copy downloaded by VerbaScribe (<data>/bin), then FFmpeg on PATH.
+Lookup order: the copy downloaded by Verbaliox (<data>/bin), then FFmpeg on PATH.
 The download is a fixed release of the "essentials" build by Gyan Doshi (the build linked from
 ffmpeg.org for Windows), fetched from its GitHub releases and checked against a SHA-256 hash that
 is pinned below. Only ffmpeg.exe, ffprobe.exe and the license are extracted.

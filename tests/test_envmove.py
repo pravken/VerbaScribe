@@ -29,7 +29,7 @@ class NeededTest(_Dirs):
     def _needed(self, version=(3, 10), prefix=None):
         with mock.patch.object(sys, "platform", "win32"), mock.patch.object(sys, "version_info", version), \
                 mock.patch.object(sys, "prefix", str(prefix or self.app / ".venv")), \
-                mock.patch.dict(os.environ, {"VERBASCRIBE_NO_ENV_MOVE": ""}):
+                mock.patch.dict(os.environ, {"VERBALIOX_NO_ENV_MOVE": ""}):
             return envmove.needed(self.app, self.data)
 
     def test_the_apps_environment_on_310_moves(self):

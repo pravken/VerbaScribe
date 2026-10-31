@@ -1,15 +1,15 @@
 """
-Filesystem locations used by VerbaScribe.
+Filesystem locations used by Verbaliox.
 
 User data (database, uploads, extracted audio, exports, the session token, a downloaded FFmpeg)
 lives in a per-user folder outside the program directory, so the app folder can be replaced,
 updated or kept read-only:
 
-    Windows: %LOCALAPPDATA%\\VerbaScribe
-    other:   $XDG_DATA_HOME/VerbaScribe or ~/.local/share/VerbaScribe
+    Windows: %LOCALAPPDATA%\\Verbaliox
+    other:   $XDG_DATA_HOME/Verbaliox or ~/.local/share/Verbaliox
 
-`VERBASCRIBE_DATA_DIR` overrides the location. Speech models stay next to the program
-(`models/`, override with `VERBASCRIBE_MODELS_DIR`): they are large, re-downloadable and shared
+`VERBALIOX_DATA_DIR` overrides the location. Speech models stay next to the program
+(`models/`, override with `VERBALIOX_MODELS_DIR`): they are large, re-downloadable and shared
 by all users of the install.
 
 Earlier versions kept user data in `<app>/data`. On the first start with the new layout that folder
@@ -29,12 +29,16 @@ LEGACY_DATA_DIR = APP_DIR / "data"
 MOVED_NOTE_NAME = "MOVED.txt"
 
 
-def _default_data_dir() -> Path:
+def _default_data_dir(name: str = "Verbaliox") -> Path:
     if sys.platform == "win32":
         base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
     else:
         base = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
-    return Path(base) / "VerbaScribe"
+    return Path(base) / name
+
+
+# The program was called VerbaScribe before: its data folder is renamed once (migrate_renamed_data_dir)
+FORMER_NAME = "VerbaScribe"
 
 
 def _is_packaged_python() -> bool:
@@ -57,12 +61,12 @@ def _is_packaged_python() -> bool:
 
 
 PACKAGED_PYTHON = _is_packaged_python()
-_ENV_DATA_DIR = os.environ.get("VERBASCRIBE_DATA_DIR")
+_ENV_DATA_DIR = os.environ.get("VERBALIOX_DATA_DIR")
 # Under a packaged (Store) Python, %LOCALAPPDATA% is virtualized, so data stays next to the program
 DATA_DIR = Path(
     _ENV_DATA_DIR or (LEGACY_DATA_DIR if PACKAGED_PYTHON else _default_data_dir())
 ).expanduser().resolve()
-MODELS_DIR = Path(os.environ.get("VERBASCRIBE_MODELS_DIR") or (APP_DIR / "models")).expanduser().resolve()
+MODELS_DIR = Path(os.environ.get("VERBALIOX_MODELS_DIR") or (APP_DIR / "models")).expanduser().resolve()
 
 
 def _log(msg: str) -> None:
@@ -118,7 +122,7 @@ LEGACY_CONFLICT: Optional[Dict[str, Any]] = None
 
 
 def _count_recordings(db_path: Path) -> int:
-    """Number of recordings in a VerbaScribe database; 0 if it is empty, unreadable or not ours."""
+    """Number of recordings in a Verbaliox database; 0 if it is empty, unreadable or not ours."""
     try:
         conn = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True)
         try:
@@ -194,9 +198,9 @@ def migrate_legacy_data_dir(legacy: Optional[Path] = None, target: Optional[Path
     try:
         legacy.mkdir(exist_ok=True)
         (legacy / MOVED_NOTE_NAME).write_text(
-            "VerbaScribe now keeps recordings, the database and exports in:\n"
+            "Verbaliox now keeps recordings, the database and exports in:\n"
             f"{target}\n\n"
-            "Данные VerbaScribe (записи, база, экспорт) теперь хранятся в папке выше.\n"
+            "Данные Verbaliox (записи, база, экспорт) теперь хранятся в папке выше.\n"
             "This folder can be deleted. / Эту папку можно удалить.\n",
             encoding="utf-8",
         )
@@ -206,13 +210,77 @@ def migrate_legacy_data_dir(legacy: Optional[Path] = None, target: Optional[Path
     return True
 
 
+def _rewrite_moved_root(db_path: Path, old_root: Path, new_root: Path) -> int:
+    """
+    After the data folder was renamed: every stored path inside it (media, audio, dubs, exports,
+    settings, also inside JSON) points to the new folder. Only whole folder names are matched.
+    """
+    conn = sqlite3.connect(str(db_path))
+    try:
+        pairs = []
+        for old, new in ((str(old_root), str(new_root)), (old_root.as_posix(), new_root.as_posix())):
+            for sep in ("\\", "/"):
+                pairs.append((old + sep, new + sep))
+                pairs.append(((old + sep).replace("\\", "\\\\"), (new + sep).replace("\\", "\\\\")))  # in JSON
+        pairs = list(dict.fromkeys(pairs))
+        changed = 0
+        rows = conn.execute("SELECT name, COALESCE(sql, '') FROM sqlite_master WHERE type = 'table'").fetchall()
+        virtual = [name for name, sql in rows if sql.upper().startswith("CREATE VIRTUAL")]
+        # Full-text indexes and their shadow tables are left alone: they follow the triggers
+        tables = [name for name, _ in rows if name not in virtual and not name.startswith("sqlite_")
+                  and not any(name.startswith(v + "_") for v in virtual)]
+        for table in tables:
+            cols = [r[1] for r in conn.execute(f'PRAGMA table_info("{table}")')
+                    if not r[2] or any(t in r[2].upper() for t in ("CHAR", "TEXT", "CLOB"))]
+            for col in cols:
+                for old, new in pairs:
+                    cur = conn.execute(f'UPDATE "{table}" SET "{col}" = REPLACE("{col}", ?, ?) '
+                                       f'WHERE instr("{col}", ?) > 0', (old, new, old))
+                    changed += cur.rowcount
+                for old, new in ((str(old_root), str(new_root)), (old_root.as_posix(), new_root.as_posix())):
+                    cur = conn.execute(f'UPDATE "{table}" SET "{col}" = ? WHERE "{col}" = ?', (new, old))
+                    changed += cur.rowcount
+        conn.commit()
+        return changed
+    finally:
+        conn.close()
+
+
+def migrate_renamed_data_dir(old: Optional[Path] = None, target: Optional[Path] = None) -> bool:
+    """
+    Renames the data folder of the program's former name (%LOCALAPPDATA%\\VerbaScribe) to DATA_DIR
+    once, on the same disk, so nothing is copied; then the paths stored in the database follow.
+    A folder of the new name that already holds a library is never overwritten.
+    Returns True if the folder was renamed. Raises OSError when Windows refuses (a file is open).
+    """
+    old = (old or _default_data_dir(FORMER_NAME)).resolve()
+    target = (target or DATA_DIR).resolve()
+    if old == target or not (old / "meetings.db").is_file():
+        return False
+    if (target / "meetings.db").exists() and _count_recordings(target / "meetings.db") > 0:
+        _log(f"{old} (the former name) still exists, but {target} already has a library; not renaming")
+        return False
+    aside = None
+    if target.exists():
+        # Created before the rename (logs of this start, an empty library): kept aside
+        aside = target.with_name(f"{target.name}.before-rename-{datetime.now():%Y%m%d-%H%M%S}")
+        target.rename(aside)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    old.rename(target)  # _log writes into DATA_DIR: nothing is logged before this line
+    if aside:
+        _log(f"{target} existed without recordings; kept it as {aside.name}")
+    rewritten = _rewrite_moved_root(target / "meetings.db", old, target)
+    _log(f"Data folder renamed {old} -> {target}, {rewritten} stored paths updated")
+    return True
+
+
 def _resolve_data_dir() -> Path:
-    if os.environ.get("VERBASCRIBE_SKIP_MIGRATION") == "1":
+    if os.environ.get("VERBALIOX_SKIP_MIGRATION") == "1":
         return DATA_DIR
     if PACKAGED_PYTHON and not _ENV_DATA_DIR:
         # An earlier version moved the data into %LOCALAPPDATA%, which this Python only sees
         # through its private virtualized copy: bring it back next to the program.
-        virtual_dir = _default_data_dir()
+        virtual_dir = _default_data_dir(FORMER_NAME)  # what those versions were called
         try:
             if migrate_legacy_data_dir(legacy=virtual_dir, target=DATA_DIR):
                 (DATA_DIR / MOVED_NOTE_NAME).unlink(missing_ok=True)
@@ -222,6 +290,15 @@ def _resolve_data_dir() -> Path:
             if (virtual_dir / "meetings.db").is_file() and not (DATA_DIR / "meetings.db").is_file():
                 return virtual_dir  # keep the library visible; the old folder is untouched
         return DATA_DIR
+    if not _ENV_DATA_DIR:
+        try:
+            migrate_renamed_data_dir()
+        except Exception as e:
+            _log(f"Renaming the data folder of the former name failed: {e}")
+            former = _default_data_dir(FORMER_NAME)
+            if (former / "meetings.db").is_file() and not (DATA_DIR / "meetings.db").is_file():
+                _log(f"Using {former} for now; the rename is tried again at the next start")
+                return former
     try:
         migrate_legacy_data_dir()
     except Exception as e:

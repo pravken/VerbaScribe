@@ -45,7 +45,7 @@ ONNX-модели (GigaAM, Parakeet, Canary) сейчас работают **т�
 
 ---
 
-# VerbaScribe model comparison
+# Verbaliox model comparison
 
 Hardware: `{"gpu": "NVIDIA GeForce RTX 3090", "vram_gb": 24.0, "cuda": true, "cpu": "AMD64 Family 25 Model 97 Stepping 2, AuthenticAMD"}`
 

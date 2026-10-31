@@ -1,7 +1,7 @@
 """Demo data for the browser scenarios (tests/ui/scenarios.mjs): three transcribed recordings and their
-tasks in VERBASCRIBE_DATA_DIR, which must be a temporary folder, never the user's own data.
+tasks in VERBALIOX_DATA_DIR, which must be a temporary folder, never the user's own data.
 
-    VERBASCRIBE_DATA_DIR=/tmp/vs-data PYTHONPATH=tests/stubs python tests/ui/seed.py
+    VERBALIOX_DATA_DIR=/tmp/vs-data PYTHONPATH=tests/stubs python tests/ui/seed.py
 """
 import math
 import os
@@ -14,10 +14,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-data_dir = os.environ.get("VERBASCRIBE_DATA_DIR", "")
+data_dir = os.environ.get("VERBALIOX_DATA_DIR", "")
 temp_roots = [tempfile.gettempdir(), os.environ.get("RUNNER_TEMP", "") or tempfile.gettempdir()]
 if not data_dir or not any(Path(data_dir).resolve().is_relative_to(Path(r).resolve()) for r in temp_roots):
-    sys.exit("VERBASCRIBE_DATA_DIR must be a temporary folder")
+    sys.exit("VERBALIOX_DATA_DIR must be a temporary folder")
 
 from app import database as db  # noqa: E402 - after the data folder is checked
 

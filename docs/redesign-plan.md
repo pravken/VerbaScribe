@@ -59,4 +59,4 @@ integration. A package that needs something from the shell says so in its report
 `PYTHONPATH=tests/stubs python -m unittest discover -s tests -t .` (exit code 0),
 `python -m compileall -q app run.py build_exe.py tests`, the browser smoke test of
 `.github/workflows/ci.yml` (`node tests/ui/smoke.mjs` against `uvicorn app.main:app --port 8799`
-with temporary `VERBASCRIBE_DATA_DIR`/`VERBASCRIBE_MODELS_DIR`), and screenshots of the new screens.
+with temporary `VERBALIOX_DATA_DIR`/`VERBALIOX_MODELS_DIR`), and screenshots of the new screens.

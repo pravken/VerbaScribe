@@ -1,5 +1,6 @@
 import tests  # noqa: F401 - keeps the real user data out of reach (see tests/__init__.py)
 import asyncio
+import json
 import shutil
 import sqlite3
 import tempfile
@@ -10,7 +11,7 @@ from pathlib import Path
 
 from app import database, events
 from app import paths
-from app.paths import migrate_legacy_data_dir
+from app.paths import migrate_legacy_data_dir, migrate_renamed_data_dir
 
 
 class MigrationTest(unittest.TestCase):
@@ -31,7 +32,7 @@ class MigrationTest(unittest.TestCase):
         conn.execute("INSERT INTO meetings VALUES (2, 'D:\\Calls\\external.mkv', '')")
         conn.commit()
         conn.close()
-        self.target = self.root / "LocalAppData" / "VerbaScribe"
+        self.target = self.root / "LocalAppData" / "Verbaliox"
 
     def tearDown(self):
         paths.LEGACY_CONFLICT = None
@@ -172,6 +173,69 @@ class EventBusTest(unittest.TestCase):
                 events.unsubscribe(sub)
 
         asyncio.run(scenario())
+
+
+class RenamedDataDirTest(unittest.TestCase):
+    """The data folder of the former name (VerbaScribe) becomes the Verbaliox one."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp()).resolve()
+        self.old = self.root / "VerbaScribe"
+        self.new = self.root / "Verbaliox"
+        (self.old / "uploads").mkdir(parents=True)
+        (self.old / "uploads" / "call.mp4").write_bytes(b"v")
+        conn = sqlite3.connect(self.old / "meetings.db")
+        conn.execute("CREATE TABLE meetings (id INTEGER PRIMARY KEY, media_path TEXT, dubs_json TEXT, n INTEGER)")
+        conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)")
+        conn.execute("CREATE VIRTUAL TABLE seg_fts USING fts5(text)")
+        conn.execute("INSERT INTO seg_fts VALUES (?)", (str(self.old / "uploads"),))
+        media = str(self.old / "uploads" / "call.mp4")
+        conn.execute("INSERT INTO meetings VALUES (1, ?, ?, 5)", (media, json.dumps([{"path": media}])))
+        conn.execute("INSERT INTO meetings VALUES (2, ?, '[]', 5)", (str(self.root / "VerbaScribe2" / "x.mp4"),))
+        conn.execute("INSERT INTO settings VALUES ('recordings_dir', ?)", (str(self.old),))
+        conn.commit()
+        conn.close()
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def _rows(self):
+        conn = sqlite3.connect(self.new / "meetings.db")
+        try:
+            return (conn.execute("SELECT id, media_path, dubs_json FROM meetings ORDER BY id").fetchall(),
+                    conn.execute("SELECT value FROM settings").fetchone()[0],
+                    conn.execute("SELECT text FROM seg_fts").fetchone()[0])
+        finally:
+            conn.close()
+
+    def test_renames_and_points_paths_to_the_new_folder(self):
+        self.assertTrue(migrate_renamed_data_dir(self.old, self.new))
+        self.assertFalse(self.old.exists())
+        self.assertTrue((self.new / "uploads" / "call.mp4").is_file())
+        meetings, setting, fts = self._rows()
+        media = str(self.new / "uploads" / "call.mp4")
+        self.assertEqual(meetings[0][1], media)
+        self.assertEqual(json.loads(meetings[0][2]), [{"path": media}])
+        self.assertEqual(meetings[1][1], str(self.root / "VerbaScribe2" / "x.mp4"))  # another folder stays
+        self.assertEqual(setting, str(self.new))
+        self.assertEqual(fts, str(self.old / "uploads"))  # the search index is not written to
+        self.assertFalse(migrate_renamed_data_dir(self.old, self.new))  # the second start: nothing to do
+
+    def test_an_empty_new_folder_is_kept_aside(self):
+        (self.new / "logs").mkdir(parents=True)
+        self.assertTrue(migrate_renamed_data_dir(self.old, self.new))
+        self.assertTrue((self.new / "uploads" / "call.mp4").is_file())
+        self.assertEqual(len(list(self.root.glob("Verbaliox.before-rename-*"))), 1)
+
+    def test_a_library_in_the_new_folder_is_never_overwritten(self):
+        self.new.mkdir()
+        conn = sqlite3.connect(self.new / "meetings.db")
+        conn.execute("CREATE TABLE meetings (id INTEGER PRIMARY KEY)")
+        conn.execute("INSERT INTO meetings VALUES (7)")
+        conn.commit()
+        conn.close()
+        self.assertFalse(migrate_renamed_data_dir(self.old, self.new))
+        self.assertTrue((self.old / "meetings.db").is_file())
 
 
 if __name__ == "__main__":

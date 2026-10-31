@@ -94,7 +94,7 @@ def _make(dest: Path, with_media: bool) -> Dict[str, Any]:
             dst.close()
             src.close()
         media = _media_files() if with_media else []
-        manifest = {"format": FORMAT, "app": "VerbaScribe", "version": __version__,
+        manifest = {"format": FORMAT, "app": "Verbaliox", "version": __version__,
                     "created": datetime.now().isoformat(timespec="seconds"),
                     "media": [{k: f[k] for k in ("id", "path", "name")} for f in media]}
         part = dest.with_name(dest.name + ".partial")
@@ -114,11 +114,12 @@ def _check(z: zipfile.ZipFile) -> Dict[str, Any]:
     try:
         manifest = json.loads(z.read("manifest.json").decode("utf-8"))
     except (KeyError, ValueError):
-        raise ValueError("Это не резервная копия VerbaScribe")
-    if manifest.get("app") != "VerbaScribe" or "meetings.db" not in z.namelist():
-        raise ValueError("Это не резервная копия VerbaScribe")
+        raise ValueError("Это не резервная копия Verbaliox")
+    # "VerbaScribe": a copy made while the program had its former name
+    if manifest.get("app") not in ("Verbaliox", "VerbaScribe") or "meetings.db" not in z.namelist():
+        raise ValueError("Это не резервная копия Verbaliox")
     if int(manifest.get("format") or 0) > FORMAT:
-        raise ValueError("Копия сделана более новой версией программы: обновите VerbaScribe")
+        raise ValueError("Копия сделана более новой версией программы: обновите Verbaliox")
     return manifest
 
 

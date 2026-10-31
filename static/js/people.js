@@ -1,4 +1,4 @@
-// VerbaScribe page script: the speakers of a recording and the people of all recordings (package C,
+// Verbaliox page script: the speakers of a recording and the people of all recordings (package C,
 // docs/redesign-plan.md). The parts are classic scripts sharing one global scope, loaded in order by index.html.
 //
 // «Участники»: a card per speaker (name with the directory's names to pick from, role, «Это я», a

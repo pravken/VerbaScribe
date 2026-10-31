@@ -1,4 +1,4 @@
-// VerbaScribe page script, part 8 of 9: Video, theatre mode, subtitles over the video, keyboard shortcuts.
+// Verbaliox page script, part 8 of 9: Video, theatre mode, subtitles over the video, keyboard shortcuts.
 // The parts are classic scripts sharing one global scope, loaded in order by index.html.
 
 // --- Video: shown automatically for recordings with a video track; "collapsed" moves the same
@@ -19,7 +19,7 @@ function videoFlight(change) {
 
 function setVideoMode(mode, fly = true) {
   state.videoMode = mode === 'mini' ? 'mini' : 'expanded';
-  try { localStorage.setItem('verbascribe_video_mode', state.videoMode); } catch (e) {}
+  try { localStorage.setItem('verbaliox_video_mode', state.videoMode); } catch (e) {}
   if (fly) videoFlight(applyVideoLayout);
   else applyVideoLayout();
 }
@@ -82,13 +82,13 @@ const THEATRE_LAYOUTS = ['side', 'below', 'subs'];
 
 function theatreLayout() {
   try {
-    const v = localStorage.getItem('verbascribe_theatre_layout');
+    const v = localStorage.getItem('verbaliox_theatre_layout');
     return THEATRE_LAYOUTS.includes(v) ? v : 'side';
   } catch (e) { return 'side'; }
 }
 
 function setTheatreLayout(layout) {
-  try { localStorage.setItem('verbascribe_theatre_layout', THEATRE_LAYOUTS.includes(layout) ? layout : 'side'); } catch (e) {}
+  try { localStorage.setItem('verbaliox_theatre_layout', THEATRE_LAYOUTS.includes(layout) ? layout : 'side'); } catch (e) {}
   applyTheatreLayout();
 }
 

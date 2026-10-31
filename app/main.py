@@ -71,20 +71,20 @@ def _cookie_name(request: Request) -> str:
     # Browsers share cookies between ports of one host, so two instances (or another local app)
     # on 127.0.0.1 would overwrite each other's session cookie without the port in its name.
     return f"{SESSION_COOKIE}_{request.url.port or 80}"
-SESSION_TOKEN = os.environ.get("VERBASCRIBE_TOKEN") or secrets.token_urlsafe(32)
+SESSION_TOKEN = os.environ.get("VERBALIOX_TOKEN") or secrets.token_urlsafe(32)
 SESSION_TOKEN_FILE.write_text(SESSION_TOKEN, encoding="utf-8")
 
 _ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]"} | {
-    h.strip().lower() for h in os.environ.get("VERBASCRIBE_ALLOWED_HOSTS", "").split(",") if h.strip()
+    h.strip().lower() for h in os.environ.get("VERBALIOX_ALLOWED_HOSTS", "").split(",") if h.strip()
 }
 _PUBLIC_PREFIXES = ("/static/",)
 
-_LOCKED_PAGE = """<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>VerbaScribe</title>
+_LOCKED_PAGE = """<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Verbaliox</title>
 <style>#msg{animation:show 0s 1.5s forwards;visibility:hidden}@keyframes show{to{visibility:visible}}</style></head>
 <body style="font-family:Segoe UI,sans-serif;background:#141416;color:#f5f5f7;padding:48px">
-<div id="msg"><h2>VerbaScribe</h2>
-<p>Откройте программу через VerbaScribe.exe или start.bat — эта страница доступна только из окна приложения.</p>
-<p style="color:#98989d">Open the app via VerbaScribe.exe or start.bat — this page is only available from the app window.</p></div>
+<div id="msg"><h2>Verbaliox</h2>
+<p>Откройте программу через Verbaliox.exe или start.bat — эта страница доступна только из окна приложения.</p>
+<p style="color:#98989d">Open the app via Verbaliox.exe or start.bat — this page is only available from the app window.</p></div>
 <script>
 // In the app window: the window hands over the session token, which is sent in a request body
 // (an address with the token would stay in the window's history). The message above shows only if
@@ -218,7 +218,7 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(
-    title="VerbaScribe",
+    title="Verbaliox",
     version=__version__,
     lifespan=lifespan,
     docs_url=None,

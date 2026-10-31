@@ -8,6 +8,12 @@ Betas (`vX.Y.Z-beta.N`) show the sections of their coming version.
 
 ## 0.7.0 — English
 
+### In the third beta (0.7.0-beta.3)
+- **The program is now called Verbaliox** (it was VerbaScribe): the window, the launcher `Verbaliox.exe`,
+  the repository and the release files. At the first start the data folder `%LOCALAPPDATA%\VerbaScribe`
+  becomes `%LOCALAPPDATA%\Verbaliox` with the library, settings and API keys; Obsidian notes and backups made
+  before stay recognised. The old `VerbaScribe.exe` is removed by itself once the new launcher is there.
+
 ### In the second beta (0.7.0-beta.2)
 - **Dubbing:** an environment made for Chatterbox before (updated with git or by an older version) is
   no longer taken as ready, which failed the dub with «No module named 'voxcpm'». The Dub window offers to
@@ -26,6 +32,12 @@ Everything of the 0.6.0 betas (Python 3.11, the audit fixes, the new look), and:
 - Dubbing environment: transformers 5.22 closes four vulnerability advisories.
 
 ## 0.7.0
+
+### В третьей бете (0.7.0-beta.3)
+- **Программа теперь называется Verbaliox** (была VerbaScribe): окно, лаунчер `Verbaliox.exe`, репозиторий
+  и файлы релиза. При первом запуске папка данных `%LOCALAPPDATA%\VerbaScribe` становится
+  `%LOCALAPPDATA%\Verbaliox` вместе с медиатекой, настройками и API-ключами; заметки Obsidian и резервные
+  копии, сделанные раньше, по-прежнему узнаются. Старый `VerbaScribe.exe` удаляется сам, когда рядом есть новый.
 
 ### Во второй бете (0.7.0-beta.2)
 - **Дубляж:** окружение, сделанное раньше для Chatterbox (обновлённое через git или старой версией), больше
@@ -103,7 +115,7 @@ Fixes after an independent audit.
 - **Type and accessibility:** seven text sizes instead of 25; captions and blue buttons up to the
   contrast norm; Windows «show less motion» and «more contrast»; soft edges of scrolled lists; nothing
   under 11 px.
-- **update.bat** updates a git-cloned folder next to VerbaScribe.exe.
+- **update.bat** updates a git-cloned folder next to Verbaliox.exe.
 - Fixed: a dialog no longer closes when a text selection is released over its backdrop; a menu at the
   bottom of the window opens upward; following the playback waits while you scroll; Record in the open
   Studio uses the source it shows; clocks and badges are monospace again, letters like ą, č, ł from Inter.
@@ -226,7 +238,7 @@ Fixes after an independent audit.
   после выбора; перетаскивание раскрывает папку и переносит запись сразу.
 - **Шрифты и доступность:** семь размеров текста вместо 25; контраст подписей и синих кнопок до нормы;
   режимы Windows «меньше движения» и «больше контраста»; мягкие края у прокрутки; ничего мельче 11 px.
-- **update.bat** — обновление папки, склонированной через git, рядом с VerbaScribe.exe.
+- **update.bat** — обновление папки, склонированной через git, рядом с Verbaliox.exe.
 - Исправлено: окно не закрывается, если выделение текста отпустить на фоне; меню у нижнего края окна
   открывается вверх; автопрокрутка не тянет текст, пока вы его листаете; «Запись» в открытой студии
   пишет с показанным источником; часы и бейджи снова моноширинным шрифтом, буквы ą, č, ł из Inter.

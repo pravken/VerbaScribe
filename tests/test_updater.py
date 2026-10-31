@@ -11,7 +11,7 @@ from app import updater
 def _release_zip(path: Path, files: dict) -> None:
     with zipfile.ZipFile(path, "w") as z:
         for name, text in files.items():
-            z.writestr(f"VerbaScribe-v9.0.0/{name}", text)
+            z.writestr(f"Verbaliox-v9.0.0/{name}", text)
 
 
 class VersionTest(unittest.TestCase):
@@ -124,11 +124,11 @@ class ApplyUpdateTest(unittest.TestCase):
         self.assertFalse((self.app.parent / "outside.txt").exists())
 
     def test_names_outside_the_program_folder_are_left_out(self):
-        names = ["VerbaScribe-v9/app/main.py", "VerbaScribe-v9/C:/Users/x/Startup/evil.bat", "VerbaScribe-v9//etc/evil",
-                 "VerbaScribe-v9/../evil.txt", "VerbaScribe-v9/app/../../evil.txt", "VerbaScribe-v9/.VENV/x.py",
-                 "VerbaScribe-v9\\app\\new.py", "VerbaScribe-v9/app/x.py:stream", "VerbaScribe-v9/models/m.bin"]
+        names = ["Verbaliox-v9/app/main.py", "Verbaliox-v9/C:/Users/x/Startup/evil.bat", "Verbaliox-v9//etc/evil",
+                 "Verbaliox-v9/../evil.txt", "Verbaliox-v9/app/../../evil.txt", "Verbaliox-v9/.VENV/x.py",
+                 "Verbaliox-v9\\app\\new.py", "Verbaliox-v9/app/x.py:stream", "Verbaliox-v9/models/m.bin"]
         self.assertEqual(updater.archive_files(names, self.app),
-                         [("VerbaScribe-v9/app/main.py", "app/main.py"), ("VerbaScribe-v9\\app\\new.py", "app/new.py")])
+                         [("Verbaliox-v9/app/main.py", "app/main.py"), ("Verbaliox-v9\\app\\new.py", "app/new.py")])
 
     def test_failed_package_install_restores_the_old_version(self):
         _release_zip(self.zip, {"app/main.py": "new main", "app/new.py": "added", "requirements.txt": "changed"})
@@ -179,7 +179,7 @@ class ApplyUpdateTest(unittest.TestCase):
         from app import dub_setup
 
         (self.app / "requirements-dub.txt").write_text("torch==1")
-        marker = self.app / ".venv-dub" / "verbascribe-dub-ready.txt"
+        marker = self.app / ".venv-dub" / "verbaliox-dub-ready.txt"
         marker.parent.mkdir()
         marker.write_text("Verified 2026-01-01: cuda=True\n")  # made before marks recorded requirements
         _release_zip(self.zip, {"app/main.py": "new main", "requirements.txt": "same", "requirements-dub.txt": "torch==2"})
@@ -199,7 +199,7 @@ class ApplyUpdateTest(unittest.TestCase):
         from app import dub_setup
 
         venv = self.app / ".venv-dub"
-        marker = venv / "verbascribe-dub-ready.txt"
+        marker = venv / "verbaliox-dub-ready.txt"
         marker.parent.mkdir()
         marker.write_text("Verified 2026-01-01: cuda=True\n")
         with mock.patch.object(dub_setup, "DUB_READY_MARKER", marker), mock.patch.object(dub_setup, "DUB_VENV", venv):
@@ -271,11 +271,11 @@ class StartupFailureTest(unittest.TestCase):
             fake.mkdir()
             (fake / "__init__.py").write_text("raise ImportError('DLL load failed: blocked by policy')\n")
             env = {**os.environ, "PYTHONPATH": os.pathsep.join([tmp, str(root), os.environ.get("PYTHONPATH", "")]),
-                   "VERBASCRIBE_DATA_DIR": str(Path(tmp) / "data")}
+                   "VERBALIOX_DATA_DIR": str(Path(tmp) / "data")}
             res = subprocess.run([sys.executable, str(root / "run.py"), "--headless"], capture_output=True, text=True,
                                  encoding="utf-8", env=env, timeout=120, cwd=tmp)
         self.assertEqual(res.returncode, 1)
-        self.assertIn("Не удалось запустить VerbaScribe", res.stderr)
+        self.assertIn("Не удалось запустить Verbaliox", res.stderr)
         self.assertIn("setup.bat", res.stderr)
         self.assertIn("blocked by policy", res.stderr)
 
@@ -393,7 +393,7 @@ class ReleaseSignatureTest(unittest.TestCase):
         self.rs = release_sign
         self.seed, self.kid = release_sign.new_key()
         self.pub = release_sign.public_key_text(self.seed, self.kid)
-        self.sums = b"aa11  VerbaScribe-v9.0.0.zip\n"
+        self.sums = b"aa11  Verbaliox-v9.0.0.zip\n"
 
     def _sig(self, data=None, tag="v9.0.0", seed=None, kid=None):
         return self.rs.sign_file(seed or self.seed, kid or self.kid, data or self.sums, f"tag:{tag} file:SHA256SUMS.txt")
@@ -403,7 +403,7 @@ class ReleaseSignatureTest(unittest.TestCase):
         other_seed, other_kid = self.rs.new_key()
         for sig, tag, why in ((self._sig(), "v9.0.1", "another release"),
                               ("", "v9.0.0", "unsigned"),
-                              (self._sig(data=b"bb22  VerbaScribe-v9.0.0.zip\n"), "v9.0.0", "other checksums"),
+                              (self._sig(data=b"bb22  Verbaliox-v9.0.0.zip\n"), "v9.0.0", "other checksums"),
                               (self._sig(seed=other_seed, kid=other_kid), "v9.0.0", "another key"),
                               (self._sig().replace("tag:v9.0.0", "tag:v9.0.1"), "v9.0.1", "edited comment")):
             with self.assertRaises(RuntimeError, msg=why):
@@ -413,8 +413,8 @@ class ReleaseSignatureTest(unittest.TestCase):
         import hashlib
 
         body = b"PK fake archive"
-        sums = f"{hashlib.sha256(body).hexdigest()}  VerbaScribe-v9.0.0.zip\n".encode()
-        latest = {"tag": "v9.0.0", "zip_name": "VerbaScribe-v9.0.0.zip", "zip_url": "z", "sums_url": "s", "sig_url": "g"}
+        sums = f"{hashlib.sha256(body).hexdigest()}  Verbaliox-v9.0.0.zip\n".encode()
+        latest = {"tag": "v9.0.0", "zip_name": "Verbaliox-v9.0.0.zip", "zip_url": "z", "sums_url": "s", "sig_url": "g"}
         sig = self.rs.sign_file(self.seed, self.kid, sums, "tag:v9.0.0 file:SHA256SUMS.txt")
 
         class Resp:
@@ -447,7 +447,7 @@ class ReleaseSignatureTest(unittest.TestCase):
                     updater._download(latest if ok else {**latest, "sig_url": None})
                 st = updater._state["download"]
                 self.assertEqual(st["done"], ok, st)
-                self.assertEqual((Path(tmp) / "VerbaScribe-v9.0.0.zip").exists(), ok)
+                self.assertEqual((Path(tmp) / "Verbaliox-v9.0.0.zip").exists(), ok)
                 if not ok:
                     self.assertIn("не подписан", st["error"])
 
