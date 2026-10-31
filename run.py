@@ -909,6 +909,14 @@ def main() -> None:
             print(f"Another VerbaScribe instance: {outcome}")
             if outcome == "activated" or (outcome == "timeout" and not recover_stuck_instance()):
                 return
+        # An installation made on Python 3.10 moves its environment to 3.11 once (app/envmove.py):
+        # that runs outside this environment, so the app quits and is started again by it
+        from app import envmove
+        from app.paths import APP_DIR, DATA_DIR
+
+        if envmove.needed(APP_DIR, DATA_DIR) and envmove.launch(APP_DIR, DATA_DIR):
+            return
+        envmove.cleanup(APP_DIR, DATA_DIR)
         write_pid_file()
         # A previous instance may still be releasing the port for a moment
         for _ in range(50):

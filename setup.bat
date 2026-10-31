@@ -25,21 +25,21 @@ if %ERRORLEVEL% NEQ 0 (
 set "SIGNED_PY="
 if not "%SAC%"=="0" call :find_signed_python
 if not "%SAC%"=="0" if not defined SIGNED_PY (
-    echo [0/2] Smart App Control is on: installing Python 3.10 from python.org ^(signed^)...
-    winget install --id=Python.Python.3.10 -e --scope user --accept-source-agreements --accept-package-agreements >nul 2>nul
+    echo [0/2] Smart App Control is on: installing Python 3.11 from python.org ^(signed^)...
+    winget install --id=Python.Python.3.11 -e --scope user --accept-source-agreements --accept-package-agreements >nul 2>nul
     call :find_signed_python
 )
 if not "%SAC%"=="0" call :sac_warning
 
 where uv >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
-    echo [1/2] Creating Python 3.10 virtual environment via uv...
+    echo [1/2] Creating Python 3.11 virtual environment via uv...
     if defined SIGNED_PY (
         echo       Python: !SIGNED_PY!
         uv venv .venv --python "!SIGNED_PY!"
     ) else (
         rem Prefer a uv-managed Python: the Microsoft Store Python virtualizes AppData and hides files from other programs
-        uv venv .venv --python 3.10 --python-preference only-managed || uv venv .venv --python 3.10
+        uv venv .venv --python 3.11 --python-preference only-managed || uv venv .venv --python 3.11
     )
     echo [2/2] Installing dependencies via uv...
     rem requirements.txt is an exact lock with SHA-256 hashes (see requirements.in)
@@ -52,7 +52,7 @@ echo [1/2] Creating Python virtual environment...
 if defined SIGNED_PY (
     "!SIGNED_PY!" -m venv .venv
 ) else (
-    py -3.10 -m venv .venv 2>nul || python -m venv .venv
+    py -3.11 -m venv .venv 2>nul || python -m venv .venv
 )
 echo [2/2] Installing dependencies via pip...
 ".venv\Scripts\python.exe" -m pip install --upgrade pip
@@ -78,16 +78,16 @@ rmdir /s /q .venv
 pause
 exit /b 1
 
-rem --- Python 3.10 from python.org: the usual install folders, then the py launcher (never the
+rem --- Python 3.11 from python.org: the usual install folders, then the py launcher (never the
 rem --- Microsoft Store Python in WindowsApps)
 :find_signed_python
-for %%p in ("%LOCALAPPDATA%\Programs\Python\Python310\python.exe" "%ProgramFiles%\Python310\python.exe") do (
+for %%p in ("%LOCALAPPDATA%\Programs\Python\Python311\python.exe" "%ProgramFiles%\Python311\python.exe") do (
     if exist "%%~p" (
         set "SIGNED_PY=%%~p"
         goto :eof
     )
 )
-for /f "delims=" %%p in ('py -3.10 -c "import sys; print(sys.executable)" 2^>nul') do (
+for /f "delims=" %%p in ('py -3.11 -c "import sys; print(sys.executable)" 2^>nul') do (
     echo %%p | find /i "WindowsApps" >nul || set "SIGNED_PY=%%p"
 )
 goto :eof

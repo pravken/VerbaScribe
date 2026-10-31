@@ -85,6 +85,10 @@ if errorlevel 1 (
         echo       No .venv yet: running setup.bat...
         call "%~dp0setup.bat"
     ) else (
+        rem An environment made on Python 3.10 is moved to 3.11 (app/envmove.py): a new .venv is
+        rem made next to it and replaces it only when every package is installed
+        ".venv\Scripts\python.exe" -c "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)"
+        if errorlevel 1 goto :move_env
         echo       The package list changed: installing...
         where uv >nul 2>nul
         if not errorlevel 1 (
@@ -101,6 +105,7 @@ if errorlevel 1 (
     echo       Unchanged.
 )
 
+:packages_done
 echo.
 echo Done: branch %BRANCH%, now at:
 git log -1 --oneline
@@ -108,6 +113,21 @@ echo.
 choice /m "Start VerbaScribe now"
 if not errorlevel 2 if exist "VerbaScribe.exe" start "" "%VS_UPDATE_DIR%VerbaScribe.exe"
 exit /b 0
+
+:move_env
+echo       Moving the Python environment to Python 3.11 ^(several GB, once^)...
+set "BASEPY="
+for /f "delims=" %%p in ('".venv\Scripts\python.exe" -m app.envmove prepare') do set "BASEPY=%%p"
+if not defined BASEPY (
+    echo Could not create the Python 3.11 environment: see logs\update.log in the data folder.
+    goto :fail
+)
+"%BASEPY%" -m app.envmove run --no-restart
+if errorlevel 1 (
+    echo The previous environment is kept: VerbaScribe still works as before.
+    goto :fail
+)
+goto :packages_done
 
 :fail
 echo.

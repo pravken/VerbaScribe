@@ -5,6 +5,14 @@
 
 ## 0.6.0
 
+### В четвёртой бете (0.6.0-beta.4)
+- **Python 3.11.** Программа и окружение дубляжа переходят на Python 3.11: это закрывает уязвимости
+  filelock и Pillow, которые на 3.10 не исправить. Окружение пересоздаётся один раз, само, при первом
+  запуске после обновления: скачивается около 7 ГБ библиотек (у дубляжа — ещё около 6 ГБ при его
+  переустановке), обычно 5–15 минут. Пока новое окружение не готово, работает прежнее; если установка
+  не удалась, прежнее остаётся на месте, а новая попытка будет через день.
+- Веса Demucs (отделение фона в дубляже) скачиваются с закреплённой версии, как и остальные модели.
+
 ### В третьей бете (0.6.0-beta.3)
 Исправления по независимому аудиту.
 - **Восстановление резервной копии** чужого архива больше ничего не делает на этом компьютере: из базы
@@ -123,6 +131,14 @@
   обрываются без сообщения после того, как сделаны.
 
 ## 0.6.0 — English
+
+### In the fourth beta (0.6.0-beta.4)
+- **Python 3.11.** The app and the dubbing environment move to Python 3.11, which closes the filelock
+  and Pillow vulnerabilities that cannot be fixed on 3.10. The environment is made again once, by
+  itself, at the first start after the update: about 7 GB of libraries are downloaded (about 6 GB more
+  for dubbing when it is installed again), usually 5–15 minutes. Until the new environment is ready the
+  old one works; if the install fails, the old one stays and the next try is a day later.
+- Demucs weights (background separation in dubbing) come from a pinned version, like the other models.
 
 ### In the third beta (0.6.0-beta.3)
 Fixes after an independent audit.
