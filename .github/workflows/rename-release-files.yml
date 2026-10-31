@@ -1,0 +1,89 @@
+name: Rename release files
+
+# Releases published while the program was called VerbaScribe: their files get the name Verbaliox
+# (VerbaScribe-vX.Y.Z.zip -> Verbaliox-vX.Y.Z.zip, VerbaScribe.exe -> Verbaliox.exe), SHA256SUMS.txt
+# lists the new names and is signed again with the release key (tag of the release, checked with the
+# key of app/updater.py), and the page's text says Verbaliox. The contents of the files stay as
+# published: every checksum is checked against the renamed file before anything is uploaded.
+on:
+  workflow_dispatch:
+    inputs:
+      tags:
+        description: "Release tags, separated by spaces (e.g. v0.6.0-beta.4 v0.5.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  rename:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Rename the files of each tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+          TAGS: ${{ inputs.tags }}
+        run: |
+          set -euo pipefail
+          tools="$GITHUB_WORKSPACE/tools"
+          for tag in $TAGS; do
+            case "$tag" in v[0-9]*) ;; *) echo "skip $tag: not a release tag"; continue ;; esac
+            work="$RUNNER_TEMP/$tag"
+            rm -rf "$work" && mkdir -p "$work" && cd "$work"
+
+            # The page's text (links to pravken/VerbaScribe and the like)
+            gh release view "$tag" --json body -q .body > body.md
+            if grep -qi verbascribe body.md; then
+              sed -e 's/VerbaScribe/Verbaliox/g' -e 's/verbascribe/verbaliox/g' body.md > notes.md
+              gh release edit "$tag" --notes-file notes.md
+              echo "$tag: text written"
+            fi
+
+            gh release view "$tag" --json assets -q '.assets[].name' > names.txt
+            if ! grep -q VerbaScribe names.txt; then echo "$tag: no files of the former name"; continue; fi
+            gh release download "$tag" --dir files
+            cd files
+            renamed=()
+            while read -r old; do
+              case "$old" in *VerbaScribe*) ;; *) continue ;; esac
+              new="${old//VerbaScribe/Verbaliox}"
+              mv "$old" "$new"
+              renamed+=("$new")
+            done < ../names.txt
+
+            if [ -f SHA256SUMS.txt ]; then
+              python - <<'EOF'
+          import hashlib
+          from pathlib import Path
+
+          sums = Path("SHA256SUMS.txt")
+          text = sums.read_bytes().decode("utf-8-sig").replace("VerbaScribe", "Verbaliox")
+          lines = [line.strip() for line in text.splitlines() if line.strip()]
+          for line in lines:
+              digest, name = line.split(None, 1)
+              name = name.lstrip("*")
+              real = hashlib.sha256(Path(name).read_bytes()).hexdigest()
+              if real != digest.lower():
+                  raise SystemExit(f"{name}: the checksum does not match the file")
+              print(f"{name}: checksum matches")
+          sums.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+          EOF
+              rm -f SHA256SUMS.txt.minisig
+              python "$tools/release_key.py" sign SHA256SUMS.txt --tag "$tag"
+              python "$tools/release_key.py" verify SHA256SUMS.txt --tag "$tag"
+              renamed+=(SHA256SUMS.txt SHA256SUMS.txt.minisig)
+            fi
+
+            gh release upload "$tag" "${renamed[@]}" --clobber
+            while read -r old; do
+              case "$old" in *VerbaScribe*) gh release delete-asset "$tag" "$old" -y ;; esac
+            done < ../names.txt
+            echo "$tag: files renamed"
+          done
