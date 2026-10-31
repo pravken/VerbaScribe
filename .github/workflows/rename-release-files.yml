@@ -28,6 +28,7 @@ jobs:
       - name: Rename the files of each tag
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}  # gh runs in temporary folders outside the checkout
           RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
           TAGS: ${{ inputs.tags }}
         run: |
