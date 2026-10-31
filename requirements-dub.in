@@ -11,7 +11,8 @@ torch==2.11.0+cu126
 torchaudio==2.11.0+cu126
 numpy
 # VoxCPM2 runtime (voxcpm 2.0.3: core, model, modules)
-transformers>=4.36.2
+# 5.10+: PYSEC-2026-2289/2290/3929/4174; without the bound the resolver settles on 5.2
+transformers>=5.10
 huggingface-hub
 einops
 pydantic

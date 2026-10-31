@@ -12,6 +12,7 @@
   веса (около 5 ГБ) скачиваются при первом дубляже; старые веса Chatterbox можно удалить в «Настройки → Синтез
   речи». Из окружения ушёл единственный пакет с лицензией GPL (pykakasi).
 - В настройках синтеза вместо «Выразительности» и CFG Chatterbox — одна настройка «Следование образцу» (1–3).
+- Окружение дубляжа: transformers 5.22 закрывает четыре уведомления об уязвимостях.
 
 ### В четвёртой бете (0.6.0-beta.4)
 - **Python 3.11.** Программа и окружение дубляжа переходят на Python 3.11: это закрывает уязвимости
@@ -147,6 +148,7 @@
   weights (about 5 GB) are downloaded on the first dub; the old Chatterbox weights can be deleted in Settings →
   Speech synthesis. The one GPL package (pykakasi) has left the environment.
 - The synthesis settings have one «Reference adherence» (1–3) instead of Chatterbox's expressiveness and CFG.
+- Dubbing environment: transformers 5.22 closes four vulnerability advisories.
 
 ### In the fourth beta (0.6.0-beta.4)
 - **Python 3.11.** The app and the dubbing environment move to Python 3.11, which closes the filelock
