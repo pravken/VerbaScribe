@@ -1,5 +1,5 @@
 # VerbaScribe package
-__version__ = "0.6.0-beta.3"
+__version__ = "0.6.0-beta.4"
 
 # The GPU build of ONNX Runtime (GigaAM / Parakeet on the video card) goes first on sys.path,
 # before anything imports onnxruntime (app/onnx_gpu.py)
