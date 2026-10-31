@@ -1,4 +1,4 @@
-# VerbaScribe package
+# Verbaliox package
 __version__ = "0.7.0-beta.2"
 
 # The GPU build of ONNX Runtime (GigaAM / Parakeet on the video card) goes first on sys.path,

@@ -1,4 +1,4 @@
-// VerbaScribe page script, part 6 of 9: The player: transport, volume and voice enhancer (the wave: redesign_player.js).
+// Verbaliox page script, part 6 of 9: The player: transport, volume and voice enhancer (the wave: redesign_player.js).
 // The parts are classic scripts sharing one global scope, loaded in order by index.html.
 
 // The wave of the player is drawn by redesign_player.js (rpRender): these two names stay for the
@@ -44,7 +44,7 @@ function changePlayerVolume(val) {
   const v = Math.max(0, Math.min(100, Number(val)));
   state.volume = v;
   state.muted = (v === 0);
-  localStorage.setItem('verbascribe_volume', String(v));
+  localStorage.setItem('verbaliox_volume', String(v));
 
   const player = document.getElementById('media-player');
   if (player) {

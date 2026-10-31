@@ -1,4 +1,4 @@
-// VerbaScribe page script: the player and the editor of the redesign (package A, docs/redesign-plan.md).
+// Verbaliox page script: the player and the editor of the redesign (package A, docs/redesign-plan.md).
 // The parts are classic scripts sharing one global scope, loaded in order by index.html.
 //
 // The wave: 180 bars of the recording's loudness in the colour of whoever speaks at their moment,
@@ -661,12 +661,12 @@ function rpClearAb() {
 
 function rpLoadMarks(id) {
   if (!id) return [];
-  try { return JSON.parse(localStorage.getItem(`verbascribe_marks_${id}`) || '[]').filter(Number.isFinite); } catch (e) { return []; }
+  try { return JSON.parse(localStorage.getItem(`verbaliox_marks_${id}`) || '[]').filter(Number.isFinite); } catch (e) { return []; }
 }
 
 function rpSaveMarks() {
   if (!rp.meetingId) return;
-  try { localStorage.setItem(`verbascribe_marks_${rp.meetingId}`, JSON.stringify(rp.marks)); } catch (e) {}
+  try { localStorage.setItem(`verbaliox_marks_${rp.meetingId}`, JSON.stringify(rp.marks)); } catch (e) {}
 }
 
 function rpMarkMoment() {
@@ -760,7 +760,7 @@ function rpToggleStudioVoice() {
 
 function rpToggleSkipSilence() {
   state.skipSilence = !state.skipSilence;
-  try { localStorage.setItem('verbascribe_skip_silence', state.skipSilence ? '1' : '0'); } catch (e) {}
+  try { localStorage.setItem('verbaliox_skip_silence', state.skipSilence ? '1' : '0'); } catch (e) {}
   rpRenderSoundChip();
   rpRenderPop();
   rpRender();
@@ -1151,7 +1151,7 @@ document.addEventListener('pointerdown', (e) => {
 }, true);
 
 document.addEventListener('DOMContentLoaded', () => {
-  try { state.skipSilence = localStorage.getItem('verbascribe_skip_silence') === '1'; } catch (e) {}
+  try { state.skipSilence = localStorage.getItem('verbaliox_skip_silence') === '1'; } catch (e) {}
   rpInitWave();
   const p = rpPlayer();
   if (!p) return;

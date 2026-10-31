@@ -1,9 +1,9 @@
 """
 Log file of the desktop app.
 
-Launched from VerbaScribe.exe the app has no visible console, so everything it prints (uvicorn
+Launched from Verbaliox.exe the app has no visible console, so everything it prints (uvicorn
 messages, tracebacks, warnings) would be lost. `start_file_log()` copies stdout and stderr into
-`<data>/logs/verbascribe.log` with a time stamp per line, keeps the last few files, and makes
+`<data>/logs/verbaliox.log` with a time stamp per line, keeps the last few files, and makes
 Python write a stack dump there if the process crashes hard.
 """
 
@@ -17,16 +17,16 @@ from typing import Optional, TextIO
 from app.paths import DATA_DIR
 
 LOG_DIR = DATA_DIR / "logs"
-LOG_FILE = LOG_DIR / "verbascribe.log"
+LOG_FILE = LOG_DIR / "verbaliox.log"
 MAX_BYTES = 2 * 1024 * 1024
-KEEP_FILES = 4  # verbascribe.log + .1 ... .3
+KEEP_FILES = 4  # verbaliox.log + .1 ... .3
 
 _lock = threading.Lock()
 _file: Optional[TextIO] = None
 
 
 def _rotate() -> None:
-    """verbascribe.log -> .1 -> .2 ...; the oldest is dropped. Call with _lock held."""
+    """verbaliox.log -> .1 -> .2 ...; the oldest is dropped. Call with _lock held."""
     global _file
     if _file is not None:
         _file.close()
@@ -106,7 +106,7 @@ def start_file_log() -> Path:
             _rotate()
         else:
             _file = open(LOG_FILE, "a", encoding="utf-8", buffering=1)
-        _file.write(f"\n===== VerbaScribe started {time.strftime('%Y-%m-%d %H:%M:%S')} "
+        _file.write(f"\n===== Verbaliox started {time.strftime('%Y-%m-%d %H:%M:%S')} "
                     f"(Python {sys.version.split()[0]}, {sys.executable}) =====\n")
     sys.stdout = _Tee(sys.__stdout__, "OUT")
     sys.stderr = _Tee(sys.__stderr__, "ERR")

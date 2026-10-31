@@ -1,4 +1,4 @@
-// VerbaScribe page script, part 4 of 9: Library: the list, live updates, the queue, app views, the assistant, folders, views and sorting, dropped files.
+// Verbaliox page script, part 4 of 9: Library: the list, live updates, the queue, app views, the assistant, folders, views and sorting, dropped files.
 // The parts are classic scripts sharing one global scope, loaded in order by index.html.
 
 // --- Meetings List, Global Search & Sidebar ---
@@ -502,13 +502,13 @@ function sortedFolders(parentId) {
 }
 
 function collapsedFolders() {
-  try { return new Set(JSON.parse(localStorage.getItem('verbascribe_folders_collapsed') || '[]')); } catch (e) { return new Set(); }
+  try { return new Set(JSON.parse(localStorage.getItem('verbaliox_folders_collapsed') || '[]')); } catch (e) { return new Set(); }
 }
 
 function toggleFolderCollapsed(id) {
   const set = collapsedFolders();
   if (set.has(id)) set.delete(id); else set.add(id);
-  try { localStorage.setItem('verbascribe_folders_collapsed', JSON.stringify([...set])); } catch (e) {}
+  try { localStorage.setItem('verbaliox_folders_collapsed', JSON.stringify([...set])); } catch (e) {}
   renderMeetingsSidebar();
 }
 
@@ -532,7 +532,7 @@ async function createFolderPrompt(parentId) {
   if (!res.ok) { showError(data.detail); return; }
   if (parentId != null) {
     const set = collapsedFolders();
-    if (set.delete(parentId)) try { localStorage.setItem('verbascribe_folders_collapsed', JSON.stringify([...set])); } catch (e) {}
+    if (set.delete(parentId)) try { localStorage.setItem('verbaliox_folders_collapsed', JSON.stringify([...set])); } catch (e) {}
   }
   await loadFolders();
   renderMeetingsSidebar();
@@ -828,7 +828,7 @@ let _libPrefsCache = null;
 function libPrefs() {
   if (_libPrefsCache) return _libPrefsCache;
   let p = {};
-  try { p = JSON.parse(localStorage.getItem('verbascribe_library_view') || '{}') || {}; } catch (e) {}
+  try { p = JSON.parse(localStorage.getItem('verbaliox_library_view') || '{}') || {}; } catch (e) {}
   return _libPrefsCache = {
     view: LIB_VIEWS.includes(p.view) ? p.view : 'details',
     sort: LIB_SORTS.includes(p.sort) ? p.sort : 'recorded',
@@ -892,8 +892,8 @@ function libAnyOpen() {
 function toggleLibraryFold() {
   const fold = libAnyOpen();
   try {
-    localStorage.setItem('verbascribe_folders_collapsed', JSON.stringify(fold ? (state.folders || []).map(f => f.id) : []));
-    localStorage.setItem('verbascribe_dates_collapsed', JSON.stringify(fold ? (state._libDateIds || []).slice(-300) : []));
+    localStorage.setItem('verbaliox_folders_collapsed', JSON.stringify(fold ? (state.folders || []).map(f => f.id) : []));
+    localStorage.setItem('verbaliox_dates_collapsed', JSON.stringify(fold ? (state._libDateIds || []).slice(-300) : []));
   } catch (e) {}
   renderMeetingsSidebar();
 }
@@ -907,13 +907,13 @@ function renderLibFoldButton() {
 }
 
 function collapsedDates() {
-  try { return new Set(JSON.parse(localStorage.getItem('verbascribe_dates_collapsed') || '[]')); } catch (e) { return new Set(); }
+  try { return new Set(JSON.parse(localStorage.getItem('verbaliox_dates_collapsed') || '[]')); } catch (e) { return new Set(); }
 }
 
 function toggleDateCollapsed(key) {
   const set = collapsedDates();
   if (set.has(key)) set.delete(key); else set.add(key);
-  try { localStorage.setItem('verbascribe_dates_collapsed', JSON.stringify([...set].slice(-300))); } catch (e) {}
+  try { localStorage.setItem('verbaliox_dates_collapsed', JSON.stringify([...set].slice(-300))); } catch (e) {}
   renderMeetingsSidebar();
 }
 
@@ -935,7 +935,7 @@ function setLibPref(key, value) {
   if (key === 'sort' && p.sort === value) p.dir = p.dir === 'asc' ? 'desc' : 'asc';
   else if (key === 'sort') p.dir = value === 'name' ? 'asc' : 'desc';
   if (key !== 'dir') p[key] = value;
-  try { localStorage.setItem('verbascribe_library_view', JSON.stringify(p)); } catch (e) {}
+  try { localStorage.setItem('verbaliox_library_view', JSON.stringify(p)); } catch (e) {}
   _libPrefsCache = null;
   renderMeetingsSidebar();
 }
@@ -1037,7 +1037,7 @@ const LIB_FILTERS = {
   },
 };
 const LIB_FILTER_GROUPS = [...Object.keys(LIB_FILTERS), 'lang'];
-const LIB_FILTER_KEY = 'verbascribe_library_filters';
+const LIB_FILTER_KEY = 'verbaliox_library_filters';
 let _libFilters = null;
 
 function libFilters() {
@@ -1710,17 +1710,17 @@ function setSidebarWidth(w, save) {
   if (!aside) return;
   w = Math.round(Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, Math.min(w, viewW() - MAIN_MIN))));
   aside.style.width = `${w}px`;
-  if (save) try { localStorage.setItem('verbascribe_sidebar_width', String(w)); } catch (e) {}
+  if (save) try { localStorage.setItem('verbaliox_sidebar_width', String(w)); } catch (e) {}
 }
 
 (function initSidebarResize() {
   // A smaller window takes the room from the sidebar first (the saved width comes back when it grows)
   window.addEventListener('resize', () => {
     let saved = SIDEBAR_DEFAULT;
-    try { saved = Number(localStorage.getItem('verbascribe_sidebar_width')) || SIDEBAR_DEFAULT; } catch (e) {}
+    try { saved = Number(localStorage.getItem('verbaliox_sidebar_width')) || SIDEBAR_DEFAULT; } catch (e) {}
     setSidebarWidth(saved, false);
   });
-  try { const w = Number(localStorage.getItem('verbascribe_sidebar_width')); if (w) setSidebarWidth(w, false); } catch (e) {}
+  try { const w = Number(localStorage.getItem('verbaliox_sidebar_width')); if (w) setSidebarWidth(w, false); } catch (e) {}
   const handle = document.getElementById('sidebar-resizer');
   if (!handle) return;
   handle.addEventListener('dblclick', () => setSidebarWidth(SIDEBAR_DEFAULT, true));

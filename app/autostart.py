@@ -14,7 +14,8 @@ from pathlib import Path
 from app.paths import APP_DIR
 
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
-VALUE_NAME = "VerbaScribe"
+VALUE_NAME = "Verbaliox"
+FORMER_VALUE_NAME = "VerbaScribe"  # set by versions before the rename; removed by sync()
 
 
 def command() -> str:
@@ -25,7 +26,7 @@ def command() -> str:
 
 
 def current() -> str:
-    """The command the Run key holds for VerbaScribe ("" when none, or not on Windows)."""
+    """The command the Run key holds for Verbaliox ("" when none, or not on Windows)."""
     if sys.platform != "win32":
         return ""
     import winreg
@@ -52,11 +53,24 @@ def set_enabled(on: bool) -> None:
                 pass
 
 
+def _drop_former_value() -> None:
+    if sys.platform != "win32":
+        return
+    import winreg
+
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
+            winreg.DeleteValue(key, FORMER_VALUE_NAME)
+    except OSError:  # not there (the usual case) or not allowed
+        pass
+
+
 def sync() -> None:
     """The Run key as the setting says, pointing at this folder (called at every start)."""
     from app.database import get_all_settings
 
     want = (get_all_settings().get("start_with_windows") or "false").lower() == "true"
+    _drop_former_value()
     try:
         if want and current() != command():
             set_enabled(True)

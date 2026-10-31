@@ -1,4 +1,4 @@
-// VerbaScribe page script: the import window (package B, docs/redesign-plan.md). Files, links and paths
+// Verbaliox page script: the import window (package B, docs/redesign-plan.md). Files, links and paths
 // to add; the model, language and speakers; what is done to the sound before recognition and to the
 // text after it (database.PROCESSING_KEYS, kept per recording). Filled from the settings; "Remember"
 // writes them back, "Do not ask" makes "Import" start at once (setting ask_import_params).

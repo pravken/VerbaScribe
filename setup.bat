@@ -3,7 +3,7 @@ setlocal EnableDelayedExpansion
 cd /d "%~dp0"
 
 echo ==============================================================
-echo   VerbaScribe - First-Run Environment Setup
+echo   Verbaliox - First-Run Environment Setup
 echo ==============================================================
 
 rem --- Smart App Control (Windows 11) blocks program files without a digital signature. The Python
@@ -62,7 +62,7 @@ if errorlevel 1 goto :install_failed
 :done
 echo.
 echo ==============================================================
-echo   Setup complete. Launching VerbaScribe...
+echo   Setup complete. Launching Verbaliox...
 echo ==============================================================
 goto :eof
 
@@ -98,7 +98,7 @@ echo   ------------------------------------------------------------
 echo   Smart App Control is on.
 echo   It may block parts of Python libraries that have no digital
 echo   signature ^(Windows shows "This app is partially blocked"^).
-echo   If VerbaScribe does not start or a feature fails, turn it off:
+echo   If Verbaliox does not start or a feature fails, turn it off:
 echo   Windows Security - App ^& browser control - Smart App Control
 echo   settings - Off. It cannot be turned back on without
 echo   reinstalling Windows; Defender keeps protecting the PC.

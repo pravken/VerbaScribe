@@ -210,7 +210,7 @@ _env_size_cache: Dict[str, Any] = {"key": None, "bytes": None, "at": 0.0}
 def disk_usage(venv: Path, dubs_dir: Path) -> Dict[str, Any]:
     """Sizes of the environment, the weights and the dub outputs. The venv size (~6 GB, tens of
     thousands of files) is cached until the environment changes."""
-    marker = venv / "verbascribe-dub-ready.txt"
+    marker = venv / "verbaliox-dub-ready.txt"
     key = (venv.exists(), marker.stat().st_mtime if marker.exists() else 0)
     if _env_size_cache["key"] != key or time.time() - _env_size_cache["at"] > 3600:
         _env_size_cache.update(key=key, bytes=dir_size(venv) if venv.exists() else 0, at=time.time())

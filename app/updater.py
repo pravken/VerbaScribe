@@ -6,13 +6,13 @@ or the computer is sent). At most every CHECK_INTERVAL_SEC, and only if the sett
 "update_check" is on.
 
 Update (on the user's click):
-  1. the release archive VerbaScribe-vX.Y.Z.zip is downloaded into <data>/updates and checked
+  1. the release archive Verbaliox-vX.Y.Z.zip is downloaded into <data>/updates and checked
      against the release's SHA256SUMS.txt;
   2. this module is started as a separate process (`python -m app.updater apply ...`) and the app
      quits; the updater waits for it to exit, shows a small progress window, backs up the files it
      will replace, copies the new program files over the program folder (never the user's data,
      models or Python environments), installs Python packages again if requirements.txt changed,
-     and starts VerbaScribe.exe. On any failure the backup is restored.
+     and starts Verbaliox.exe. On any failure the backup is restored.
 
 Automatic updates (setting "update_auto", on by default): a newer release found by the check is
 downloaded in the background; it is installed when the user clicks "Restart", or when the app is
@@ -36,7 +36,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 # Loaded before the update replaces the program files
 from app.pyenv import ensure_pip, find_uv
 
-GITHUB_REPO = "pravken/VerbaScribe"
+GITHUB_REPO = "pravken/Verbaliox"
 LATEST_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 # With "Get beta versions" on: the newest of the recent releases, pre-releases (v0.5.0-beta.1) too;
 # releases/latest never names a pre-release
@@ -112,7 +112,7 @@ def check(force: bool = False) -> Dict[str, Any]:
         try:
             with httpx.Client(timeout=8.0, follow_redirects=True,
                               headers={"Accept": "application/vnd.github+json",
-                                       "User-Agent": f"VerbaScribe/{current_version()}"}) as c:
+                                       "User-Agent": f"Verbaliox/{current_version()}"}) as c:
                 r = c.get(RELEASES_URL if beta else LATEST_URL)
             rel = None
             if r.status_code != 404:  # 404: no release published yet
@@ -128,7 +128,7 @@ def check(force: bool = False) -> Dict[str, Any]:
                           if str(a.get("browser_download_url") or "").startswith(DOWNLOAD_PREFIX)}
                 # GitHub's own SHA-256 of each uploaded file ("sha256:<hex>"), independent of SHA256SUMS.txt
                 digests = {a.get("name"): str(a.get("digest") or "") for a in rel.get("assets") or []}
-                zip_name = next((n for n in assets if re.fullmatch(r"VerbaScribe-v[\w.\-]+\.zip", n or "")), None)
+                zip_name = next((n for n in assets if re.fullmatch(r"Verbaliox-v[\w.\-]+\.zip", n or "")), None)
                 latest = {
                     "version": str(rel.get("tag_name") or "").lstrip("v"),
                     "tag": rel.get("tag_name"),
@@ -258,7 +258,7 @@ def _download(latest: Dict[str, Any]) -> None:
         target = _updates_dir() / latest["zip_name"]
         part = target.with_suffix(".part")
         with httpx.Client(timeout=60.0, follow_redirects=True,
-                          headers={"User-Agent": f"VerbaScribe/{current_version()}"}) as c:
+                          headers={"User-Agent": f"Verbaliox/{current_version()}"}) as c:
             expected = None
             if latest.get("sums_url"):
                 sums = c.get(latest["sums_url"]).content
@@ -353,7 +353,7 @@ class UpdateFailed(RuntimeError):
 OUTCOME_TEXT = {
     "untouched": "Файлы программы не изменены.",
     "restored": "Прежняя версия восстановлена.",
-    "broken": "Прежнюю версию восстановить не удалось: скачайте и распакуйте VerbaScribe заново "
+    "broken": "Прежнюю версию восстановить не удалось: скачайте и распакуйте Verbaliox заново "
               "(ваши записи и настройки в папке data не пострадают; подробности в logs\\update.log).",
 }
 
@@ -362,7 +362,8 @@ OUTCOME_TEXT = {
 CODE_DIRS = ("app", "static")
 CODE_SUFFIXES = {".py", ".js", ".html", ".css"}
 # The dubbing environment's ready mark (app/dub_setup.py DUB_READY_MARKER)
-DUB_MARKER = Path(".venv-dub") / "verbascribe-dub-ready.txt"
+DUB_MARKER = Path(".venv-dub") / "verbaliox-dub-ready.txt"
+FORMER_DUB_MARKER = Path(".venv-dub") / "verbascribe-dub-ready.txt"  # made while the program was VerbaScribe
 
 
 def _wait_for_exit(pid: int, timeout: float = 120.0) -> bool:
@@ -408,7 +409,7 @@ def _preflight(app_dir: Path, need_bytes: int) -> None:
         probe.unlink()
     except OSError as e:
         raise UpdateFailed(f"Нет права записи в папку программы {app_dir} ({e}). "
-                           "Переместите VerbaScribe в папку пользователя или запустите от имени администратора.")
+                           "Переместите Verbaliox в папку пользователя или запустите от имени администратора.")
     try:
         free = shutil.disk_usage(app_dir).free
     except OSError:
@@ -423,6 +424,8 @@ def _mark_dub_outdated(app_dir: Path, old_hash: str) -> None:
     mark that records the requirements it was made with notices that itself; an older mark gets
     the previous requirements written in, so it reads as outdated."""
     marker = app_dir / DUB_MARKER
+    if not marker.is_file() and (app_dir / FORMER_DUB_MARKER).is_file():
+        marker = app_dir / FORMER_DUB_MARKER  # app/dub_setup.py renames it at the next start
     try:
         text = marker.read_text(encoding="utf-8")
     except OSError:
@@ -463,7 +466,7 @@ def _reinstall(py: Path, uv: Optional[str], frozen_file: Path, log_dir: Path) ->
 
 def archive_files(names: List[str], app_dir: Path) -> List[Tuple[str, str]]:
     """(name in the archive, path in the program folder) of the files an update writes. The archive
-    holds one top folder (VerbaScribe-vX.Y.Z/); a name that would land outside the program folder
+    holds one top folder (Verbaliox-vX.Y.Z/); a name that would land outside the program folder
     (absolute, a drive, "..", backslashes from another zip tool) or in a protected folder is left out."""
     root = app_dir.resolve()
     norm = [(n, n.replace("\\", "/")) for n in names if not n.replace("\\", "/").endswith("/")]
@@ -593,18 +596,18 @@ def _main(argv: List[str]) -> int:
     def work() -> None:
         nonlocal ok, message
         try:
-            ui.set("Ожидание закрытия VerbaScribe…")
+            ui.set("Ожидание закрытия Verbaliox…")
             if a.pid and not _wait_for_exit(a.pid):
                 # Replacing files under a running program would mix two versions
-                raise UpdateFailed("VerbaScribe не закрылся за две минуты. Закройте программу и установите обновление снова.")
+                raise UpdateFailed("Verbaliox не закрылся за две минуты. Закройте программу и установите обновление снова.")
             apply_update(Path(a.zip), app_dir, data_dir, ui.set)
-            ui.set("Готово." if a.no_restart else "Готово. Запуск VerbaScribe…")
+            ui.set("Готово." if a.no_restart else "Готово. Запуск Verbaliox…")
         except Exception as e:
             ok, message = False, f"{e}\n{OUTCOME_TEXT[getattr(e, 'outcome', 'untouched')]}"
             with open(data_dir / "logs" / "update.log", "a", encoding="utf-8") as lf:
                 lf.write(traceback.format_exc())
         finally:
-            launcher = app_dir / "VerbaScribe.exe"
+            launcher = app_dir / "Verbaliox.exe"
             pythonw = app_dir / ".venv" / "Scripts" / "pythonw.exe"
             if a.restart_minimized and pythonw.is_file():  # after a failure too: the previous version is back
                 subprocess.Popen([str(pythonw), str(app_dir / "run.py"), "--minimized"], cwd=str(app_dir))
@@ -623,7 +626,7 @@ class _ProgressWindow:
 
     def __init__(self, visible: bool = True) -> None:
         self._tk = None
-        self._msg = "Обновление VerbaScribe…"
+        self._msg = "Обновление Verbaliox…"
         self._visible = visible
         if not visible:
             return
@@ -631,12 +634,12 @@ class _ProgressWindow:
             import tkinter as tk
 
             root = tk.Tk()
-            root.title("Обновление VerbaScribe")
+            root.title("Обновление Verbaliox")
             root.geometry("420x110")
             root.configure(bg="#1c1c1e")
             root.attributes("-topmost", True)
             root.resizable(False, False)
-            tk.Label(root, text="Обновление VerbaScribe", fg="white", bg="#1c1c1e",
+            tk.Label(root, text="Обновление Verbaliox", fg="white", bg="#1c1c1e",
                      font=("Segoe UI Semibold", 12)).pack(anchor="w", padx=20, pady=(18, 4))
             self._var = tk.StringVar(value=self._msg)
             tk.Label(root, textvariable=self._var, fg="#98989d", bg="#1c1c1e",
@@ -655,14 +658,14 @@ class _ProgressWindow:
             if error and not self._visible and sys.platform == "win32":
                 import ctypes
 
-                ctypes.windll.user32.MessageBoxW(None, error, "VerbaScribe", 0x10 | 0x40000)  # error, on top
+                ctypes.windll.user32.MessageBoxW(None, error, "Verbaliox", 0x10 | 0x40000)  # error, on top
             return
 
         def _close() -> None:
             if error:
                 from tkinter import messagebox
 
-                messagebox.showerror("VerbaScribe", error, parent=self._tk)
+                messagebox.showerror("Verbaliox", error, parent=self._tk)
             self._tk.destroy()
 
         self._tk.after(0, _close)

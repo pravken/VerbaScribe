@@ -1,8 +1,8 @@
 """
 Profiles a dub on a slice of an existing recording: wall time per stage and GPU utilization.
 
-    set VERBASCRIBE_DATA_DIR=<temp copy of the data folder>
-    set VERBASCRIBE_SKIP_MIGRATION=1
+    set VERBALIOX_DATA_DIR=<temp copy of the data folder>
+    set VERBALIOX_SKIP_MIGRATION=1
     .venv\\Scripts\\python.exe tools\\profile_dub.py --meeting 4 --start 0 --length 300 --lang ru
 
 The slice is cut into the temp folder; the recording in the database is not changed. Never run this
@@ -51,9 +51,9 @@ def main() -> None:
     ap.add_argument("--max-workers", type=int, default=0, help="override the TTS process limit (experiment)")
     args = ap.parse_args()
     if args.threads >= 0:
-        os.environ["VERBASCRIBE_DUB_THREADS"] = str(args.threads)
-    if not os.environ.get("VERBASCRIBE_DATA_DIR"):
-        sys.exit("Set VERBASCRIBE_DATA_DIR to a temp copy of the data folder first")
+        os.environ["VERBALIOX_DUB_THREADS"] = str(args.threads)
+    if not os.environ.get("VERBALIOX_DATA_DIR"):
+        sys.exit("Set VERBALIOX_DATA_DIR to a temp copy of the data folder first")
 
     from app import dub_text
     from app.database import get_meeting

@@ -1,6 +1,6 @@
 // Browser smoke test of the page (CI: .github/workflows/ci.yml): every view, every settings tab and the
 // About window open without a JavaScript error. Needs a running server:
-//   VERBASCRIBE_TOKEN=smoke python -m uvicorn app.main:app --port 8799
+//   VERBALIOX_TOKEN=smoke python -m uvicorn app.main:app --port 8799
 //   node tests/ui/smoke.mjs            (BASE=http://127.0.0.1:8799 TOKEN=smoke by default)
 const pw = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = process.env.BASE || 'http://127.0.0.1:8799';

@@ -43,7 +43,7 @@ def toggle(notify=None, translate: bool = False, type_out: bool = True) -> str:
     """Starts or stops (and types) a dictation; returns "started", "stopped" or "busy". `translate`: the
     dictation with translation (its own hotkey); either hotkey stops a running dictation.
     `type_out=False` (the button of the home page): the text is only kept, not typed, since the
-    window with the focus is VerbaScribe itself; the page shows it (status()["last_text"]).
+    window with the focus is Verbaliox itself; the page shows it (status()["last_text"]).
     While the last dictation is still being recognized or translated: "busy", nothing starts (a new
     one would reset that one's state and its target language)."""
     with _lock:

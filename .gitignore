@@ -29,8 +29,10 @@ Thumbs.db
 node_modules/
 
 # Launcher is built by GitHub Actions (see .github/workflows/release.yml) or locally via build_exe.py
+Verbaliox.exe
 VerbaScribe.exe
 bench-report/data/
 
 # The release signing key (tools/release_key.py) is kept offline, never in the repository
+verbaliox-release*.key
 verbascribe-release*.key

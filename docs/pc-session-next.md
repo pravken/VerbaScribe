@@ -1,13 +1,13 @@
 # Промпт для локальной сессии: Python 3.11, проверки после аудита, новые модели озвучки
 
-Скопируйте всё, что ниже линии, в новую сессию Claude Code на компьютере с VerbaScribe.
+Скопируйте всё, что ниже линии, в новую сессию Claude Code на компьютере с Verbaliox.
 
-**Выполнено 31.10.2026** (PR pravken/VerbaScribe#10): итоги — `docs/pc-session-audit-report.md` (A, B) и
+**Выполнено 31.10.2026** (PR pravken/Verbaliox#10): итоги — `docs/pc-session-audit-report.md` (A, B) и
 `bench-report/tts-candidates.md` (C).
 
 ---
 
-Ты работаешь на моём Windows-ПК с установленным VerbaScribe (локальная программа расшифровки встреч и
+Ты работаешь на моём Windows-ПК с установленным Verbaliox (локальная программа расшифровки встреч и
 дубляжа). Работа из трёх частей, по порядку: **A** — перейти на Python 3.11 (закрывает уязвимости),
 **B** — проверки и одна правка после независимого аудита, **C** — сравнить новые модели озвучки для дубляжа.
 После каждой части коротко отчитайся мне и дождись «дальше». Отвечай по-русски. Правила проекта — в
@@ -22,25 +22,25 @@
 
 ## 0. Подготовка
 
-1. Спроси меня, где установлен VerbaScribe (папка с `VerbaScribe.exe`, `.venv`, `.venv-dub`). Дальше это `APP`.
+1. Спроси меня, где установлен Verbaliox (папка с `Verbaliox.exe`, `.venv`, `.venv-dub`). Дальше это `APP`.
 2. Клон и ветка от `main`:
    ```
-   git clone https://github.com/pravken/VerbaScribe.git VerbaScribe-pc
-   cd VerbaScribe-pc
+   git clone https://github.com/pravken/Verbaliox.git Verbaliox-pc
+   cd Verbaliox-pc
    git checkout -b claude/python-311 origin/main
    ```
 3. Копии вместо настоящих данных:
    ```
    mkdir %TEMP%\vs-pc-data
-   copy "%LOCALAPPDATA%\VerbaScribe\meetings.db" %TEMP%\vs-pc-data\
-   set VERBASCRIBE_DATA_DIR=%TEMP%\vs-pc-data
-   set VERBASCRIBE_MODELS_DIR=%TEMP%\vs-pc-models
-   set VERBASCRIBE_SKIP_MIGRATION=1
+   copy "%LOCALAPPDATA%\Verbaliox\meetings.db" %TEMP%\vs-pc-data\
+   set VERBALIOX_DATA_DIR=%TEMP%\vs-pc-data
+   set VERBALIOX_MODELS_DIR=%TEMP%\vs-pc-models
+   set VERBALIOX_SKIP_MIGRATION=1
    ```
    Нужные для проверок модели копируй из `APP\models` в `%TEMP%\vs-pc-models`, не меняя оригиналы.
 4. Нужны `uv` и Python 3.11 с python.org (подписанный — для Smart App Control):
    `winget install --id=Python.Python.3.11 -e --scope user`, если его нет.
-5. Попроси меня закрыть VerbaScribe на время замеров (видеокарта RTX 3090 24 ГБ делится с программой).
+5. Попроси меня закрыть Verbaliox на время замеров (видеокарта RTX 3090 24 ГБ делится с программой).
 
 ## A. Переход на Python 3.11
 
@@ -107,7 +107,7 @@
    `PinnedDownloadsTest`. Модели дубляжа скачиваются в пустую папку моделей и работают. Отдельный коммит.
 2. **Outlook в другой локали (Ж4).** Формат даты Windows — английский (США), затем немецкий: встречи из Outlook на
    сегодня видны, на завтра — нет (`app/calendar_outlook.py`, `ToString('g')` и `Items.Restrict`). Верни мой формат.
-3. **update.bat.** В клоне git: обновляется, код возврата верный, в `%TEMP%` не остаётся `verbascribe-update.bat`.
+3. **update.bat.** В клоне git: обновляется, код возврата верный, в `%TEMP%` не остаётся `verbaliox-update.bat`.
 4. **Горячие клавиши диктовки (В3).** «Отключить» у обеих: после перезапуска сочетания не работают и не заняты
    (другая программа может их зарегистрировать).
 5. **Сбой окна (В6)** — если есть ПК или виртуальная машина без WebView2 Runtime: программа открывается в браузере, а

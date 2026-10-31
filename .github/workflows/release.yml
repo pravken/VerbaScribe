@@ -1,6 +1,6 @@
 name: Release
 
-# Builds the VerbaScribe.exe launcher from build_exe.py on a clean Windows runner and publishes
+# Builds the Verbaliox.exe launcher from build_exe.py on a clean Windows runner and publishes
 # it together with a source archive and SHA-256 checksums, so every binary can be traced to a commit.
 on:
   push:
@@ -58,12 +58,12 @@ jobs:
       - name: Package release
         shell: pwsh
         run: |
-          $name = "VerbaScribe-$($env:TAG -replace '[\\/]', '-')"
+          $name = "Verbaliox-$($env:TAG -replace '[\\/]', '-')"
           git archive --format=zip --prefix="$name/" -o source.zip HEAD
           Expand-Archive source.zip -DestinationPath dist
-          Copy-Item VerbaScribe.exe "dist/$name/"
+          Copy-Item Verbaliox.exe "dist/$name/"
           Compress-Archive -Path "dist/$name" -DestinationPath "$name.zip"
-          Get-FileHash VerbaScribe.exe, "$name.zip" -Algorithm SHA256 |
+          Get-FileHash Verbaliox.exe, "$name.zip" -Algorithm SHA256 |
             ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } |
             Set-Content -Encoding utf8 SHA256SUMS.txt
           Get-Content SHA256SUMS.txt
@@ -93,10 +93,10 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
-          name: verbascribe-release
+          name: verbaliox-release
           path: |
-            VerbaScribe-*.zip
-            VerbaScribe.exe
+            Verbaliox-*.zip
+            Verbaliox.exe
             SHA256SUMS.txt
             SHA256SUMS.txt.minisig
 
@@ -109,7 +109,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $files = @(Get-ChildItem VerbaScribe-*.zip | ForEach-Object Name) + @('VerbaScribe.exe', 'SHA256SUMS.txt')
+          $files = @(Get-ChildItem Verbaliox-*.zip | ForEach-Object Name) + @('Verbaliox.exe', 'SHA256SUMS.txt')
           if (Test-Path SHA256SUMS.txt.minisig) { $files += 'SHA256SUMS.txt.minisig' }
           # @(...) keeps these arrays: an if returning one item gives a plain string, and splatting a
           # string passes its characters one by one (a beta's --prerelease became "-", "-", "p", …)

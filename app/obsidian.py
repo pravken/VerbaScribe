@@ -109,9 +109,9 @@ def build_note(m: Dict[str, Any], settings: Optional[Dict[str, str]] = None) -> 
         *[f"  - {_yaml_str(n)}" for n in names],
         f"source: {_yaml_str(m.get('filename') or '')}",
         "tags:",
-        "  - verbascribe",
+        "  - verbaliox",
         "  - meeting",
-        f"verbascribe_id: {int(m.get('id') or 0)}",
+        f"verbaliox_id: {int(m.get('id') or 0)}",
         "---",
         "",
         f"# {m.get('title') or L['untitled']}",
@@ -237,9 +237,10 @@ def export_meeting(meeting_id: int, generate: bool = False, in_job: bool = False
         return target
 
 
-# The end of every note belongs to the user: VerbaScribe rewrites what is above this heading and
+# The end of every note belongs to the user: Verbaliox rewrites what is above this heading and
 # keeps everything from it on (tasks ticked, own notes)
-NOTES_MARKER = "<!-- verbascribe:notes -->"
+NOTES_MARKER = "<!-- verbaliox:notes -->"
+FORMER_NOTES_MARKER = "<!-- verbascribe:notes -->"  # notes written while the program was called VerbaScribe
 
 
 def _notes_section(m: Dict[str, Any]) -> str:
@@ -248,8 +249,11 @@ def _notes_section(m: Dict[str, Any]) -> str:
 
 
 def split_user_notes(text: str) -> tuple:
-    """(the part VerbaScribe wrote, the user's section from the marker on, or "")."""
+    """(the part Verbaliox wrote, the user's section from the marker on, or "")."""
     i = text.find(NOTES_MARKER)
+    if i < 0 and FORMER_NOTES_MARKER in text:
+        text = text.replace(FORMER_NOTES_MARKER, NOTES_MARKER, 1)
+        i = text.find(NOTES_MARKER)
     if i < 0:
         return text.rstrip() + "\n" if text else "", ""
     return text[:i].rstrip() + "\n", text[i:]
@@ -266,7 +270,8 @@ def _is_ours(path: Path, meeting_id: int) -> bool:
         head = path.read_text(encoding="utf-8", errors="replace")[:2000]
     except OSError:
         return False
-    return re.search(rf"^verbascribe_id:\s*{int(meeting_id)}\s*$", head, re.MULTILINE) is not None
+    # verbascribe_id: a note written while the program had its former name
+    return re.search(rf"^verba(?:liox|scribe)_id:\s*{int(meeting_id)}\s*$", head, re.MULTILINE) is not None
 
 
 def _unique(path: Path) -> Path:

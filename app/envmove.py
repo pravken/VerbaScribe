@@ -13,7 +13,7 @@ moves itself:
    itself, outside both environments; the app quits.
 2. `run` waits for the app to end, installs requirements.txt into .venv-new and swaps the folders:
    .venv -> .venv-old, .venv-new -> .venv. Any failure leaves .venv as it was (.venv-new is removed)
-   and says so; the next try is a day later. Then VerbaScribe starts again.
+   and says so; the next try is a day later. Then Verbaliox starts again.
 3. The next start on Python 3.11 removes .venv-old (`cleanup()`).
 
 update.bat (a folder cloned with git) does steps 1-2 itself with `prepare` and `run --no-restart`.
@@ -47,7 +47,7 @@ def _log(data_dir: Path, line: str) -> None:
 
 def needed(app_dir: Path, data_dir: Path) -> bool:
     """This app runs in the program's own .venv on an older Python, and no try failed lately."""
-    if sys.platform != "win32" or sys.version_info[:2] >= NEEDED or os.environ.get("VERBASCRIBE_NO_ENV_MOVE"):
+    if sys.platform != "win32" or sys.version_info[:2] >= NEEDED or os.environ.get("VERBALIOX_NO_ENV_MOVE"):
         return False
     try:
         if Path(sys.prefix).resolve() != (app_dir / ".venv").resolve():
@@ -264,9 +264,9 @@ def _main(argv) -> int:
     def work() -> None:
         nonlocal ok, message
         try:
-            report("Переход на Python 3.11: ожидание закрытия VerbaScribe…")
+            report("Переход на Python 3.11: ожидание закрытия Verbaliox…")
             if a.pid and not _wait_for_exit(a.pid):
-                raise RuntimeError("VerbaScribe не закрылся за две минуты")
+                raise RuntimeError("Verbaliox не закрылся за две минуты")
             move(app_dir, data_dir, report)
             _log(data_dir, "the environment is on Python 3.11")
             report("Готово.")
@@ -276,7 +276,7 @@ def _main(argv) -> int:
             _mark_failed(data_dir)
             shutil.rmtree(app_dir / NEW_ENV, ignore_errors=True)
         finally:
-            launcher = app_dir / "VerbaScribe.exe"
+            launcher = app_dir / "Verbaliox.exe"
             if not a.no_restart and launcher.is_file():
                 subprocess.Popen([str(launcher)], cwd=str(app_dir))
             if ui:

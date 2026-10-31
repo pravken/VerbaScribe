@@ -187,7 +187,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
-class VerbaScribeLauncher
+class VerbalioxLauncher
 {
     [DllImport("shell32.dll", SetLastError = true)]
     static extern void SetCurrentProcessExplicitAppUserModelID([MarshalAs(UnmanagedType.LPWStr)] string AppID);
@@ -197,7 +197,7 @@ class VerbaScribeLauncher
     {
         try
         {
-            SetCurrentProcessExplicitAppUserModelID("VerbaScribe.Desktop.Studio.1");
+            SetCurrentProcessExplicitAppUserModelID("Verbaliox.Desktop.Studio.1");
         }
         catch { }
 
@@ -214,10 +214,10 @@ class VerbaScribeLauncher
             if (File.Exists(setupBat))
             {
                 DialogResult res = MessageBox.Show(
-                    "Добро пожаловать в VerbaScribe!\n\n" +
+                    "Добро пожаловать в Verbaliox!\n\n" +
                     "При первом запуске необходимо установить локальное Python-окружение (займёт пару минут).\n\n" +
                     "Запустить автоматическую установку сейчас?",
-                    "VerbaScribe — Первый запуск",
+                    "Verbaliox — Первый запуск",
                     MessageBoxButtons.YesNo,
                     MessageBoxIcon.Information
                 );
@@ -242,7 +242,7 @@ class VerbaScribeLauncher
             {
                 MessageBox.Show(
                     "Окружение .venv не найдено. Пожалуйста, запустите setup.bat вручную.",
-                    "VerbaScribe",
+                    "Verbaliox",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Warning
                 );
@@ -266,7 +266,7 @@ class VerbaScribeLauncher
         catch (Exception ex)
         {
             MessageBox.Show(
-                "Не удалось запустить VerbaScribe:\n" + ex.Message,
+                "Не удалось запустить Verbaliox:\n" + ex.Message,
                 "Ошибка запуска",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error
@@ -279,10 +279,10 @@ class VerbaScribeLauncher
         if (app.HasExited && app.ExitCode != 0 && app.ExitCode != 1)
         {
             MessageBox.Show(
-                "VerbaScribe не запустился (код " + app.ExitCode + ").\n" +
-                "Запустите setup.bat ещё раз; журнал: %LOCALAPPDATA%\\VerbaScribe\\logs\n\n" +
-                "VerbaScribe did not start. Run setup.bat again.",
-                "VerbaScribe",
+                "Verbaliox не запустился (код " + app.ExitCode + ").\n" +
+                "Запустите setup.bat ещё раз; журнал: %LOCALAPPDATA%\\Verbaliox\\logs\n\n" +
+                "Verbaliox did not start. Run setup.bat again.",
+                "Verbaliox",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error
             );
@@ -296,9 +296,9 @@ class VerbaScribeLauncher
     [DllImport("user32.dll")]
     static extern bool IsWindowVisible(IntPtr hwnd);
 
-    const string WindowTitle = "VerbaScribe";  // run.py WINDOW_TITLE
+    const string WindowTitle = "Verbaliox";  // run.py WINDOW_TITLE
 
-    // The app window. Explorer showing the program's folder (named VerbaScribe) has the same title:
+    // The app window. Explorer showing the program's folder (named Verbaliox) has the same title:
     // it must not close the splash (run.py find_app_window does the same)
     static IntPtr FindAppWindow()
     {
@@ -357,9 +357,9 @@ class VerbaScribeLauncher
     {
         try
         {
-            string data = Environment.GetEnvironmentVariable("VERBASCRIBE_DATA_DIR");
+            string data = Environment.GetEnvironmentVariable("VERBALIOX_DATA_DIR");
             if (string.IsNullOrEmpty(data))
-                data = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VerbaScribe");
+                data = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Verbaliox");
             string f = Path.Combine(data, "ui-lang.txt");
             if (File.Exists(f)) return File.ReadAllText(f).Trim();
         }
@@ -403,7 +403,7 @@ class VerbaScribeLauncher
         splash.BackColor = System.Drawing.Color.FromArgb(28, 28, 30);
         splash.ShowInTaskbar = true;
         splash.TopMost = true;  // a few seconds only: keep it visible over other windows
-        splash.Text = "VerbaScribe \u2014 \u0437\u0430\u043f\u0443\u0441\u043a";  // not the app window title: FindWindow must not find the splash
+        splash.Text = "Verbaliox \u2014 \u0437\u0430\u043f\u0443\u0441\u043a";  // not the app window title: FindWindow must not find the splash
         try { splash.Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
         // The willow logo, gently bobbing
@@ -413,7 +413,7 @@ class VerbaScribeLauncher
         logo.Image = LoadLogo(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", "icon.ico"));
 
         Label title = new Label();
-        title.Text = "VerbaScribe";
+        title.Text = "Verbaliox";
         title.ForeColor = System.Drawing.Color.White;
         title.Font = new System.Drawing.Font("Segoe UI Semibold", 13f);
         title.SetBounds(104, 26, 300, 28);
@@ -483,7 +483,7 @@ def compile_exe() -> Path:
     if not csc:
         raise RuntimeError("csc.exe not found")
 
-    exe_path = BASE_DIR / "VerbaScribe.exe"
+    exe_path = BASE_DIR / "Verbaliox.exe"
     cmd = [
         csc,
         "/nologo",

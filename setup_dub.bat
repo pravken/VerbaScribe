@@ -2,7 +2,7 @@
 cd /d "%~dp0"
 
 echo ==============================================================
-echo   VerbaScribe - optional Translate ^& Dub environment (.venv-dub)
+echo   Verbaliox - optional Translate ^& Dub environment (.venv-dub)
 echo   VoxCPM2 TTS (Apache-2.0) + Demucs (MIT), ~6 GB
 echo ==============================================================
 

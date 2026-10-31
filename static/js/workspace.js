@@ -1,4 +1,4 @@
-// VerbaScribe page script, part 5 of 9: The open recording: audio tracks, dubbing, translation, the transcript.
+// Verbaliox page script, part 5 of 9: The open recording: audio tracks, dubbing, translation, the transcript.
 // The parts are classic scripts sharing one global scope, loaded in order by index.html.
 
 // --- Active Meeting Workspace ---
@@ -1197,7 +1197,7 @@ function setTxViewChoice(view, lang) {
 
 function setTranscriptView(view) {
   state.txView = view;
-  try { localStorage.setItem('verbascribe_tx_view', view); } catch (e) {}
+  try { localStorage.setItem('verbaliox_tx_view', view); } catch (e) {}
   renderTranslationControls();
   renderTranscript();
   updateTheatreCaption(document.getElementById('media-player').currentTime || 0, true);

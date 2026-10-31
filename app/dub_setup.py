@@ -23,7 +23,14 @@ from app.pyenv import ensure_pip, find_uv as _find_uv
 
 DUB_VENV = APP_DIR / ".venv-dub"
 DUB_PYTHON = DUB_VENV / "Scripts" / "python.exe" if sys.platform == "win32" else DUB_VENV / "bin" / "python"
-DUB_READY_MARKER = DUB_VENV / "verbascribe-dub-ready.txt"
+DUB_READY_MARKER = DUB_VENV / "verbaliox-dub-ready.txt"
+# The mark of an environment installed while the program was called VerbaScribe: taken over as is
+_FORMER_MARKER = DUB_VENV / "verbascribe-dub-ready.txt"
+if _FORMER_MARKER.is_file() and not DUB_READY_MARKER.exists():
+    try:
+        _FORMER_MARKER.rename(DUB_READY_MARKER)
+    except OSError:
+        pass
 # Both are locks with hashes (pip --require-hashes): a package changed on PyPI after the lock is refused
 REQUIREMENTS = APP_DIR / "requirements-dub.txt"
 VOXCPM_REQUIREMENTS = APP_DIR / "requirements-dub-voxcpm.txt"  # installed with --no-deps

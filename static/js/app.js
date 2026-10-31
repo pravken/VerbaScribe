@@ -1,4 +1,4 @@
-// VerbaScribe page script, part 9 of 9: Updates, start-up, analysis and chapters, export, folders, Obsidian, details, the text menu.
+// Verbaliox page script, part 9 of 9: Updates, start-up, analysis and chapters, export, folders, Obsidian, details, the text menu.
 // The parts are classic scripts sharing one global scope, loaded in order by index.html.
 
 // --- Updates (app/updater.py): check GitHub Releases, download, verify, install on request ---
@@ -1344,7 +1344,7 @@ function fillObsidianSettings(s) {
   for (const k of OBSIDIAN_TOGGLES) {
     document.getElementById(`set-obsidian-${k}`).checked = (s[`obsidian_${k}`] || (k === 'auto' ? 'false' : 'true')) === 'true';
   }
-  document.getElementById('set-obsidian-subfolder').value = s.obsidian_subfolder ?? 'VerbaScribe';
+  document.getElementById('set-obsidian-subfolder').value = s.obsidian_subfolder ?? 'Verbaliox';
   document.getElementById('set-obsidian-filename').value = s.obsidian_filename || '{date} {title}';
   document.getElementById('set-file-name-template').value = s.file_name_template || '{date} {title}';
   state.fileNameTemplate = s.file_name_template || '{date} {title}';

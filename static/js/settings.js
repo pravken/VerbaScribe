@@ -1,4 +1,4 @@
-// VerbaScribe page script, part 3 of 9: Settings: system info, FFmpeg, models in VRAM, Whisper and Ollama models, cloud LLM, search by meaning, dictionary.
+// Verbaliox page script, part 3 of 9: Settings: system info, FFmpeg, models in VRAM, Whisper and Ollama models, cloud LLM, search by meaning, dictionary.
 // The parts are classic scripts sharing one global scope, loaded in order by index.html.
 
 // --- System & Settings ---
@@ -70,7 +70,7 @@ async function loadSystemInfo() {
     // Audit 5.5: with no scale chosen yet, the first one follows «Text size» of Windows
     const ownScale = (data.settings || {}).ui_scale;
     let asked = true;
-    try { asked = !!localStorage.getItem('verbascribe_ui_scale_windows'); localStorage.setItem('verbascribe_ui_scale_windows', '1'); } catch (e) {}
+    try { asked = !!localStorage.getItem('verbaliox_ui_scale_windows'); localStorage.setItem('verbaliox_ui_scale_windows', '1'); } catch (e) {}
     if (!asked && (!ownScale || ownScale === '100') && Number(data.text_scale) >= 110) {
       const near = UI_SCALES.reduce((a, b) => Math.abs(b - data.text_scale) < Math.abs(a - data.text_scale) ? b : a);
       setUiScale(near);
@@ -352,7 +352,7 @@ const AI_MARK = '<svg class="tb-ai" viewBox="0 0 24 24" aria-hidden="true"><path
 // --- All the models, beside the sidebar: the tile under the hardware opens it, so the library keeps
 // its room. Where each runs, what it is for, and the ones that can still be downloaded ---
 const modelsPop = { open: false, dlOpen: true };
-try { modelsPop.dlOpen = localStorage.getItem('verbascribe_models_dl_open') !== '0'; } catch (e) {}
+try { modelsPop.dlOpen = localStorage.getItem('verbaliox_models_dl_open') !== '0'; } catch (e) {}
 
 function toggleModelsPop(e) {
   if (e) e.stopPropagation();
@@ -428,7 +428,7 @@ function modelsPopPullLlm(id) {
 
 function toggleModelsDownloads() {
   modelsPop.dlOpen = !modelsPop.dlOpen;
-  try { localStorage.setItem('verbascribe_models_dl_open', modelsPop.dlOpen ? '1' : '0'); } catch (e) {}
+  try { localStorage.setItem('verbaliox_models_dl_open', modelsPop.dlOpen ? '1' : '0'); } catch (e) {}
   renderModelsPop();
 }
 
@@ -2583,7 +2583,7 @@ async function copySystemInfo() {
   const hw = sys.hardware || {};
   const about = await fetch('/api/about').then(r => r.json()).catch(() => ({}));
   const lines = [
-    `VerbaScribe ${about.version || ''}`.trim(),
+    `Verbaliox ${about.version || ''}`.trim(),
     `${t('rdSasInfoDevice')}: ${hwDeviceLabel(hw)}${hw.cuda_available ? ` · ${hw.vram_total_gb} GB VRAM` : ''}`,
     `${t('rdSasInfoModel')}: ${document.getElementById('set-whisper-model')?.value || '—'}`,
     `${t('dataFolder')}: ${sys.paths?.data || '—'}`,

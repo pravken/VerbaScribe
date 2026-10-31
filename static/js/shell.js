@@ -1,4 +1,4 @@
-// VerbaScribe page script: the shell. The top bar (record at once, the parts of the app, the open
+// Verbaliox page script: the shell. The top bar (record at once, the parts of the app, the open
 // recording), the views of the main area, the status bar. docs/redesign-plan.md tells how a view plugs in.
 // The parts are classic scripts sharing one global scope, loaded in order by index.html.
 

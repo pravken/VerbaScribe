@@ -1,10 +1,10 @@
 # Промпт для локальной сессии: проверка распознавания на видеокарте (0.4.2)
 
-Скопируйте всё, что ниже линии, в новую сессию Claude Code на компьютере с VerbaScribe. Если сессия от прошлой проверки моделей ещё открыта, можно продолжить в ней.
+Скопируйте всё, что ниже линии, в новую сессию Claude Code на компьютере с Verbaliox. Если сессия от прошлой проверки моделей ещё открыта, можно продолжить в ней.
 
 ---
 
-Ты работаешь на моём Windows-ПК с VerbaScribe 0.4.2 (RTX 3090). В этой версии GigaAM и Parakeet умеют работать на видеокарте. Проверь, что это работает правильно и что ускорение действительно есть. Отвечай мне по-русски.
+Ты работаешь на моём Windows-ПК с Verbaliox 0.4.2 (RTX 3090). В этой версии GigaAM и Parakeet умеют работать на видеокарте. Проверь, что это работает правильно и что ускорение действительно есть. Отвечай мне по-русски.
 
 ## Как это устроено (код в ветке `claude/sweet-maxwell-uaextf`)
 
@@ -12,13 +12,13 @@
 - Библиотеки CUDA и cuDNN берутся из PyTorch: `prepare_cuda()` импортирует torch до создания сессии onnxruntime.
 - `app/asr_onnx.py`: `_load(model, gpu)` держит две копии модели — для процессора (её используют субтитры и диктовка) и для видеокарты (её используют задания расшифровки). VAD всегда работает на процессоре.
 - `app/transcriber.py`: задание расшифровки идёт на видеокарту, если `onnx_gpu.gpu_for_job()` подтверждает, что хватает свободной видеопамяти (GigaAM — 1,5 ГБ, Parakeet — 3 ГБ). Если на видеокарте происходит ошибка, запись перераспознаётся на процессоре. Когда очередь пустеет, `release_gpu()` выгружает модель из видеопамяти.
-- Переключатель `onnx_gpu` находится в «Настройки → Распознавание». Переменная окружения `VERBASCRIBE_NO_ONNX_GPU=1` отключает сборку для видеокарты: так можно замерить работу на процессоре.
+- Переключатель `onnx_gpu` находится в «Настройки → Распознавание». Переменная окружения `VERBALIOX_NO_ONNX_GPU=1` отключает сборку для видеокарты: так можно замерить работу на процессоре.
 
 ## 0. Подготовка
 
-1. Обнови клон с прошлой проверки (`VerbaScribe-bench`): `git checkout claude/sweet-maxwell-uaextf && git pull`. Если клона нет, сделай его так же, как в `docs/model-bench-session.md`.
+1. Обнови клон с прошлой проверки (`Verbaliox-bench`): `git checkout claude/sweet-maxwell-uaextf && git pull`. Если клона нет, сделай его так же, как в `docs/model-bench-session.md`.
 2. `PY` — это `<папка программы>\.venv\Scripts\python.exe`. Папка `onnxruntime-gpu` лежит в этом же venv, поэтому клон её увидит.
-3. Как и в прошлый раз, работай с копией базы: `VERBASCRIBE_DATA_DIR=%TEMP%\vs-bench-data`, `VERBASCRIBE_MODELS_DIR=<папка программы>\models`.
+3. Как и в прошлый раз, работай с копией базы: `VERBALIOX_DATA_DIR=%TEMP%\vs-bench-data`, `VERBALIOX_MODELS_DIR=<папка программы>\models`.
 4. Прогони тесты: `PY -m unittest discover -s tests -t .`
 
 ## 1. Сборка для видеокарты на месте
@@ -44,9 +44,9 @@ PY -c "from app import onnx_gpu; print(onnx_gpu.status())"
 
 ```
 PY tools/model_bench.py fleurs --langs ru,en --n 80 --models gigaam-v3,parakeet-v3
-set VERBASCRIBE_NO_ONNX_GPU=1
+set VERBALIOX_NO_ONNX_GPU=1
 PY tools/model_bench.py fleurs --langs ru,en --n 80 --models gigaam-v3,parakeet-v3
-set VERBASCRIBE_NO_ONNX_GPU=
+set VERBALIOX_NO_ONNX_GPU=
 ```
 
 - В колонке Device должно быть `cuda` в первом прогоне и `cpu` во втором.

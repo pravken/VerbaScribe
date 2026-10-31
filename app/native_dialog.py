@@ -127,7 +127,7 @@ def main() -> None:
         except Exception:
             pass
 
-    parser = argparse.ArgumentParser(description="VerbaScribe Native File Dialog")
+    parser = argparse.ArgumentParser(description="Verbaliox Native File Dialog")
     parser.add_argument("--mode", choices=["save", "folder", "open"], required=True)
     parser.add_argument("--dir", default="")
     parser.add_argument("--filename", default="")

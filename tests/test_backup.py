@@ -81,7 +81,7 @@ class BackupTest(unittest.TestCase):
                  {"id": evil_id, "path": str(outside), "name": f"media/{evil_id}_evil.bat"},
                  {"id": m["id"], "path": str(stray), "name": "media/stray.m4a"}]
         with zipfile.ZipFile(bad, "w") as z:
-            z.writestr("manifest.json", json.dumps({"format": 1, "app": "VerbaScribe", "media": media}))
+            z.writestr("manifest.json", json.dumps({"format": 1, "app": "Verbaliox", "media": media}))
             z.write(db, "meetings.db")
             for f in media:
                 z.writestr(f["name"], b"x")
@@ -134,7 +134,7 @@ class BackupTest(unittest.TestCase):
         bad = Path(tempfile.mkdtemp()) / "bad.zip"
         media = [{"id": evil_id, "path": str(tool), "name": f"media/{evil_id}_a.mp3"}]
         with zipfile.ZipFile(bad, "w") as z:
-            z.writestr("manifest.json", json.dumps({"format": 1, "app": "VerbaScribe", "media": media}))
+            z.writestr("manifest.json", json.dumps({"format": 1, "app": "Verbaliox", "media": media}))
             z.write(db, "meetings.db")
             z.writestr(media[0]["name"], b"MZ")
         backup.restore(bad)

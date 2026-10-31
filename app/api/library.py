@@ -116,7 +116,7 @@ def _backup_dialog(mode: str, filename: str = "") -> Optional[str]:
 
     return native_dialog.run(
         ["--mode", mode, "--dir", str(Path.home() / "Documents"), "--filename", filename,
-         "--filter", "Резервная копия VerbaScribe (*.zip)|*.zip", "--ext", ".zip",
+         "--filter", "Резервная копия Verbaliox (*.zip)|*.zip", "--ext", ".zip",
          "--title", "Сохранить резервную копию" if mode == "save" else "Восстановить из резервной копии"],
         timeout=600)
 
@@ -158,7 +158,7 @@ async def api_backup_make(payload: BackupPayload) -> Dict[str, Any]:
 
     from app import backup
 
-    name = f"VerbaScribe {datetime.now().strftime('%Y-%m-%d')}{' с медиа' if payload.with_media else ''}.zip"
+    name = f"Verbaliox {datetime.now().strftime('%Y-%m-%d')}{' с медиа' if payload.with_media else ''}.zip"
     dest = await run_in_threadpool(_backup_dialog, "save", name)
     if not dest:
         return {"ok": False, "cancelled": True}
@@ -186,7 +186,7 @@ def api_about() -> Dict[str, Any]:
     """The About window: version, and how much the program has transcribed on this computer."""
     done = [m for m in list_meetings() if m.get("status") == "completed"]
     firsts = sorted(str(m.get("created_at") or "")[:10] for m in done if m.get("created_at"))
-    return {"version": __version__, "repo": "pravken/VerbaScribe", "recordings": len(done),
+    return {"version": __version__, "repo": "pravken/Verbaliox", "recordings": len(done),
             "hours": round(sum(float(m.get("duration") or 0) for m in done) / 3600, 1),
             "since": firsts[0] if firsts else ""}
 

@@ -9,14 +9,14 @@
 1. **Создайте ключ на своём компьютере**, не в облачной сессии. Скрипт лежит в репозитории (ветка `claude/sweet-maxwell-uaextf`, после слияния — `main`), поэтому команду запускают из папки клона. Подойдёт любой Python 3, пакеты программы не нужны:
 
    ```
-   git clone --branch claude/sweet-maxwell-uaextf https://github.com/pravken/VerbaScribe D:\Temp\VerbaScribe-key
-   cd /d D:\Temp\VerbaScribe-key
+   git clone --branch claude/sweet-maxwell-uaextf https://github.com/pravken/Verbaliox D:\Temp\Verbaliox-key
+   cd /d D:\Temp\Verbaliox-key
    python tools\release_key.py generate --out D:\Projects\_Secret_Keys\VerbaScribe\verbascribe-release.key
    ```
 
    Секрет кладите вне клона (`--out` с полным путём, папка создаётся сама). Скрипт напишет путь к файлу секрета и строку открытого ключа. Клон потом можно удалить.
 
-2. **Секрет — в GitHub.** Откройте репозиторий → Settings → Secrets and variables → Actions → New repository secret. Имя `RELEASE_SIGNING_KEY`, значение — весь текст файла секрета (строка `verbascribe-release-key:…`).
+2. **Секрет — в GitHub.** Откройте репозиторий → Settings → Secrets and variables → Actions → New repository secret. Имя `RELEASE_SIGNING_KEY`, значение — весь текст файла секрета (строка `verbascribe-release-key:…` — префикс остался от прежнего имени программы, так и нужно).
 
 3. **Сохраните файл секрета** в надёжном месте офлайн (менеджер паролей, зашифрованная флешка). Если он пропадёт, придётся выпустить версию с новым открытым ключом, а уже установленные копии примут её только вручную.
 
@@ -43,4 +43,4 @@ minisign -Vm SHA256SUMS.txt -P <открытый ключ>
 python tools/release_key.py verify SHA256SUMS.txt --tag vX.Y.Z
 ```
 
-Затем сверьте архив с суммой из `SHA256SUMS.txt` (`Get-FileHash VerbaScribe-vX.Y.Z.zip`).
+Затем сверьте архив с суммой из `SHA256SUMS.txt` (`Get-FileHash Verbaliox-vX.Y.Z.zip`).

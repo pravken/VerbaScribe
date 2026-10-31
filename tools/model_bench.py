@@ -173,7 +173,7 @@ def run_library(args, kind):
 def report(_args=None):
     f = OUT / "results.json"
     runs = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else []
-    lines = ["# VerbaScribe model comparison", ""]
+    lines = ["# Verbaliox model comparison", ""]
     if runs:
         lines += [f"Hardware: `{json.dumps(runs[-1].get('hw'), ensure_ascii=False)}`", ""]
     for kind, title in (("asr", "Speech recognition"), ("llm", "Analysis (protocol)")):

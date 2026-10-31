@@ -173,7 +173,7 @@ def init_db() -> None:
             "auto_title": "true",  # name recordings by their content (LLM) when the title is generic
             "obsidian_auto": "false",  # save a note to the Obsidian vault after processing
             "obsidian_vault": "",
-            "obsidian_subfolder": "VerbaScribe",
+            "obsidian_subfolder": "Verbaliox",
             "obsidian_filename": "{date} {title}",
             "file_name_template": "{date} {title}",  # recordings and exports (app/naming.py)
             "date_folders": "off",  # off | day | month | year_month: folders by date (app/naming.py)
@@ -294,7 +294,7 @@ _MEETING_EXTRA_COLUMNS = {
     "recorded_at": "TEXT DEFAULT ''",  # when the meeting took place (file date for imports)
     "title_is_default": "INTEGER DEFAULT 0",  # 1: the title came from a file name and may be replaced
     "obsidian_path": "TEXT DEFAULT ''",
-    "obsidian_hash": "TEXT DEFAULT ''",  # sha256 of the part of the note VerbaScribe wrote last
+    "obsidian_hash": "TEXT DEFAULT ''",  # sha256 of the part of the note Verbaliox wrote last
     "pending_exports_json": "TEXT DEFAULT '[]'",
     "exports_json": "TEXT DEFAULT '[]'",  # files saved by exports (Save as), deleted with the recording on request
     "user_notes": "TEXT DEFAULT ''",  # the user's own notes of the meeting (studio or "My notes" tab)

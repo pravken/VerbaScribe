@@ -1,5 +1,5 @@
 """
-The release key of VerbaScribe (see app/release_sign.py and docs/release-signing.md).
+The release key of Verbaliox (see app/release_sign.py and docs/release-signing.md).
 
   python tools/release_key.py generate [--out FILE]
       A new key. Prints the public key for app/updater.py (RELEASE_PUBLIC_KEY) and writes the
@@ -30,6 +30,7 @@ from app import release_sign  # noqa: E402
 
 def _secret() -> tuple:
     text = os.environ.get("RELEASE_SIGNING_KEY", "").strip()
+    # The prefix keeps the program's former name: the secret in GitHub Actions was made with it
     m = re.fullmatch(r"verbascribe-release-key:([A-Za-z0-9+/=]+):([A-Za-z0-9+/=]+)", text)
     if not m:
         sys.exit("RELEASE_SIGNING_KEY is empty or not a key made by tools/release_key.py generate")

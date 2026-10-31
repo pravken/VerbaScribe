@@ -214,7 +214,7 @@ class Tray:
         self.hwnd = None
         self.icons: Dict[str, int] = {}
         self.state = "idle"
-        self.tip = "VerbaScribe"
+        self.tip = "Verbaliox"
         self._pending: Optional[Tuple[str, str, int]] = None
         self._ready = threading.Event()
         self._lock = threading.Lock()
@@ -289,7 +289,7 @@ class Tray:
         nid.uFlags = flags
         nid.uCallbackMessage = WM_APP_TRAY
         nid.hIcon = self.icons.get(self.state) or self.icons.get("idle")
-        nid.szTip = ("VerbaScribe — " + self.tip)[:127]
+        nid.szTip = ("Verbaliox — " + self.tip)[:127]
         return nid
 
     def _add_icon(self) -> None:
@@ -311,10 +311,10 @@ class Tray:
         wc = WNDCLASSW()
         wc.lpfnWndProc = self._wndproc
         wc.hInstance = hinst
-        wc.lpszClassName = "VerbaScribeTrayWindow"
+        wc.lpszClassName = "VerbalioxTrayWindow"
         user32.RegisterClassW(ctypes.byref(wc))
         # A hidden top-level window (not message-only), so it also gets "TaskbarCreated"
-        self.hwnd = user32.CreateWindowExW(0, wc.lpszClassName, "VerbaScribe tray", 0, 0, 0, 0, 0,
+        self.hwnd = user32.CreateWindowExW(0, wc.lpszClassName, "Verbaliox tray", 0, 0, 0, 0, 0,
                                            None, None, hinst, None)
         self._taskbar_created = user32.RegisterWindowMessageW("TaskbarCreated")
         if not self.hwnd:

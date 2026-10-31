@@ -13,6 +13,8 @@ import sys
 from datetime import datetime
 from typing import Dict, Optional
 
+# The DPAPI entropy of keys saved since the first version: it stays the old name of the program,
+# otherwise keys saved before the rename to Verbaliox could not be read back
 _ENTROPY = b"VerbaScribe API key"
 
 

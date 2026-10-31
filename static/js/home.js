@@ -1,4 +1,4 @@
-// VerbaScribe page script: the home page (package B, docs/redesign-plan.md). Today as a calendar page, the
+// Verbaliox page script: the home page (package B, docs/redesign-plan.md). Today as a calendar page, the
 // greeting and the line of the day; the latest recordings with a line of their overview; the meetings of
 // the working day from the calendar (hours chosen by the user, past midnight for a night shift) — they can
 // be recorded by themselves; what is being processed; the user's open tasks. Also the dictation button,

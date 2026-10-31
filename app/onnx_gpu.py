@@ -59,7 +59,7 @@ def activate() -> bool:
             _finish_pending()
         except OSError:
             pass
-    if os.environ.get("VERBASCRIBE_NO_ONNX_GPU") or not _complete(TARGET) or REMOVE_MARK.exists() \
+    if os.environ.get("VERBALIOX_NO_ONNX_GPU") or not _complete(TARGET) or REMOVE_MARK.exists() \
             or "onnxruntime" in sys.modules:
         return False
     sys.path.insert(0, str(TARGET))
