@@ -1,0 +1,36 @@
+name: Release notes
+
+# Writes the text of published release pages again from CHANGELOG.md (tools/release_notes.py: the
+# English section first). Only the text changes: the files, the tag and the signature stay as published.
+on:
+  workflow_dispatch:
+    inputs:
+      tags:
+        description: "Release tags, separated by spaces (e.g. v0.7.0-beta.1 v0.6.0-beta.4)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  notes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Write the notes of each tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAGS: ${{ inputs.tags }}
+        run: |
+          for tag in $TAGS; do
+            case "$tag" in v[0-9]*) ;; *) echo "skip $tag: not a release tag"; continue ;; esac
+            python tools/release_notes.py "$tag" notes.md
+            if [ ! -s notes.md ]; then echo "skip $tag: no section in CHANGELOG.md"; continue; fi
+            gh release edit "$tag" --notes-file notes.md
+            echo "$tag: notes written"
+          done
