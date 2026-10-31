@@ -10,11 +10,13 @@ with the local Ollama model, re-voice it in the original speaker's voice, keep t
 (music/ambience), and write a new, clearly labelled video/audio file. Everything local, free, and
 permissively licensed.
 
-## Model choice (licenses verified 2026-10-18)
+## Model choice (licenses verified 2026-10-18; the voice model since 0.6.0, 2026-10-31)
 
 | Role | Choice | License | Notes |
 | :--- | :--- | :--- | :--- |
-| Voice-cloning TTS | **Chatterbox Multilingual** (Resemble AI), `chatterbox-tts==0.1.7`, checkpoint `t3_mtl23ls_v2` | MIT (code and weights) | 23 languages incl. **ru** and **en**; zero-shot cloning from ~10 s; every output carries an imperceptible **Perth watermark** |
+| Voice-cloning TTS | **VoxCPM2** (OpenBMB), `voxcpm==2.0.3`, `openbmb/VoxCPM2` at `32279eff` | Apache 2.0 (code and weights) | 30 languages incl. **ru** and **en** (23 offered here); zero-shot cloning from ~10 s; correct Russian stress; chosen over Chatterbox V2/V3, Qwen3-TTS and CosyVoice3 in [bench-report/tts-candidates.md](../bench-report/tts-candidates.md); every phrase gets the imperceptible **Perth watermark** (`resemble-perth`, MIT) |
+| Earlier TTS (before 0.6.0) | Chatterbox Multilingual V2 (Resemble AI) | MIT | 16 of 92 phrases broke in the bench against 2 for VoxCPM2; its environment pulled in pykakasi (GPL v3) |
+| Numbers as words | `num2words` | LGPL 2.1 | in the worker, before synthesis, in the target language |
 | Fallback TTS (rejected) | OpenVoice V2 | MIT | V2 natively supports only EN/ES/FR/ZH/JA/KO — **no Russian**, so not usable as a drop-in fallback |
 | Voice / background separation | **Demucs** `htdemucs` (`demucs==4.1.0`) | MIT | background = mix − vocals stem; weights come from the `adefossez/HTDemucs` Hugging Face repo, which has no license tag of its own — they are the Demucs project's released models (MIT repository) |
 | Translation | local Ollama, the model chosen in Settings (Qwen3.5 4B / Qwen3 8B by default) | Apache 2.0 | 7B+ recommended; small models are literal and sometimes drop nuance |
@@ -33,7 +35,7 @@ UI "Dub" button ─► POST /api/meetings/{id}/dub {target_lang, consent:true}
                              ├─ translate_units (Ollama)      numbered batches of 12, "same spoken length"; LLM unloaded afterwards (keep_alive=0)
                              ├─ DubWorker  ──stdin/stdout JSON──►  app/dub_worker.py in .venv-dub (separate process)
                              │     separate: Demucs → vocals.wav, background.wav
-                             │     tts:      Chatterbox, conditioning cached per speaker reference
+                             │     tts:      VoxCPM2, the voice prompt cached per speaker reference
                              ├─ speaker refs: ~10 s cut from each speaker's longest phrases in the clean vocals stem
                              ├─ measure: clips needing > 1.35× speed-up are re-translated shorter once and re-synthesized
                              ├─ fit: trim silence → atempo (≤1.6×) → hard trim with 80 ms fade if still too long
@@ -43,9 +45,9 @@ UI "Dub" button ─► POST /api/meetings/{id}/dub {target_lang, consent:true}
 
 Why a separate process / venv:
 
-* `chatterbox-tts` pins `numpy<2`, `transformers==5.2.0`, `diffusers==0.29.0` — incompatible with the main app's env.
+* `voxcpm` needs its own `transformers` and `librosa`; its PyPI dependency list also pulls in a demo and training stack (gradio, modelscope, datasets, funasr), so it is installed with `--no-deps` and its runtime deps are listed in `requirements-dub.in`.
 * Cancel = kill the process: immediate, and all VRAM goes back to the driver.
-* The feature stays optional: users who never dub never download ~6 GB of packages and ~3 GB of weights.
+* The feature stays optional: users who never dub never download ~6 GB of packages and ~5 GB of weights.
 
 Paths: outputs go to `<data folder>/dubs` (`app.paths.DATA_DIR`, default `%LOCALAPPDATA%\VerbaScribe`); dub paths are stored relative to the data folder so moving it keeps them working. `.venv-dub` sits next to the program (`APP_DIR`), weights in `MODELS_DIR/dub`. The worker only receives absolute paths.
 
@@ -62,9 +64,12 @@ target language, a newer dub replaces the older file). A dub interrupted by an a
   without `consent: true`.
 * Output files are marked three ways: `.AI-dub.<lang>.` in the file name; container metadata
   (`title … [AI dub EN]`, `comment=AI-GENERATED DUB …`, audio-track title "AI dub (EN) - synthetic cloned voice");
-  and Chatterbox's built-in Perth audio watermark (detectable with `perth.PerthImplicitWatermarker().get_watermark`).
+  and the Perth audio watermark the worker puts on every phrase (detectable with `perth.PerthImplicitWatermarker().get_watermark`).
 
 ## VRAM / speed estimates
+
+The timings below are of the prototype with Chatterbox. VoxCPM2 synthesizes about 1.7× slower (RTF 1.45 against
+0.85 in bench-report/tts-candidates.md): a measurement of a whole dub with it is in docs/pc-session-voxcpm.md.
 
 Measured on the prototype clip (recording #3: 33.6 s, Russian, 1 speaker, 5 phrases → English/German),
 RTX 3090 24 GB, Ollama `qwen2.5:1.5b`:
@@ -85,10 +90,10 @@ loaded during a dub):
 
 | Component | VRAM |
 | :--- | :--- |
-| Chatterbox Multilingual (0.5B T3 + S3Gen, fp32) | **3.6 GB peak** allocated by torch (≈ 4.5 GB incl. CUDA context) |
+| VoxCPM2 | **5.7–6.4 GB peak** allocated by torch (bench-report/tts-candidates.md) |
 | Demucs htdemucs | ≈ 1 GB (segment-wise processing) |
 | Ollama translation model | 1.5B ≈ 1.5 GB · 7B ≈ 5.5 GB · 14B ≈ 10 GB |
-| **Peak for the whole job** | max(LLM, ~4.5 GB) → a 6 GB GPU works with a ≤ 1.5B LLM, 8 GB with a 7B LLM |
+| **Peak for the whole job** | max(LLM, ~7 GB) → an 8 GB GPU works with a ≤ 1.5B LLM, 12 GB with a 7B LLM |
 
 Extrapolation for longer recordings (GPU, warm): synthesis dominates at ~65–70 s per minute of speech; Demucs adds
 ~5 s and translation ~5–10 s (7B) per minute; plus ~25 s fixed model loading. So **≈ 1.3–1.5 minutes of processing per
@@ -113,12 +118,12 @@ Quality checks on the result:
   a fade; too-short clips are not slowed down (leaves a pause instead).
 * Overlapping speech is voiced one phrase at a time (phrases can overlap in the mix; diarization errors become
   wrong voices).
-* Emotion/prosody of the original is only loosely carried over (Chatterbox `exaggeration` is global).
-* Cross-language cloning keeps some source-language accent; `dub_cfg_weight` (default 0.3) trades accent for pacing.
+* Emotion/prosody of the original is only loosely carried over (the reference sets the voice, not each phrase's emotion).
+* Cross-language cloning keeps some source-language accent; `dub_voice_cfg` (default 2.0) trades closeness to the reference for a freer intonation.
 * Translation quality depends on the Ollama model; small models (1.5B) may mistranslate idioms.
 * Demucs leaves some vocal bleed in the background on noisy recordings; the original voice can be faintly audible.
 * Speakers with < ~3 s of total speech get a weak clone.
-* Windows/NVIDIA tested only (RTX 3090). CPU works in principle but is very slow (Chatterbox is autoregressive).
+* Windows/NVIDIA tested only (RTX 3090). CPU works in principle but is very slow (VoxCPM2 is autoregressive).
 
 ## Running without the UI
 
@@ -132,12 +137,11 @@ Prints per-stage timings and stores the result like a UI job.
 
 | Key | Default | Meaning |
 | :--- | :--- | :--- |
-| `dub_cfg_weight` | `0.3` | Chatterbox CFG weight (lower = less accent transfer from the reference) |
-| `dub_exaggeration` | `0.5` | Chatterbox emotion exaggeration |
+| `dub_voice_cfg` | `2.0` | VoxCPM2 guidance `cfg_value`, 1–3 (higher = closer to the reference voice and manner) |
 | `dub_stretch` | `atempo` | `rubberband` uses FFmpeg's rubberband filter if available |
 | `dub_keep_original_track` | `true` | keep the original audio as a second track |
 | `dub_keep_workdir` | `false` | keep intermediate WAVs in `<data folder>/dubs/work_*` for debugging (no UI) |
-| `dub_tts_workers` | `auto` | parallel Chatterbox processes (`auto` = by free VRAM, or `1`–`3`) |
+| `dub_tts_workers` | `auto` | parallel synthesis processes (`auto` = by free VRAM, or `1`–`3`) |
 | `dub_room_tone` | `true` | add the recording's own noise floor (from the separated voice between phrases) under the synthetic voice |
 | `dub_denoise` | `false` | "Remove noise": FFmpeg `afftdn` on the dub background and on the original track in the dub file; room tone is then off |
 
