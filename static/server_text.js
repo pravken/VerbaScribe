@@ -290,6 +290,7 @@ const SERVER_PATTERNS_EN = [
   ["Видео с субтитрами ({}) готово: {}", "Video with subtitles ({0}) ready: {1}"],
   ["В эту папку нельзя записывать: {}", "This folder cannot be written to: {0}"],
   ["Формат файла {} не поддерживается", "The file format {0} is not supported"],
+  ["Окружение дубляжа устарело: переустановите его в окне «Дубляж» (кнопка «Установить»). {}", "The dubbing environment is out of date: install it again in the Dub window (the Install button). {0}"],
   ["Перевод ({}, {}): {} из {} реплик", "Translation ({0}, {1}): {2} of {3} lines"],
   ["Модель не знает язык записи ({})", "The model does not know the language of the recording ({0})"],
   ["Не удалось скачать по ссылке: {}", "Could not download from the link: {0}"],

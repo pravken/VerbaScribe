@@ -76,7 +76,7 @@ class BetaChannelTest(unittest.TestCase):
 class ReleaseNotesTest(unittest.TestCase):
     """The text of a release page comes from the version's sections of CHANGELOG.md."""
 
-    def test_a_version_and_its_betas_get_both_languages(self):
+    def test_a_version_and_its_betas_get_both_languages_english_first(self):
         import importlib.util
 
         root = Path(__file__).resolve().parents[1]
@@ -84,7 +84,7 @@ class ReleaseNotesTest(unittest.TestCase):
         rn = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(rn)
         text = "# Log\n\n## 1.2.0\nру\n\n---\n\n## 1.2.0 — English\nen\n\n## 1.1.0\nold\n"
-        self.assertEqual(rn.notes("v1.2.0-beta.2", text), "## 1.2.0\nру\n\n\n## 1.2.0 — English\nen")
+        self.assertEqual(rn.notes("v1.2.0-beta.2", text), "## 1.2.0 — English\nen\n\n## 1.2.0\nру")
         self.assertEqual(rn.notes("v1.3.0", text), "")
         # the changelog of this repository has the section of the version in app/__init__.py
         from app import __version__
@@ -192,6 +192,21 @@ class ApplyUpdateTest(unittest.TestCase):
             marker.write_text(f"Verified\nrequirements={dub_setup._requirements_hash()}\n")
             self.assertFalse(dub_setup.is_outdated())
             self.assertTrue(dub_setup.is_installed())
+
+    def test_an_old_mark_without_voxcpm_is_outdated(self):
+        """A folder updated with git keeps the mark of its Chatterbox environment, with no
+        requirements in it: without the voxcpm package the environment is not ready."""
+        from app import dub_setup
+
+        venv = self.app / ".venv-dub"
+        marker = venv / "verbascribe-dub-ready.txt"
+        marker.parent.mkdir()
+        marker.write_text("Verified 2026-01-01: cuda=True\n")
+        with mock.patch.object(dub_setup, "DUB_READY_MARKER", marker), mock.patch.object(dub_setup, "DUB_VENV", venv):
+            self.assertTrue(dub_setup.is_outdated())
+            self.assertFalse(dub_setup.is_installed())
+            (venv / "Lib" / "site-packages" / "voxcpm").mkdir(parents=True)
+            self.assertFalse(dub_setup.is_outdated())
 
 
 

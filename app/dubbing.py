@@ -292,6 +292,9 @@ class DubWorker:
             raise RuntimeError("Процесс дубляжа завершился неожиданно:\n" + "\n".join(list(self._stderr)[-15:]))
         msg = json.loads(line)
         if not msg.get("ok"):
+            if "No module named" in str(msg.get("error")):  # an environment made for another version
+                raise RuntimeError("Окружение дубляжа устарело: переустановите его в окне «Дубляж» "
+                                   f"(кнопка «Установить»). {msg.get('error')}")
             raise RuntimeError(f"Ошибка процесса дубляжа: {msg.get('error')}\n{msg.get('trace', '')}")
         return msg
 

@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/cover-en.png" alt="VerbaScribe records, transcribes and analyzes meetings on your computer" width="100%"></p>
+
 # VerbaScribe
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -210,6 +212,8 @@ To update Python dependencies, edit `requirements.in` and regenerate the lock (c
 
 <a name="русский"></a>
 ## Русский
+
+<p align="center"><img src="docs/cover-ru.png" alt="VerbaScribe записывает, расшифровывает и анализирует встречи на вашем компьютере" width="100%"></p>
 
 **VerbaScribe** — настольное приложение для Windows, которое расшифровывает аудио и видео на вашем компьютере. Оно распознаёт речь, разделяет её по спикерам и, если нужно, составляет краткое содержание или отвечает на вопросы по тексту с помощью локальной языковой модели через [Ollama](https://ollama.com).
 

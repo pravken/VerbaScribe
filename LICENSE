@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 Studio Contributors
+Copyright (c) 2026 pravken
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -20,13 +20,5 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-==============================================================================
-THIRD-PARTY OPEN SOURCE COMPONENTS & AI MODELS (COMMERCIAL-PERMISSIVE)
-==============================================================================
-- OpenAI Whisper Models (large-v3-turbo, large-v3, medium, small): MIT License
-- faster-whisper / CTranslate2: MIT License
-- Silero VAD: MIT License
-- SpeechBrain: Apache License 2.0
-- Qwen 2.5 (1.5B, 7B, 14B) & Mistral 7B: Apache License 2.0
-- FastAPI, Uvicorn, PyWebView, HTTPX, python-docx: MIT / BSD-3-Clause License
-- PyTorch, SciPy, scikit-learn: BSD-3-Clause License
+The models and libraries VerbaScribe uses keep their own licenses: see the "Licenses" table in
+README.md.
