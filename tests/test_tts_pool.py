@@ -115,7 +115,13 @@ class DubVoiceModelTest(unittest.TestCase):
             self.skipTest("num2words is installed in .venv-dub only")
         from app.dub_worker import _spell_numbers
 
-        self.assertEqual(_spell_numbers("в 14:30, 3 марта", "ru"), "в четырнадцать тридцать, три марта")
+        self.assertEqual(_spell_numbers("в 14:30, 3 марта", "ru"), "в четырнадцать тридцать, третьего марта")
+        self.assertEqual(_spell_numbers("в 2026 году, к 2030 году", "ru"),
+                         "в две тысячи двадцать шестом году, к две тысячи тридцатому году")
+        self.assertEqual(_spell_numbers("с 1999 года, 2500 рублей", "ru"),
+                         "с тысяча девятьсот девяносто девятого года, две тысячи пятьсот рублей")
+        self.assertEqual(_spell_numbers("2026 год, перед 2026 годом", "ru"),
+                         "две тысячи двадцать шестой год, перед две тысячи двадцать шестым годом")
         self.assertEqual(_spell_numbers("at 9:05", "en"), "at nine oh five")
         self.assertEqual(_spell_numbers("saa 3", "sw"), "saa 3")  # no such language there: the digits stay
 

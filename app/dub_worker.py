@@ -162,6 +162,29 @@ def _watermark(wav, sr: int):
     return _watermarker.apply_watermark(wav, sample_rate=sr)
 
 
+# Russian years and dates take an ordinal in the case the next word asks for: «в 2026 году» is
+# «в две тысячи двадцать шестом году», «3 марта» is «третьего марта» (num2words' cardinal is wrong there)
+_RU_YEAR_CASE = {"год": "nominative", "года": "genitive", "году": "prepositional", "годом": "instrumental"}
+_RU_MONTHS = ("января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября",
+              "октября", "ноября", "декабря")
+
+
+def _ru_ordinal_case(text: str, start: int, end: int) -> tuple:
+    """(case, gender) of a Russian ordinal for the number at text[start:end]; ("", "") for a cardinal."""
+    import re
+
+    after = re.match(r"\s+(\w+)", text[end:])
+    word = after.group(1).lower() if after else ""
+    if word in _RU_MONTHS:
+        return "genitive", "n"  # «третьего (числа) марта»
+    case = _RU_YEAR_CASE.get(word, "")
+    if case == "prepositional":
+        before = re.search(r"(\w+)\s+$", text[:start])
+        if before and before.group(1).lower() in ("к", "по"):  # «к 2026 году»
+            case = "dative"
+    return case, "m"
+
+
 def _spell_numbers(text: str, lang: str) -> str:
     """Numbers as words in the target language (num2words, LGPL): read as the language says them,
     not digit by digit or in another language. Left as they are where num2words has no language."""
@@ -175,6 +198,9 @@ def _spell_numbers(text: str, lang: str) -> str:
     def one(m):
         raw = m.group(0)
         try:
+            case, gender = _ru_ordinal_case(m.string, m.start(), m.end()) if lang == "ru" and raw.isdigit() else ("", "")
+            if case:
+                return num2words(int(raw), lang="ru", to="ordinal", case=case, gender=gender)
             if re.fullmatch(r"\d{1,2}:\d{2}", raw):  # a time of day: 14:30
                 h, mnt = (int(x) for x in raw.split(":"))
                 if not mnt:
