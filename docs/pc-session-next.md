@@ -2,6 +2,9 @@
 
 Скопируйте всё, что ниже линии, в новую сессию Claude Code на компьютере с VerbaScribe.
 
+**Выполнено 31.10.2026** (PR pravken/VerbaScribe#10): итоги — `docs/pc-session-audit-report.md` (A, B) и
+`bench-report/tts-candidates.md` (C).
+
 ---
 
 Ты работаешь на моём Windows-ПК с установленным VerbaScribe (локальная программа расшифровки встреч и
