@@ -175,9 +175,12 @@ def _ru_ordinal_case(text: str, start: int, end: int) -> tuple:
 
     after = re.match(r"\s+(\w+)", text[end:])
     word = after.group(1).lower() if after else ""
+    value = int(text[start:end])
     if word in _RU_MONTHS:
-        return "genitive", "n"  # «третьего (числа) марта»
+        return ("genitive", "n") if 1 <= value <= 31 else ("", "")  # «третьего (числа) марта»
     case = _RU_YEAR_CASE.get(word, "")
+    if case in ("nominative", "genitive", "instrumental") and not 1000 <= value <= 2999:
+        return "", ""  # a count of years: «3 года», «1 год» stay cardinal; only «в 40 году» is a year
     if case == "prepositional":
         before = re.search(r"(\w+)\s+$", text[:start])
         if before and before.group(1).lower() in ("к", "по"):  # «к 2026 году»

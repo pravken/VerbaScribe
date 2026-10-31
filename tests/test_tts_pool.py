@@ -122,6 +122,8 @@ class DubVoiceModelTest(unittest.TestCase):
                          "с тысяча девятьсот девяносто девятого года, две тысячи пятьсот рублей")
         self.assertEqual(_spell_numbers("2026 год, перед 2026 годом", "ru"),
                          "две тысячи двадцать шестой год, перед две тысячи двадцать шестым годом")
+        # A count of years stays a cardinal; a day number only with a month
+        self.assertEqual(_spell_numbers("через 3 года, 1 год, на 40 году", "ru"), "через три года, один год, на сороковом году")
         self.assertEqual(_spell_numbers("at 9:05", "en"), "at nine oh five")
         self.assertEqual(_spell_numbers("saa 3", "sw"), "saa 3")  # no such language there: the digits stay
 
