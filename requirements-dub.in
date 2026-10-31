@@ -1,26 +1,29 @@
-# Optional "Translate & Dub" feature. Installed into a SEPARATE venv (.venv-dub) because
-# chatterbox-tts pins numpy<2 / transformers==5.2.0, which conflict with the main app.
+# Optional "Translate & Dub" feature. Installed into a SEPARATE venv (.venv-dub): the voice model
+# and its libraries (transformers, librosa) are kept apart from the main app's.
 # Install:  setup_dub.bat (installs requirements-dub.txt, the lock with hashes made from this file;
 # the command that makes it is at the top of requirements-dub.txt).
 #
-# chatterbox-tts itself is installed with --no-deps by setup_dub.bat to skip its demo-only
-# gradio dependency; the runtime deps it needs are listed here explicitly.
-torch==2.6.0+cu124
-torchaudio==2.6.0+cu124
-numpy>=1.24.0,<2.0.0
-librosa==0.11.0
-s3tokenizer
-transformers==5.2.0
-diffusers==0.29.0
+# voxcpm itself is installed with --no-deps (requirements-dub-voxcpm.txt): its own list pulls in the
+# demo and training stack (gradio, modelscope, datasets, funasr); the runtime deps it needs are
+# listed here explicitly.
+# torch as in the main app (2.10+: PYSEC-2026-2286, the torch.load weights_only bypass)
+torch==2.11.0+cu126
+torchaudio==2.11.0+cu126
+numpy
+# VoxCPM2 runtime (voxcpm 2.0.3: core, model, modules)
+transformers>=4.36.2
+huggingface-hub
+einops
+pydantic
+safetensors
+tqdm
+librosa
+soundfile>=0.12.1
+# Perth's inaudible watermark on every synthetic phrase (MIT)
 resemble-perth>=1.0.0
 # perth imports pkg_resources (removed in setuptools 81); uv venvs ship without setuptools
 setuptools<81
-conformer==0.3.2
-safetensors==0.5.3
-spacy-pkuseg
-pykakasi==2.3.0
-pyloudnorm
-omegaconf
-soundfile>=0.12.1
+# Numbers read as words in the target language (LGPL-2.1)
+num2words
 # Background/voice separation (MIT)
 demucs==4.1.0

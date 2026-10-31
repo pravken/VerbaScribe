@@ -3,7 +3,7 @@
 import re
 from typing import Any, Dict, List, Tuple
 
-UNIT_MAX_SEC = 12.0      # Chatterbox degrades on very long inputs; keep phrases short
+UNIT_MAX_SEC = 12.0      # voice models degrade on very long inputs; keep phrases short
 UNIT_PAUSE_SPLIT = 0.6   # a pause this long always starts a new phrase
 
 _SENTENCE_END = re.compile(r"[.!?…]['\"»)]*$")
@@ -108,7 +108,7 @@ def plan_placement(
 
 
 # ---------------------------------------------------------------- parallel synthesis
-TTS_WORKER_VRAM_GB = 4.5  # one Chatterbox process peaks at ~3.7 GB; the rest is headroom
+TTS_WORKER_VRAM_GB = 7.5  # one VoxCPM2 process peaks at ~6.4 GB (bench-report/tts-candidates.md); the rest is headroom
 TTS_MAX_WORKERS = 3       # measured: 3 processes give ~1.6x, more mostly add CPU contention
 
 

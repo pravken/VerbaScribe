@@ -113,7 +113,7 @@ const SERVER_TEXT_EN = {
   "Не удалось сохранить звук": "Could not save the sound",
   "Не удалось создать окружение .venv-dub (нужен Python 3.11 или uv)": "Could not create the .venv-dub environment (Python 3.11 or uv is needed)",
   "Не удалось убрать шум из фона (FFmpeg)": "Could not remove the background noise (FFmpeg)",
-  "Не удалось установить chatterbox-tts (подробности в журнале)": "Could not install chatterbox-tts (details in the log)",
+  "Не удалось установить voxcpm (подробности в журнале)": "Could not install voxcpm (details in the log)",
   "Не удалось установить библиотеки (подробности в logs\\update.log)": "Could not install the libraries (details in logs\\update.log)",
   "Не удалось установить пакеты (подробности в журнале)": "Could not install the packages (details in the log)",
   "Не указан адрес API (Base URL) OpenAI-совместимого сервиса в «Настройки → Анализ».": "No API address (Base URL) of the OpenAI-compatible service in Settings → Analysis.",

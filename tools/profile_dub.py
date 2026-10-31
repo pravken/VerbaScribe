@@ -94,7 +94,7 @@ def main() -> None:
     # GPU utilization per stage: a stage lasts from its first progress message to the next stage's
     def stage_of(text: str) -> str:
         for key, name in (("Перевод", "translate"), ("Демукс", "separate"), ("Demucs", "separate"),
-                          ("Запуск", "tts_spawn"), ("Загрузка Chatterbox", "tts"), ("Синтез речи", "tts"),
+                          ("Запуск", "tts_spawn"), ("Загрузка VoxCPM2", "tts"), ("Синтез речи", "tts"),
                           ("Повторный", "resynth"), ("Сокращ", "shorten"), ("Синтез сокращ", "shorten"),
                           ("Подгонка", "fit_mix"), ("Сборка", "mux"), ("Подготовка", "prepare")):
             if key in text:

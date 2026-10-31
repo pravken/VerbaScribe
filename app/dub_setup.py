@@ -2,7 +2,7 @@
 Installs the optional Translate & Dub environment (.venv-dub) from the app, on explicit request.
 
 Runs the same steps as setup_dub.bat: create the venv (uv if available, otherwise the standard
-venv module), install requirements-dub.txt, install chatterbox-tts without its demo-only deps,
+venv module), install requirements-dub.txt, install voxcpm without its demo and training deps,
 then check that the packages really import. Only a successful check marks the environment as
 ready, so an interrupted or failed install never enables the Dub button.
 """
@@ -26,15 +26,15 @@ DUB_PYTHON = DUB_VENV / "Scripts" / "python.exe" if sys.platform == "win32" else
 DUB_READY_MARKER = DUB_VENV / "verbascribe-dub-ready.txt"
 # Both are locks with hashes (pip --require-hashes): a package changed on PyPI after the lock is refused
 REQUIREMENTS = APP_DIR / "requirements-dub.txt"
-CHATTERBOX_REQUIREMENTS = APP_DIR / "requirements-dub-chatterbox.txt"  # installed with --no-deps
-TORCH_INDEX = "https://download.pytorch.org/whl/cu124"
+VOXCPM_REQUIREMENTS = APP_DIR / "requirements-dub-voxcpm.txt"  # installed with --no-deps
+TORCH_INDEX = "https://download.pytorch.org/whl/cu126"
 DOWNLOAD_SIZE_GB = 6
 MIN_FREE_GB = 9  # packages (~6 GB) plus room for the model weights downloaded on the first dub
 
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
 # perth silently sets its watermarker to None when an import fails, which only breaks at dub time
 _VERIFY_CODE = (
-    "import torch, demucs, chatterbox, perth; "
+    "import torch, demucs, voxcpm, perth, num2words; "
     "assert perth.PerthImplicitWatermarker is not None, 'perth watermarker failed to import'; "
     "print('cuda=' + str(torch.cuda.is_available()))"
 )
@@ -64,7 +64,7 @@ def _set(**kw: Any) -> None:
 def _requirements_hash() -> str:
     try:
         # The same as app/updater.py _dub_requirements_hash
-        return hashlib.sha256(b"".join(f.read_bytes() for f in (REQUIREMENTS, CHATTERBOX_REQUIREMENTS) if f.is_file())).hexdigest()
+        return hashlib.sha256(b"".join(f.read_bytes() for f in (REQUIREMENTS, VOXCPM_REQUIREMENTS) if f.is_file())).hexdigest()
     except OSError:
         return ""
 
@@ -179,6 +179,11 @@ def _venv_python_version() -> tuple:
     return (0,)
 
 
+def _has_chatterbox() -> bool:
+    """chatterbox-tts in .venv-dub: an environment made for the voice model before 0.6.0."""
+    return any(DUB_VENV.glob("Lib/site-packages/chatterbox*")) or any(DUB_VENV.glob("lib/python*/site-packages/chatterbox*"))
+
+
 def _install() -> None:
     env = dict(os.environ)
     env["PATH"] = os.pathsep.join(
@@ -192,6 +197,10 @@ def _install() -> None:
         if DUB_PYTHON.is_file() and _venv_python_version() < (3, 11):
             # Made on Python 3.10 before: the lock is for 3.11 now, the environment is made again
             _log("Окружение дубляжа на Python 3.10: создаётся заново на 3.11")
+            shutil.rmtree(DUB_VENV, ignore_errors=True)
+        elif DUB_PYTHON.is_file() and _has_chatterbox():
+            # The voice model before 0.6.0: an install on top would keep its packages (pykakasi, GPL)
+            _log("Окружение дубляжа с Chatterbox: создаётся заново для VoxCPM2")
             shutil.rmtree(DUB_VENV, ignore_errors=True)
         if not DUB_PYTHON.is_file():
             if uv:
@@ -222,21 +231,21 @@ def _install() -> None:
         if rc != 0:
             raise RuntimeError("Не удалось установить пакеты (подробности в журнале)")
 
-        _set(step="chatterbox", progress=85)
+        _set(step="voxcpm", progress=85)
         cmd = (
             [uv, "pip", "install", "--python", str(DUB_PYTHON), "--no-deps", "--require-hashes",
-             "-r", str(CHATTERBOX_REQUIREMENTS)]
+             "-r", str(VOXCPM_REQUIREMENTS)]
             if uv
-            else [str(DUB_PYTHON), "-m", "pip", "install", "--no-deps", "--require-hashes", "-r", str(CHATTERBOX_REQUIREMENTS)]
+            else [str(DUB_PYTHON), "-m", "pip", "install", "--no-deps", "--require-hashes", "-r", str(VOXCPM_REQUIREMENTS)]
         )
         if _run(cmd, 85, 92, env) != 0:
-            raise RuntimeError("Не удалось установить chatterbox-tts (подробности в журнале)")
+            raise RuntimeError("Не удалось установить voxcpm (подробности в журнале)")
 
         _set(step="verify", progress=93)
-        _log("Проверка: импорт torch, demucs, chatterbox…")
+        _log("Проверка: импорт torch, demucs, voxcpm…")
         if not _verify():
             raise RuntimeError("Пакеты установлены, но не загружаются (подробности в журнале)")
-        _log("Окружение дубляжа готово. Веса моделей (~3 ГБ) скачаются при первом дубляже.")
+        _log("Окружение дубляжа готово. Веса моделей (~5 ГБ) скачаются при первом дубляже.")
         _set(active=False, progress=100, step="done", done=True, error="")
     except Exception as e:
         _log(f"ОШИБКА: {e}")
